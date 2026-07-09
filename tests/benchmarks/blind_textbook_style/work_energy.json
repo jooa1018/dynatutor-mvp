@@ -1,0 +1,132 @@
+[
+  {
+    "id": "blind_work_001",
+    "topic": "work_energy",
+    "problem_ko": "물체에 작용한 힘은 변위와 같은 방향이며 크기는 10N이다. 물체가 3m 이동하는 동안 이 힘이 한 일은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_force_work",
+    "expected": {
+      "numeric": 30
+    }
+  },
+  {
+    "id": "blind_work_002",
+    "topic": "work_energy",
+    "problem_ko": "물체에 작용한 힘은 변위와 같은 방향이며 크기는 8N이다. 물체가 4m 이동하는 동안 이 힘이 한 일은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_force_work",
+    "expected": {
+      "numeric": 32
+    }
+  },
+  {
+    "id": "blind_work_003",
+    "topic": "work_energy",
+    "problem_ko": "물체에 작용한 힘은 변위와 같은 방향이며 크기는 15N이다. 물체가 2m 이동하는 동안 이 힘이 한 일은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_force_work",
+    "expected": {
+      "numeric": 30
+    }
+  },
+  {
+    "id": "blind_work_004",
+    "topic": "work_energy",
+    "problem_ko": "물체에 작용한 힘은 변위와 같은 방향이며 크기는 20N이다. 물체가 5m 이동하는 동안 이 힘이 한 일은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_force_work",
+    "expected": {
+      "numeric": 100
+    }
+  },
+  {
+    "id": "blind_work_energy_001",
+    "topic": "work_energy",
+    "problem_ko": "처음에 정지한 질량 2kg의 물체에 알짜일 16J이 가해졌다. 일-에너지 정리를 이용하여 최종속도를 구하라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "work_energy_speed",
+    "expected": {
+      "numeric": 4.0
+    }
+  },
+  {
+    "id": "blind_work_energy_002",
+    "topic": "work_energy",
+    "problem_ko": "처음에 정지한 질량 4kg의 물체에 알짜일 32J이 가해졌다. 일-에너지 정리를 이용하여 최종속도를 구하라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "work_energy_speed",
+    "expected": {
+      "numeric": 4.0
+    }
+  },
+  {
+    "id": "blind_work_energy_003",
+    "topic": "work_energy",
+    "problem_ko": "처음에 정지한 질량 5kg의 물체에 알짜일 45J이 가해졌다. 일-에너지 정리를 이용하여 최종속도를 구하라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "work_energy_speed",
+    "expected": {
+      "numeric": 4.242641
+    }
+  },
+  {
+    "id": "blind_spring_energy_001",
+    "topic": "work_energy",
+    "problem_ko": "마찰이 없는 수평면에서 스프링 상수 k=200N/m인 스프링을 0.1m 압축하고 질량 2kg 물체를 놓았다. 평형점을 지날 때 속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "spring_energy_speed",
+    "expected": {
+      "numeric": 1.0
+    }
+  },
+  {
+    "id": "blind_spring_energy_002",
+    "topic": "work_energy",
+    "problem_ko": "마찰이 없는 수평면에서 스프링 상수 k=100N/m인 스프링을 0.2m 압축하고 질량 4kg 물체를 놓았다. 평형점을 지날 때 속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "spring_energy_speed",
+    "expected": {
+      "numeric": 1.0
+    }
+  },
+  {
+    "id": "blind_spring_energy_003",
+    "topic": "work_energy",
+    "problem_ko": "마찰이 없는 수평면에서 스프링 상수 k=300N/m인 스프링을 0.15m 압축하고 질량 3kg 물체를 놓았다. 평형점을 지날 때 속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "spring_energy_speed",
+    "expected": {
+      "numeric": 1.5
+    }
+  }
+]

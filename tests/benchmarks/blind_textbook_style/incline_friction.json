@@ -1,0 +1,158 @@
+[
+  {
+    "id": "blind_incline_nf_001",
+    "topic": "incline_friction",
+    "problem_ko": "마찰이 없는 경사각 15도의 긴 경사면 위에 블록을 가만히 놓았다. 경사면을 따라 내려가는 블록의 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_no_friction",
+    "expected": {
+      "numeric": 2.539015
+    }
+  },
+  {
+    "id": "blind_incline_nf_002",
+    "topic": "incline_friction",
+    "problem_ko": "마찰이 없는 경사각 20도의 긴 경사면 위에 블록을 가만히 놓았다. 경사면을 따라 내려가는 블록의 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_no_friction",
+    "expected": {
+      "numeric": 3.355218
+    }
+  },
+  {
+    "id": "blind_incline_nf_003",
+    "topic": "incline_friction",
+    "problem_ko": "마찰이 없는 경사각 25도의 긴 경사면 위에 블록을 가만히 놓았다. 경사면을 따라 내려가는 블록의 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_no_friction",
+    "expected": {
+      "numeric": 4.145885
+    }
+  },
+  {
+    "id": "blind_incline_nf_004",
+    "topic": "incline_friction",
+    "problem_ko": "마찰이 없는 경사각 30도의 긴 경사면 위에 블록을 가만히 놓았다. 경사면을 따라 내려가는 블록의 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_no_friction",
+    "expected": {
+      "numeric": 4.905
+    }
+  },
+  {
+    "id": "blind_incline_nf_005",
+    "topic": "incline_friction",
+    "problem_ko": "마찰이 없는 경사각 35도의 긴 경사면 위에 블록을 가만히 놓았다. 경사면을 따라 내려가는 블록의 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_no_friction",
+    "expected": {
+      "numeric": 5.626785
+    }
+  },
+  {
+    "id": "blind_incline_nf_006",
+    "topic": "incline_friction",
+    "problem_ko": "마찰이 없는 경사각 40도의 긴 경사면 위에 블록을 가만히 놓았다. 경사면을 따라 내려가는 블록의 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_no_friction",
+    "expected": {
+      "numeric": 6.305746
+    }
+  },
+  {
+    "id": "blind_incline_mu_001",
+    "topic": "incline_friction",
+    "problem_ko": "거친 경사면의 각도는 20도이고, 블록과 경사면 사이의 운동마찰계수는 0.05이다. 블록이 아래로 미끄러질 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_with_friction",
+    "expected": {
+      "numeric": 2.894298
+    }
+  },
+  {
+    "id": "blind_incline_mu_002",
+    "topic": "incline_friction",
+    "problem_ko": "거친 경사면의 각도는 25도이고, 블록과 경사면 사이의 운동마찰계수는 0.1이다. 블록이 아래로 미끄러질 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_with_friction",
+    "expected": {
+      "numeric": 3.256797
+    }
+  },
+  {
+    "id": "blind_incline_mu_003",
+    "topic": "incline_friction",
+    "problem_ko": "거친 경사면의 각도는 30도이고, 블록과 경사면 사이의 운동마찰계수는 0.15이다. 블록이 아래로 미끄러질 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_with_friction",
+    "expected": {
+      "numeric": 3.630644
+    }
+  },
+  {
+    "id": "blind_incline_mu_004",
+    "topic": "incline_friction",
+    "problem_ko": "거친 경사면의 각도는 35도이고, 블록과 경사면 사이의 운동마찰계수는 0.12이다. 블록이 아래로 미끄러질 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_with_friction",
+    "expected": {
+      "numeric": 4.662479
+    }
+  },
+  {
+    "id": "blind_incline_mu_005",
+    "topic": "incline_friction",
+    "problem_ko": "거친 경사면의 각도는 40도이고, 블록과 경사면 사이의 운동마찰계수는 0.2이다. 블록이 아래로 미끄러질 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_with_friction",
+    "expected": {
+      "numeric": 4.802767
+    }
+  },
+  {
+    "id": "blind_incline_mu_006",
+    "topic": "incline_friction",
+    "problem_ko": "거친 경사면의 각도는 45도이고, 블록과 경사면 사이의 운동마찰계수는 0.1이다. 블록이 아래로 미끄러질 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "incline_with_friction",
+    "expected": {
+      "numeric": 6.243046
+    }
+  }
+]

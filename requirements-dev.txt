@@ -1,0 +1,5 @@
+-r requirements.txt
+# Optional offline validation dependencies.
+# Project Chrono / PyChrono is intentionally not required for normal app runtime.
+# Install separately only when running backend/tools/chrono_validation scripts.
+# See backend/tools/chrono_validation/README.md

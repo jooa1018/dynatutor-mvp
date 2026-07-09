@@ -1,0 +1,132 @@
+[
+  {
+    "id": "blind_kinematics_001",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 36km/h에서 출발하여 10초 동안 일정한 가속도 2m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 30
+    }
+  },
+  {
+    "id": "blind_kinematics_002",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 72km/h에서 출발하여 5초 동안 일정한 가속도 -1m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 15
+    }
+  },
+  {
+    "id": "blind_kinematics_003",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 0m/s에서 출발하여 4초 동안 일정한 가속도 3m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 12
+    }
+  },
+  {
+    "id": "blind_kinematics_004",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 5m/s에서 출발하여 6초 동안 일정한 가속도 1.5m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 14.0
+    }
+  },
+  {
+    "id": "blind_kinematics_005",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 15m/s에서 출발하여 8초 동안 일정한 가속도 0.5m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 19.0
+    }
+  },
+  {
+    "id": "blind_kinematics_006",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 36km/h에서 출발하여 7초 동안 일정한 가속도 1m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 17
+    }
+  },
+  {
+    "id": "blind_kinematics_007",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 20m/s에서 출발하여 3초 동안 일정한 가속도 -2m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 14
+    }
+  },
+  {
+    "id": "blind_kinematics_008",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 5m/s에서 출발하여 5초 동안 일정한 가속도 2m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 15
+    }
+  },
+  {
+    "id": "blind_kinematics_009",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 12m/s에서 출발하여 10초 동안 일정한 가속도 1.2m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 24.0
+    }
+  },
+  {
+    "id": "blind_kinematics_010",
+    "topic": "kinematics",
+    "problem_ko": "직선 도로를 달리는 물체가 처음 속도 8m/s에서 출발하여 15초 동안 일정한 가속도 0.4m/s²를 가진다. 이 시간 뒤의 최종속도는 얼마인가?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "constant_acceleration_1d",
+    "expected": {
+      "numeric": 14.0
+    }
+  }
+]

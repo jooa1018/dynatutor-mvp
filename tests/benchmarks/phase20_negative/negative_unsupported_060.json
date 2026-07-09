@@ -1,0 +1,842 @@
+[
+  {
+    "id": "neg_ambiguous_pulley_001",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=2kg, m2=3kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_002",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=3kg, m2=4kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_003",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=4kg, m2=5kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_004",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=5kg, m2=7kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_005",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=6kg, m2=8kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_006",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=1kg, m2=5kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_007",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=2kg, m2=6kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_008",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=3kg, m2=8kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_009",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=4kg, m2=9kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_010",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=5kg, m2=10kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_011",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=2.5kg, m2=4kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_012",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=3.5kg, m2=7kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_013",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=4.5kg, m2=8kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_014",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=6kg, m2=9kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_ambiguous_pulley_015",
+    "source_family": "FOSSEE/OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "ambiguous_pulley",
+    "problem_ko": "m1=7kg, m2=12kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "도르래 구조"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_001",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 0.5m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_002",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_003",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_004",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 1.5m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_005",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 2m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_006",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 2.5m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_007",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 3m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_008",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 4m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_009",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 5m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_010",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 0.8m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_011",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_012",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 2.2m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_013",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 3.5m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_014",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 4.5m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rolling_shape_015",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rolling_missing_shape",
+    "problem_ko": "물체가 미끄러지지 않고 높이 6m 굴러 내려온다. 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "물체 종류",
+      "관성모멘트"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_001",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 10m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_002",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 12m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_003",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 15m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_004",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 18m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_005",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 20m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_006",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 22m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_007",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 25m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_008",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 28m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_009",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 30m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_projectile_angle_010",
+    "source_family": "OpenStax negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "projectile_missing_angle",
+    "problem_ko": "속력 35m/s로 포물체를 발사했다. 사거리는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "각도",
+      "수평"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rigid_vA_001",
+    "source_family": "MIT OCW negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rigid_missing_vA",
+    "problem_ko": "평면강체에서 A와 B 사이 거리는 0.5m, 각속도는 4rad/s이다. B점 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "A점 속도",
+      "고정"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rigid_vA_002",
+    "source_family": "MIT OCW negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rigid_missing_vA",
+    "problem_ko": "평면강체에서 A와 B 사이 거리는 1m, 각속도는 2rad/s이다. B점 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "A점 속도",
+      "고정"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rigid_vA_003",
+    "source_family": "MIT OCW negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rigid_missing_vA",
+    "problem_ko": "평면강체에서 A와 B 사이 거리는 1.2m, 각속도는 3rad/s이다. B점 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "A점 속도",
+      "고정"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rigid_vA_004",
+    "source_family": "MIT OCW negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rigid_missing_vA",
+    "problem_ko": "평면강체에서 A와 B 사이 거리는 0.8m, 각속도는 5rad/s이다. B점 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "A점 속도",
+      "고정"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_rigid_vA_005",
+    "source_family": "MIT OCW negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Designed to ensure the engine asks for missing physics information instead of hallucinating a solution.",
+    "topic": "rigid_missing_vA",
+    "problem_ko": "평면강체에서 A와 B 사이 거리는 2m, 각속도는 1.5rad/s이다. B점 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "A점 속도",
+      "고정"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_001",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=2kg, m2=3kg, v1=4m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_002",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=1kg, m2=2kg, v1=6m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_003",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=3kg, m2=5kg, v1=2m/s, v2=1m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_004",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=4kg, m2=6kg, v1=5m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_005",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=2kg, m2=8kg, v1=10m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_006",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=5kg, m2=7kg, v1=3m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_007",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=6kg, m2=9kg, v1=4m/s, v2=1m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_008",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=2kg, m2=5kg, v1=8m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_009",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=3kg, m2=4kg, v1=7m/s, v2=2m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_010",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=4kg, m2=8kg, v1=6m/s, v2=1m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_011",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=1.5kg, m2=2.5kg, v1=5m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_012",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=2.5kg, m2=3.5kg, v1=4m/s, v2=1m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_013",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=3.5kg, m2=6kg, v1=3m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_014",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=5kg, m2=10kg, v1=2m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  },
+  {
+    "id": "neg_collision_condition_015",
+    "source_family": "OpenStax/MIT negative control",
+    "license_note": "Negative benchmark created by DynaTutor; no source wording copied.",
+    "derivation_note": "Collision has two final velocities; momentum alone is insufficient without perfectly inelastic/elastic/e condition.",
+    "topic": "collision_missing_condition",
+    "problem_ko": "m1=7kg, m2=9kg, v1=5m/s, v2=0m/s 두 물체가 충돌했다. 충돌 후 속도는?",
+    "expected_ok": false,
+    "expected_reason_contains": [
+      "완전비탄성",
+      "반발계수",
+      "탄성"
+    ],
+    "must_not_use_llm_for_answer": true
+  }
+]

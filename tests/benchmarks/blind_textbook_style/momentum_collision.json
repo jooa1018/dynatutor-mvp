@@ -1,0 +1,106 @@
+[
+  {
+    "id": "blind_impulse_001",
+    "topic": "momentum_collision",
+    "problem_ko": "일정한 힘 10N이 작은 물체에 2초 동안 작용하였다. 이 힘이 물체에 준 충격량은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "impulse_momentum",
+    "expected": {
+      "numeric": 20
+    }
+  },
+  {
+    "id": "blind_impulse_002",
+    "topic": "momentum_collision",
+    "problem_ko": "일정한 힘 15N이 작은 물체에 1.5초 동안 작용하였다. 이 힘이 물체에 준 충격량은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "impulse_momentum",
+    "expected": {
+      "numeric": 22.5
+    }
+  },
+  {
+    "id": "blind_impulse_003",
+    "topic": "momentum_collision",
+    "problem_ko": "일정한 힘 20N이 작은 물체에 0.5초 동안 작용하였다. 이 힘이 물체에 준 충격량은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "impulse_momentum",
+    "expected": {
+      "numeric": 10.0
+    }
+  },
+  {
+    "id": "blind_impulse_004",
+    "topic": "momentum_collision",
+    "problem_ko": "일정한 힘 8N이 작은 물체에 3초 동안 작용하였다. 이 힘이 물체에 준 충격량은?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "impulse_momentum",
+    "expected": {
+      "numeric": 24
+    }
+  },
+  {
+    "id": "blind_collision_inelastic_001",
+    "topic": "momentum_collision",
+    "problem_ko": "마찰 없는 직선 트랙에서 m1=2kg 물체가 4m/s, m2=3kg 물체가 0m/s로 움직이다가 완전비탄성 충돌을 한다. 충돌 직후 공통 속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "collision_1d",
+    "expected": {
+      "numeric": 1.6
+    }
+  },
+  {
+    "id": "blind_collision_inelastic_002",
+    "topic": "momentum_collision",
+    "problem_ko": "마찰 없는 직선 트랙에서 m1=1kg 물체가 6m/s, m2=2kg 물체가 0m/s로 움직이다가 완전비탄성 충돌을 한다. 충돌 직후 공통 속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "collision_1d",
+    "expected": {
+      "numeric": 2.0
+    }
+  },
+  {
+    "id": "blind_collision_inelastic_003",
+    "topic": "momentum_collision",
+    "problem_ko": "마찰 없는 직선 트랙에서 m1=3kg 물체가 2m/s, m2=5kg 물체가 1m/s로 움직이다가 완전비탄성 충돌을 한다. 충돌 직후 공통 속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "collision_1d",
+    "expected": {
+      "numeric": 1.375
+    }
+  },
+  {
+    "id": "blind_collision_inelastic_004",
+    "topic": "momentum_collision",
+    "problem_ko": "마찰 없는 직선 트랙에서 m1=4kg 물체가 5m/s, m2=6kg 물체가 0m/s로 움직이다가 완전비탄성 충돌을 한다. 충돌 직후 공통 속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "collision_1d",
+    "expected": {
+      "numeric": 2.0
+    }
+  }
+]

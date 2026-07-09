@@ -1,0 +1,14 @@
+[
+  {
+    "id": "atwood_001",
+    "source_family": "FOSSEE Engineering Mechanics Dynamics derived",
+    "license_note": "Derived numerical benchmark; no original wording copied",
+    "topic": "pulley_atwood",
+    "problem_ko": "m1=2 kg, m2=3 kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "expected": {
+      "acceleration_m_s2": 1.962
+    },
+    "tolerance": 0.02,
+    "must_not_use_llm_for_answer": true
+  }
+]

@@ -1,0 +1,158 @@
+[
+  {
+    "id": "blind_pulley_atwood_001",
+    "topic": "pulley",
+    "problem_ko": "질량이 없는 줄과 마찰이 없는 도르래 양쪽에 m1=1kg, m2=2kg 물체가 매달려 있다. 계의 가속도 크기를 구하라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_atwood",
+    "expected": {
+      "numeric": 3.27
+    }
+  },
+  {
+    "id": "blind_pulley_atwood_002",
+    "topic": "pulley",
+    "problem_ko": "질량이 없는 줄과 마찰이 없는 도르래 양쪽에 m1=2kg, m2=3kg 물체가 매달려 있다. 계의 가속도 크기를 구하라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_atwood",
+    "expected": {
+      "numeric": 1.962
+    }
+  },
+  {
+    "id": "blind_pulley_atwood_003",
+    "topic": "pulley",
+    "problem_ko": "질량이 없는 줄과 마찰이 없는 도르래 양쪽에 m1=3kg, m2=5kg 물체가 매달려 있다. 계의 가속도 크기를 구하라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_atwood",
+    "expected": {
+      "numeric": 2.4525
+    }
+  },
+  {
+    "id": "blind_pulley_atwood_004",
+    "topic": "pulley",
+    "problem_ko": "질량이 없는 줄과 마찰이 없는 도르래 양쪽에 m1=4kg, m2=7kg 물체가 매달려 있다. 계의 가속도 크기를 구하라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_atwood",
+    "expected": {
+      "numeric": 2.675455
+    }
+  },
+  {
+    "id": "blind_pulley_table_001",
+    "topic": "pulley",
+    "problem_ko": "수평면 위의 m1=3kg 블록과 매달린 m2=2kg 추를 가벼운 줄과 도르래로 연결하였다. 수평면의 운동마찰계수는 0.1이다. 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_table_hanging",
+    "expected": {
+      "numeric": 3.3354
+    }
+  },
+  {
+    "id": "blind_pulley_table_002",
+    "topic": "pulley",
+    "problem_ko": "수평면 위의 m1=5kg 블록과 매달린 m2=3kg 추를 가벼운 줄과 도르래로 연결하였다. 수평면의 운동마찰계수는 0.12이다. 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_table_hanging",
+    "expected": {
+      "numeric": 2.943
+    }
+  },
+  {
+    "id": "blind_pulley_table_003",
+    "topic": "pulley",
+    "problem_ko": "수평면 위의 m1=6kg 블록과 매달린 m2=4kg 추를 가벼운 줄과 도르래로 연결하였다. 수평면의 운동마찰계수는 0.15이다. 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_table_hanging",
+    "expected": {
+      "numeric": 3.0411
+    }
+  },
+  {
+    "id": "blind_pulley_table_004",
+    "topic": "pulley",
+    "problem_ko": "수평면 위의 m1=8kg 블록과 매달린 m2=5kg 추를 가벼운 줄과 도르래로 연결하였다. 수평면의 운동마찰계수는 0.1이다. 가속도는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_table_hanging",
+    "expected": {
+      "numeric": 3.169385
+    }
+  },
+  {
+    "id": "blind_pulley_incline_nf_001",
+    "topic": "pulley",
+    "problem_ko": "m1=10kg 블록은 30도 경사면 위에 있고 m2=1kg 추는 도르래에 매달려 있다. 마찰을 무시할 때 가속도 크기는?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_incline_hanging",
+    "expected": {
+      "numeric": 3.567273
+    }
+  },
+  {
+    "id": "blind_pulley_incline_nf_002",
+    "topic": "pulley",
+    "problem_ko": "m1=8kg 블록은 25도 경사면 위에 있고 m2=4kg 추는 도르래에 매달려 있다. 마찰을 무시할 때 가속도 크기는?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_incline_hanging",
+    "expected": {
+      "numeric": 0.506077
+    }
+  },
+  {
+    "id": "blind_pulley_incline_dir_001",
+    "topic": "pulley",
+    "problem_ko": "m1=10kg 블록은 30도 경사면 위에 있고 m2=8kg 추는 도르래에 매달려 있다. m2가 아래로 내려간다. 운동마찰계수 0.2일 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_incline_hanging",
+    "expected": {
+      "numeric": 0.691032
+    }
+  },
+  {
+    "id": "blind_pulley_incline_dir_002",
+    "topic": "pulley",
+    "problem_ko": "m1=12kg 블록은 25도 경사면 위에 있고 m2=10kg 추는 도르래에 매달려 있다. m2가 아래로 내려간다. 운동마찰계수 0.15일 때 가속도는?",
+    "should_solve": true,
+    "tolerance": 0.002,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "pulley_incline_hanging",
+    "expected": {
+      "numeric": 1.470263
+    }
+  }
+]

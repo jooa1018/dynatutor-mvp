@@ -1,0 +1,801 @@
+{
+  "meta": {
+    "units_backend": "shim",
+    "routing_cases": 432,
+    "negative_cases": 60,
+    "gap_threshold": 8,
+    "duration_seconds": 34.13
+  },
+  "routing": {
+    "total": 432,
+    "correct": 432,
+    "accuracy": 1.0,
+    "top_confusion_pairs": [],
+    "mismatches": []
+  },
+  "per_solver": [
+    {
+      "solver": "collision_1d",
+      "support": 5,
+      "selected_total": 5,
+      "correct": 5,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "constant_acceleration_1d",
+      "support": 50,
+      "selected_total": 50,
+      "correct": 50,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "constant_force_work",
+      "support": 58,
+      "selected_total": 58,
+      "correct": 58,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "coriolis_relative_motion",
+      "support": 6,
+      "selected_total": 6,
+      "correct": 6,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "fixed_axis_rotation",
+      "support": 5,
+      "selected_total": 5,
+      "correct": 5,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "impulse_momentum",
+      "support": 8,
+      "selected_total": 8,
+      "correct": 8,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "incline_no_friction",
+      "support": 60,
+      "selected_total": 60,
+      "correct": 60,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "incline_with_friction",
+      "support": 8,
+      "selected_total": 8,
+      "correct": 8,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "plane_rigid_body_acceleration",
+      "support": 6,
+      "selected_total": 6,
+      "correct": 6,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "plane_rigid_body_velocity",
+      "support": 8,
+      "selected_total": 8,
+      "correct": 8,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "polar_kinematics",
+      "support": 6,
+      "selected_total": 6,
+      "correct": 6,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "projectile_motion",
+      "support": 70,
+      "selected_total": 70,
+      "correct": 70,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "pulley_atwood",
+      "support": 58,
+      "selected_total": 58,
+      "correct": 58,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "pulley_table_hanging",
+      "support": 8,
+      "selected_total": 8,
+      "correct": 8,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "pure_rolling_energy",
+      "support": 59,
+      "selected_total": 59,
+      "correct": 59,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "relative_acceleration_translation",
+      "support": 5,
+      "selected_total": 5,
+      "correct": 5,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "spring_energy_speed",
+      "support": 5,
+      "selected_total": 5,
+      "correct": 5,
+      "precision": 1.0,
+      "recall": 1.0
+    },
+    {
+      "solver": "work_energy_speed",
+      "support": 7,
+      "selected_total": 7,
+      "correct": 7,
+      "precision": 1.0,
+      "recall": 1.0
+    }
+  ],
+  "ambiguous": [],
+  "numeric": {
+    "checked": 127,
+    "passed": 127,
+    "accuracy": 1.0,
+    "failures": []
+  },
+  "negative": {
+    "checked": 60,
+    "correct_refusals": 60,
+    "false_positives": [],
+    "crashes": []
+  },
+  "perturbation": {
+    "base_cases": 432,
+    "transforms": [
+      {
+        "name": "동의어: 구하라→계산하라",
+        "applied": 126,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 경사면→빗면",
+        "applied": 68,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 마찰 없는→매끄러운",
+        "applied": 60,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 블록→물체",
+        "applied": 68,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 스프링→용수철",
+        "applied": 5,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 등가속도→일정한 가속도",
+        "applied": 0,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": null,
+        "examples": []
+      },
+      {
+        "name": "동의어: 속력→빠르기",
+        "applied": 12,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 매달려→걸려",
+        "applied": 58,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 충돌한다→부딪친다",
+        "applied": 0,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": null,
+        "examples": []
+      },
+      {
+        "name": "동의어: 정지 상태에서→가만히 있다가",
+        "applied": 50,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "동의어: 수평 방향으로→수평하게",
+        "applied": 0,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": null,
+        "examples": []
+      },
+      {
+        "name": "표기: N도→N°",
+        "applied": 130,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "표기: 단위 유니코드(㎏ ㎞ ㎧)",
+        "applied": 194,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "표기: 정수→소수(10→10.0)",
+        "applied": 1,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "표기: km/h→시속",
+        "applied": 0,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": null,
+        "examples": []
+      },
+      {
+        "name": "띄어쓰기: '10 m/s'→'10m/s'",
+        "applied": 6,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "어순: 질문 먼저",
+        "applied": 335,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "앞 filler 문장 추가",
+        "applied": 432,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "뒤 filler 문장 추가",
+        "applied": 432,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "방해문: 무관 숫자(온도)",
+        "applied": 432,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "방해문: 동음이의어 '줄'(대기열)",
+        "applied": 432,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "방해문: 동음이의어 '일'(task)",
+        "applied": 432,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "방해문: 트랩 키워드 '수평면'",
+        "applied": 432,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      },
+      {
+        "name": "방해문: 무관 거리 숫자",
+        "applied": 432,
+        "routing_broken": 0,
+        "outputs_drift": 0,
+        "numeric_broken": 0,
+        "break_rate": 0.0,
+        "examples": []
+      }
+    ],
+    "total_breaks": 0
+  },
+  "verification": {
+    "totals": {
+      "n": 243,
+      "fp": 0,
+      "x1.1": 243,
+      "sign": 162,
+      "unit": 243,
+      "covered": 243
+    },
+    "per_type": {
+      "collision_1d": {
+        "n": 5,
+        "fp": 0,
+        "x1.1": 5,
+        "sign": 5,
+        "unit": 5,
+        "covered": 5
+      },
+      "constant_acceleration_1d": {
+        "n": 30,
+        "fp": 0,
+        "x1.1": 30,
+        "sign": 30,
+        "unit": 30,
+        "covered": 30
+      },
+      "constant_force_work": {
+        "n": 47,
+        "fp": 0,
+        "x1.1": 47,
+        "sign": 0,
+        "unit": 47,
+        "covered": 47
+      },
+      "coriolis_relative_motion": {
+        "n": 6,
+        "fp": 0,
+        "x1.1": 6,
+        "sign": 6,
+        "unit": 6,
+        "covered": 6
+      },
+      "fixed_axis_rotation": {
+        "n": 5,
+        "fp": 0,
+        "x1.1": 5,
+        "sign": 5,
+        "unit": 5,
+        "covered": 5
+      },
+      "impulse_momentum": {
+        "n": 8,
+        "fp": 0,
+        "x1.1": 8,
+        "sign": 8,
+        "unit": 8,
+        "covered": 8
+      },
+      "particle_on_incline": {
+        "n": 18,
+        "fp": 0,
+        "x1.1": 18,
+        "sign": 18,
+        "unit": 18,
+        "covered": 18
+      },
+      "plane_rigid_body_acceleration": {
+        "n": 6,
+        "fp": 0,
+        "x1.1": 6,
+        "sign": 6,
+        "unit": 6,
+        "covered": 6
+      },
+      "plane_rigid_body_velocity": {
+        "n": 8,
+        "fp": 0,
+        "x1.1": 8,
+        "sign": 8,
+        "unit": 8,
+        "covered": 8
+      },
+      "polar_kinematics": {
+        "n": 6,
+        "fp": 0,
+        "x1.1": 6,
+        "sign": 6,
+        "unit": 6,
+        "covered": 6
+      },
+      "projectile_motion": {
+        "n": 50,
+        "fp": 0,
+        "x1.1": 50,
+        "sign": 42,
+        "unit": 50,
+        "covered": 50
+      },
+      "pulley_atwood": {
+        "n": 15,
+        "fp": 0,
+        "x1.1": 15,
+        "sign": 15,
+        "unit": 15,
+        "covered": 15
+      },
+      "pulley_table_hanging": {
+        "n": 8,
+        "fp": 0,
+        "x1.1": 8,
+        "sign": 8,
+        "unit": 8,
+        "covered": 8
+      },
+      "pure_rolling_energy": {
+        "n": 14,
+        "fp": 0,
+        "x1.1": 14,
+        "sign": 0,
+        "unit": 14,
+        "covered": 14
+      },
+      "relative_acceleration_translation": {
+        "n": 5,
+        "fp": 0,
+        "x1.1": 5,
+        "sign": 5,
+        "unit": 5,
+        "covered": 5
+      },
+      "spring_energy": {
+        "n": 5,
+        "fp": 0,
+        "x1.1": 5,
+        "sign": 0,
+        "unit": 5,
+        "covered": 5
+      },
+      "work_energy_speed": {
+        "n": 7,
+        "fp": 0,
+        "x1.1": 7,
+        "sign": 0,
+        "unit": 7,
+        "covered": 7
+      }
+    },
+    "fp_examples": [],
+    "escape_examples": []
+  },
+  "provenance": {
+    "clean_fp": 0,
+    "injectors": [
+      {
+        "name": "배경 질량(m)",
+        "landed": 215,
+        "detected": 215,
+        "withheld_error": 38,
+        "kept_with_warning": 164,
+        "missed_examples": []
+      },
+      {
+        "name": "배경 시간(t)",
+        "landed": 205,
+        "detected": 205,
+        "withheld_error": 5,
+        "kept_with_warning": 200,
+        "missed_examples": []
+      },
+      {
+        "name": "배경 힘(F)",
+        "landed": 183,
+        "detected": 183,
+        "withheld_error": 37,
+        "kept_with_warning": 146,
+        "missed_examples": []
+      },
+      {
+        "name": "배경 높이(h)",
+        "landed": 221,
+        "detected": 221,
+        "withheld_error": 42,
+        "kept_with_warning": 179,
+        "missed_examples": []
+      },
+      {
+        "name": "배경 각도(theta)",
+        "landed": 175,
+        "detected": 175,
+        "withheld_error": 47,
+        "kept_with_warning": 128,
+        "missed_examples": []
+      }
+    ],
+    "landed_total": 999,
+    "detected_total": 999
+  },
+  "clarify": {
+    "fp": [],
+    "crafted": [
+      {
+        "problem": "30도 경사면 위 블록의 가속도를 구하라.",
+        "expected": "incline_friction_unknown",
+        "fired": "incline_friction_unknown",
+        "rule_ok": true,
+        "resolved": true
+      },
+      {
+        "problem": "경사각 25도 빗면에서 물체가 미끄러진다. 가속도는?",
+        "expected": "incline_friction_unknown",
+        "fired": "incline_friction_unknown",
+        "rule_ok": true,
+        "resolved": true
+      },
+      {
+        "problem": "블록이 도르래 줄에 연결된 채 30도 경사면 위에 놓여 있다. 가속도는?",
+        "expected": "pulley_topology_unknown",
+        "fired": "pulley_topology_unknown",
+        "rule_ok": true,
+        "resolved": null
+      },
+      {
+        "problem": "두 물체가 줄과 도르래로 연결되어 있다. 가속도를 구하라.",
+        "expected": "pulley_topology_unknown",
+        "fired": "pulley_topology_unknown",
+        "rule_ok": true,
+        "resolved": null
+      },
+      {
+        "problem": "30도 경사면 위에서 블록이 용수철에 연결되어 있다. 블록을 놓으면 속도는?",
+        "expected": "mixed_spring_conflict",
+        "fired": "mixed_spring_conflict",
+        "rule_ok": true,
+        "resolved": "chained→missing_values"
+      },
+      {
+        "problem": "공을 45도로 발사했다. 사거리는?",
+        "expected": "missing_values",
+        "fired": "missing_values",
+        "rule_ok": true,
+        "resolved": true
+      },
+      {
+        "problem": "스프링 상수 200N/m인 진동계의 주기를 구하라.",
+        "expected": "missing_values",
+        "fired": "missing_values",
+        "rule_ok": true,
+        "resolved": true
+      },
+      {
+        "problem": "질량 2kg와 3kg인 두 공이 정면 충돌한다. 충돌 후 속도는?",
+        "expected": "missing_values",
+        "fired": "missing_values",
+        "rule_ok": true,
+        "resolved": null
+      },
+      {
+        "problem": "평면강체에서 A와 B 사이 거리는 0.7m, 각속도는 3rad/s이다. B점 속도는?",
+        "expected": "rigid_missing_reference",
+        "fired": "rigid_missing_reference",
+        "rule_ok": true,
+        "resolved": true
+      },
+      {
+        "problem": "용수철 장치가 있다. 무엇을 구할 수 있을까?",
+        "expected": "unknown_with_evidence",
+        "fired": "unknown_with_evidence",
+        "rule_ok": true,
+        "resolved": "chained→missing_values"
+      },
+      {
+        "problem": "커브 도로가 있다. 이 상황을 설명하라.",
+        "expected": "unknown_with_evidence",
+        "fired": "unknown_with_evidence",
+        "rule_ok": true,
+        "resolved": "chained→missing_values"
+      },
+      {
+        "problem": "등가속도 상황이다. 무엇을 구할 수 있는가?",
+        "expected": "missing_values",
+        "fired": "missing_values",
+        "rule_ok": true,
+        "resolved": null
+      },
+      {
+        "problem": "물체가 구르는 상황이다. 설명하라.",
+        "expected": "evidence_confirm",
+        "fired": "evidence_confirm",
+        "rule_ok": true,
+        "resolved": "chained→missing_values"
+      },
+      {
+        "problem": "m1=10kg가 30도 경사면 위에 있고 m2=1kg가 매달려 있다. 가속도는?",
+        "expected": "incline_hanging_candidate",
+        "fired": "incline_hanging_candidate",
+        "rule_ok": true,
+        "resolved": true
+      }
+    ],
+    "crafted_fired": 14,
+    "crafted_rule_ok": 14,
+    "crafted_resolved": 10,
+    "crafted_resolvable": 10,
+    "negatives_with_clarification": 60,
+    "negatives_total": 60,
+    "negative_rule_distribution": {
+      "pulley_topology_unknown": 15,
+      "missing_values": 40,
+      "rigid_missing_reference": 5
+    }
+  },
+  "errors": [],
+  "confusion_matrix": [
+    {
+      "expected": "collision_1d",
+      "selected": "collision_1d",
+      "count": 5
+    },
+    {
+      "expected": "constant_acceleration_1d",
+      "selected": "constant_acceleration_1d",
+      "count": 50
+    },
+    {
+      "expected": "constant_force_work",
+      "selected": "constant_force_work",
+      "count": 58
+    },
+    {
+      "expected": "coriolis_relative_motion",
+      "selected": "coriolis_relative_motion",
+      "count": 6
+    },
+    {
+      "expected": "fixed_axis_rotation",
+      "selected": "fixed_axis_rotation",
+      "count": 5
+    },
+    {
+      "expected": "impulse_momentum",
+      "selected": "impulse_momentum",
+      "count": 8
+    },
+    {
+      "expected": "incline_no_friction",
+      "selected": "incline_no_friction",
+      "count": 60
+    },
+    {
+      "expected": "incline_with_friction",
+      "selected": "incline_with_friction",
+      "count": 8
+    },
+    {
+      "expected": "plane_rigid_body_acceleration",
+      "selected": "plane_rigid_body_acceleration",
+      "count": 6
+    },
+    {
+      "expected": "plane_rigid_body_velocity",
+      "selected": "plane_rigid_body_velocity",
+      "count": 8
+    },
+    {
+      "expected": "polar_kinematics",
+      "selected": "polar_kinematics",
+      "count": 6
+    },
+    {
+      "expected": "projectile_motion",
+      "selected": "projectile_motion",
+      "count": 70
+    },
+    {
+      "expected": "pulley_atwood",
+      "selected": "pulley_atwood",
+      "count": 58
+    },
+    {
+      "expected": "pulley_table_hanging",
+      "selected": "pulley_table_hanging",
+      "count": 8
+    },
+    {
+      "expected": "pure_rolling_energy",
+      "selected": "pure_rolling_energy",
+      "count": 59
+    },
+    {
+      "expected": "relative_acceleration_translation",
+      "selected": "relative_acceleration_translation",
+      "count": 5
+    },
+    {
+      "expected": "spring_energy_speed",
+      "selected": "spring_energy_speed",
+      "count": 5
+    },
+    {
+      "expected": "work_energy_speed",
+      "selected": "work_energy_speed",
+      "count": 7
+    }
+  ]
+}

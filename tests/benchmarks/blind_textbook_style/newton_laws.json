@@ -1,0 +1,132 @@
+[
+  {
+    "id": "blind_newton_a_001",
+    "topic": "single_particle_newton",
+    "problem_ko": "수평면에서 마찰을 무시할 수 있는 물체의 질량은 0.5kg이다. 이 물체에 알짜힘 10N이 한 방향으로 작용할 때 가속도를 구하여라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 20.0
+    }
+  },
+  {
+    "id": "blind_newton_a_002",
+    "topic": "single_particle_newton",
+    "problem_ko": "수평면에서 마찰을 무시할 수 있는 물체의 질량은 2kg이다. 이 물체에 알짜힘 6N이 한 방향으로 작용할 때 가속도를 구하여라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 3.0
+    }
+  },
+  {
+    "id": "blind_newton_a_003",
+    "topic": "single_particle_newton",
+    "problem_ko": "수평면에서 마찰을 무시할 수 있는 물체의 질량은 4kg이다. 이 물체에 알짜힘 20N이 한 방향으로 작용할 때 가속도를 구하여라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 5.0
+    }
+  },
+  {
+    "id": "blind_newton_a_004",
+    "topic": "single_particle_newton",
+    "problem_ko": "수평면에서 마찰을 무시할 수 있는 물체의 질량은 1.5kg이다. 이 물체에 알짜힘 9N이 한 방향으로 작용할 때 가속도를 구하여라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 6.0
+    }
+  },
+  {
+    "id": "blind_newton_a_005",
+    "topic": "single_particle_newton",
+    "problem_ko": "수평면에서 마찰을 무시할 수 있는 물체의 질량은 3kg이다. 이 물체에 알짜힘 12N이 한 방향으로 작용할 때 가속도를 구하여라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 4.0
+    }
+  },
+  {
+    "id": "blind_newton_a_006",
+    "topic": "single_particle_newton",
+    "problem_ko": "수평면에서 마찰을 무시할 수 있는 물체의 질량은 0.25kg이다. 이 물체에 알짜힘 5N이 한 방향으로 작용할 때 가속도를 구하여라.",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 20.0
+    }
+  },
+  {
+    "id": "blind_newton_F_001",
+    "topic": "single_particle_newton",
+    "problem_ko": "질량 2kg인 작은 물체가 직선 위에서 3m/s²로 가속되도록 하려면 필요한 알짜힘은 얼마인가?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 6
+    }
+  },
+  {
+    "id": "blind_newton_F_002",
+    "topic": "single_particle_newton",
+    "problem_ko": "질량 5kg인 작은 물체가 직선 위에서 1.2m/s²로 가속되도록 하려면 필요한 알짜힘은 얼마인가?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 6.0
+    }
+  },
+  {
+    "id": "blind_newton_F_003",
+    "topic": "single_particle_newton",
+    "problem_ko": "질량 0.5kg인 작은 물체가 직선 위에서 4m/s²로 가속되도록 하려면 필요한 알짜힘은 얼마인가?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 2.0
+    }
+  },
+  {
+    "id": "blind_newton_F_004",
+    "topic": "single_particle_newton",
+    "problem_ko": "질량 4kg인 작은 물체가 직선 위에서 2.5m/s²로 가속되도록 하려면 필요한 알짜힘은 얼마인가?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "single_particle_newton",
+    "expected": {
+      "numeric": 10.0
+    }
+  }
+]

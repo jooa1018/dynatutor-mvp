@@ -1,0 +1,15 @@
+[
+  {
+    "id": "projectile_cliff_001",
+    "source_family": "OpenStax University Physics Vol.1 derived",
+    "license_note": "Derived for noncommercial educational testing; no original wording copied",
+    "topic": "projectile_motion",
+    "problem_ko": "높이 20 m 절벽에서 공을 10 m/s의 속력으로 수평 방향으로 던졌다. 지면에 닿을 때까지의 시간과 수평거리는?",
+    "expected": {
+      "time_s": 2.019,
+      "range_m": 20.19
+    },
+    "tolerance": 0.02,
+    "must_not_use_llm_for_answer": true
+  }
+]

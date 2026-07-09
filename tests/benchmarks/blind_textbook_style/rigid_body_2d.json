@@ -1,0 +1,106 @@
+[
+  {
+    "id": "blind_rigid_velocity_001",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체에서 A점은 고정되어 있고 B점은 A점에서 오른쪽으로 0.5m 떨어져 있다. 강체가 반시계방향으로 각속도 4rad/s로 회전할 때 B점 속도의 크기는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_velocity",
+    "expected": {
+      "numeric": 2.0
+    }
+  },
+  {
+    "id": "blind_rigid_velocity_002",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체에서 A점은 고정되어 있고 B점은 A점에서 오른쪽으로 0.5m 떨어져 있다. 강체가 시계방향으로 각속도 4rad/s로 회전할 때 B점 속도의 크기는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_velocity",
+    "expected": {
+      "numeric": 2.0
+    }
+  },
+  {
+    "id": "blind_rigid_velocity_003",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체에서 A점은 고정되어 있고 B점은 A점에서 오른쪽으로 0.75m 떨어져 있다. 강체가 반시계방향으로 각속도 2rad/s로 회전할 때 B점 속도의 크기는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_velocity",
+    "expected": {
+      "numeric": 1.5
+    }
+  },
+  {
+    "id": "blind_rigid_velocity_004",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체에서 A점은 고정되어 있고 B점은 A점에서 오른쪽으로 1.2m 떨어져 있다. 강체가 시계방향으로 각속도 3rad/s로 회전할 때 B점 속도의 크기는?",
+    "should_solve": true,
+    "tolerance": 1e-05,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_velocity",
+    "expected": {
+      "numeric": 3.6
+    }
+  },
+  {
+    "id": "blind_rigid_accel_001",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체 가속도 문제에서 A점 가속도는 오른쪽 1m/s2이고 B는 A에서 오른쪽으로 0.6m 떨어져 있다. 각속도는 반시계방향 4rad/s, 각가속도는 반시계방향 3rad/s2이다. B점 가속도 크기는?",
+    "should_solve": true,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_acceleration",
+    "expected": {
+      "numeric": 8.786353
+    }
+  },
+  {
+    "id": "blind_rigid_accel_002",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체 가속도 문제에서 A점 가속도는 오른쪽 0m/s2이고 B는 A에서 오른쪽으로 0.5m 떨어져 있다. 각속도는 반시계방향 2rad/s, 각가속도는 반시계방향 1rad/s2이다. B점 가속도 크기는?",
+    "should_solve": true,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_acceleration",
+    "expected": {
+      "numeric": 2.061553
+    }
+  },
+  {
+    "id": "blind_rigid_accel_003",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체 가속도 문제에서 A점 가속도는 오른쪽 0m/s2이고 B는 A에서 오른쪽으로 1.0m 떨어져 있다. 각속도는 반시계방향 3rad/s, 각가속도는 반시계방향 2rad/s2이다. B점 가속도 크기는?",
+    "should_solve": true,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_acceleration",
+    "expected": {
+      "numeric": 9.219544
+    }
+  },
+  {
+    "id": "blind_rigid_accel_004",
+    "topic": "rigid_body_2d",
+    "problem_ko": "평면강체 가속도 문제에서 A점 가속도는 오른쪽 2m/s2이고 B는 A에서 오른쪽으로 0.8m 떨어져 있다. 각속도는 반시계방향 5rad/s, 각가속도는 반시계방향 4rad/s2이다. B점 가속도 크기는?",
+    "should_solve": true,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "plane_rigid_body_acceleration",
+    "expected": {
+      "numeric": 18.282232
+    }
+  }
+]

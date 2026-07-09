@@ -1,0 +1,147 @@
+[
+  {
+    "id": "blind_projectile_001",
+    "topic": "projectile_motion",
+    "problem_ko": "높이 20 m인 절벽 위에서 공을 수평 방향으로 36 km/h의 속력으로 던졌다. 공기저항을 무시할 때 공이 지면에 닿을 때까지 걸리는 시간과 수평거리를 구하라.",
+    "should_solve": true,
+    "tolerance": 0.02,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "answers": [
+        {
+          "symbol": "t",
+          "label": "시간",
+          "numeric": 2.019,
+          "unit": "s",
+          "tolerance": 0.02
+        },
+        {
+          "symbol": "R",
+          "label": "수평거리",
+          "numeric": 20.19,
+          "unit": "m",
+          "tolerance": 0.05
+        }
+      ]
+    }
+  },
+  {
+    "id": "blind_projectile_002",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 15m/s, 발사각 30도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 19.862968
+    }
+  },
+  {
+    "id": "blind_projectile_003",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 18m/s, 발사각 35도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 31.03572
+    }
+  },
+  {
+    "id": "blind_projectile_004",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 20m/s, 발사각 40도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 40.15526
+    }
+  },
+  {
+    "id": "blind_projectile_005",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 24m/s, 발사각 45도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 58.715596
+    }
+  },
+  {
+    "id": "blind_projectile_006",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 28m/s, 발사각 30도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 69.211408
+    }
+  },
+  {
+    "id": "blind_projectile_007",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 30m/s, 발사각 50도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 90.349335
+    }
+  },
+  {
+    "id": "blind_projectile_008",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 16m/s, 발사각 20도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 16.77407
+    }
+  },
+  {
+    "id": "blind_projectile_009",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 22m/s, 발사각 55도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 46.362001
+    }
+  },
+  {
+    "id": "blind_projectile_010",
+    "topic": "projectile_motion",
+    "problem_ko": "공기저항을 무시한다. 공을 지면에서 속력 32m/s, 발사각 42도로 쏘아 올렸을 때 다시 지면에 도달할 때까지의 수평 사거리는?",
+    "should_solve": true,
+    "tolerance": 0.003,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected_solver": "projectile_motion",
+    "expected": {
+      "numeric": 103.81146
+    }
+  }
+]

@@ -1,0 +1,1202 @@
+[
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 15도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 20도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 25도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 30도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 35도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 40도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 15도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 20도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 25도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 30도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 35도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 40도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 15도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 20도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 25도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 30도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 35도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 40도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 15도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 20도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 25도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 30도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 35도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 40도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 15도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 20도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 25도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 30도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 35도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 40도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 15도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 20도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 25도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 30도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 35도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 40도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 15도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 20도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 25도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 30도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 35도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 40도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "마찰 없는 10도 경사면에서 블록의 가속도를 구하라.",
+    "solver": "incline_no_friction"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 4초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 1m/s^2로 5초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 2m/s^2로 6초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 3m/s^2로 7초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 4m/s^2로 2초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "정지 상태에서 출발한 물체가 가속도 5m/s^2로 3초 동안 직선 운동한다. 최종속도를 구하라.",
+    "solver": "constant_acceleration_1d"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 14m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 16m/s, 발사각 20도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 18m/s, 발사각 25도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 20m/s, 발사각 30도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 10m/s, 발사각 35도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "초속도 12m/s, 발사각 40도인 포물선 운동에서 같은 높이에 착지한다. 사거리는?",
+    "solver": "projectile_motion"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 2m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 3m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 4m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 5m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 6m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 7m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 2m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 3m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 4m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 5m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 6m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 7m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 2m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 3m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 4m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 5m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 6m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 7m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 2m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 3m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 4m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 5m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 6m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 7m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 2m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 3m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 4m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 5m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 6m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 7m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 2m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 3m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 4m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 5m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 6m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 7m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 2m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 7N이 이동 방향으로 3m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 8N이 이동 방향으로 4m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 9N이 이동 방향으로 5m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 10N이 이동 방향으로 6m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 5N이 이동 방향으로 7m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "힘 6N이 이동 방향으로 1m 작용했다. 한 일은?",
+    "solver": "constant_force_work"
+  },
+  {
+    "problem": "m1=1kg, m2=2kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=7kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=2kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=7kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=2kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=7kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=2kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=6kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=3kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=3kg, m2=5kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=4kg, m2=7kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=1kg, m2=2kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "m1=2kg, m2=4kg 두 물체가 도르래 양쪽에 매달려 있다. 가속도는?",
+    "solver": "pulley_atwood"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "속이 찬 구가 미끄러지지 않고 높이 1.0m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원판가 미끄러지지 않고 높이 1.2m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "고리가 미끄러지지 않고 높이 1.4m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "원통가 미끄러지지 않고 높이 1.6m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  },
+  {
+    "problem": "링가 미끄러지지 않고 높이 1.8m 굴러 내려온다. 속도는?",
+    "solver": "pure_rolling_energy"
+  }
+]

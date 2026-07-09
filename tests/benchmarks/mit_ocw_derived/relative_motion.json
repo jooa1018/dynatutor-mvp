@@ -1,0 +1,14 @@
+[
+  {
+    "id": "coriolis_001",
+    "source_family": "MIT OCW derived",
+    "license_note": "Derived benchmark design; no original wording copied",
+    "topic": "coriolis_relative_motion",
+    "problem_ko": "회전좌표계에서 r=0.5 m, 상대속도 v_rel=0.4 m/s, 각속도 omega=6 rad/s일 때 코리올리 가속도는?",
+    "expected": {
+      "coriolis_m_s2": 4.8
+    },
+    "tolerance": 0.01,
+    "must_not_use_llm_for_answer": true
+  }
+]

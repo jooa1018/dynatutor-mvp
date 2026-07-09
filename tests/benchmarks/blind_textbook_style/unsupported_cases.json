@@ -1,0 +1,148 @@
+[
+  {
+    "id": "blind_unsupported_001",
+    "topic": "unsupported",
+    "problem_ko": "어떤 물체가 미끄러지지 않고 높이 1m에서 굴러 내려온다. 바닥에 도달할 때의 속력을 구하라.",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "물체 종류",
+        "관성모멘트"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_002",
+    "topic": "unsupported",
+    "problem_ko": "m1=2kg, m2=3kg가 줄과 도르래로 연결되어 있다. 가속도는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "도르래 구조"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_003",
+    "topic": "unsupported",
+    "problem_ko": "물체에 10N과 5N의 힘이 동시에 작용한다. 가속도는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "힘 방향",
+        "합력"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_004",
+    "topic": "unsupported",
+    "problem_ko": "속력 20m/s로 공을 던졌다. 공기저항을 무시할 때 사거리는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "발사각"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_005",
+    "topic": "unsupported",
+    "problem_ko": "평면강체에서 A와 B 사이 거리는 1m이고 각속도는 2rad/s이다. B점 속도는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "A점 속도",
+        "고정"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_006",
+    "topic": "unsupported",
+    "problem_ko": "m1=10kg가 30도 경사면 위에 있고 m2=1kg가 매달려 있다. 가속도는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "줄/도르래"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_007",
+    "topic": "unsupported",
+    "problem_ko": "두 물체가 충돌했다. 충돌 후 속도는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "질량",
+        "속도"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_008",
+    "topic": "unsupported",
+    "problem_ko": "힘 10N이 물체에 작용하고 물체는 3m 이동했다. 힘과 변위 사이 각도는 주어지지 않았다. 한 일은?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "방향",
+        "각도"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_009",
+    "topic": "unsupported",
+    "problem_ko": "스프링에 연결된 물체가 진동한다. 주기는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "스프링 상수",
+        "질량"
+      ]
+    }
+  },
+  {
+    "id": "blind_unsupported_010",
+    "topic": "unsupported",
+    "problem_ko": "m1=10kg가 30도 경사면 위에 있고 m2=1kg가 도르래에 매달려 있다. 운동마찰계수 0.5일 때 가속도는?",
+    "should_solve": false,
+    "tolerance": 0.001,
+    "note": "Blind textbook-style DynaTutor-created case.",
+    "must_not_use_llm_for_answer": true,
+    "expected": {
+      "missing_info": [
+        "운동 방향"
+      ]
+    }
+  }
+]
