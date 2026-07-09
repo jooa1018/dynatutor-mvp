@@ -1,0 +1,85 @@
+{
+  "phase": "phase27_stability",
+  "environment": {
+    "python_version": "Python 3.13.5",
+    "node_version": "v22.16.0",
+    "npm_version": "10.9.2",
+    "platform": "Linux-4.4.0-x86_64-with-glibc2.41"
+  },
+  "commands": {
+    "backend_fast": {
+      "command": "./scripts/check_backend_fast.sh",
+      "status": "passed",
+      "result": "148 passed, 35 deselected",
+      "duration_seconds_observed": 5.22
+    },
+    "backend_benchmark": {
+      "command": "./scripts/check_backend_benchmark.sh",
+      "status": "passed",
+      "result": "10 pytest benchmark tests passed; Phase20 benchmark 492 total, 0 failures",
+      "duration_seconds_observed": 26.35
+    },
+    "backend_audit": {
+      "command": "./scripts/check_backend_audit.sh",
+      "status": "passed",
+      "result": "25 passed, 158 deselected",
+      "duration_seconds_observed": 9.11
+    },
+    "frontend_metadata": {
+      "command": "./scripts/check_frontend_metadata.sh",
+      "status": "passed",
+      "result": "package/lock/exact-version/build-script metadata passed"
+    },
+    "frontend_build": {
+      "command": "./scripts/check_frontend_build.sh",
+      "status": "passed",
+      "duration_seconds_observed": 33.05,
+      "last_build_stage": "Collecting build traces completed; route summary printed; exit code 0",
+      "timeout_policy": "Python process group wrapper; npm ci timeout 120s, npm run build timeout 180s, SIGTERM then SIGKILL"
+    },
+    "check_all": {
+      "command": "./scripts/check_all.sh",
+      "status": "passed",
+      "result": "fast + benchmark + audit + frontend metadata; frontend build intentionally excluded"
+    },
+    "full_pytest_explicit": {
+      "command": "cd backend && pytest -q -o addopts=''",
+      "status": "passed",
+      "result": "183 passed",
+      "duration_seconds_observed": 18.32
+    }
+  },
+  "known_design_decision": "check_all.sh intentionally excludes frontend build because isolated frontend build is safer than chaining Next.js build after backend pytest jobs in this runtime.",
+  "frontend_build_chain_observation": "When frontend build was chained after long backend pytest jobs, this runtime sometimes held the process after successful build output. The stable policy is to run scripts/check_frontend_build.sh as a separate job.",
+  "requested_outputs_fix": {
+    "work_false_positive_fixed": true,
+    "negative_examples": [
+      "일 때",
+      "일정한",
+      "동일",
+      "일반",
+      "일어나",
+      "일직선",
+      "일단"
+    ],
+    "positive_examples": [
+      "한 일",
+      "일을 구하라",
+      "마찰력이 한 일",
+      "알짜일",
+      "총 일",
+      "work",
+      "W="
+    ]
+  },
+  "answer_validator": {
+    "file": "backend/engine/physics_core/answer_validators.py",
+    "checks": [
+      "ok=True requires answer or answers",
+      "answer and answers[0] numeric consistency",
+      "primary answers require units",
+      "numeric/display consistency warning",
+      "requested_outputs mapped to required answer symbols"
+    ]
+  }
+}

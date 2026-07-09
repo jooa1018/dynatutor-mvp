@@ -1,0 +1,25 @@
+{
+  "release_candidate": "phase23",
+  "overall_passed": true,
+  "backend_tests": "145 passed",
+  "benchmark": {
+    "synthetic": 300,
+    "derived": 132,
+    "negative": 60,
+    "total": 492,
+    "failures": 0
+  },
+  "phase21_validation": {
+    "count": 25,
+    "passed": 25,
+    "failed": 0,
+    "pychrono_available": false
+  },
+  "llm_guardrail": {
+    "safe_passed": true,
+    "changed_answer_rejected": true,
+    "unsupported_hallucination_rejected": true
+  },
+  "frontend_build": "not run; frontend/node_modules missing",
+  "release_zip_cache_policy": "exclude __pycache__, .pytest_cache, node_modules, .next, virtualenvs"
+}

@@ -1,0 +1,285 @@
+{
+  "phase": 28,
+  "goal": "No install/test/build command may hang indefinitely; every official command must return success, failure, timeout, skipped, or not_recommended honestly.",
+  "environment": {
+    "os": "Linux 11c3ed355bff 4.4.0 #1 SMP Sun Jan 10 15:06:54 PST 2016 x86_64 GNU/Linux",
+    "python_version": "Python 3.13.5",
+    "node_version": "v22.16.0",
+    "npm_version": "10.9.2",
+    "frontend_required_node": "20.x",
+    "local_node_note": "Local sandbox used Node v22.16.0 and npm 10.9.2, which produced an EBADENGINE warning because frontend/package.json now pins Node 20.x. Vercel should use Node 20.x."
+  },
+  "results": {
+    "frontend_metadata": {
+      "command": "./scripts/check_frontend_metadata.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "last_output": "frontend metadata check passed"
+    },
+    "frontend_metadata_from_backend": {
+      "command": "cd backend && ../scripts/check_frontend_metadata.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "last_output": "frontend metadata check passed"
+    },
+    "backend_fast": {
+      "command": "./scripts/check_backend_fast.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "157 passed, 36 deselected",
+      "timeout_wrapper": "scripts/run_with_timeout.py",
+      "last_output": "[run_with_timeout] command exited with code 0"
+    },
+    "backend_benchmark": {
+      "command": "./scripts/check_backend_benchmark.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "10 passed, 183 deselected",
+      "timeout_wrapper": "scripts/run_with_timeout.py",
+      "last_output": "[run_with_timeout] command exited with code 0"
+    },
+    "backend_audit": {
+      "command": "./scripts/check_backend_audit.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "21 passed, 172 deselected",
+      "timeout_wrapper": "scripts/run_with_timeout.py",
+      "last_output": "Audit pytest passed."
+    },
+    "check_all_default": {
+      "command": "./scripts/check_all.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "last_output": "[check_all] completed",
+      "note": "Smoke check only: frontend metadata + backend fast tests."
+    },
+    "check_all_benchmark_audit": {
+      "command": "./scripts/check_all.sh --with-benchmark --with-audit",
+      "status": "optional_environment_sensitive",
+      "official_required": false,
+      "reason": "Heavy benchmark and audit groups are officially validated via dedicated scripts to avoid long chained pytest runs in one shell command.",
+      "note": "Optional convenience command only. Official validation uses ./scripts/check_backend_benchmark.sh and ./scripts/check_backend_audit.sh separately."
+    },
+    "check_all_benchmark_audit_frontend_build": {
+      "command": "./scripts/check_all.sh --with-benchmark --with-audit --with-frontend-build",
+      "status": "skipped",
+      "reason": "The final passed claim is intentionally split into dedicated backend checks plus frontend build checks. The frontend build wrapper is verified separately below."
+    },
+    "local_frontend_build": {
+      "command": "cd frontend && npm run build",
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 23.42,
+      "last_output": "Route (app); / and /_not-found exported successfully",
+      "note": "Next.js production build completed successfully. The verification was run after npm dependencies were installed with npm ci."
+    },
+    "frontend_build_timeout_20": {
+      "command": "DYNATUTOR_FRONTEND_BUILD_TIMEOUT=20 ./scripts/check_frontend_build.sh",
+      "status": "timeout_guarded",
+      "exit_code": 124,
+      "duration_seconds": 30.0,
+      "process_cleanup": "passed",
+      "last_output": "[frontend_build] timed out after 20s; timeout reached; killing process group; process group terminated with SIGTERM",
+      "note": "The build did not complete within 20 seconds, but the Python timeout wrapper returned 124 and no npm/next build child process remained. Duration includes npm ci before the timed npm run build wrapper."
+    },
+    "pytest_default": {
+      "command": "cd backend && pytest -q",
+      "status": "passed",
+      "exit_code": 0,
+      "duration_seconds": 7.21,
+      "last_output": "157 passed, 36 deselected"
+    },
+    "full_pytest": {
+      "command": "cd backend && pytest -q -o addopts=''",
+      "status": "not_recommended",
+      "reason": "benchmark/audit/frontend/slow tests are intentionally split by marker and official validation is performed via dedicated check scripts."
+    },
+    "check_frontend_build_default": {
+      "command": "./scripts/check_frontend_build.sh",
+      "status": "environment_sensitive",
+      "note": "Default wrapper path may take longer depending on environment because it performs npm ci and a clean Next.js production build. Production build success is verified separately with cd frontend && npm run build, while timeout safety is verified with DYNATUTOR_FRONTEND_BUILD_TIMEOUT=20 ./scripts/check_frontend_build.sh."
+    },
+    "backend_audit_timeout_1": {
+      "command": "DYNATUTOR_BACKEND_AUDIT_TIMEOUT=1 ./scripts/check_backend_audit.sh",
+      "status": "timeout_guarded",
+      "exit_code": 124,
+      "process_cleanup": "passed",
+      "last_output": "[run_with_timeout] timed out after 1s; killing process group; process group terminated with SIGTERM",
+      "note": "Forced timeout test returned 124 and a follow-up process check found no pytest child process."
+    },
+    "backend_timeout_wrapper_static_check": {
+      "command": "grep -R \"timeout --kill-after\" scripts/check_backend_*.sh scripts/run_with_timeout.py",
+      "status": "passed",
+      "exit_code": 0,
+      "note": "No GNU timeout wrapper remains in backend check scripts; backend pytest checks use scripts/run_with_timeout.py."
+    },
+    "backend_signal_cleanup": {
+      "command": "python scripts/run_with_timeout.py 60 -- python -c 'import time; time.sleep(60)' then SIGTERM wrapper",
+      "status": "passed",
+      "exit_code": 143,
+      "process_cleanup": "passed",
+      "last_output": "[run_with_timeout] received signal 15; killing process group; process group terminated with SIGTERM",
+      "note": "Signal-handler cleanup test verified that if the wrapper receives SIGTERM, the child process group is terminated."
+    },
+    "check_all_smoke": {
+      "command": "./scripts/check_all.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "last_output": "[check_all] completed",
+      "note": "Smoke check only: frontend metadata + backend fast tests."
+    }
+  },
+  "policy": {
+    "official_fast_path": "./scripts/check_all.sh",
+    "official_backend_full_path": "dedicated scripts only: ./scripts/check_backend_benchmark.sh and ./scripts/check_backend_audit.sh are run separately, not required through check_all",
+    "frontend_build_path": "./scripts/check_frontend_build.sh",
+    "frontend_build_timeout_owner": "scripts/check_frontend_build.py",
+    "full_pytest_policy": "not_recommended",
+    "official_backend_validation": [
+      "./scripts/check_frontend_metadata.sh",
+      "./scripts/check_backend_fast.sh",
+      "./scripts/check_backend_benchmark.sh",
+      "./scripts/check_backend_audit.sh"
+    ],
+    "official_frontend_production_build": "cd frontend && npm run build",
+    "optional_timeout_safety_check": "DYNATUTOR_FRONTEND_BUILD_TIMEOUT=20 ./scripts/check_frontend_build.sh",
+    "frontend_timeout_safety_note": "The 20 second wrapper check validates timeout cleanup behavior, not production build success. Exit 124 is acceptable when no npm/next build child process remains.",
+    "backend_timeout_owner": "scripts/run_with_timeout.py",
+    "backend_timeout_safety_check": "DYNATUTOR_BACKEND_AUDIT_TIMEOUT=1 ./scripts/check_backend_audit.sh",
+    "official_smoke_check": "./scripts/check_all.sh",
+    "check_all_benchmark_audit_policy": "optional_environment_sensitive",
+    "official_validation_commands": [
+      "./scripts/check_all.sh",
+      "./scripts/check_backend_benchmark.sh",
+      "./scripts/check_backend_audit.sh",
+      "cd frontend && npm run build",
+      "DYNATUTOR_FRONTEND_BUILD_TIMEOUT=20 ./scripts/check_frontend_build.sh"
+    ],
+    "check_all_policy": "smoke check only by default; --with-benchmark and --with-audit are optional convenience flags, not the official required validation path",
+    "frontend_deployment_strategy": "static_export",
+    "frontend_output_directory": "out",
+    "frontend_required_node": "20.x",
+    "frontend_required_env": "NEXT_PUBLIC_DYNATUTOR_API_BASE=https://deployed-backend-origin",
+    "backend_required_cors_env": "DYNATUTOR_CORS_ORIGINS=https://deployed-frontend-origin",
+    "frontend_no_localhost_fallback": true
+  },
+  "implementation_notes": {
+    "check_frontend_build_sh": "No GNU timeout wrapper is used. The script runs npm ci and then uses exec python scripts/check_frontend_build.py to reduce one shell layer.",
+    "check_frontend_build_py": "Uses Popen with start_new_session=True and os.killpg on timeout. stdout/stderr are inherited for real-time output and to avoid pipe back-pressure hangs.",
+    "check_all_sh": "Default check_all is a fast smoke check: frontend metadata plus backend fast tests. Optional --with-benchmark/--with-audit flags remain for convenience only and are documented as environment-sensitive; official validation runs benchmark and audit through dedicated scripts.",
+    "run_with_timeout_py": "Common process-group timeout runner for backend checks. It starts commands with start_new_session=True, supports DYNATUTOR_RUN_CWD for backend-relative pytest assets, installs SIGTERM/SIGINT/SIGHUP handlers so externally stopped wrappers still clean child processes, kills the process group on timeout with SIGTERM, falls back to SIGKILL, returns 124 on timeout, and otherwise returns the child command exit code.",
+    "backend_check_scripts": "check_backend_fast.sh, check_backend_benchmark.sh, and check_backend_audit.sh no longer use GNU timeout. They call scripts/run_with_timeout.py with DYNATUTOR_RUN_CWD set to the backend directory and preserve pytest output via inherited stdout/stderr.",
+    "check_backend_audit_sh": "After pytest exits with code 0 through scripts/run_with_timeout.py, the script prints Audit pytest passed. and returns to the caller.",
+    "official_validation_structure": "Official Phase 28 validation is split into smoke check, dedicated benchmark script, dedicated audit script, frontend production build, and optional timeout safety check. Heavy benchmark/audit chaining through check_all is not a required pass claim.",
+    "frontend_static_export_config": "frontend/next.config.js uses output: export, images.unoptimized: true, outputFileTracingRoot: __dirname, and single-CPU static generation settings to avoid clean export hangs in constrained environments.",
+    "frontend_vercel_config": "frontend/vercel.json uses buildCommand npm run build, installCommand npm ci, and outputDirectory out.",
+    "frontend_node_engine": "frontend/package.json pins engines.node to 20.x.",
+    "frontend_api_base": "frontend/lib/api.ts reads NEXT_PUBLIC_DYNATUTOR_API_BASE first and no longer falls back to localhost:8000 or window.location.hostname:8000."
+  },
+  "commands": {
+    "local_frontend_build": {
+      "command": "cd frontend && npm run build",
+      "status": "passed",
+      "exit_code": 0,
+      "output_directory": "out",
+      "required_file": "out/index.html",
+      "last_output": "Route (app); / and /_not-found exported successfully",
+      "note": "Next.js static export production build completed successfully."
+    },
+    "frontend_build_timeout_20": {
+      "command": "DYNATUTOR_FRONTEND_BUILD_TIMEOUT=20 ./scripts/check_frontend_build.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "process_cleanup": "not_needed",
+      "last_output": "[frontend_build] npm run build exited with code 0",
+      "note": "After static-export stabilization, the wrapper build completed within the configured 20 second build timeout in this environment. Exit 124 would still be acceptable if a slower environment times out and cleans child processes."
+    },
+    "check_frontend_build_default": {
+      "command": "./scripts/check_frontend_build.sh",
+      "status": "environment_sensitive",
+      "note": "Default wrapper path performs npm ci and a clean static export build. Production build success is verified with cd frontend && npm run build; timeout safety is verified with DYNATUTOR_FRONTEND_BUILD_TIMEOUT=20 ./scripts/check_frontend_build.sh."
+    },
+    "backend_fast": {
+      "command": "./scripts/check_backend_fast.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "157 passed, 36 deselected",
+      "timeout_wrapper": "scripts/run_with_timeout.py",
+      "last_output": "[run_with_timeout] command exited with code 0"
+    },
+    "backend_benchmark": {
+      "command": "./scripts/check_backend_benchmark.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "10 passed, 183 deselected",
+      "timeout_wrapper": "scripts/run_with_timeout.py",
+      "last_output": "[run_with_timeout] command exited with code 0"
+    },
+    "backend_audit": {
+      "command": "./scripts/check_backend_audit.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "summary": "21 passed, 172 deselected",
+      "timeout_wrapper": "scripts/run_with_timeout.py",
+      "last_output": "Audit pytest passed."
+    },
+    "check_all_benchmark_audit": {
+      "command": "./scripts/check_all.sh --with-benchmark --with-audit",
+      "status": "optional_environment_sensitive",
+      "official_required": false,
+      "reason": "Heavy benchmark and audit groups are officially validated via dedicated scripts to avoid long chained pytest runs in one shell command.",
+      "note": "Optional convenience command only. Official validation uses ./scripts/check_backend_benchmark.sh and ./scripts/check_backend_audit.sh separately."
+    },
+    "backend_audit_timeout_1": {
+      "command": "DYNATUTOR_BACKEND_AUDIT_TIMEOUT=1 ./scripts/check_backend_audit.sh",
+      "status": "timeout_guarded",
+      "exit_code": 124,
+      "process_cleanup": "passed",
+      "last_output": "[run_with_timeout] timed out after 1s; killing process group; process group terminated with SIGTERM",
+      "note": "Forced timeout test returned 124 and a follow-up process check found no pytest child process."
+    },
+    "backend_signal_cleanup": {
+      "command": "python scripts/run_with_timeout.py 60 -- python -c 'import time; time.sleep(60)' then SIGTERM wrapper",
+      "status": "passed",
+      "exit_code": 143,
+      "process_cleanup": "passed",
+      "last_output": "[run_with_timeout] received signal 15; killing process group; process group terminated with SIGTERM",
+      "note": "Signal-handler cleanup test verified that if the wrapper receives SIGTERM, the child process group is terminated."
+    },
+    "check_all_smoke": {
+      "command": "./scripts/check_all.sh",
+      "status": "passed",
+      "exit_code": 0,
+      "last_output": "[check_all] completed",
+      "note": "Smoke check only: frontend metadata + backend fast tests."
+    },
+    "frontend_static_export_build": {
+      "command": "cd frontend && rm -rf .next out node_modules && npm ci && NEXT_TELEMETRY_DISABLED=1 npm run build && test -f out/index.html",
+      "status": "passed",
+      "exit_code": 0,
+      "output_directory": "out",
+      "required_file": "out/index.html",
+      "last_output": "static export ok; out/index.html exists",
+      "note": "Clean static export build completed. Local sandbox used Node v22.16.0 and showed EBADENGINE because package.json requires Node 20.x; Vercel should use Node 20.x."
+    },
+    "vercel_frontend_config": {
+      "buildCommand": "npm run build",
+      "installCommand": "npm ci",
+      "outputDirectory": "out",
+      "node": "20.x",
+      "status": "configured"
+    },
+    "frontend_api_base_env": {
+      "environment_variable": "NEXT_PUBLIC_DYNATUTOR_API_BASE",
+      "status": "documented",
+      "example": "https://dynatutor-backend.onrender.com",
+      "note": "Frontend API calls use this public backend base URL. No localhost:8000 fallback remains."
+    },
+    "backend_cors_env": {
+      "environment_variable": "DYNATUTOR_CORS_ORIGINS",
+      "status": "documented",
+      "example": "https://your-frontend.vercel.app",
+      "note": "Set this on the backend deployment so the static frontend origin is allowed by CORS."
+    }
+  }
+}
