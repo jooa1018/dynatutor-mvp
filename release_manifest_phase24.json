@@ -1,0 +1,23 @@
+{
+  "release": "phase24_final_polish_deployment_verification",
+  "project": "DynaTutor MVP",
+  "base_phase": "phase23_release_candidate",
+  "purpose": "Personal-use final package after deployment polish",
+  "backend_expected_tests": "to be measured in Phase24 final run",
+  "frontend_build_status": "attempted only if node_modules exists; otherwise documented dependency skip",
+  "required_manual_frontend_command": "cd frontend && npm install && npm run build",
+  "preferred_frontend_env": "NEXT_PUBLIC_DYNATUTOR_API_BASE",
+  "legacy_frontend_env_alias": "NEXT_PUBLIC_API_BASE",
+  "backend_required_cloud_env": [
+    "DYNATUTOR_ACCESS_TOKEN",
+    "DYNATUTOR_CORS_ORIGINS",
+    "DYNATUTOR_DB"
+  ],
+  "llm_optional_env": [
+    "LLM_ENABLED",
+    "LLM_PROVIDER",
+    "OPENAI_API_KEY",
+    "OPENAI_MODEL",
+    "OPENAI_BASE_URL"
+  ]
+}

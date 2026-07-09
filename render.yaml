@@ -1,0 +1,29 @@
+# DynaTutor — Render 무료 플랜 배포 설정 (Phase 35)
+# 기록(SQLite)은 ephemeral: 재시작/재배포 시 사라지는 것을 감수한다 (무료 플랜, persistent disk 없음).
+services:
+  - type: web
+    name: dynatutor-api
+    env: python
+    rootDir: backend
+    buildCommand: pip install -r requirements-lock.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DYNATUTOR_ACCESS_TOKEN
+        sync: false            # Render 대시보드에서 직접 설정 (production에서 미설정 시 기동 거부됨)
+      - key: DYNATUTOR_ENV
+        value: production
+      - key: DYNATUTOR_DB
+        value: /tmp/dynatutor_records.sqlite   # ephemeral — 재시작 시 초기화
+      - key: DYNATUTOR_CORS_ORIGINS
+        value: "*"             # 최초 테스트용. Vercel 주소 확정 후 예: https://<your-app>.vercel.app (끝 / 없음)
+      - key: DYNATUTOR_PUBLIC_DOCS
+        value: "false"          # production 기본: /docs, /redoc, /openapi.json 비공개
+      - key: LLM_ENABLED
+        value: auto
+      - key: LLM_PROVIDER
+        value: openai
+      - key: OPENAI_API_KEY
+        sync: false

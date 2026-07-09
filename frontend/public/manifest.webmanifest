@@ -1,0 +1,15 @@
+{
+  "name": "DynaTutor Local",
+  "short_name": "DynaTutor",
+  "description": "아이폰14에 최적화한 개인용 동역학 문제풀이 튜터",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBFBFD",
+  "theme_color": "#FBFBFD",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

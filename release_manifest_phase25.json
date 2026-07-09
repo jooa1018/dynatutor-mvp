@@ -1,0 +1,20 @@
+{
+  "phase": "phase25_accuracy_hardening",
+  "backend_pytest_current_env": "168 passed",
+  "backend_requirements_lock_new_venv": "168 passed",
+  "frontend_npm_ci": "passed",
+  "frontend_npm_run_build": "passed",
+  "frontend_npm_audit": "0 vulnerabilities",
+  "phase20_benchmark_total": 492,
+  "blind_textbook_style_total": 100,
+  "next_version": "15.5.18",
+  "react_version": "19.1.2",
+  "react_dom_version": "19.1.2",
+  "postcss_override": "8.5.10",
+  "notes": [
+    "node_modules and .next are excluded from the release zip",
+    "package-lock.json is included",
+    "requirements-lock.txt is included",
+    "PyChrono numerical simulation remains optional/manual"
+  ]
+}

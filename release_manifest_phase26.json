@@ -1,0 +1,30 @@
+{
+  "phase": "phase26_multi_answer_outputs",
+  "backend_pytest": "176 passed",
+  "phase20_benchmark": {
+    "total": 492,
+    "failure_count": 0
+  },
+  "blind_textbook_style": {
+    "total": 100,
+    "multi_answer_check": true,
+    "failure_count": 0
+  },
+  "frontend": {
+    "npm_ci": "passed",
+    "npm_run_build": "passed",
+    "npm_audit": "0 vulnerabilities",
+    "build_timeout_script": "scripts/check_frontend_build.sh uses Python subprocess timeout=180 seconds",
+    "pytest_runs_frontend_build": false
+  },
+  "added": [
+    "AnswerItem / answers[] response model",
+    "CanonicalProblem.requested_outputs",
+    "launch_angle_deg / launch_angle_source",
+    "projectile multi-answer time/range/max-height",
+    "pulley/collision/single-particle answers[]",
+    "LLM locked_facts answers[]",
+    "frontend answers list rendering",
+    "single_particle_newton PhysicalModel force object"
+  ]
+}

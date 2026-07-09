@@ -1,0 +1,21 @@
+{
+  "release_candidate": "phase23",
+  "project": "DynaTutor MVP",
+  "created_in_conversation": true,
+  "base_phase": "phase22_llm_guardrail_v2",
+  "scope": "Personal-use release candidate audit package",
+  "backend_test_expected": "143+ tests pass before Phase23 additions",
+  "benchmark_expected": {
+    "synthetic": 300,
+    "derived": 132,
+    "negative": 60,
+    "total": 492
+  },
+  "phase21_validation_cases": 25,
+  "llm_guardrail_version": "phase22",
+  "runtime_notes": [
+    "Frontend build requires installing frontend node_modules.",
+    "PyChrono numerical simulation requires a separate PyChrono environment.",
+    "LLM API use is optional and guarded; template fallback remains available."
+  ]
+}
