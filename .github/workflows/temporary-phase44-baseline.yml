@@ -1,6 +1,8 @@
 name: temporary Phase 44 diagnostic
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -17,15 +19,13 @@ jobs:
       - name: Run Phase 44 contract tests
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
-        run: python -m pytest backend/tests/test_phase44_korean_nlp_robustness.py -q || true
+        run: python -m pytest backend/tests/test_phase44_korean_nlp_robustness.py -q
       - name: Print Phase 44 metric summary
         shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
         run: |
-          set +e
           python backend/tools/run_phase44_nlp_benchmark.py > phase44_report.json
-          status=$?
           if [ -s phase44_report.json ]; then
             python - <<'PY'
           import json
@@ -41,5 +41,3 @@ jobs:
           }, ensure_ascii=False, indent=2))
           PY
           fi
-          echo "benchmark_exit=$status"
-          exit 0
