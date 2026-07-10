@@ -119,10 +119,18 @@ _BODY_KEYS = {
     "I", "R", "r", "rdot", "rddot", "thetadot", "thetaddot",
     "vrel", "arel",
 }
+# Background classification is discourse-based. Ordinary actors and devices such
+# as students, observers, teachers, friends, and scales are not background merely
+# because their noun occurs near a fact.
 _BACKGROUND_MARKERS = (
-    "참고로", "온도", "기온", "카메라", "관찰자", "기록지", "칠판",
-    "교과서", "시험지", "저울", "학생", "선생", "옆 반", "친구",
-    "무관하", "관계없", "사용하지 않", "날씨", "시험 시간",
+    "참고로",
+    "무관하",
+    "관계없",
+    "사용하지 않",
+    "for reference",
+    "irrelevant",
+    "unrelated",
+    "do not use",
 )
 
 
@@ -141,11 +149,14 @@ def _span_context(raw_text: str, span: tuple[int, int] | None) -> str:
     if span is None:
         return ""
     start, end = span
-    left = max(raw_text.rfind(".", 0, start), raw_text.rfind("!", 0, start), raw_text.rfind("?", 0, start))
-    right_candidates = [pos for pos in (
-        raw_text.find(".", end), raw_text.find("!", end), raw_text.find("?", end)
-    ) if pos >= 0]
-    right = min(right_candidates) + 1 if right_candidates else len(raw_text)
+    boundaries = (".", "!", "?", "\n", "\r")
+    left = max(raw_text.rfind(boundary, 0, start) for boundary in boundaries)
+    right_candidates = [
+        position
+        for boundary in boundaries
+        if (position := raw_text.find(boundary, end)) >= 0
+    ]
+    right = min(right_candidates) if right_candidates else len(raw_text)
     return raw_text[left + 1:right]
 
 
