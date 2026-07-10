@@ -4217,7 +4217,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4239,7 +4241,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4261,7 +4265,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4283,7 +4289,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4305,7 +4313,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4327,7 +4337,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4349,7 +4361,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4371,7 +4385,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4393,7 +4409,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
@@ -4415,7 +4433,9 @@
             "unit": "m"
           }
         },
-        "requested_outputs": [],
+        "requested_outputs": [
+          "minimum_speed"
+        ],
         "subjects": {},
         "direction": null,
         "conditions": [],
