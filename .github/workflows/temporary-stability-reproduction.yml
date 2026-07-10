@@ -45,10 +45,9 @@ jobs:
       - name: Frontend metadata
         run: bash scripts/check_frontend_metadata.sh
       - name: Frontend build
-        working-directory: frontend
         env:
           NEXT_TELEMETRY_DISABLED: "1"
           CI: "1"
-        run: |
-          npm ci
-          npm run build
+          DYNATUTOR_FRONTEND_BUILD_TIMEOUT: "180"
+          DYNATUTOR_FRONTEND_BUILD_KILL_AFTER: "10"
+        run: bash scripts/check_frontend_build.sh
