@@ -22,7 +22,7 @@ Collecting scipy==1.17.0 (from -r backend/requirements-lock.txt (line 13))
   Downloading scipy-1.17.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
 Collecting pydy==0.7.1 (from -r backend/requirements-lock.txt (line 14))
   Downloading pydy-0.7.1.tar.gz (6.6 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 148.6 MB/s  0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 9.8 MB/s  0:00:00
   Installing build dependencies: started
   Installing build dependencies: finished with status 'done'
   Getting requirements to build wheel: started
@@ -87,20 +87,20 @@ Downloading fastapi-0.128.2-py3-none-any.whl (104 kB)
 Downloading uvicorn-0.48.0-py3-none-any.whl (71 kB)
 Downloading pydantic-2.13.4-py3-none-any.whl (472 kB)
 Downloading sympy-1.14.0-py3-none-any.whl (6.3 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 230.7 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 17.0 MB/s  0:00:00
 Downloading pytest-9.0.2-py3-none-any.whl (374 kB)
 Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
 Downloading python_multipart-0.0.29-py3-none-any.whl (29 kB)
 Downloading pint-0.25.3-py3-none-any.whl (307 kB)
 Downloading numpy-2.3.5-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.6 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.6/16.6 MB 211.8 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.6/16.6 MB 37.1 MB/s  0:00:00
 Downloading scipy-1.17.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.0 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.0/35.0 MB 249.3 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.0/35.0 MB 38.7 MB/s  0:00:00
 Downloading pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 215.8 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 7.3 MB/s  0:00:00
 Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
 Downloading mpmath-1.3.0-py3-none-any.whl (536 kB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 94.8 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 32.2 MB/s  0:00:00
 Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
 Downloading starlette-0.50.0-py3-none-any.whl (74 kB)
 Downloading anyio-4.14.1-py3-none-any.whl (124 kB)
@@ -116,29 +116,29 @@ Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
 Downloading packaging-26.2-py3-none-any.whl (100 kB)
 Downloading platformdirs-4.10.0-py3-none-any.whl (22 kB)
 Downloading pygments-2.20.0-py3-none-any.whl (1.2 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 171.0 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 32.4 MB/s  0:00:00
 Downloading python_dotenv-1.2.2-py3-none-any.whl (22 kB)
 Downloading pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (801 kB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 801.6/801.6 kB 119.7 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 801.6/801.6 kB 25.1 MB/s  0:00:00
 Using cached setuptools-83.0.0-py3-none-any.whl (1.0 MB)
 Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
 Downloading typing_inspection-0.4.2-py3-none-any.whl (14 kB)
 Downloading uvloop-0.22.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.4 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 265.4 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 40.2 MB/s  0:00:00
 Downloading watchfiles-1.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (454 kB)
 Downloading websockets-16.1-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (187 kB)
 Downloading certifi-2026.6.17-py3-none-any.whl (133 kB)
 Building wheels for collected packages: pydy
   Building wheel for pydy (pyproject.toml): started
   Building wheel for pydy (pyproject.toml): finished with status 'done'
-  Created wheel for pydy: filename=pydy-0.7.1-py3-none-any.whl size=5227247 sha256=bf873f78ee43dcdfdff09dca18fb24f0cf9e4db50c996639b7ea3e3e9af2b766
+  Created wheel for pydy: filename=pydy-0.7.1-py3-none-any.whl size=5227247 sha256=a41b61a39b0792d697e63efc169230f6ef7714e7174b44817ba25ecc0bee2b2d
   Stored in directory: /home/runner/.cache/pip/wheels/df/fe/2d/357c7facbef9ce30e2009044c2ba2d805f177cd4ddce578cac
 Successfully built pydy
 Installing collected packages: mpmath, websockets, uvloop, typing-extensions, sympy, setuptools, pyyaml, python-multipart, python-dotenv, pygments, pluggy, platformdirs, packaging, numpy, iniconfig, idna, httptools, h11, click, certifi, annotated-types, annotated-doc, uvicorn, typing-inspection, scipy, pytest, pydantic-core, httpcore, flexparser, flexcache, anyio, watchfiles, starlette, pydy, pydantic, pint, httpx, fastapi
 
 Successfully installed annotated-doc-0.0.4 annotated-types-0.7.0 anyio-4.14.1 certifi-2026.6.17 click-8.4.2 fastapi-0.128.2 flexcache-0.3 flexparser-0.4 h11-0.16.0 httpcore-1.0.9 httptools-0.8.0 httpx-0.28.1 idna-3.18 iniconfig-2.3.0 mpmath-1.3.0 numpy-2.3.5 packaging-26.2 pint-0.25.3 platformdirs-4.10.0 pluggy-1.6.0 pydantic-2.13.4 pydantic-core-2.46.4 pydy-0.7.1 pygments-2.20.0 pytest-9.0.2 python-dotenv-1.2.2 python-multipart-0.0.29 pyyaml-6.0.3 scipy-1.17.0 setuptools-83.0.0 starlette-0.50.0 sympy-1.14.0 typing-extensions-4.16.0 typing-inspection-0.4.2 uvicorn-0.48.0 uvloop-0.22.1 watchfiles-1.2.0 websockets-16.1
 EXIT_CODE: 0
-DURATION_SECONDS: 24
+DURATION_SECONDS: 28
 
 ===== phase42 =====
 COMMAND: env PYTHONPATH=backend python -m pytest backend/tests/test_phase42_baseline_contracts.py -q -o addopts=
@@ -161,15 +161,29 @@ case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'se
             assert response.clarification is not None
         else:
             assert not response.ok
->           assert response.clarification is None
-E           assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
-E            +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+>           answer = _find_answer(response, expectation)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-backend/tests/test_phase42_baseline_contracts.py:197: AssertionError
+backend/tests/test_phase42_baseline_contracts.py:200: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None})
+expectation = {'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}
+
+    def _find_answer(response, expectation: dict):
+        if expectation["selector"] == "primary":
+>           assert response.answer is not None
+E           assert None is not None
+E            +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+
+backend/tests/test_phase42_baseline_contracts.py:54: AssertionError
 =========================== short test summary info ============================
-FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
- +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
-1 failed, 136 passed in 2.54s
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert None is not None
+ +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+1 failed, 136 passed in 2.09s
 EXIT_CODE: 1
 DURATION_SECONDS: 4
 
@@ -202,15 +216,29 @@ case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'se
             assert response.clarification is not None
         else:
             assert not response.ok
->           assert response.clarification is None
-E           assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
-E            +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+>           answer = _find_answer(response, expectation)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-tests/test_phase42_baseline_contracts.py:197: AssertionError
+tests/test_phase42_baseline_contracts.py:200: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None})
+expectation = {'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}
+
+    def _find_answer(response, expectation: dict):
+        if expectation["selector"] == "primary":
+>           assert response.answer is not None
+E           assert None is not None
+E            +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+
+tests/test_phase42_baseline_contracts.py:54: AssertionError
 =========================== short test summary info ============================
-FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
- +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
-1 failed, 409 passed, 40 deselected in 8.95s
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert None is not None
+ +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+1 failed, 409 passed, 40 deselected in 9.60s
 [run_with_timeout] command exited with code 1
 EXIT_CODE: 1
 DURATION_SECONDS: 10
@@ -240,17 +268,31 @@ case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'se
             assert response.clarification is not None
         else:
             assert not response.ok
->           assert response.clarification is None
-E           assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
-E            +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+>           answer = _find_answer(response, expectation)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-backend/tests/test_phase42_baseline_contracts.py:197: AssertionError
+backend/tests/test_phase42_baseline_contracts.py:200: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None})
+expectation = {'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}
+
+    def _find_answer(response, expectation: dict):
+        if expectation["selector"] == "primary":
+>           assert response.answer is not None
+E           assert None is not None
+E            +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+
+backend/tests/test_phase42_baseline_contracts.py:54: AssertionError
 =========================== short test summary info ============================
-FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
- +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
-1 failed, 409 passed, 40 deselected in 8.55s
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert None is not None
+ +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+1 failed, 409 passed, 40 deselected in 6.58s
 EXIT_CODE: 1
-DURATION_SECONDS: 10
+DURATION_SECONDS: 7
 
 ===== backend_unfiltered =====
 COMMAND: python -m pytest backend/tests -q -o addopts=
@@ -594,11 +636,25 @@ case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'se
             assert response.clarification is not None
         else:
             assert not response.ok
->           assert response.clarification is None
-E           assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
-E            +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+>           answer = _find_answer(response, expectation)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-backend/tests/test_phase42_baseline_contracts.py:197: AssertionError
+backend/tests/test_phase42_baseline_contracts.py:200: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+response = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None})
+expectation = {'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}
+
+    def _find_answer(response, expectation: dict):
+        if expectation["selector"] == "primary":
+>           assert response.answer is not None
+E           assert None is not None
+E            +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+
+backend/tests/test_phase42_baseline_contracts.py:54: AssertionError
 =========================== short test summary info ============================
 FAILED backend/tests/test_phase10_korean_quality_benchmark.py::test_phase10_korean_quality_benchmark_all_supported_cases_solve - AssertionError: [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
 assert not [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
@@ -613,11 +669,11 @@ FAILED backend/tests/test_phase25_blind_textbook_benchmark.py::test_phase25_blin
  +  where 0 = len([])
 FAILED backend/tests/test_phase36_deploy_parser_cleanup.py::test_phase36_frontend_token_is_not_public_env - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
 FAILED backend/tests/test_phase36_deploy_parser_cleanup.py::test_phase36_node_20_is_pinned_for_frontend - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.nvmrc'
-FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) is None
- +  where ClarificationModel(rule='evidence_confirm', question='문제 유형은 짐작되지만 이대로는 풀 수 없습니다. 아래 모형으로 풀어볼까요? (선택 후 필요한 값을 이어서 묻습니다...워드: rotation_fixed_axis', patch={'system_type': 'fixed_axis_rotation', 'assume': '고정축 회전 모형으로 해석'}, needs_value=None)]) = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).clarification
-12 failed, 438 passed in 16.14s
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - assert None is not None
+ +  where None = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).answer
+12 failed, 438 passed in 13.89s
 EXIT_CODE: 1
-DURATION_SECONDS: 17
+DURATION_SECONDS: 15
 
 ===== frontend_metadata =====
 COMMAND: bash scripts/check_frontend_metadata.sh
