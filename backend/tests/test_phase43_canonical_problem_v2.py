@@ -481,3 +481,157 @@ def test_phase43_serialization_round_trip_preserves_span_and_provenance_evidence
 @pytest.mark.regression
 def test_phase43_student_api_contract_remains_v1_compatible():
     assert "canonical_v2" not in CanonicalProblemModel.model_fields
+
+def _solve_primary_numeric(canonical):
+    solver = SolverRegistry().select(canonical)
+    assert solver is not None
+    result = solver.solve(canonical)
+    assert result.ok
+    assert result.answer is not None
+    assert result.answer.numeric is not None
+    return result.answer.numeric
+
+
+@pytest.mark.regression
+def test_phase43_background_speed_cannot_replace_inferred_rest_v0():
+    raw = (
+        "정지 상태에서 출발한 자동차 옆으로 트럭이 20 m/s로 지나간다.\n"
+        "자동차는 가속도 3 m/s^2로 4 s 동안 가속한다.\n"
+        "최종 속도는?"
+    )
+    canonical = extract_problem(raw)
+    speed = _fact(canonical, "v0")
+
+    assert canonical.knowns["v0"].value == pytest.approx(0.0)
+    assert speed.value == pytest.approx(0.0)
+    assert speed.provenance == "domain_rule"
+    assert speed.source_span is None
+    assert not any(
+        fact.compatibility_key == "v0" and fact.value == pytest.approx(20.0)
+        for fact in canonical.canonical_v2.facts
+    )
+    assert canonical.canonical_v2.conflicts == []
+    assert _solve_primary_numeric(canonical) == pytest.approx(12.0)
+
+
+@pytest.mark.regression
+def test_phase43_background_kmh_cannot_replace_bare_labeled_v0():
+    raw = (
+        "참고로 옆 트럭은 36 km/h로 달린다.\n"
+        "자동차는 v0=15이고 a=2 m/s^2이다.\n"
+        "5 s 후 최종속도는?"
+    )
+    canonical = extract_problem(raw)
+    speed = _fact(canonical, "v0")
+
+    assert canonical.knowns["v0"].value == pytest.approx(15.0)
+    assert speed.value == pytest.approx(15.0)
+    assert speed.subject_id == "body"
+    assert speed.source_span is not None
+    assert raw[slice(*speed.source_span)] == "v0=15"
+    assert canonical.canonical_v2.conflicts == []
+    assert _solve_primary_numeric(canonical) == pytest.approx(25.0)
+
+
+@pytest.mark.unit
+def test_phase43_student_actor_is_not_background_for_projectile_speed():
+    raw = "한 학생이 공을 10 m/s로 수평으로 던졌다."
+    speed = _fact(extract_problem(raw), "v0")
+
+    assert speed.value == pytest.approx(10.0)
+    assert speed.subject_id == "body"
+    assert speed.provenance != "background_context"
+    assert speed.confidence >= 0.9
+    assert speed.source_span is not None
+    assert "10 m/s" in raw[slice(*speed.source_span)]
+
+
+@pytest.mark.unit
+def test_phase43_student_actor_mass_and_force_keep_raw_evidence():
+    raw = "학생이 질량 2 kg인 물체를 힘 10 N으로 민다."
+    canonical = extract_problem(raw)
+    mass = _fact(canonical, "m")
+    force = _fact(canonical, "F")
+
+    for fact, token in ((mass, "2 kg"), (force, "10 N")):
+        assert fact.subject_id == "body"
+        assert fact.provenance != "background_context"
+        assert fact.source_span is not None
+        assert token in raw[slice(*fact.source_span)]
+        start, end = fact.source_span
+        assert fact.extraction_evidence["matched_raw_text"] == raw[start:end]
+
+
+@pytest.mark.unit
+def test_phase43_explicit_reference_marker_remains_background_evidence():
+    raw = "참고로 옆 트럭은 36 km/h로 달린다."
+    speed = _fact(extract_problem(raw), "v0")
+
+    assert speed.value == pytest.approx(10.0)
+    assert speed.subject_id == "background"
+    assert speed.status == "inferred"
+    assert speed.provenance == "background_context"
+    assert speed.confidence <= 0.2
+
+
+@pytest.mark.unit
+def test_phase43_newline_stops_background_context_from_leaking():
+    raw = (
+        "참고로 옆 트럭은 36 km/h로 달린다.\n"
+        "자동차의 v0=15 m/s이고 가속도 a=2 m/s^2이다."
+    )
+    speed = _fact(extract_problem(raw), "v0")
+
+    assert speed.value == pytest.approx(15.0)
+    assert speed.subject_id == "body"
+    assert speed.provenance == "text_extraction"
+    assert speed.confidence >= 0.9
+    assert speed.source_span is not None
+    assert "v0=15 m/s" in raw[slice(*speed.source_span)]
+
+
+@pytest.mark.unit
+def test_phase43_gram_and_centimeter_acceleration_are_normalized_not_explicit():
+    raw = "질량 500 g\n가속도 500 cm/s^2"
+    canonical = extract_problem(raw)
+    mass = _fact(canonical, "m")
+    acceleration = _fact(canonical, "a")
+
+    assert (mass.value, mass.unit) == (pytest.approx(0.5), "kg")
+    assert mass.status == "normalized"
+    assert mass.provenance == "unit_normalization"
+    assert mass.source_span is not None
+    assert raw[slice(*mass.source_span)] == "500 g"
+    assert mass.extraction_evidence["normalization_evidence"] == {
+        "source_value": 500.0,
+        "source_unit": "g",
+        "normalized_value": 0.5,
+        "normalized_unit": "kg",
+    }
+
+    assert (acceleration.value, acceleration.unit) == (pytest.approx(5.0), "m/s^2")
+    assert acceleration.status == "normalized"
+    assert acceleration.provenance == "unit_normalization"
+    assert acceleration.source_span is not None
+    assert raw[slice(*acceleration.source_span)] == "500 cm/s^2"
+    assert acceleration.extraction_evidence["normalization_evidence"] == {
+        "source_value": 500.0,
+        "source_unit": "cm/s^2",
+        "normalized_value": 5.0,
+        "normalized_unit": "m/s^2",
+    }
+
+    restored = CanonicalProblemV2.from_json(canonical.canonical_v2.to_json())
+    restored_mass = next(
+        fact for fact in restored.facts if fact.compatibility_key == "m"
+    )
+    restored_acceleration = next(
+        fact for fact in restored.facts if fact.compatibility_key == "a"
+    )
+    assert restored_mass.source_span == mass.source_span
+    assert restored_mass.extraction_evidence == mass.extraction_evidence
+    assert restored_mass.alternatives == mass.alternatives
+    assert restored_acceleration.source_span == acceleration.source_span
+    assert restored_acceleration.extraction_evidence == acceleration.extraction_evidence
+    assert restored_acceleration.alternatives == acceleration.alternatives
+
