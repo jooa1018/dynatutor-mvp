@@ -1,14 +1,12 @@
-name: temporary Phase 44 baseline
+name: temporary Phase 44 validation
 
 on:
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
-  baseline:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -16,25 +14,8 @@ jobs:
           python-version: "3.13"
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements-lock.txt
-      - name: Measure pre-change Phase 44 NLP baseline
+      - name: Run Phase 44 benchmark
         shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
-        run: |
-          set +e
-          python backend/tools/run_phase44_nlp_benchmark.py > phase44_baseline.json
-          status=$?
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          report = json.loads(Path("phase44_baseline.json").read_text(encoding="utf-8"))
-          print(json.dumps({
-              "case_count": report["case_count"],
-              "metrics": report["metrics"],
-              "confidence_bins": report["confidence_bins"],
-              "gates": report["gates"],
-              "failure_counts": {key: len(value) for key, value in report["failures"].items()},
-          }, ensure_ascii=False, indent=2))
-          PY
-          echo "benchmark_exit=$status"
-          exit 0
+        run: python backend/tools/run_phase44_nlp_benchmark.py
