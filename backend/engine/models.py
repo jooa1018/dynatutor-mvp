@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from engine.canonical.models import CanonicalProblemV2
+
 
 @dataclass
 class Quantity:
@@ -35,6 +37,9 @@ class CanonicalProblem:
     requested_outputs: list[str] = field(default_factory=list)
     launch_angle_deg: float | None = None
     launch_angle_source: str | None = None
+    # Phase 43: provenance-rich internal contract. Legacy solver fields above remain
+    # the compatibility view and the student API intentionally does not serialize it.
+    canonical_v2: CanonicalProblemV2 | None = None
 
 
 @dataclass

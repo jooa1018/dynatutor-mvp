@@ -25,7 +25,8 @@
       "coordinate_data",
       "requested_outputs",
       "launch_angle_deg",
-      "launch_angle_source"
+      "launch_angle_source",
+      "canonical_v2"
     ],
     "SolverResult": [
       "ok",
@@ -169,7 +170,8 @@
     }
   },
   "compatibility_policy": [
-    "Existing student-facing fields may not be deleted or repurposed in Phase 42.",
-    "Phase 42 adds test/report artifacts only and does not change runtime response models."
+    "Existing student-facing fields may not be deleted or repurposed.",
+    "Phase 43 adds the internal CanonicalProblem.canonical_v2 field while keeping every Pydantic/API response field unchanged.",
+    "Legacy solvers continue to consume knowns, flags, and requested_outputs through the v1 compatibility view."
   ]
 }
