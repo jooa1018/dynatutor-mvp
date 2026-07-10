@@ -872,7 +872,8 @@
         "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
       },
       "known_limitations": [
-        "Only simple torque or constant-angular-acceleration kinematics; no general rigid-body dynamics."
+        "Only simple torque or constant-angular-acceleration kinematics; no general rigid-body dynamics.",
+        "The tangential-speed branch currently computes v=omega r, but answer-consistency validation can withhold the response because the requested token is v_t while the answer symbol is v."
       ]
     },
     {
