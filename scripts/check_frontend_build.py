@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -18,9 +19,23 @@ ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
 timeout_seconds = int(os.environ.get("DYNATUTOR_FRONTEND_BUILD_TIMEOUT", "180"))
 kill_after_seconds = int(os.environ.get("DYNATUTOR_FRONTEND_BUILD_KILL_AFTER", "10"))
+_CHILD: subprocess.Popen[bytes] | None = None
+
+
+def _handle_parent_signal(signum: int, _frame: object) -> None:
+    proc = _CHILD
+    if proc is not None and process_group_exists(proc.pid):
+        terminate_process_group(
+            proc,
+            reason=f"received signal {signum}",
+            kill_after_seconds=kill_after_seconds,
+            log_prefix="[frontend_build]",
+        )
+    raise SystemExit(128 + signum)
 
 
 def main() -> int:
+    global _CHILD
     print(f"[frontend_build] cwd={FRONTEND}", flush=True)
     print(f"[frontend_build] timeout={timeout_seconds}s", flush=True)
     for stale_dir in (FRONTEND / ".next", FRONTEND / "out"):
@@ -33,6 +48,12 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("NEXT_TELEMETRY_DISABLED", "1")
     env.setdefault("CI", "1")
+    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(sig, _handle_parent_signal)
+        except Exception:
+            pass
+
     proc = subprocess.Popen(
         ["npm", "run", "build"],
         cwd=str(FRONTEND),
@@ -40,6 +61,7 @@ def main() -> int:
         stdin=subprocess.DEVNULL,
         start_new_session=True,
     )
+    _CHILD = proc
 
     start = time.monotonic()
     try:
@@ -84,6 +106,8 @@ def main() -> int:
             log_prefix="[frontend_build]",
         )
         return 124
+    finally:
+        _CHILD = None
 
 
 if __name__ == "__main__":
