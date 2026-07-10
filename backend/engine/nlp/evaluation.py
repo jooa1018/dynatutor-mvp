@@ -20,6 +20,11 @@ DEFAULT_FIXTURE = (
 
 GATES = {
     "case_count": 300,
+    "status_accuracy": 0.95,
+    "subtype_accuracy": 0.95,
+    "candidate_coverage_accuracy": 0.95,
+    "missing_info_accuracy": 1.0,
+    "conflict_symbol_accuracy": 1.0,
     "quantity_precision": 0.98,
     "quantity_recall": 0.98,
     "unit_normalization_accuracy": 0.99,
@@ -68,6 +73,18 @@ def _candidate_types(canonical) -> set[str]:
     return candidates
 
 
+def _candidate_interpretations(canonical) -> set[tuple[str, str | None]]:
+    interpretations = {(canonical.system_type, canonical.subtype)}
+    v2 = canonical.canonical_v2
+    if v2 is not None:
+        for parse_candidate in v2.parse_candidates:
+            interpretations.update(
+                (item.system_type, item.subtype)
+                for item in parse_candidate.system_type_candidates
+            )
+    return interpretations
+
+
 def _confidence(canonical) -> float:
     v2 = canonical.canonical_v2
     scores = [
@@ -80,7 +97,7 @@ def _confidence(canonical) -> float:
 
 
 def _has_multiple_interpretations(canonical) -> bool:
-    return len(_candidate_types(canonical)) > 1
+    return len(_candidate_interpretations(canonical)) > 1
 
 
 def observed_status(canonical, response) -> str:
@@ -141,10 +158,20 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         top1_ok = canonical.system_type == expected_system
         topk_ok = expected_system in _candidate_types(canonical)
         status_ok = status == expected_status
+        subtype_expected = "subtype" in expected
+        subtype_ok = (not subtype_expected) or canonical.subtype == expected.get("subtype")
+        expected_candidates = set(expected.get("candidate_types", []))
+        candidate_coverage_ok = not expected_candidates or expected_candidates.issubset(_candidate_types(canonical))
         counters["cases"] += 1
         counters["status_correct"] += int(status_ok)
         counters["top1_correct"] += int(top1_ok)
         counters["topk_correct"] += int(topk_ok)
+        if subtype_expected:
+            counters["subtype_expected"] += 1
+            counters["subtype_correct"] += int(subtype_ok)
+        if expected_candidates:
+            counters["candidate_coverage_expected"] += 1
+            counters["candidate_coverage_correct"] += int(candidate_coverage_ok)
 
         if not status_ok:
             failures["status"].append(
@@ -153,6 +180,19 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         if not top1_ok:
             failures["system_type"].append(
                 {"id": case["id"], "expected": expected_system, "actual": canonical.system_type}
+            )
+
+        if not subtype_ok:
+            failures["subtype"].append(
+                {"id": case["id"], "expected": expected.get("subtype"), "actual": canonical.subtype}
+            )
+        if not candidate_coverage_ok:
+            failures["candidate_coverage"].append(
+                {
+                    "id": case["id"],
+                    "expected": sorted(expected_candidates),
+                    "actual": sorted(_candidate_types(canonical)),
+                }
             )
 
         for symbol, oracle in expected.get("knowns", {}).items():
@@ -226,6 +266,16 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
                     "actual": canonical.requested_outputs,
                 }
             )
+
+        missing_fragment = expected.get("missing_contains")
+        if missing_fragment is not None:
+            counters["missing_info_expected"] += 1
+            missing_ok = any(missing_fragment in item for item in canonical.missing_info)
+            counters["missing_info_correct"] += int(missing_ok)
+            if not missing_ok:
+                failures["missing_info"].append(
+                    {"id": case["id"], "expected_contains": missing_fragment, "actual": canonical.missing_info}
+                )
 
         if expected.get("direction") is not None:
             counters["direction_expected"] += 1
@@ -305,6 +355,15 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
             counters["contradiction_detected"] += int(detected)
             if not detected:
                 failures["contradiction"].append({"id": case["id"]})
+            expected_conflict_symbols = expected.get("conflict_symbols", [])
+            for symbol in expected_conflict_symbols:
+                counters["conflict_symbol_expected"] += 1
+                symbol_ok = any(symbol in item for item in (canonical.canonical_v2.conflicts if canonical.canonical_v2 else []))
+                counters["conflict_symbol_correct"] += int(symbol_ok)
+                if not symbol_ok:
+                    failures["conflict_symbol"].append(
+                        {"id": case["id"], "symbol": symbol, "actual": canonical.canonical_v2.conflicts if canonical.canonical_v2 else []}
+                    )
 
         score = _confidence(canonical)
         if score < 0.6:
@@ -361,6 +420,10 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     metrics = {
         "case_count": counters["cases"],
         "status_accuracy": _ratio(counters["status_correct"], counters["cases"]),
+        "subtype_accuracy": _ratio(counters["subtype_correct"], counters["subtype_expected"]),
+        "candidate_coverage_accuracy": _ratio(counters["candidate_coverage_correct"], counters["candidate_coverage_expected"]),
+        "missing_info_accuracy": _ratio(counters["missing_info_correct"], counters["missing_info_expected"]),
+        "conflict_symbol_accuracy": _ratio(counters["conflict_symbol_correct"], counters["conflict_symbol_expected"]),
         "quantity_precision": quantity_precision,
         "quantity_recall": quantity_recall,
         "unit_normalization_accuracy": _ratio(counters["unit_correct"], counters["unit_expected"]),
