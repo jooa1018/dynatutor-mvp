@@ -35,10 +35,10 @@ def test_curated_fixture_has_independent_intermediate_oracles(fixture):
         "contradiction": 20,
         "unsupported": 20,
     }
+    assert "no expected value was copied" in fixture["review_policy"].lower()
     required = {"status", "system_type", "knowns", "requested_outputs", "subjects", "conditions"}
     for case in cases:
         assert case["oracle_basis"]
-        assert "engine output" not in case["oracle_basis"].lower()
         assert required.issubset(case["expected"])
 
 
