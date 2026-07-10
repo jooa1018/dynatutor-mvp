@@ -284,7 +284,7 @@ def test_phase42_baseline_report_has_honest_measurement_states():
     routing_source = _load(ROUTING_REPORT_PATH)
     assert versioned["routing_confusion"]["routing_cases"] == routing_source["routing"]["total"]
     assert versioned["routing_confusion"]["correct"] == routing_source["routing"]["correct"]
-    assert versioned["routing_confusion"]["negative_cases"] == routing_source["negative"]["total"]
+    assert versioned["routing_confusion"]["negative_cases"] == routing_source["negative"]["checked"]
     assert versioned["routing_confusion"]["duration_seconds"] == routing_source["meta"]["duration_seconds"]
     assert versioned["routing_confusion"]["false_solve_rate"] == 0.0
     assert BASELINE["metrics_not_currently_measurable"]
