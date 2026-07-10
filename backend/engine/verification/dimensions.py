@@ -41,6 +41,7 @@ EXPECTED_UNIT_BY_SYMBOL: dict[str, str] = {
 # 예: 진동 문제의 T는 장력(N)이 아니라 주기(s)다.
 EXPECTED_UNIT_BY_CONTEXT: dict[tuple[str, str], str] = {
     ("spring_mass_vibration", "T"): "s",
+    ("spring_mass_vibration", "f"): "Hz",
     ("fixed_axis_rotation", "T"): "s",  # 회전 주기로 쓰일 때
 }
 
