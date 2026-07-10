@@ -81,13 +81,32 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     m1 = first_number(r"(?:m1|m_1|m_a|mass\s*1|물체\s*1|물체\s*a|블록\s*1|블록\s*a|왼쪽\s*물체|수평면\s*위\s*물체|첫\s*번째\s*물체|1번\s*물체)[^\d-]{0,12}" + _NUM + r"\s*kg", text)
     m2 = first_number(r"(?:m2|m_2|m_b|mass\s*2|물체\s*2|물체\s*b|블록\s*2|블록\s*b|오른쪽\s*물체|매달린\s*물체|두\s*번째\s*물체|2번\s*물체)[^\d-]{0,12}" + _NUM + r"\s*kg", text)
     single_m = first_number(r"(?<![A-Za-z0-9_])m\s*(?:=|:|은|는)\s*" + _NUM + r"\s*kg", text)
-    masses = re.findall(_NUM + r"\s*kg(?!\s*\*?\s*m|m)", text, flags=re.IGNORECASE)
+    masses = re.findall(
+        _NUM + r"\s*kg(?!\s*(?:\*\s*m|m\s*\^?2))",
+        text,
+        flags=re.IGNORECASE,
+    )
+    labeled_masses = {
+        match.group("label").lower(): (
+            _float(match.group("value")),
+            match.group(0),
+        )
+        for match in re.finditer(
+            r"(?<![A-Za-z0-9_])(?P<label>m1|m2|m_1|m_2)\s*(?:=|:)\s*"
+            r"(?P<value>-?\d+(?:,\d{3})*(?:\.\d+)?)\s*kg",
+            text,
+            re.IGNORECASE,
+        )
+    }
     if single_m:
         _set(knowns, "m", single_m[0], "kg", single_m[1])
     if m1:
         _set(knowns, "m1", m1[0], "kg", m1[1])
     if m2:
         _set(knowns, "m2", m2[0], "kg", m2[1])
+    for label, (value, source) in labeled_masses.items():
+        key = label.replace("_", "")
+        _set(knowns, key, value, "kg", source)
     if "m" not in knowns and "m1" in knowns and "m2" not in knowns and len(masses) >= 2:
         _set(knowns, "m2", _float(masses[1]), "kg", masses[1] + " kg")
     if "m" not in knowns and "m1" not in knowns and len(masses) >= 2:
