@@ -131,7 +131,7 @@ def normalize(text: str) -> str:
     t = re.sub(r"미터\s*매\s*초\s*제곱", "m/s^2", t, flags=re.IGNORECASE)
     t = re.sub(r"m\s*/\s*s\s*(?:\^\s*2|²|2)", "m/s^2", t, flags=re.IGNORECASE)
     t = re.sub(r"rad\s*/\s*s\s*(?:\^\s*2|²|2)", "rad/s^2", t, flags=re.IGNORECASE)
-    t = re.sub(r"kg\s*m\s*(?:\^\s*2|²|2)", "kg*m^2", t, flags=re.IGNORECASE)
+    t = re.sub(r"kg\s*m\s*(?:\^\s*2|²|2)(?!\s*(?:=|:))", "kg*m^2", t, flags=re.IGNORECASE)
     t = re.sub(r"kg\s+meter\s*(?:\^\s*2|squared)", "kg*m^2", t, flags=re.IGNORECASE)
     t = re.sub(r"N\s*[-·*]?\s*m\b", "N*m", t, flags=re.IGNORECASE)
 
@@ -144,7 +144,7 @@ def normalize(text: str) -> str:
     t = re.sub(r"rad\s*/\s*s", "rad/s", t, flags=re.IGNORECASE)
     t = re.sub(r"N\s*/\s*m", "N/m", t, flags=re.IGNORECASE)
     t = re.sub(r"N\s*\*?\s*m", "N*m", t, flags=re.IGNORECASE)
-    t = re.sub(r"kg\s*\*?\s*m\s*\^?\s*2", "kg*m^2", t, flags=re.IGNORECASE)
+    t = re.sub(r"kg\s*\*?\s*m\s*\^?\s*2(?!\s*(?:=|:))", "kg*m^2", t, flags=re.IGNORECASE)
     t = re.sub(r"kgm\s*\^?\s*2", "kg*m^2", t, flags=re.IGNORECASE)
 
     # SI 변환: 파서 내부는 m, kg, s 기준으로 처리한다.
