@@ -88,12 +88,13 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
         _set(knowns, "m1", m1[0], "kg", m1[1])
     if m2:
         _set(knowns, "m2", m2[0], "kg", m2[1])
-    if "m" not in knowns and "m1" not in knowns and masses:
-        _set(knowns, "m", _float(masses[0]), "kg", masses[0] + " kg")
+    if "m" not in knowns and "m1" in knowns and "m2" not in knowns and len(masses) >= 2:
+        _set(knowns, "m2", _float(masses[1]), "kg", masses[1] + " kg")
     if "m" not in knowns and "m1" not in knowns and len(masses) >= 2:
-        knowns.pop("m", None)
         _set(knowns, "m1", _float(masses[0]), "kg", masses[0] + " kg")
         _set(knowns, "m2", _float(masses[1]), "kg", masses[1] + " kg")
+    elif "m" not in knowns and "m1" not in knowns and masses:
+        _set(knowns, "m", _float(masses[0]), "kg", masses[0] + " kg")
     if re.search(r"(?:두|both)\s*매달린\s*물체", text, re.IGNORECASE) and len(masses) >= 2:
         knowns.pop("m", None)
         knowns.pop("m1", None)
