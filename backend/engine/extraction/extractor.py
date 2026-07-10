@@ -163,8 +163,8 @@ def _infer_requested_outputs(t: str) -> list[str]:
     if has_query(r"최소\s*속도", r"minimum\s+speed"):
         add("minimum_speed")
     if has_query(
-        r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)\s*(?:을|를)?\s*(?:구|계산|찾)",
-        r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)\s*(?:은|는)\s*\?",
+        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|마지막\s*속도|마지막\s*속력)\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|마지막\s*속도|마지막\s*속력)\s*(?:은|는)\s*\?",
         r"(?<![가각])속도\s*(?:은|는)\s*\?",
         r"final\s+(velocity|speed)",
         r"(?:최종\s*속도|최종\s*속력|나중\s*속도|(?<!가)(?<!각)속도)\s*(?:가|는|은)?\s*얼마",
@@ -177,9 +177,9 @@ def _infer_requested_outputs(t: str) -> list[str]:
     if has_query(
         r"(?<!각)가속도\s*(?:을|를)?\s*(?:구|계산|찾)",
         r"(?<!각)가속도\s*(?:은|는|가)?\s*(?:얼마|\?)",
-        r"(?<!각)가속도\s*(?:와|과|및)[^.\n?]{0,40}\?",
+        r"(?<!각)가속도\s*(?:와|과|및)[^.\n?]{0,40}(?:구|계산|찾|\?)",
         r"(?:find|calculate)\s+acceleration",
-        r"acceleration\s*(?:과|와|and)?[^.\n?]{0,30}\?",
+        r"acceleration\s*(?:과|와|and)?[^.\n?]{0,30}(?:구|계산|찾|\?)",
     ):
         add("acceleration")
     if has_query(
@@ -449,7 +449,10 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         c.subtype = "top" if flags["top"] else "bottom" if flags["bottom"] else None
     elif flags["projectile"]:
         c.system_type = "projectile_motion"
-        c.subtype = "same_level" if _has_any(t, ["같은 높이", "same level"]) else "general"
+        c.subtype = "same_level" if _has_any(
+            t,
+            ["같은 높이", "동일한 높이", "출발 높이로 돌아", "처음 높이로 돌아", "지면에 돌아", "same level", "same height"],
+        ) else "general"
     elif (flags["work"] or ("F" in knowns and "s" in knowns)) and _has_any(t, ["속도", "speed", "velocity"]) and "m" in knowns and ("W" in knowns or ("F" in knowns and "s" in knowns)):
         c.system_type = "work_energy_speed"
     elif flags["collision"]:
