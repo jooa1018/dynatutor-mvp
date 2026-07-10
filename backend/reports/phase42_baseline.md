@@ -43,14 +43,14 @@ Commands were run in the requested order before the additional diagnostic baseli
 
 | Check | Result | Pytest/runtime duration |
 |---|---:|---:|
-| Phase 42 contracts | 137 passed | 2.43 s |
-| Backend fast | 410 passed, 40 deselected | 8.79 s |
-| Requested backend command | 410 passed, 40 deselected | 7.94 s |
+| Phase 42 contracts | 137 passed | 2.72 s |
+| Backend fast | 410 passed, 40 deselected | 8.77 s |
+| Requested backend command | 410 passed, 40 deselected | 7.97 s |
 | Frontend metadata | passed | <1 s |
-| Unfiltered backend diagnostic | 439 passed, 11 failed | 16.33 s |
-| Korean benchmarks | 3 passed, 1 failed | 4.35 s |
-| Existing routing selector | 7 passed, 306 deselected | 1.51 s |
-| Existing clarification/unsupported selector | 9 passed, 304 deselected | 1.53 s |
+| Unfiltered backend diagnostic | 439 passed, 11 failed | 16.59 s |
+| Korean benchmarks | 3 passed, 1 failed | 4.30 s |
+| Existing routing selector | 7 passed, 306 deselected | 1.60 s |
+| Existing clarification/unsupported selector | 9 passed, 304 deselected | 1.66 s |
 
 The requested `python -m pytest backend/tests -q` command inherits `backend/pytest.ini` and excludes benchmark, audit, frontend, and slow markers. The separate unfiltered command therefore uses `-o addopts=`.
 
@@ -73,12 +73,12 @@ It ran every one of the 43 golden prompts five times after one warm-up pass (215
 
 | Metric | Result |
 |---|---:|
-| Mean | 9.639277 ms |
-| P95 (nearest-rank) | 33.230674 ms |
-| Minimum | 1.610199 ms |
-| Maximum | 45.238260 ms |
+| Mean | 9.458354 ms |
+| P95 (nearest-rank) | 32.092011 ms |
+| Minimum | 1.584351 ms |
+| Maximum | 42.788948 ms |
 | Response statuses | 210 solved, 5 clarification |
-| Command wall time | 3 s |
+| Command wall time | 4 s |
 
 This is a laboratory baseline on GitHub Actions, not production or Windows latency. The lock install contains SciPy/PyDy, so the measurement simulates their absence with an import gate rather than claiming the packages were uninstalled. PyChrono was not installed and no external numeric scene ran.
 
