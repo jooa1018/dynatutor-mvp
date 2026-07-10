@@ -20,7 +20,6 @@ timeout_seconds = int(os.environ.get("DYNATUTOR_FRONTEND_BUILD_TIMEOUT", "180"))
 kill_after_seconds = int(os.environ.get("DYNATUTOR_FRONTEND_BUILD_KILL_AFTER", "10"))
 
 
-
 def main() -> int:
     print(f"[frontend_build] cwd={FRONTEND}", flush=True)
     print(f"[frontend_build] timeout={timeout_seconds}s", flush=True)
