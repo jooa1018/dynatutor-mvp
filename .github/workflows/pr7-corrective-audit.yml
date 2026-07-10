@@ -1,0 +1,84 @@
+name: PR 7 corrective audit
+
+on:
+  push:
+    branches:
+      - codex/phase43-provenance-corrective
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+      - name: New Finding A B and normalization regressions
+        env:
+          PYTHONPATH: backend
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          python -m pytest backend/tests/test_phase43_canonical_problem_v2.py -q -o addopts= -k "background_speed_cannot_replace or background_kmh_cannot_replace or student_actor or explicit_reference_marker or newline_stops_background or gram_and_centimeter"
+      - name: Phase 43
+        env:
+          PYTHONPATH: backend
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest backend/tests/test_phase43_canonical_problem_v2.py -q -o addopts=
+      - name: Phase 31
+        env:
+          PYTHONPATH: backend
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest backend/tests/test_phase31_provenance.py -q -o addopts=
+      - name: Related extraction clarification projectile kinematics
+        env:
+          PYTHONPATH: backend
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest backend/tests -q -o addopts= -k "extraction or clarification or projectile or kinematics"
+      - name: Backend fast
+        run: bash scripts/check_backend_fast.sh
+      - name: Configured backend suite
+        env:
+          PYTHONPATH: backend
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest backend/tests -q
+      - name: Unfiltered backend suite
+        env:
+          PYTHONPATH: backend
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest backend/tests -q -o addopts=
+      - name: Frontend metadata
+        run: bash scripts/check_frontend_metadata.sh
+      - name: Phase 42 latency comparison
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          git worktree add /tmp/pr7-base be1140367132cb86338493e2289fdaa74cd40fdd
+          (
+            cd /tmp/pr7-base
+            PYTHONPATH=backend python backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies
+          ) | tee /tmp/phase42-base.json
+          PYTHONPATH=backend python backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies | tee /tmp/phase42-head.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          base = json.loads(Path("/tmp/phase42-base.json").read_text())
+          head = json.loads(Path("/tmp/phase42-head.json").read_text())
+          print(json.dumps({
+              "base_head": "be1140367132cb86338493e2289fdaa74cd40fdd",
+              "base": base,
+              "updated": head,
+              "mean_delta_ms": round(head["mean_ms"] - base["mean_ms"], 6),
+              "p95_delta_ms": round(head["p95_ms"] - base["p95_ms"], 6),
+          }, sort_keys=True))
+          PY
+      - name: Final scope audit
+        run: |
+          git status --short
+          git diff --stat 619c047e4080dd83580e94f86de185cb8a619691...HEAD
+          git diff --name-only 619c047e4080dd83580e94f86de185cb8a619691...HEAD
