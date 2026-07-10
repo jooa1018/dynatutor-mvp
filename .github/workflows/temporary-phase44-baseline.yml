@@ -1,6 +1,8 @@
 name: temporary Phase 44 diagnostic
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
