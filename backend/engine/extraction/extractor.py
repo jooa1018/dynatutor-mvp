@@ -110,7 +110,7 @@ def _unsupported_scope(t: str) -> str | None:
         ("deformable_body", [r"탄성\s*보", r"보의\s*변형", r"재료\s*변형", r"응력", r"변형률", r"유한요소", r"deformable", r"finite element"]),
         ("fluid_dynamics", [r"유체역학", r"관\s*속\s*유체", r"점성", r"fluid dynamics", r"viscosity"]),
         ("thermodynamics", [r"열역학", r"엔트로피", r"이상기체", r"thermodynamics", r"entropy"]),
-        ("electromagnetism", [r"전자기", r"전기장", r"자기장", r"전하", r"회로의?\s*전압", r"electromagnet"]),
+        ("electromagnetism", [r"전자기", r"전기장", r"자기장", r"(?<!회)전하(?=\\s|가|는|를|의|에|$)", r"회로의?\s*전압", r"electromagnet"]),
     ]
     for subtype, subtype_patterns in patterns:
         if any(re.search(pattern, t, re.IGNORECASE) for pattern in subtype_patterns):
@@ -204,8 +204,6 @@ def _infer_requested_outputs(t: str) -> list[str]:
         add("potential_energy")
     if has_query(r"한\s*일\s*(?:은|는|을|를)?\s*\?", r"한\s*일\s*(?:은|는)?\s*얼마", r"일\s*(?:은|는)\s*얼마", r"work\s*(?:을|를)?\s*(?:구|계산)", r"한\s*일\s*(?:을|를)?\s*(?:구|계산|찾)", r"일을\s*(?:구|계산|찾)", r"일은\s*\?", r"일의\s*(크기|양)", r"work\s*\?", r"find\s+work", r"calculate\s+work"):
         add("work")
-    if has_query(r"충격량\s*(?:은|는|을|를)?\s*(?:구|계산|얼마|\?)", r"impulse\s*\?", r"find\s+impulse"):
-        add("impulse")
     if re.search(r"(?:충돌\s*후|충돌한\s*뒤|충돌\s*뒤|부딪힌\s*뒤|붙어서\s*충돌한\s*뒤)", t) and "속도" in t:
         add("post_collision_velocity")
         add("v1_after")
@@ -358,7 +356,6 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     if unsupported_subtype == "fluid_dynamics":
         requested_outputs = []
     if flags["collision"] and "velocity" in unknowns:
-        requested_outputs = [item for item in requested_outputs if item != "final_velocity"]
         for item in ("post_collision_velocity", "v1_after", "v2_after"):
             if item not in requested_outputs:
                 requested_outputs.append(item)
