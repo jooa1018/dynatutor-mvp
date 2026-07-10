@@ -6,17 +6,15 @@ import pytest
 def pytest_collection_modifyitems(config, items):
     for item in items:
         nodeid = item.nodeid.lower()
-        name = item.name.lower()
+        test_file = item.path.name.lower()
 
         if "negative" in nodeid or "unsupported" in nodeid:
             item.add_marker(pytest.mark.negative)
 
         if (
-            "benchmark" in nodeid
-            or "blind_textbook" in nodeid
-            or "korean_quality" in nodeid
-            or "test_phase13_benchmark" in nodeid
-            or "test_phase20_benchmark_audit" in nodeid
+            "benchmark" in test_file
+            or "blind_textbook" in test_file
+            or "korean_quality" in test_file
         ):
             item.add_marker(pytest.mark.benchmark)
             item.add_marker(pytest.mark.slow)
