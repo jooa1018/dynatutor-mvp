@@ -873,7 +873,7 @@
       },
       "known_limitations": [
         "Only simple torque or constant-angular-acceleration kinematics; no general rigid-body dynamics.",
-        "The tangential-speed branch currently computes v=omega r, but answer-consistency validation can withhold the response because the requested token is v_t while the answer symbol is v."
+        "The tangential-speed branch computes v=omega r, but answer-consistency compares requested token v_t with answer symbol v and currently returns an evidence-confirm clarification."
       ]
     },
     {
