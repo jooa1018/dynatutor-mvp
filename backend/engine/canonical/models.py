@@ -42,12 +42,15 @@ class ExtractedFact:
     status: str
     alternatives: list[dict[str, Any]] = field(default_factory=list)
     compatibility_key: str | None = None
+    extraction_evidence: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.status not in FACT_STATUSES:
             raise ValueError(f"unsupported fact status: {self.status}")
         if not 0.0 <= float(self.confidence) <= 1.0:
             raise ValueError("fact confidence must be between 0 and 1")
+        if self.status == "explicit" and self.source_span is None:
+            raise ValueError("explicit facts require a raw source_span")
         if self.source_span is not None:
             start, end = self.source_span
             if start < 0 or end < start:
@@ -59,6 +62,7 @@ class ExtractedFact:
         span = values.get("source_span")
         values["source_span"] = tuple(span) if span is not None else None
         values["alternatives"] = [dict(item) for item in values.get("alternatives") or []]
+        values["extraction_evidence"] = dict(values.get("extraction_evidence") or {})
         return cls(**values)
 
 
@@ -143,11 +147,21 @@ class CanonicalProblemV2:
     conflicts: list[str]
     warnings: list[str]
     legacy_view: dict[str, Any]
+    resolved_conflicts: list[str] = field(default_factory=list)
     fingerprint: str = ""
 
     def __post_init__(self) -> None:
         if self.schema_version != "2.0":
             raise ValueError("CanonicalProblemV2 schema_version must be '2.0'")
+        for fact in self.facts:
+            if fact.source_span is None:
+                continue
+            start, end = fact.source_span
+            if end > len(self.raw_text):
+                raise ValueError("fact source_span extends beyond raw_text")
+            matched = fact.extraction_evidence.get("matched_raw_text")
+            if matched is not None and self.raw_text[start:end] != matched:
+                raise ValueError("fact source_span does not match extraction evidence")
         if not self.fingerprint:
             self.refresh_fingerprint()
 
@@ -169,6 +183,7 @@ class CanonicalProblemV2:
             "conflicts": self.conflicts,
             "warnings": self.warnings,
             "legacy_view": self.legacy_view,
+            "resolved_conflicts": self.resolved_conflicts,
         }
         return _canonicalize(payload)
 
@@ -214,6 +229,7 @@ class CanonicalProblemV2:
         values["conflicts"] = list(values.get("conflicts") or [])
         values["warnings"] = list(values.get("warnings") or [])
         values["legacy_view"] = dict(values.get("legacy_view") or {})
+        values["resolved_conflicts"] = list(values.get("resolved_conflicts") or [])
         obj = cls(**values, fingerprint="")
         computed = obj.compute_fingerprint()
         if supplied_fingerprint and supplied_fingerprint != computed:
