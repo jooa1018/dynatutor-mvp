@@ -293,4 +293,11 @@ def test_phase42_baseline_report_has_honest_measurement_states():
     assert versioned["routing_confusion"]["negative_cases"] == routing_source["negative"]["checked"]
     assert versioned["routing_confusion"]["duration_seconds"] == routing_source["meta"]["duration_seconds"]
     assert versioned["routing_confusion"]["false_solve_rate"] == 0.0
+
+    performance = BASELINE["performance_baseline"]
+    assert performance["fixture_cases"] == len(GOLDEN["cases"])
+    assert performance["samples"] == performance["fixture_cases"] * performance["repeats"]
+    assert 0 < performance["mean_ms"] <= performance["p95_ms"] <= performance["max_ms"]
+    assert set(performance["optional_dependencies_blocked"]) == {"chrono", "pychrono", "pydy", "scipy"}
+    assert performance["result"] == "passed"
     assert BASELINE["metrics_not_currently_measurable"]
