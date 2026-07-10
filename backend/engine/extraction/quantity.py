@@ -4,6 +4,36 @@ from engine.models import Quantity
 _NUM = r"(-?\d+(?:,\d{3})*(?:\.\d+)?)"
 
 
+class _MatchedText(str):
+    """A regex match string carrying the exact half-open span where it was found."""
+
+    def __new__(cls, value: str, start: int, end: int, matched_text: str | None = None):
+        obj = str.__new__(cls, value)
+        obj.source_span = (start, end)
+        obj.matched_text = matched_text if matched_text is not None else value
+        return obj
+
+    def __add__(self, other):
+        return _MatchedText(
+            str.__add__(self, str(other)),
+            self.source_span[0],
+            self.source_span[1],
+            self.matched_text,
+        )
+
+    def __radd__(self, other):
+        return _MatchedText(
+            str(other) + str(self),
+            self.source_span[0],
+            self.source_span[1],
+            self.matched_text,
+        )
+
+
+def _matched_text(match: re.Match) -> _MatchedText:
+    return _MatchedText(match.group(0), match.start(), match.end())
+
+
 def _float(s: str) -> float:
     return float(s.replace(",", ""))
 
@@ -12,27 +42,74 @@ def first_number(pattern: str, text: str) -> tuple[float, str] | None:
     m = re.search(pattern, text, re.IGNORECASE)
     if not m:
         return None
-    return _float(m.group(1)), m.group(0)
+    return _float(m.group(1)), _matched_text(m)
 
 
-def _set(knowns: dict[str, Quantity], key: str, value: float, unit: str | None, source: str) -> None:
+def _set(
+    knowns: dict[str, Quantity],
+    key: str,
+    value: float,
+    unit: str | None,
+    source: str,
+    *,
+    provenance_hint: str | None = None,
+    normalization_evidence: dict | None = None,
+) -> None:
     # 명시적인 표기가 먼저 들어온 경우는 덮어쓰지 않는다.
     if key not in knowns:
-        knowns[key] = Quantity(key, value, unit, source)
+        span = getattr(source, "source_span", None)
+        matched = getattr(source, "matched_text", None)
+        knowns[key] = Quantity(
+            symbol=key,
+            value=value,
+            unit=unit,
+            source_text=str(source),
+            source_span=span,
+            matched_text=matched,
+            provenance_hint=provenance_hint or ("text_extraction" if span is not None else "domain_rule"),
+            subject_evidence={"compatibility_key": key, "method": "extractor_rule"},
+            normalization_evidence=normalization_evidence,
+        )
 
 
 
 
 def _set_si_velocity(knowns: dict[str, Quantity], key: str, value: float, unit: str, source: str) -> None:
     if unit in {"km/h", "kmph", "km/hr"}:
-        _set(knowns, key, value / 3.6, "m/s", source + " → m/s")
+        _set(
+            knowns,
+            key,
+            value / 3.6,
+            "m/s",
+            source + " → m/s",
+            provenance_hint="unit_normalization",
+            normalization_evidence={
+                "source_value": value,
+                "source_unit": unit,
+                "normalized_value": value / 3.6,
+                "normalized_unit": "m/s",
+            },
+        )
     else:
         _set(knowns, key, value, "m/s", source)
 
 
 def _set_si_acceleration(knowns: dict[str, Quantity], key: str, value: float, unit: str, source: str) -> None:
     if unit.startswith("cm/s"):
-        _set(knowns, key, value / 100.0, "m/s^2", source + " → m/s²")
+        _set(
+            knowns,
+            key,
+            value / 100.0,
+            "m/s^2",
+            source + " → m/s²",
+            provenance_hint="unit_normalization",
+            normalization_evidence={
+                "source_value": value,
+                "source_unit": unit,
+                "normalized_value": value / 100.0,
+                "normalized_unit": "m/s^2",
+            },
+        )
     else:
         _set(knowns, key, value, "m/s^2", source)
 
@@ -41,7 +118,7 @@ def _unit_value(pattern: str, text: str) -> tuple[float, str, str] | None:
     m = re.search(pattern, text, re.IGNORECASE)
     if not m:
         return None
-    return _float(m.group("num")), m.group("unit"), m.group(0)
+    return _float(m.group("num")), m.group("unit"), _matched_text(m)
 
 
 def _has(text: str, patterns: list[str]) -> bool:
@@ -80,17 +157,18 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     # ------------------------------------------------------------------
     m1 = first_number(r"(?:m1|m_1|m_a|mass\s*1|물체\s*1|물체\s*a|블록\s*1|블록\s*a|왼쪽\s*물체|수평면\s*위\s*물체|첫\s*번째\s*물체|1번\s*물체)[^\d-]{0,12}" + _NUM + r"\s*kg", text)
     m2 = first_number(r"(?:m2|m_2|m_b|mass\s*2|물체\s*2|물체\s*b|블록\s*2|블록\s*b|오른쪽\s*물체|매달린\s*물체|두\s*번째\s*물체|2번\s*물체)[^\d-]{0,12}" + _NUM + r"\s*kg", text)
-    masses = re.findall(_NUM + r"\s*kg(?!\s*\*?\s*m|m)", text, flags=re.IGNORECASE)
+    mass_matches = list(re.finditer(_NUM + r"\s*kg(?!\s*\*?\s*m|m)", text, flags=re.IGNORECASE))
+    masses = [(_float(match.group(1)), _matched_text(match)) for match in mass_matches]
     if m1:
         _set(knowns, "m1", m1[0], "kg", m1[1])
     if m2:
         _set(knowns, "m2", m2[0], "kg", m2[1])
     if "m1" not in knowns and masses:
-        _set(knowns, "m", _float(masses[0]), "kg", masses[0] + " kg")
+        _set(knowns, "m", masses[0][0], "kg", masses[0][1])
     if "m1" not in knowns and len(masses) >= 2:
         knowns.pop("m", None)
-        _set(knowns, "m1", _float(masses[0]), "kg", masses[0] + " kg")
-        _set(knowns, "m2", _float(masses[1]), "kg", masses[1] + " kg")
+        _set(knowns, "m1", masses[0][0], "kg", masses[0][1])
+        _set(knowns, "m2", masses[1][0], "kg", masses[1][1])
 
     # Grams fallback for single-particle mass: 500 g -> 0.5 kg.
     gram_mass = first_number(r"(?:질량|mass|m\s*=)[^\d-]{0,12}" + _NUM + r"\s*g(?![a-zA-Z/])", text)
@@ -111,15 +189,15 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     # (단위가 있는 기존 패턴이 먼저 잡고, _set은 첫 값을 유지하므로 안전.)
     # ------------------------------------------------------------------
     if "v0" not in knowns:
-        bare = first_number(r"(?<![a-z0-9_])v_?0\s*=\s*" + _NUM + r"(?!\s*(?:m/s|km/h|cm/s|m\b|km\b))", text)
+        bare = first_number(r"(?<![a-z0-9_])v_?0\s*=\s*" + _NUM + r"(?![\d,.])(?!\s*(?:m/s|km/h|cm/s|m\b|km\b))", text)
         if bare:
             _set(knowns, "v0", bare[0], "m/s", bare[1] + " (단위 생략 → m/s)")
     if "omega0" not in knowns:
-        bare = first_number(r"(?<![a-z0-9_])omega_?0\s*=\s*" + _NUM + r"(?!\s*rad)", text)
+        bare = first_number(r"(?<![a-z0-9_])omega_?0\s*=\s*" + _NUM + r"(?![\d,.])(?!\s*rad)", text)
         if bare:
             _set(knowns, "omega0", bare[0], "rad/s", bare[1] + " (단위 생략 → rad/s)")
     if "theta" not in knowns:
-        bare = first_number(r"(?<![a-z0-9_])theta\s*=\s*" + _NUM + r"(?!\s*(?:deg|도|rad|°))", text)
+        bare = first_number(r"(?<![a-z0-9_])theta\s*=\s*" + _NUM + r"(?![\d,.])(?!\s*(?:deg|도|rad|°))", text)
         if bare:
             _set(knowns, "theta", bare[0], "deg", bare[1] + " (단위 생략 → deg)")
 
@@ -230,12 +308,13 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
 
     # "충돌 전 속도는 각각 4 m/s, 0 m/s"처럼 라벨 없이 두 속도를 쓰는 한국어 문장을 보완합니다.
     if ("충돌" in text or "collision" in text.lower()) and ("v1" not in knowns or "v2" not in knowns):
-        speed_values = re.findall(_NUM + r"\s*(?:m/s|mps)", text, flags=re.IGNORECASE)
-        speed_numbers = [_float(x) for x in speed_values]
+        speed_matches = list(re.finditer(_NUM + r"\s*(?:m/s|mps)", text, flags=re.IGNORECASE))
+        speed_values = [_matched_text(match) for match in speed_matches]
+        speed_numbers = [_float(match.group(1)) for match in speed_matches]
         # 초속도/최종속도 같은 단일 운동 문제는 피하고, m1/m2가 있는 충돌 문장에서만 순서대로 보완합니다.
         if "m1" in knowns and "m2" in knowns and len(speed_numbers) >= 2:
-            _set(knowns, "v1", speed_numbers[0], "m/s", speed_values[0] + " m/s")
-            _set(knowns, "v2", speed_numbers[1], "m/s", speed_values[1] + " m/s")
+            _set(knowns, "v1", speed_numbers[0], "m/s", speed_values[0])
+            _set(knowns, "v2", speed_numbers[1], "m/s", speed_values[1])
         # 자연어 충돌: "2kg 물체가 4m/s로 3kg 정지 물체와 충돌", 
         # "4m/s로 가다가 정지해 있는 2kg 물체와 충돌"처럼 두 번째 물체의 v2=0이
         # 말로만 주어지고 속도 숫자는 하나뿐인 경우를 보완합니다.
@@ -246,7 +325,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
                 r"(?:두\s*번째\s*물체|물체\s*2|2번\s*물체|물체\s*B|B\s*물체|B[가는은이])[^.\n]{0,20}(?:정지|가만히|멈춰)",
             ])
             if second_body_rest:
-                _set(knowns, "v1", speed_numbers[0], "m/s", speed_values[0] + " m/s")
+                _set(knowns, "v1", speed_numbers[0], "m/s", speed_values[0])
                 _set(knowns, "v2", 0.0, "m/s", "정지한 두 번째 충돌 물체 → v2=0")
 
     time = first_number(r"(?:시간|time|t\s*=)[^\d-]{0,12}" + _NUM + r"\s*s", text)
@@ -390,5 +469,15 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
 
 
     g = first_number(r"(?:g\s*=|중력가속도)[^\d-]{0,12}" + _NUM, text)
-    knowns["g"] = Quantity("g", g[0] if g else 9.81, "m/s^2", g[1] if g else "기본값 9.81 m/s^2")
+    if g:
+        _set(knowns, "g", g[0], "m/s^2", g[1])
+    else:
+        knowns["g"] = Quantity(
+            "g",
+            9.81,
+            "m/s^2",
+            "기본값 9.81 m/s^2",
+            provenance_hint="domain_default",
+            subject_evidence={"compatibility_key": "g", "method": "domain_default"},
+        )
     return knowns
