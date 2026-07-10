@@ -7,7 +7,7 @@ import re
 import pytest
 
 from app.schemas.solution import CanonicalProblemModel
-from engine.canonical.adapter import to_legacy_problem
+from engine.canonical.adapter import attach_canonical_v2, to_legacy_problem
 from engine.canonical.models import CanonicalProblemV2
 from engine.extraction.extractor import extract_problem
 from engine.routing.clarify import apply_clarify_patch
@@ -108,8 +108,10 @@ def test_phase43_equivalent_duplicate_units_do_not_create_a_conflict():
     speed = _fact(canonical, "v0")
 
     assert canonical.canonical_v2.conflicts == []
+    assert speed.value == pytest.approx(10.0)
     assert speed.status == "normalized"
     assert len(speed.alternatives) == 2
+    assert [item["normalized_value"] for item in speed.alternatives] == pytest.approx([10.0, 10.0])
 
 
 @pytest.mark.unit
@@ -139,6 +141,7 @@ def test_phase43_conflicting_explicit_values_are_retained():
     assert mass.status == "conflicting"
     assert mass.provenance == "conflict_detection"
     assert len(mass.alternatives) == 2
+    assert [item["normalized_value"] for item in mass.alternatives] == pytest.approx([2.0, 3.0])
     assert any("m1 has conflicting explicit values" in item for item in canonical.canonical_v2.conflicts)
 
 
@@ -257,9 +260,222 @@ def test_phase43_user_supplied_known_has_user_confirmation_provenance():
     friction = _fact(patched, "mu")
 
     assert friction.value == pytest.approx(0.2)
-    assert friction.status == "explicit"
+    assert friction.status == "inferred"
     assert friction.provenance == "user_confirmation"
+    assert friction.confidence == pytest.approx(1.0)
     assert friction.source_span is None
+
+
+@pytest.mark.unit
+def test_phase43_every_explicit_fact_has_valid_raw_extraction_evidence():
+    raw = (
+        "공기저항을 무시한다. m1=2kg, m2=3kg, v1=4m/s, v2=0m/s인 "
+        "두 물체가 완전비탄성 충돌한다."
+    )
+    v2 = extract_problem(raw).canonical_v2
+
+    explicit = [fact for fact in v2.facts if fact.status == "explicit"]
+    assert explicit
+    for fact in explicit:
+        assert fact.source_span is not None
+        start, end = fact.source_span
+        assert 0 <= start < end <= len(raw)
+        assert raw[start:end] == fact.extraction_evidence["matched_raw_text"]
+
+
+@pytest.mark.unit
+def test_phase43_horizontal_phrase_theta_is_inferred_not_explicit():
+    raw = "공을 수평으로 10 m/s로 절벽에서 던졌다. 절벽의 높이는 20 m이다. 비행시간은?"
+    theta = _fact(extract_problem(raw), "theta")
+
+    assert theta.value == pytest.approx(0.0)
+    assert theta.status == "inferred"
+    assert theta.provenance == "domain_rule"
+    assert theta.source_span is None
+    assert theta.confidence < 1.0
+
+
+@pytest.mark.parametrize(
+    ("raw", "key", "expected"),
+    [
+        ("공을 속력 v0=15 m/s, 발사각 30도로 던졌다. 사거리는?", "v0", 15.0),
+        ("공을 속력 v0=10 m/s, 발사각 30도로 던졌다. 사거리는?", "v0", 10.0),
+        ("물체의 속력 v=25 m/s이다. 속도는?", "v", 25.0),
+    ],
+)
+@pytest.mark.unit
+def test_phase43_multidigit_velocity_is_not_partially_backtracked(raw, key, expected):
+    fact = _fact(extract_problem(raw), key)
+
+    assert fact.value == pytest.approx(expected)
+    assert fact.unit == "m/s"
+    assert fact.source_span is not None
+
+
+@pytest.mark.unit
+def test_phase43_fact_value_disagreement_with_single_occurrence_is_conflicting():
+    canonical = extract_problem(
+        "자동차의 v0=10m/s이고 가속도 a=2m/s^2이다. 5s 후 최종속도는?"
+    )
+    canonical.knowns["v0"].value = 12.0
+    attach_canonical_v2(canonical)
+    speed = _fact(canonical, "v0")
+
+    assert speed.status == "conflicting"
+    assert speed.confidence < 1.0
+    assert canonical.canonical_v2.conflicts
+    assert [item["normalized_value"] for item in speed.alternatives] == pytest.approx([10.0])
+
+
+@pytest.mark.regression
+def test_phase43_user_confirmation_resolves_and_preserves_raw_conflict():
+    canonical = extract_problem(
+        "질량 m1=2kg이고 다른 문장에는 m1=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
+    )
+    patched = apply_clarify_patch(
+        canonical,
+        {
+            "set_known": {
+                "symbol": "m1",
+                "value": 2,
+                "unit": "kg",
+                "label": "첫 번째 물체 질량",
+            },
+        },
+    )
+    mass = _fact(patched, "m1")
+
+    assert mass.value == pytest.approx(2.0)
+    assert mass.status == "inferred"
+    assert mass.provenance == "user_confirmation"
+    assert mass.confidence == pytest.approx(1.0)
+    assert patched.canonical_v2.conflicts == []
+    assert len(patched.canonical_v2.resolved_conflicts) == 1
+    assert [item["normalized_value"] for item in mass.alternatives] == pytest.approx([2.0, 3.0])
+
+
+@pytest.mark.regression
+def test_phase43_rebuild_does_not_reintroduce_resolved_clarification():
+    canonical = extract_problem(
+        "질량 m1=2kg이고 다른 문장에는 m1=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
+    )
+    patched = apply_clarify_patch(
+        canonical,
+        {
+            "set_known": {
+                "symbol": "m1",
+                "value": 3,
+                "unit": "kg",
+                "label": "첫 번째 물체 질량",
+            },
+        },
+    )
+
+    attach_canonical_v2(patched)
+    rebuilt = _fact(patched, "m1")
+    assert patched.canonical_v2.conflicts == []
+    assert patched.canonical_v2.resolved_conflicts
+    assert rebuilt.provenance == "user_confirmation"
+    assert rebuilt.status != "conflicting"
+
+
+@pytest.mark.unit
+def test_phase43_identical_numbers_keep_distinct_subject_spans():
+    raw = "m1=2kg인 물체와 m2=2kg인 물체가 v1=5m/s, v2=5m/s로 충돌한다."
+    canonical = extract_problem(raw)
+    mass_1 = _fact(canonical, "m1")
+    mass_2 = _fact(canonical, "m2")
+
+    assert mass_1.value == mass_2.value == pytest.approx(2.0)
+    assert mass_1.source_span is not None
+    assert mass_2.source_span is not None
+    assert mass_1.source_span != mass_2.source_span
+    assert raw[slice(*mass_1.source_span)] != raw[slice(*mass_2.source_span)]
+
+
+@pytest.mark.unit
+def test_phase43_background_speed_does_not_hijack_labeled_vehicle_fact():
+    raw = (
+        "참고로 옆 트럭은 36 km/h로 달린다. "
+        "자동차는 v0=10 m/s이고 가속도 a=2 m/s^2이다. 5 s 후 최종속도는?"
+    )
+    speed = _fact(extract_problem(raw), "v0")
+
+    assert speed.value == pytest.approx(10.0)
+    assert speed.subject_id == "body"
+    assert speed.source_span is not None
+    assert "v0=10 m/s" in raw[slice(*speed.source_span)]
+    assert "트럭" not in raw[slice(*speed.source_span)]
+
+
+@pytest.mark.unit
+def test_phase43_amplitude_A_is_not_bound_to_point_A():
+    canonical = extract_problem(
+        "질량 m=2kg, 스프링 상수 k=8N/m, 진폭 A=0.5m인 진동의 주기는?"
+    )
+    amplitude = _fact(canonical, "A")
+
+    assert amplitude.value == pytest.approx(0.5)
+    assert amplitude.subject_id == "oscillator"
+    assert amplitude.subject_id != "point_A"
+
+
+@pytest.mark.unit
+def test_phase43_v1_v2_bind_to_their_objects_without_phantom_v0():
+    raw = (
+        "m1=2kg, m2=3kg인 두 물체의 초기속도는 "
+        "v1=5m/s, v2=5m/s이고 서로 충돌한다. 반발계수 e=1이다."
+    )
+    canonical = extract_problem(raw)
+    first = _fact(canonical, "v1")
+    second = _fact(canonical, "v2")
+
+    assert (first.subject_id, first.value) == ("object_1", pytest.approx(5.0))
+    assert (second.subject_id, second.value) == ("object_2", pytest.approx(5.0))
+    assert "v0" not in canonical.knowns
+    assert not any(
+        fact.compatibility_key == "v0" for fact in canonical.canonical_v2.facts
+    )
+
+
+@pytest.mark.unit
+def test_phase43_unknown_quantity_binding_is_unbound_not_body():
+    from engine.canonical.adapter import build_canonical_v2
+    from engine.models import CanonicalProblem, Quantity
+
+    canonical = CanonicalProblem(
+        raw_text="",
+        knowns={
+            "mystery": Quantity(
+                "mystery",
+                7.0,
+                None,
+                provenance_hint="domain_rule",
+            ),
+        },
+    )
+    fact = next(
+        fact for fact in build_canonical_v2(canonical).facts
+        if fact.compatibility_key == "mystery"
+    )
+
+    assert fact.subject_id == "unbound"
+    assert fact.status == "inferred"
+
+
+@pytest.mark.unit
+def test_phase43_serialization_round_trip_preserves_span_and_provenance_evidence():
+    raw = "자동차의 v0=36km/h이고 가속도 a=2m/s^2이다. 5s 후 최종속도는?"
+    original = extract_problem(raw).canonical_v2
+    restored = CanonicalProblemV2.from_json(original.to_json())
+    before = next(fact for fact in original.facts if fact.compatibility_key == "v0")
+    after = next(fact for fact in restored.facts if fact.compatibility_key == "v0")
+
+    assert after.source_span == before.source_span
+    assert after.provenance == before.provenance == "unit_normalization"
+    assert after.status == before.status == "normalized"
+    assert after.extraction_evidence == before.extraction_evidence
+    assert restored.resolved_conflicts == original.resolved_conflicts
 
 
 @pytest.mark.regression
