@@ -5,7 +5,7 @@ from pathlib import Path
 from engine.services import solve_problem
 
 
-BENCHMARK_ROOT = Path("tests/benchmarks")
+BENCHMARK_ROOT = Path(__file__).resolve().parent / "benchmarks"
 DERIVED_PATHS = [
     BENCHMARK_ROOT / "phase20_derived" / "openstax_style_derived_050.json",
     BENCHMARK_ROOT / "phase20_derived" / "fossee_style_derived_048.json",
