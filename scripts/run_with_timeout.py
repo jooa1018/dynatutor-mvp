@@ -89,7 +89,7 @@ def terminate_process_group(
 
 def _handle_parent_signal(signum: int, _frame: object) -> None:
     proc = _CHILD
-    if proc is not None and proc.poll() is None:
+    if proc is not None and process_group_exists(proc.pid):
         terminate_process_group(
             proc,
             reason=f"received signal {signum}",
