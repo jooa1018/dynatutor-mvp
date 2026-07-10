@@ -82,7 +82,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     m2 = first_number(r"(?:m2|m_2|m_b|mass\s*2|물체\s*2|물체\s*b|블록\s*2|블록\s*b|오른쪽\s*물체|매달린\s*물체|두\s*번째\s*물체|2번\s*물체)[^\d-]{0,12}" + _NUM + r"\s*kg", text)
     single_m = first_number(r"(?<![A-Za-z0-9_])m\s*(?:=|:|은|는)\s*" + _NUM + r"\s*kg", text)
     masses = re.findall(
-        _NUM + r"\s*kg(?!\s*(?:\*\s*m|m\s*\^?2))",
+        _NUM + r"\s*kg(?!\s*\*\s*m)",
         text,
         flags=re.IGNORECASE,
     )
