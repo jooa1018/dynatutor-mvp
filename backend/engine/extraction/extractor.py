@@ -1,6 +1,6 @@
 import re
 from engine.models import CanonicalProblem, Quantity
-from engine.extraction.normalizer import lower_for_match, normalize
+from engine.extraction.normalizer import normalize, strip_irrelevant_background
 from engine.extraction.quantity import extract_quantities
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement, infer_direction_label
 from engine.physics_core.inertia import infer_body_shape
@@ -101,6 +101,21 @@ def _has_hanging_mass_phrase(t: str) -> bool:
     ])
 
 
+def _unsupported_scope(t: str) -> str | None:
+    """Classify only explicit domains outside the declared 2-D rigid-body scope."""
+    patterns = [
+        ("three_dimensional", [r"3차원", r"\b3d\b", r"방위각", r"공간\s*운동"]),
+        ("deformable_body", [r"탄성\s*보", r"보의\s*변형", r"재료\s*변형", r"응력", r"변형률", r"유한요소", r"deformable", r"finite element"]),
+        ("fluid_dynamics", [r"유체역학", r"관\s*속\s*유체", r"점성", r"fluid dynamics", r"viscosity"]),
+        ("thermodynamics", [r"열역학", r"엔트로피", r"이상기체", r"thermodynamics", r"entropy"]),
+        ("electromagnetism", [r"전자기", r"전기장", r"자기장", r"전하", r"회로의?\s*전압", r"electromagnet"]),
+    ]
+    for subtype, subtype_patterns in patterns:
+        if any(re.search(pattern, t, re.IGNORECASE) for pattern in subtype_patterns):
+            return subtype
+    return None
+
+
 def _infer_requested_outputs(t: str) -> list[str]:
     """사용자가 실제로 '구하라/얼마인가/?'로 요청한 출력만 잡는다.
 
@@ -143,18 +158,21 @@ def _infer_requested_outputs(t: str) -> list[str]:
 
     if has_query(r"최대\s*높이", r"최고점\s*높이", r"max\s+height", r"maximum\s+height"):
         add("max_height")
+    if has_query(r"최소\s*속도", r"minimum\s+speed"):
+        add("minimum_speed")
     if has_query(
         r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)\s*(?:을|를)?\s*(?:구|계산|찾)",
         r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)\s*(?:은|는)\s*\?",
         r"(?<![가각])속도\s*(?:은|는)\s*\?",
         r"final\s+(velocity|speed)",
+        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|속도)\s*(?:가|는|은)?\s*얼마",
         r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)[^\.\n?]{0,35}(?:와|과|및|그리고)[^\.\n?]{0,35}(?:이동\s*거리|이동거리|변위|거리)[^\.\n?]{0,30}(?:구|계산|\?)",
         r"(?:이동\s*거리|이동거리|변위|거리)[^\.\n?]{0,35}(?:와|과|및|그리고)[^\.\n?]{0,35}(?:최종\s*속도|나중\s*속도|마지막\s*속도)[^\.\n?]{0,30}(?:구|계산|\?)",
     ):
         add("final_velocity")
     if has_query(r"(?:초기\s*속도|처음\s*속도)\s*(?:을|를)?\s*(?:구|계산|찾)", r"(?:초기\s*속도|처음\s*속도)\s*(?:은|는)\s*\?", r"initial\s+(velocity|speed)"):
         add("initial_velocity")
-    if any(w in compact for w in ["가속도는", "가속도와", "가속도를구", "가속도구", "가속도?"]) and not any(w in compact for w in ["각가속도는", "각가속도와", "각가속도를구", "각가속도?", "각가속도구"]):
+    if any(w in compact for w in ["가속도는", "가속도와", "가속도를구", "가속도구", "가속도?", "가속도얼마"]) and not any(w in compact for w in ["각가속도는", "각가속도와", "각가속도를구", "각가속도?", "각가속도구"]):
         add("acceleration")
     elif "acceleration?" in t or "find acceleration" in t:
         add("acceleration")
@@ -172,12 +190,20 @@ def _infer_requested_outputs(t: str) -> list[str]:
         add("elastic_energy")
     if has_query(r"위치에너지", r"potential\s+energy"):
         add("potential_energy")
-    if has_query(r"한\s*일\s*(?:은|는|을|를)?\s*\?", r"한\s*일\s*(?:을|를)?\s*(?:구|계산|찾)", r"일을\s*(?:구|계산|찾)", r"일은\s*\?", r"일의\s*(크기|양)", r"work\s*\?", r"find\s+work", r"calculate\s+work"):
+    if has_query(r"한\s*일\s*(?:은|는|을|를)?\s*\?", r"한\s*일\s*(?:은|는)?\s*얼마", r"한\s*일\s*(?:을|를)?\s*(?:구|계산|찾)", r"일을\s*(?:구|계산|찾)", r"일은\s*\?", r"일의\s*(크기|양)", r"work\s*\?", r"find\s+work", r"calculate\s+work"):
         add("work")
-    if "충돌 후" in t and "속도" in t:
+    if has_query(r"충격량\s*(?:은|는|을|를)?\s*(?:구|계산|얼마|\?)", r"impulse\s*\?", r"find\s+impulse"):
+        add("impulse")
+    if re.search(r"(?:충돌\s*후|충돌한\s*뒤|충돌\s*뒤|부딪힌\s*뒤|붙어서\s*충돌한\s*뒤)", t) and "속도" in t:
         add("post_collision_velocity")
         add("v1_after")
         add("v2_after")
+    if has_query(r"고유진동수", r"각진동수", r"natural\s+(?:angular\s+)?frequency", r"angular\s+frequency"):
+        add("angular_frequency")
+    elif has_query(r"진동수", r"frequency"):
+        add("frequency")
+    if has_query(r"주기", r"period"):
+        add("period")
     if has_query(r"각속도\s*(?:을|를)?\s*(?:구|계산|찾)", r"각속도\s*(?:은|는)\s*\?", r"angular\s+velocity\s*\?"):
         add("angular_velocity")
     if has_query(r"각가속도\s*(?:을|를)?\s*(?:구|계산|찾)", r"각가속도\s*(?:은|는)\s*\?", r"angular\s+acceleration\s*\?"):
@@ -201,8 +227,10 @@ def _infer_launch_angle(knowns: dict, t: str) -> tuple[float | None, str | None]
 
 def extract_problem(problem_text: str) -> CanonicalProblem:
     normalized = normalize(problem_text)
-    t = lower_for_match(problem_text)
-    knowns = extract_quantities(normalized)
+    analysis_text = strip_irrelevant_background(normalized)
+    t = analysis_text.lower()
+    knowns = extract_quantities(analysis_text)
+    unsupported_subtype = _unsupported_scope(t)
 
     flags = {
         "incline": _has_any(t, ["경사", "incline", "slope", "비탈", "빗면", "사면"]),
@@ -242,6 +270,7 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "relative_acceleration": _has_any(t, ["상대가속도", "상대 가속도", "relative acceleration", "a_rel", "arel"]),
         "massive_pulley": _has_any(t, ["질량 있는 도르래", "질량있는 도르래", "도르래 관성", "도르래의 관성", "pulley inertia", "massive pulley", "도르래 질량"]),
         "general_inertia": _has_any(t, ["관성모멘트", "moment of inertia", "I=", "I ="]),
+        "unsupported_scope": unsupported_subtype is not None,
     }
     # "완전탄성/완전비탄성"만 있어도 충돌 문제로 봅니다.
     if flags.get("perfectly_inelastic") or flags.get("elastic"):
@@ -302,13 +331,15 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
 
     pulley_topology = _infer_pulley_topology(t, knowns, flags)
     friction_type = _infer_friction_type(t, flags)
-    body_shape = infer_body_shape(problem_text)
-    force_dir = infer_direction_label(problem_text)
+    body_shape = infer_body_shape(analysis_text)
+    force_dir = infer_direction_label(analysis_text)
     surface_type = "incline" if flags["incline"] else "table" if flags["table"] else None
     launch_height = _infer_launch_height(knowns, t)
     landing_height = _infer_landing_height(knowns, t)
     coordinate_data = _infer_coordinate_data(knowns, t)
     requested_outputs = _infer_requested_outputs(t)
+    if unsupported_subtype == "fluid_dynamics":
+        requested_outputs = []
     launch_angle_deg, launch_angle_source = _infer_launch_angle(knowns, t)
     if launch_angle_deg is not None and "theta" not in knowns:
         knowns["theta"] = Quantity("theta", launch_angle_deg, "deg", launch_angle_source or "inferred launch angle")
@@ -339,7 +370,10 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         v0q = knowns["v0"]
         knowns["v1"] = Quantity("v1", v0q.value, v0q.unit or "m/s", (v0q.source_text or "") + " (충돌 진행 물체 → v1)")
 
-    if pulley_topology == "incline_hanging_candidate":
+    if unsupported_subtype is not None:
+        c.system_type = "unsupported"
+        c.subtype = unsupported_subtype
+    elif pulley_topology == "incline_hanging_candidate":
         c.system_type = "incline_hanging_candidate"
     elif pulley_topology == "ambiguous_pulley":
         c.system_type = "ambiguous_pulley"
