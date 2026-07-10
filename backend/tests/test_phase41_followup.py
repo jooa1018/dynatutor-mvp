@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -94,6 +95,30 @@ def test_run_with_timeout_kills_term_ignoring_descendant():
     assert elapsed < 8
     assert "sending SIGKILL" in output
     assert "command exited with code 0" in output
+
+
+@pytest.mark.regression
+def test_frontend_wrapper_cleans_child_on_parent_signal(monkeypatch):
+    from scripts import check_frontend_build
+
+    child = subprocess.Popen(
+        ["bash", "-c", "trap '' TERM; while :; do sleep 1; done"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    monkeypatch.setattr(check_frontend_build, "_CHILD", child)
+    monkeypatch.setattr(check_frontend_build, "kill_after_seconds", 1)
+    try:
+        with pytest.raises(SystemExit) as exited:
+            check_frontend_build._handle_parent_signal(signal.SIGTERM, None)
+        assert exited.value.code == 128 + signal.SIGTERM
+        assert child.poll() is not None
+    finally:
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.wait(timeout=3)
 
 
 @pytest.mark.regression
