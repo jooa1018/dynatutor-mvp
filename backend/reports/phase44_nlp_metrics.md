@@ -49,10 +49,23 @@ The principal safety result is a false-solve reduction from **25.2632% (24/95)**
 ## Performance
 
 - Baseline: 4.497 seconds for 320 cases.
-- Final: 6.060 seconds for 320 cases (18.938 ms/case).
-- Change: +1.563 seconds on a GitHub-hosted runner.
+- Final: 5.863 seconds for 320 cases (18.322 ms/case).
+- Change: +1.366 seconds on a GitHub-hosted runner.
 
 These timings include Python startup and report generation. They establish a reproducible Phase 44 baseline, not a production latency SLO.
+
+## Final validation
+
+| Command | Passed | Failed | Skipped | Deselected | Duration |
+|---|---:|---:|---:|---:|---:|
+| `python -m pytest backend/tests/test_phase44_korean_nlp_robustness.py -q` | 7 | 0 | 0 | 0 | 5.81 s |
+| `python backend/tools/run_phase44_nlp_benchmark.py` | 320 cases | 0 cases | 0 | 0 | 5.863 s |
+| `bash scripts/check_backend_fast.sh` | 436 | 0 | 0 | 39 | 28.41 s |
+| `python -m pytest backend/tests -q` | 436 | 0 | 0 | 39 | 27.32 s |
+| `python -m pytest backend/tests -q -o addopts=` | 475 | 0 | 0 | 0 | 46.22 s |
+| `bash scripts/check_frontend_metadata.sh` | 1 check | 0 | 0 | 0 | 0.036 s |
+
+The frontend build was not run because no frontend source or configuration changed. The validation checkout ended with a clean working tree.
 
 ## Scope and limitations
 
