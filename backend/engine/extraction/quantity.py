@@ -189,15 +189,15 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     # (단위가 있는 기존 패턴이 먼저 잡고, _set은 첫 값을 유지하므로 안전.)
     # ------------------------------------------------------------------
     if "v0" not in knowns:
-        bare = first_number(r"(?<![a-z0-9_])v_?0\s*=\s*" + _NUM + r"(?![\d,.])(?!\s*(?:m/s|km/h|cm/s|m\b|km\b))", text)
+        bare = first_number(r"(?<![a-z0-9_])v_?0\s*=\s*" + _NUM + r"(?!\d)(?![.,]\d)(?!\s*(?:m/s|km/h|cm/s|m\b|km\b))", text)
         if bare:
             _set(knowns, "v0", bare[0], "m/s", bare[1] + " (단위 생략 → m/s)")
     if "omega0" not in knowns:
-        bare = first_number(r"(?<![a-z0-9_])omega_?0\s*=\s*" + _NUM + r"(?![\d,.])(?!\s*rad)", text)
+        bare = first_number(r"(?<![a-z0-9_])omega_?0\s*=\s*" + _NUM + r"(?!\d)(?![.,]\d)(?!\s*rad)", text)
         if bare:
             _set(knowns, "omega0", bare[0], "rad/s", bare[1] + " (단위 생략 → rad/s)")
     if "theta" not in knowns:
-        bare = first_number(r"(?<![a-z0-9_])theta\s*=\s*" + _NUM + r"(?![\d,.])(?!\s*(?:deg|도|rad|°))", text)
+        bare = first_number(r"(?<![a-z0-9_])theta\s*=\s*" + _NUM + r"(?!\d)(?![.,]\d)(?!\s*(?:deg|도|rad|°))", text)
         if bare:
             _set(knowns, "theta", bare[0], "deg", bare[1] + " (단위 생략 → deg)")
 
