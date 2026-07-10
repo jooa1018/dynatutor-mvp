@@ -91,10 +91,10 @@
     }
   },
   "final": {
-    "source_revision": "1fa1e14de4736bf775dacccfc45e46b6bde281e0",
-    "workflow_run_id": 29097851699,
-    "measured_at_utc": "2026-07-10T13:56:03Z",
-    "duration_seconds": 6.06,
+    "source_revision": "ca6c9a33c431e9204fa10eccc33d3c0f7abfea87",
+    "workflow_run_id": 29098760657,
+    "measured_at_utc": "2026-07-10T14:08:00Z",
+    "duration_seconds": 5.863,
     "metrics": {
       "case_count": 320,
       "status_accuracy": 1,
@@ -208,8 +208,8 @@
     "requested_output_accuracy_gain": 0.365625,
     "system_type_top1_accuracy_gain": 0.1125,
     "canonical_consistency_accuracy_gain": 0.307692,
-    "duration_seconds_change": 1.563,
-    "final_average_milliseconds_per_case": 18.938
+    "duration_seconds_change": 1.366,
+    "final_average_milliseconds_per_case": 18.322
   },
   "interpretation": {
     "release_gate_result": "pass",
@@ -219,5 +219,67 @@
       "Confidence bins report empirical correctness on this fixture; Phase 46 owns margin and routing-policy changes.",
       "Hosted-runner duration includes Python process and report generation overhead and should be treated as a reproducible baseline, not a hard latency SLO."
     ]
+  },
+  "validation": {
+    "environment": "GitHub-hosted ubuntu-24.04, CPython 3.13.14",
+    "suites": {
+      "phase44_contract": {
+        "command": "python -m pytest backend/tests/test_phase44_korean_nlp_robustness.py -q",
+        "status": "passed",
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 0,
+        "duration_seconds": 5.81
+      },
+      "phase44_benchmark": {
+        "command": "python backend/tools/run_phase44_nlp_benchmark.py",
+        "status": "passed",
+        "passed_cases": 320,
+        "failed_cases": 0,
+        "duration_seconds": 5.863
+      },
+      "backend_fast": {
+        "command": "bash scripts/check_backend_fast.sh",
+        "status": "passed",
+        "passed": 436,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 39,
+        "duration_seconds": 28.41
+      },
+      "backend_full_requested": {
+        "command": "python -m pytest backend/tests -q",
+        "status": "passed",
+        "passed": 436,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 39,
+        "duration_seconds": 27.32
+      },
+      "backend_unfiltered": {
+        "command": "python -m pytest backend/tests -q -o addopts=",
+        "status": "passed",
+        "passed": 475,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 0,
+        "duration_seconds": 46.22
+      },
+      "frontend_metadata": {
+        "command": "bash scripts/check_frontend_metadata.sh",
+        "status": "passed",
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 0,
+        "duration_seconds": 0.036
+      },
+      "frontend_build": {
+        "status": "not_run",
+        "reason": "No frontend files or frontend configuration changed in Phase 44."
+      }
+    },
+    "final_repository_state": "clean working tree in validation checkout"
   }
 }
