@@ -22,7 +22,7 @@ Collecting scipy==1.17.0 (from -r backend/requirements-lock.txt (line 13))
   Downloading scipy-1.17.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
 Collecting pydy==0.7.1 (from -r backend/requirements-lock.txt (line 14))
   Downloading pydy-0.7.1.tar.gz (6.6 MB)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 43.6 MB/s  0:00:00
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 153.6 MB/s  0:00:00
   Installing build dependencies: started
   Installing build dependencies: finished with status 'done'
   Getting requirements to build wheel: started
@@ -87,20 +87,20 @@ Downloading fastapi-0.128.2-py3-none-any.whl (104 kB)
 Downloading uvicorn-0.48.0-py3-none-any.whl (71 kB)
 Downloading pydantic-2.13.4-py3-none-any.whl (472 kB)
 Downloading sympy-1.14.0-py3-none-any.whl (6.3 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 201.0 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 263.7 MB/s  0:00:00
 Downloading pytest-9.0.2-py3-none-any.whl (374 kB)
 Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
 Downloading python_multipart-0.0.29-py3-none-any.whl (29 kB)
 Downloading pint-0.25.3-py3-none-any.whl (307 kB)
 Downloading numpy-2.3.5-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.6 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.6/16.6 MB 243.1 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.6/16.6 MB 198.4 MB/s  0:00:00
 Downloading scipy-1.17.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.0 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.0/35.0 MB 238.4 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.0/35.0 MB 203.6 MB/s  0:00:00
 Downloading pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 267.4 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 269.4 MB/s  0:00:00
 Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
 Downloading mpmath-1.3.0-py3-none-any.whl (536 kB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 91.9 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 63.2 MB/s  0:00:00
 Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
 Downloading starlette-0.50.0-py3-none-any.whl (74 kB)
 Downloading anyio-4.14.1-py3-none-any.whl (124 kB)
@@ -116,152 +116,67 @@ Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
 Downloading packaging-26.2-py3-none-any.whl (100 kB)
 Downloading platformdirs-4.10.0-py3-none-any.whl (22 kB)
 Downloading pygments-2.20.0-py3-none-any.whl (1.2 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 226.5 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 208.6 MB/s  0:00:00
 Downloading python_dotenv-1.2.2-py3-none-any.whl (22 kB)
 Downloading pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (801 kB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 801.6/801.6 kB 160.0 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 801.6/801.6 kB 117.4 MB/s  0:00:00
 Using cached setuptools-83.0.0-py3-none-any.whl (1.0 MB)
 Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
 Downloading typing_inspection-0.4.2-py3-none-any.whl (14 kB)
 Downloading uvloop-0.22.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.4 MB)
-   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 320.4 MB/s  0:00:00
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 316.6 MB/s  0:00:00
 Downloading watchfiles-1.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (454 kB)
 Downloading websockets-16.1-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (187 kB)
 Downloading certifi-2026.6.17-py3-none-any.whl (133 kB)
 Building wheels for collected packages: pydy
   Building wheel for pydy (pyproject.toml): started
   Building wheel for pydy (pyproject.toml): finished with status 'done'
-  Created wheel for pydy: filename=pydy-0.7.1-py3-none-any.whl size=5227247 sha256=f26d435d9c3717c202d649d67d3dd2d0d2a8db4cac8321b319dda9e8b8e8b35d
+  Created wheel for pydy: filename=pydy-0.7.1-py3-none-any.whl size=5227247 sha256=cab305fc35763c99aa759d3f309673bc98f46ff6af288404b10ada95f871e909
   Stored in directory: /home/runner/.cache/pip/wheels/df/fe/2d/357c7facbef9ce30e2009044c2ba2d805f177cd4ddce578cac
 Successfully built pydy
 Installing collected packages: mpmath, websockets, uvloop, typing-extensions, sympy, setuptools, pyyaml, python-multipart, python-dotenv, pygments, pluggy, platformdirs, packaging, numpy, iniconfig, idna, httptools, h11, click, certifi, annotated-types, annotated-doc, uvicorn, typing-inspection, scipy, pytest, pydantic-core, httpcore, flexparser, flexcache, anyio, watchfiles, starlette, pydy, pydantic, pint, httpx, fastapi
 
 Successfully installed annotated-doc-0.0.4 annotated-types-0.7.0 anyio-4.14.1 certifi-2026.6.17 click-8.4.2 fastapi-0.128.2 flexcache-0.3 flexparser-0.4 h11-0.16.0 httpcore-1.0.9 httptools-0.8.0 httpx-0.28.1 idna-3.18 iniconfig-2.3.0 mpmath-1.3.0 numpy-2.3.5 packaging-26.2 pint-0.25.3 platformdirs-4.10.0 pluggy-1.6.0 pydantic-2.13.4 pydantic-core-2.46.4 pydy-0.7.1 pygments-2.20.0 pytest-9.0.2 python-dotenv-1.2.2 python-multipart-0.0.29 pyyaml-6.0.3 scipy-1.17.0 setuptools-83.0.0 starlette-0.50.0 sympy-1.14.0 typing-extensions-4.16.0 typing-inspection-0.4.2 uvicorn-0.48.0 uvloop-0.22.1 watchfiles-1.2.0 websockets-16.1
 EXIT_CODE: 0
-DURATION_SECONDS: 26
+DURATION_SECONDS: 22
 
 ===== phase43 =====
 COMMAND: env PYTHONPATH=backend python -m pytest backend/tests/test_phase43_canonical_problem_v2.py backend/tests/test_phase42_baseline_contracts.py -q -o addopts=
-F..FF.F................................................................. [ 47%]
-........................................................................ [ 94%]
-........                                                                 [100%]
-=================================== FAILURES ===================================
-______ test_phase43_major_values_have_provenance_confidence_and_raw_span _______
 
-    @pytest.mark.unit
-    def test_phase43_major_values_have_provenance_confidence_and_raw_span():
-        raw = "질량 m=2kg인 물체에 힘 F=10N이 작용한다. 가속도는?"
-        canonical = extract_problem(raw)
-        v2 = canonical.canonical_v2
-    
-        assert v2 is not None
-        assert v2.schema_version == "2.0"
-        assert len(v2.fingerprint) == 64
-        assert all(0.0 <= fact.confidence <= 1.0 for fact in v2.facts)
-    
-        mass = _fact(canonical, "m")
-        assert mass.status == "explicit"
-        assert mass.provenance == "text_extraction"
-        assert mass.dimension == "mass"
-        assert mass.source_span is not None
-        start, end = mass.source_span
->       assert raw[start:end].lower() in (mass.source_text or "").lower()
-E       AssertionError: assert '2kg' in '2 kg'
-E        +  where '2kg' = <built-in method lower of str object at 0x7fe6fd72d200>()
-E        +    where <built-in method lower of str object at 0x7fe6fd72d200> = '2kg'.lower
-E        +  and   '2 kg' = <built-in method lower of str object at 0x7fe70a311680>()
-E        +    where <built-in method lower of str object at 0x7fe70a311680> = ('2 kg').lower
-E        +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-
-backend/tests/test_phase43_canonical_problem_v2.py:42: AssertionError
-_______ test_phase43_unit_normalization_preserves_source_representation ________
-
-    @pytest.mark.unit
-    def test_phase43_unit_normalization_preserves_source_representation():
-        canonical = extract_problem(
-            "자동차가 v0=72km/h에서 출발하여 가속도 a=2m/s^2로 5s 동안 운동한다. 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert speed.value == pytest.approx(20.0)
-E       assert 2.0 == 20.0 ± 2.0e-05
-E         
-E         comparison failed
-E         Obtained: 2.0
-E         Expected: 20.0 ± 2.0e-05
-
-backend/tests/test_phase43_canonical_problem_v2.py:93: AssertionError
-_______ test_phase43_equivalent_duplicate_units_do_not_create_a_conflict _______
-
-    @pytest.mark.unit
-    def test_phase43_equivalent_duplicate_units_do_not_create_a_conflict():
-        canonical = extract_problem(
-            "자동차의 v0=36km/h, v0=10m/s이고 가속도 a=2m/s^2이다. 5s 후 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert canonical.canonical_v2.conflicts == []
-E       AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-E         
-E         Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-E         
-E         Full diff:
-E         - []
-E         + [
-E         +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-E         + ]
-
-backend/tests/test_phase43_canonical_problem_v2.py:107: AssertionError
-____________ test_phase43_conflicting_explicit_values_are_retained _____________
-
-    @pytest.mark.unit
-    def test_phase43_conflicting_explicit_values_are_retained():
-        canonical = extract_problem(
-            "질량 m=2kg이고 다른 문장에는 m=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
-        )
->       mass = _fact(canonical, "m")
-               ^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase43_canonical_problem_v2.py:134: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-canonical = CanonicalProblem(system_type='unknown', subtype=None, language='ko', objects=[{'name': 'object_1', 'mass': 2.0, 'unit'...': None, 'launch_angle_source': None}, fingerprint='24c0389d969203efb93b680a2b749633f9606abfa80d4b21d104680c4159f2ba'))
-compatibility_key = 'm'
-
-    def _fact(canonical, compatibility_key: str):
-        assert canonical.canonical_v2 is not None
->       return next(
-            fact
-            for fact in canonical.canonical_v2.facts
-            if fact.compatibility_key == compatibility_key
-        )
-E       StopIteration
-
-backend/tests/test_phase43_canonical_problem_v2.py:18: StopIteration
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/test_phase43_canonical_problem_v2.py __________
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1395: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:935: in _load_unlocked
+    ???
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    source_stat, co = _rewrite_test(fn, self.config)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:357: in _rewrite_test
+    tree = ast.parse(source, filename=strfn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/ast.py:50: in parse
+    return compile(source, filename, mode, flags,
+E     File "/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend/tests/test_phase43_canonical_problem_v2.py", line 43
+E       assert re.sub(r"\\s+", "", raw[start:end].lower()) in re.sub(\n        r"\\s+", "", (mass.source_text or "").lower()\n    )
+E                                                                     ^
+E   SyntaxError: unexpected character after line continuation character
 =========================== short test summary info ============================
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_major_values_have_provenance_confidence_and_raw_span - AssertionError: assert '2kg' in '2 kg'
- +  where '2kg' = <built-in method lower of str object at 0x7fe6fd72d200>()
- +    where <built-in method lower of str object at 0x7fe6fd72d200> = '2kg'.lower
- +  and   '2 kg' = <built-in method lower of str object at 0x7fe70a311680>()
- +    where <built-in method lower of str object at 0x7fe70a311680> = ('2 kg').lower
- +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_unit_normalization_preserves_source_representation - assert 2.0 == 20.0 ± 2.0e-05
-  
-  comparison failed
-  Obtained: 2.0
-  Expected: 20.0 ± 2.0e-05
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_equivalent_duplicate_units_do_not_create_a_conflict - AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-  
-  Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-  
-  Full diff:
-  - []
-  + [
-  +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-  + ]
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_conflicting_explicit_values_are_retained - StopIteration
-4 failed, 148 passed in 2.47s
-EXIT_CODE: 1
+ERROR backend/tests/test_phase43_canonical_problem_v2.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.46s
+EXIT_CODE: 2
 DURATION_SECONDS: 4
 
 ===== backend_fast =====
@@ -270,258 +185,82 @@ COMMAND: bash scripts/check_backend_fast.sh
 [run_with_timeout] timeout=120s
 [run_with_timeout] cwd=/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend
 [run_with_timeout] command=pytest -q -o addopts= -m not benchmark and not audit and not frontend and not slow
-........................................................................ [ 16%]
-........................................................................ [ 33%]
-........................................................................ [ 50%]
-........................................................................ [ 67%]
-........................................................................ [ 84%]
-...F..FF.F........................................................       [100%]
-=================================== FAILURES ===================================
-______ test_phase43_major_values_have_provenance_confidence_and_raw_span _______
 
-    @pytest.mark.unit
-    def test_phase43_major_values_have_provenance_confidence_and_raw_span():
-        raw = "질량 m=2kg인 물체에 힘 F=10N이 작용한다. 가속도는?"
-        canonical = extract_problem(raw)
-        v2 = canonical.canonical_v2
-    
-        assert v2 is not None
-        assert v2.schema_version == "2.0"
-        assert len(v2.fingerprint) == 64
-        assert all(0.0 <= fact.confidence <= 1.0 for fact in v2.facts)
-    
-        mass = _fact(canonical, "m")
-        assert mass.status == "explicit"
-        assert mass.provenance == "text_extraction"
-        assert mass.dimension == "mass"
-        assert mass.source_span is not None
-        start, end = mass.source_span
->       assert raw[start:end].lower() in (mass.source_text or "").lower()
-E       AssertionError: assert '2kg' in '2 kg'
-E        +  where '2kg' = <built-in method lower of str object at 0x7f04b7fd02d0>()
-E        +    where <built-in method lower of str object at 0x7f04b7fd02d0> = '2kg'.lower
-E        +  and   '2 kg' = <built-in method lower of str object at 0x7f04b7fd07e0>()
-E        +    where <built-in method lower of str object at 0x7f04b7fd07e0> = ('2 kg').lower
-E        +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-
-tests/test_phase43_canonical_problem_v2.py:42: AssertionError
-_______ test_phase43_unit_normalization_preserves_source_representation ________
-
-    @pytest.mark.unit
-    def test_phase43_unit_normalization_preserves_source_representation():
-        canonical = extract_problem(
-            "자동차가 v0=72km/h에서 출발하여 가속도 a=2m/s^2로 5s 동안 운동한다. 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert speed.value == pytest.approx(20.0)
-E       assert 2.0 == 20.0 ± 2.0e-05
-E         
-E         comparison failed
-E         Obtained: 2.0
-E         Expected: 20.0 ± 2.0e-05
-
-tests/test_phase43_canonical_problem_v2.py:93: AssertionError
-_______ test_phase43_equivalent_duplicate_units_do_not_create_a_conflict _______
-
-    @pytest.mark.unit
-    def test_phase43_equivalent_duplicate_units_do_not_create_a_conflict():
-        canonical = extract_problem(
-            "자동차의 v0=36km/h, v0=10m/s이고 가속도 a=2m/s^2이다. 5s 후 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert canonical.canonical_v2.conflicts == []
-E       AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-E         
-E         Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-E         
-E         Full diff:
-E         - []
-E         + [
-E         +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-E         + ]
-
-tests/test_phase43_canonical_problem_v2.py:107: AssertionError
-____________ test_phase43_conflicting_explicit_values_are_retained _____________
-
-    @pytest.mark.unit
-    def test_phase43_conflicting_explicit_values_are_retained():
-        canonical = extract_problem(
-            "질량 m=2kg이고 다른 문장에는 m=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
-        )
->       mass = _fact(canonical, "m")
-               ^^^^^^^^^^^^^^^^^^^^^
-
-tests/test_phase43_canonical_problem_v2.py:134: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-canonical = CanonicalProblem(system_type='unknown', subtype=None, language='ko', objects=[{'name': 'object_1', 'mass': 2.0, 'unit'...': None, 'launch_angle_source': None}, fingerprint='24c0389d969203efb93b680a2b749633f9606abfa80d4b21d104680c4159f2ba'))
-compatibility_key = 'm'
-
-    def _fact(canonical, compatibility_key: str):
-        assert canonical.canonical_v2 is not None
->       return next(
-            fact
-            for fact in canonical.canonical_v2.facts
-            if fact.compatibility_key == compatibility_key
-        )
-E       StopIteration
-
-tests/test_phase43_canonical_problem_v2.py:18: StopIteration
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/test_phase43_canonical_problem_v2.py __________
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1395: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:935: in _load_unlocked
+    ???
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    source_stat, co = _rewrite_test(fn, self.config)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:357: in _rewrite_test
+    tree = ast.parse(source, filename=strfn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/ast.py:50: in parse
+    return compile(source, filename, mode, flags,
+E     File "/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend/tests/test_phase43_canonical_problem_v2.py", line 43
+E       assert re.sub(r"\\s+", "", raw[start:end].lower()) in re.sub(\n        r"\\s+", "", (mass.source_text or "").lower()\n    )
+E                                                                     ^
+E   SyntaxError: unexpected character after line continuation character
 =========================== short test summary info ============================
-FAILED tests/test_phase43_canonical_problem_v2.py::test_phase43_major_values_have_provenance_confidence_and_raw_span - AssertionError: assert '2kg' in '2 kg'
- +  where '2kg' = <built-in method lower of str object at 0x7f04b7fd02d0>()
- +    where <built-in method lower of str object at 0x7f04b7fd02d0> = '2kg'.lower
- +  and   '2 kg' = <built-in method lower of str object at 0x7f04b7fd07e0>()
- +    where <built-in method lower of str object at 0x7f04b7fd07e0> = ('2 kg').lower
- +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-FAILED tests/test_phase43_canonical_problem_v2.py::test_phase43_unit_normalization_preserves_source_representation - assert 2.0 == 20.0 ± 2.0e-05
-  
-  comparison failed
-  Obtained: 2.0
-  Expected: 20.0 ± 2.0e-05
-FAILED tests/test_phase43_canonical_problem_v2.py::test_phase43_equivalent_duplicate_units_do_not_create_a_conflict - AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-  
-  Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-  
-  Full diff:
-  - []
-  + [
-  +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-  + ]
-FAILED tests/test_phase43_canonical_problem_v2.py::test_phase43_conflicting_explicit_values_are_retained - StopIteration
-4 failed, 422 passed, 42 deselected in 9.48s
-[run_with_timeout] command exited with code 1
-EXIT_CODE: 1
-DURATION_SECONDS: 11
+ERROR tests/test_phase43_canonical_problem_v2.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+42 deselected, 1 error in 2.06s
+[run_with_timeout] command exited with code 2
+EXIT_CODE: 2
+DURATION_SECONDS: 2
 
 ===== backend_requested =====
 COMMAND: python -m pytest backend/tests -q
-........................................................................ [ 16%]
-........................................................................ [ 33%]
-........................................................................ [ 50%]
-........................................................................ [ 67%]
-........................................................................ [ 84%]
-...F..FF.F........................................................       [100%]
-=================================== FAILURES ===================================
-______ test_phase43_major_values_have_provenance_confidence_and_raw_span _______
 
-    @pytest.mark.unit
-    def test_phase43_major_values_have_provenance_confidence_and_raw_span():
-        raw = "질량 m=2kg인 물체에 힘 F=10N이 작용한다. 가속도는?"
-        canonical = extract_problem(raw)
-        v2 = canonical.canonical_v2
-    
-        assert v2 is not None
-        assert v2.schema_version == "2.0"
-        assert len(v2.fingerprint) == 64
-        assert all(0.0 <= fact.confidence <= 1.0 for fact in v2.facts)
-    
-        mass = _fact(canonical, "m")
-        assert mass.status == "explicit"
-        assert mass.provenance == "text_extraction"
-        assert mass.dimension == "mass"
-        assert mass.source_span is not None
-        start, end = mass.source_span
->       assert raw[start:end].lower() in (mass.source_text or "").lower()
-E       AssertionError: assert '2kg' in '2 kg'
-E        +  where '2kg' = <built-in method lower of str object at 0x7f4dc6060c60>()
-E        +    where <built-in method lower of str object at 0x7f4dc6060c60> = '2kg'.lower
-E        +  and   '2 kg' = <built-in method lower of str object at 0x7f4db58683f0>()
-E        +    where <built-in method lower of str object at 0x7f4db58683f0> = ('2 kg').lower
-E        +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-
-backend/tests/test_phase43_canonical_problem_v2.py:42: AssertionError
-_______ test_phase43_unit_normalization_preserves_source_representation ________
-
-    @pytest.mark.unit
-    def test_phase43_unit_normalization_preserves_source_representation():
-        canonical = extract_problem(
-            "자동차가 v0=72km/h에서 출발하여 가속도 a=2m/s^2로 5s 동안 운동한다. 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert speed.value == pytest.approx(20.0)
-E       assert 2.0 == 20.0 ± 2.0e-05
-E         
-E         comparison failed
-E         Obtained: 2.0
-E         Expected: 20.0 ± 2.0e-05
-
-backend/tests/test_phase43_canonical_problem_v2.py:93: AssertionError
-_______ test_phase43_equivalent_duplicate_units_do_not_create_a_conflict _______
-
-    @pytest.mark.unit
-    def test_phase43_equivalent_duplicate_units_do_not_create_a_conflict():
-        canonical = extract_problem(
-            "자동차의 v0=36km/h, v0=10m/s이고 가속도 a=2m/s^2이다. 5s 후 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert canonical.canonical_v2.conflicts == []
-E       AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-E         
-E         Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-E         
-E         Full diff:
-E         - []
-E         + [
-E         +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-E         + ]
-
-backend/tests/test_phase43_canonical_problem_v2.py:107: AssertionError
-____________ test_phase43_conflicting_explicit_values_are_retained _____________
-
-    @pytest.mark.unit
-    def test_phase43_conflicting_explicit_values_are_retained():
-        canonical = extract_problem(
-            "질량 m=2kg이고 다른 문장에는 m=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
-        )
->       mass = _fact(canonical, "m")
-               ^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase43_canonical_problem_v2.py:134: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-canonical = CanonicalProblem(system_type='unknown', subtype=None, language='ko', objects=[{'name': 'object_1', 'mass': 2.0, 'unit'...': None, 'launch_angle_source': None}, fingerprint='24c0389d969203efb93b680a2b749633f9606abfa80d4b21d104680c4159f2ba'))
-compatibility_key = 'm'
-
-    def _fact(canonical, compatibility_key: str):
-        assert canonical.canonical_v2 is not None
->       return next(
-            fact
-            for fact in canonical.canonical_v2.facts
-            if fact.compatibility_key == compatibility_key
-        )
-E       StopIteration
-
-backend/tests/test_phase43_canonical_problem_v2.py:18: StopIteration
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/test_phase43_canonical_problem_v2.py __________
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1395: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:935: in _load_unlocked
+    ???
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    source_stat, co = _rewrite_test(fn, self.config)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:357: in _rewrite_test
+    tree = ast.parse(source, filename=strfn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/ast.py:50: in parse
+    return compile(source, filename, mode, flags,
+E     File "/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend/tests/test_phase43_canonical_problem_v2.py", line 43
+E       assert re.sub(r"\\s+", "", raw[start:end].lower()) in re.sub(\n        r"\\s+", "", (mass.source_text or "").lower()\n    )
+E                                                                     ^
+E   SyntaxError: unexpected character after line continuation character
 =========================== short test summary info ============================
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_major_values_have_provenance_confidence_and_raw_span - AssertionError: assert '2kg' in '2 kg'
- +  where '2kg' = <built-in method lower of str object at 0x7f4dc6060c60>()
- +    where <built-in method lower of str object at 0x7f4dc6060c60> = '2kg'.lower
- +  and   '2 kg' = <built-in method lower of str object at 0x7f4db58683f0>()
- +    where <built-in method lower of str object at 0x7f4db58683f0> = ('2 kg').lower
- +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_unit_normalization_preserves_source_representation - assert 2.0 == 20.0 ± 2.0e-05
-  
-  comparison failed
-  Obtained: 2.0
-  Expected: 20.0 ± 2.0e-05
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_equivalent_duplicate_units_do_not_create_a_conflict - AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-  
-  Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-  
-  Full diff:
-  - []
-  + [
-  +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-  + ]
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_conflicting_explicit_values_are_retained - StopIteration
-4 failed, 422 passed, 42 deselected in 8.65s
-EXIT_CODE: 1
-DURATION_SECONDS: 10
+ERROR backend/tests/test_phase43_canonical_problem_v2.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+42 deselected, 1 error in 1.49s
+EXIT_CODE: 2
+DURATION_SECONDS: 2
 
 ===== frontend_metadata =====
 COMMAND: bash scripts/check_frontend_metadata.sh
@@ -533,530 +272,41 @@ DURATION_SECONDS: 0
 
 ===== backend_unfiltered =====
 COMMAND: python -m pytest backend/tests -q -o addopts=
-...........F......F..............................................FFFF... [ 15%]
-.............FF...F................................F.........F.......... [ 30%]
-........................................................................ [ 46%]
-..........FF......................................F..................... [ 61%]
-........................................................................ [ 76%]
-.............................................F..FF.F.................... [ 92%]
-....................................                                     [100%]
-=================================== FAILURES ===================================
-_______ test_phase10_korean_quality_benchmark_all_supported_cases_solve ________
 
-    def test_phase10_korean_quality_benchmark_all_supported_cases_solve():
-        failures = []
-        for idx, (problem_text, expected_solver) in enumerate(KOREAN_BENCHMARK_CASES, start=1):
-            result = solve_problem(problem_text)
-            got_solver = result.diagnosis.selected_solver
-            missing = result.diagnosis.canonical.missing_info
-            if got_solver != expected_solver or not result.ok or missing or result.answer is None:
-                failures.append(
-                    {
-                        "index": idx,
-                        "problem": problem_text,
-                        "expected_solver": expected_solver,
-                        "got_solver": got_solver,
-                        "ok": result.ok,
-                        "missing": missing,
-                        "answer": result.answer.display if result.answer else None,
-                        "system_type": result.diagnosis.canonical.system_type,
-                    }
-                )
->       assert not failures, failures
-E       AssertionError: [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
-E       assert not [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
-
-backend/tests/test_phase10_korean_quality_benchmark.py:24: AssertionError
-___________________ test_300_generated_benchmark_cases_pass ____________________
-
-    def test_300_generated_benchmark_cases_pass():
->       cases = json.loads(Path("tests/benchmarks/generated_300.json").read_text(encoding="utf-8"))
-                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase13_benchmark_300.py:7: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('tests/benchmarks/generated_300.json'), mode = 'r'
-buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-___________________ test_phase20_benchmark_inventory_counts ____________________
-
-    def test_phase20_benchmark_inventory_counts():
->       synthetic = _load(BENCHMARK_ROOT / "generated_300.json")
-                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase20_benchmark_audit.py:22: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-backend/tests/test_phase20_benchmark_audit.py:18: in _load
-    return json.loads(path.read_text(encoding="utf-8"))
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('tests/benchmarks/generated_300.json'), mode = 'r'
-buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-__________________ test_phase20_derived_benchmark_cases_pass ___________________
-
-    def test_phase20_derived_benchmark_cases_pass():
-        failures = []
-        for path in DERIVED_PATHS:
->           for case in _load(path):
-                        ^^^^^^^^^^^
-
-backend/tests/test_phase20_benchmark_audit.py:38: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-backend/tests/test_phase20_benchmark_audit.py:18: in _load
-    return json.loads(path.read_text(encoding="utf-8"))
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('tests/benchmarks/phase20_derived/openstax_style_derived_050.json')
-mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-_________ test_phase20_negative_benchmark_cases_refuse_to_hallucinate __________
-
-    def test_phase20_negative_benchmark_cases_refuse_to_hallucinate():
-        failures = []
->       for case in _load(NEGATIVE_PATH):
-                    ^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase20_benchmark_audit.py:58: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-backend/tests/test_phase20_benchmark_audit.py:18: in _load
-    return json.loads(path.read_text(encoding="utf-8"))
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('tests/benchmarks/phase20_negative/negative_unsupported_060.json')
-mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_negative/negative_unsupported_060.json'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-________________ test_phase20_benchmark_source_families_present ________________
-
-    def test_phase20_benchmark_source_families_present():
->       derived = [case for path in DERIVED_PATHS for case in _load(path)]
-                                                              ^^^^^^^^^^^
-
-backend/tests/test_phase20_benchmark_audit.py:66: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-backend/tests/test_phase20_benchmark_audit.py:18: in _load
-    return json.loads(path.read_text(encoding="utf-8"))
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('tests/benchmarks/phase20_derived/openstax_style_derived_050.json')
-mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-_____ test_phase24_deployment_audit_passes_without_frontend_build_attempt ______
-
-    def test_phase24_deployment_audit_passes_without_frontend_build_attempt():
-        report = audit(attempt_frontend_build=False)
-        assert report["phase"] == "phase24"
->       assert report["overall_passed"] is True
-E       assert False is True
-
-backend/tests/test_phase24_final_polish_deployment.py:12: AssertionError
-________________ test_phase24_frontend_env_names_are_compatible ________________
-
-    def test_phase24_frontend_env_names_are_compatible():
-        api_ts = (PROJECT_ROOT / "frontend" / "lib" / "api.ts").read_text(encoding="utf-8")
->       env_example = (PROJECT_ROOT / "frontend" / ".env.example").read_text(encoding="utf-8")
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase24_final_polish_deployment.py:23: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example')
-mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-____________________ test_phase25_blind_textbook_inventory _____________________
-
-    def test_phase25_blind_textbook_inventory():
-        cases = list(_cases())
->       assert len(cases) == 100
-E       assert 0 == 100
-E        +  where 0 = len([])
-
-backend/tests/test_phase25_blind_textbook_benchmark.py:37: AssertionError
-________________ test_frontend_metadata_only_no_build_execution ________________
-
-    @pytest.mark.frontend
-    def test_frontend_metadata_only_no_build_execution():
-        root = Path(__file__).resolve().parents[2]
-        assert (root / "frontend" / "package.json").exists()
-        assert (root / "frontend" / "package-lock.json").exists()
-        assert (root / "scripts" / "check_frontend_build.sh").exists()
-        text = (root / "scripts" / "check_frontend_build.py").read_text(encoding="utf-8")
-        assert "start_new_session=True" in text
->       assert "os.killpg" in text
-E       assert 'os.killpg' in '#!/usr/bin/env python3\nfrom __future__ import annotations\n\nimport os\nimport signal\nimport shutil\nimport subproc...       return 124\n    finally:\n        _CHILD = None\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
-
-backend/tests/test_phase27_stability.py:69: AssertionError
-________________ test_frontend_metadata_only_no_build_execution ________________
-
-    @pytest.mark.frontend
-    def test_frontend_metadata_only_no_build_execution():
-        root = Path(__file__).resolve().parents[2]
-        assert (root / "frontend" / "package.json").exists()
-        assert (root / "frontend" / "package-lock.json").exists()
-        assert (root / "frontend" / "next.config.js").exists()
-        assert (root / "scripts" / "check_frontend_build.sh").exists()
-        text = (root / "scripts" / "check_frontend_build.py").read_text(encoding="utf-8")
-        assert "start_new_session=True" in text
->       assert "os.killpg" in text
-E       assert 'os.killpg' in '#!/usr/bin/env python3\nfrom __future__ import annotations\n\nimport os\nimport signal\nimport shutil\nimport subproc...       return 124\n    finally:\n        _CHILD = None\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
-
-backend/tests/test_phase28_stability.py:106: AssertionError
-________________ test_phase36_frontend_token_is_not_public_env _________________
-
-    def test_phase36_frontend_token_is_not_public_env():
->       env_text = (PROJECT_ROOT / "frontend" / ".env.example").read_text(encoding="utf-8")
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase36_deploy_parser_cleanup.py:27: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example')
-mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-_________________ test_phase36_node_20_is_pinned_for_frontend __________________
-
-    def test_phase36_node_20_is_pinned_for_frontend():
->       assert (PROJECT_ROOT / "frontend" / ".nvmrc").read_text(encoding="utf-8").strip() == "20"
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase36_deploy_parser_cleanup.py:36: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
-    return PathBase.read_text(self, encoding, errors, newline)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
-    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-self = PosixPath('/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.nvmrc')
-mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
-
-    def open(self, mode='r', buffering=-1, encoding=None,
-             errors=None, newline=None):
-        """
-        Open the file pointed to by this path and return a file object, as
-        the built-in open() function does.
-        """
-        if "b" not in mode:
-            encoding = io.text_encoding(encoding)
->       return io.open(self, mode, buffering, encoding, errors, newline)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.nvmrc'
-
-/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
-_______ test_backend_benchmark_wrapper_returns_after_real_pytest_summary _______
-
-    @pytest.mark.regression
-    def test_backend_benchmark_wrapper_returns_after_real_pytest_summary():
-        """sleep 대역이 아니라 실제 benchmark pytest와 wrapper의 종료까지 검증한다."""
-        root = Path(__file__).resolve().parents[2]
-        script = root / "scripts" / "check_backend_benchmark.sh"
-        env = os.environ.copy()
-        env["DYNATUTOR_BACKEND_BENCHMARK_TIMEOUT"] = "90"
-        env["DYNATUTOR_RUN_KILL_AFTER"] = "1"
-        proc = subprocess.run(
-            ["bash", str(script)],
-            cwd=root,
-            capture_output=True,
-            text=True,
-            timeout=120,
-            env=env,
-        )
-        output = proc.stdout + proc.stderr
->       assert proc.returncode == 0, output[-1000:]
-E       AssertionError: [backend_benchmark] pytest benchmark tests
-E         [run_with_timeout] timeout=90s
-E         [run_with_timeout] cwd=/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend
-E         [run_with_timeout] command=pytest -q -o addopts= -m benchmark
-E         F..........[run_with_timeout] process group terminated with SIGTERM
-E         [run_with_timeout] timed out after 90s; terminating process group
-E         
-E       assert 124 == 0
-E        +  where 124 = CompletedProcess(args=['bash', '/home/runner/work/dynatutor-mvp/dynatutor-mvp/scripts/check_backend_benchmark.sh'], re...process group terminated with SIGTERM\n', stderr='[run_with_timeout] timed out after 90s; terminating process group\n').returncode
-
-backend/tests/test_phase41_followup.py:143: AssertionError
-______ test_phase43_major_values_have_provenance_confidence_and_raw_span _______
-
-    @pytest.mark.unit
-    def test_phase43_major_values_have_provenance_confidence_and_raw_span():
-        raw = "질량 m=2kg인 물체에 힘 F=10N이 작용한다. 가속도는?"
-        canonical = extract_problem(raw)
-        v2 = canonical.canonical_v2
-    
-        assert v2 is not None
-        assert v2.schema_version == "2.0"
-        assert len(v2.fingerprint) == 64
-        assert all(0.0 <= fact.confidence <= 1.0 for fact in v2.facts)
-    
-        mass = _fact(canonical, "m")
-        assert mass.status == "explicit"
-        assert mass.provenance == "text_extraction"
-        assert mass.dimension == "mass"
-        assert mass.source_span is not None
-        start, end = mass.source_span
->       assert raw[start:end].lower() in (mass.source_text or "").lower()
-E       AssertionError: assert '2kg' in '2 kg'
-E        +  where '2kg' = <built-in method lower of str object at 0x7f89d4fb7f60>()
-E        +    where <built-in method lower of str object at 0x7f89d4fb7f60> = '2kg'.lower
-E        +  and   '2 kg' = <built-in method lower of str object at 0x7f89d49c7990>()
-E        +    where <built-in method lower of str object at 0x7f89d49c7990> = ('2 kg').lower
-E        +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-
-backend/tests/test_phase43_canonical_problem_v2.py:42: AssertionError
-_______ test_phase43_unit_normalization_preserves_source_representation ________
-
-    @pytest.mark.unit
-    def test_phase43_unit_normalization_preserves_source_representation():
-        canonical = extract_problem(
-            "자동차가 v0=72km/h에서 출발하여 가속도 a=2m/s^2로 5s 동안 운동한다. 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert speed.value == pytest.approx(20.0)
-E       assert 2.0 == 20.0 ± 2.0e-05
-E         
-E         comparison failed
-E         Obtained: 2.0
-E         Expected: 20.0 ± 2.0e-05
-
-backend/tests/test_phase43_canonical_problem_v2.py:93: AssertionError
-_______ test_phase43_equivalent_duplicate_units_do_not_create_a_conflict _______
-
-    @pytest.mark.unit
-    def test_phase43_equivalent_duplicate_units_do_not_create_a_conflict():
-        canonical = extract_problem(
-            "자동차의 v0=36km/h, v0=10m/s이고 가속도 a=2m/s^2이다. 5s 후 최종속도는?"
-        )
-        speed = _fact(canonical, "v0")
-    
->       assert canonical.canonical_v2.conflicts == []
-E       AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-E         
-E         Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-E         
-E         Full diff:
-E         - []
-E         + [
-E         +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-E         + ]
-
-backend/tests/test_phase43_canonical_problem_v2.py:107: AssertionError
-____________ test_phase43_conflicting_explicit_values_are_retained _____________
-
-    @pytest.mark.unit
-    def test_phase43_conflicting_explicit_values_are_retained():
-        canonical = extract_problem(
-            "질량 m=2kg이고 다른 문장에는 m=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
-        )
->       mass = _fact(canonical, "m")
-               ^^^^^^^^^^^^^^^^^^^^^
-
-backend/tests/test_phase43_canonical_problem_v2.py:134: 
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
-
-canonical = CanonicalProblem(system_type='unknown', subtype=None, language='ko', objects=[{'name': 'object_1', 'mass': 2.0, 'unit'...': None, 'launch_angle_source': None}, fingerprint='24c0389d969203efb93b680a2b749633f9606abfa80d4b21d104680c4159f2ba'))
-compatibility_key = 'm'
-
-    def _fact(canonical, compatibility_key: str):
-        assert canonical.canonical_v2 is not None
->       return next(
-            fact
-            for fact in canonical.canonical_v2.facts
-            if fact.compatibility_key == compatibility_key
-        )
-E       StopIteration
-
-backend/tests/test_phase43_canonical_problem_v2.py:18: StopIteration
+==================================== ERRORS ====================================
+_________ ERROR collecting tests/test_phase43_canonical_problem_v2.py __________
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/python.py:507: in importtestmodule
+    mod = import_path(
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/pathlib.py:587: in import_path
+    importlib.import_module(module_name)
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/importlib/__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+<frozen importlib._bootstrap>:1395: in _gcd_import
+    ???
+<frozen importlib._bootstrap>:1360: in _find_and_load
+    ???
+<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked
+    ???
+<frozen importlib._bootstrap>:935: in _load_unlocked
+    ???
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:188: in exec_module
+    source_stat, co = _rewrite_test(fn, self.config)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:357: in _rewrite_test
+    tree = ast.parse(source, filename=strfn)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/ast.py:50: in parse
+    return compile(source, filename, mode, flags,
+E     File "/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend/tests/test_phase43_canonical_problem_v2.py", line 43
+E       assert re.sub(r"\\s+", "", raw[start:end].lower()) in re.sub(\n        r"\\s+", "", (mass.source_text or "").lower()\n    )
+E                                                                     ^
+E   SyntaxError: unexpected character after line continuation character
 =========================== short test summary info ============================
-FAILED backend/tests/test_phase10_korean_quality_benchmark.py::test_phase10_korean_quality_benchmark_all_supported_cases_solve - AssertionError: [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
-assert not [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
-FAILED backend/tests/test_phase13_benchmark_300.py::test_300_generated_benchmark_cases_pass - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
-FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_benchmark_inventory_counts - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
-FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_derived_benchmark_cases_pass - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
-FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_negative_benchmark_cases_refuse_to_hallucinate - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_negative/negative_unsupported_060.json'
-FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_benchmark_source_families_present - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
-FAILED backend/tests/test_phase24_final_polish_deployment.py::test_phase24_deployment_audit_passes_without_frontend_build_attempt - assert False is True
-FAILED backend/tests/test_phase24_final_polish_deployment.py::test_phase24_frontend_env_names_are_compatible - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
-FAILED backend/tests/test_phase25_blind_textbook_benchmark.py::test_phase25_blind_textbook_inventory - assert 0 == 100
- +  where 0 = len([])
-FAILED backend/tests/test_phase27_stability.py::test_frontend_metadata_only_no_build_execution - assert 'os.killpg' in '#!/usr/bin/env python3\nfrom __future__ import annotations\n\nimport os\nimport signal\nimport shutil\nimport subproc...       return 124\n    finally:\n        _CHILD = None\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
-FAILED backend/tests/test_phase28_stability.py::test_frontend_metadata_only_no_build_execution - assert 'os.killpg' in '#!/usr/bin/env python3\nfrom __future__ import annotations\n\nimport os\nimport signal\nimport shutil\nimport subproc...       return 124\n    finally:\n        _CHILD = None\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
-FAILED backend/tests/test_phase36_deploy_parser_cleanup.py::test_phase36_frontend_token_is_not_public_env - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
-FAILED backend/tests/test_phase36_deploy_parser_cleanup.py::test_phase36_node_20_is_pinned_for_frontend - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.nvmrc'
-FAILED backend/tests/test_phase41_followup.py::test_backend_benchmark_wrapper_returns_after_real_pytest_summary - AssertionError: [backend_benchmark] pytest benchmark tests
-  [run_with_timeout] timeout=90s
-  [run_with_timeout] cwd=/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend
-  [run_with_timeout] command=pytest -q -o addopts= -m benchmark
-  F..........[run_with_timeout] process group terminated with SIGTERM
-  [run_with_timeout] timed out after 90s; terminating process group
-  
-assert 124 == 0
- +  where 124 = CompletedProcess(args=['bash', '/home/runner/work/dynatutor-mvp/dynatutor-mvp/scripts/check_backend_benchmark.sh'], re...process group terminated with SIGTERM\n', stderr='[run_with_timeout] timed out after 90s; terminating process group\n').returncode
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_major_values_have_provenance_confidence_and_raw_span - AssertionError: assert '2kg' in '2 kg'
- +  where '2kg' = <built-in method lower of str object at 0x7f89d4fb7f60>()
- +    where <built-in method lower of str object at 0x7f89d4fb7f60> = '2kg'.lower
- +  and   '2 kg' = <built-in method lower of str object at 0x7f89d49c7990>()
- +    where <built-in method lower of str object at 0x7f89d49c7990> = ('2 kg').lower
- +      where '2 kg' = ExtractedFact(fact_id='fact_36d409ee03594413', kind='quantity', subject_id='body', symbol='m', value=2.0, unit='kg', d...e_span=(5, 8), provenance='text_extraction', confidence=1.0, status='explicit', alternatives=[], compatibility_key='m').source_text
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_unit_normalization_preserves_source_representation - assert 2.0 == 20.0 ± 2.0e-05
-  
-  comparison failed
-  Obtained: 2.0
-  Expected: 20.0 ± 2.0e-05
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_equivalent_duplicate_units_do_not_create_a_conflict - AssertionError: assert ['v0 has conf...km/h, 10.0 m'] == []
-  
-  Left contains one more item: 'v0 has conflicting explicit values: 36.0 km/h, 10.0 m'
-  
-  Full diff:
-  - []
-  + [
-  +     'v0 has conflicting explicit values: 36.0 km/h, 10.0 m',
-  + ]
-FAILED backend/tests/test_phase43_canonical_problem_v2.py::test_phase43_conflicting_explicit_values_are_retained - StopIteration
-18 failed, 450 passed in 107.72s (0:01:47)
-EXIT_CODE: 1
-DURATION_SECONDS: 108
+ERROR backend/tests/test_phase43_canonical_problem_v2.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 1.63s
+EXIT_CODE: 2
+DURATION_SECONDS: 3
 
 OVERALL_EXIT: 1
