@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
+import json
+from pathlib import Path
 
 import pytest
 
@@ -127,3 +129,17 @@ def test_student_api_shape_is_preserved_for_new_failure_states():
         "physical_model",
     }.issubset(payload)
     assert "canonical_v2" not in payload["diagnosis"]["canonical"]
+
+
+def test_versioned_baseline_report_tracks_safety_improvement():
+    report_path = Path(__file__).resolve().parents[1] / "reports" / "phase44_nlp_metrics.json"
+    markdown_path = report_path.with_suffix(".md")
+    metrics = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert metrics["fixture"]["case_count"] >= 300
+    assert metrics["execution_environment"]["llm_used"] is False
+    assert metrics["final"]["gates"]["passed"] is True
+    assert metrics["baseline"]["metrics"]["false_solve_rate"] > metrics["final"]["metrics"]["false_solve_rate"]
+    assert metrics["baseline"]["metrics"]["high_confidence_false_solves"] > metrics["final"]["metrics"]["high_confidence_false_solves"]
+    assert metrics["comparison"]["false_solve_rate_reduction"] > 0
+    assert markdown_path.exists()
