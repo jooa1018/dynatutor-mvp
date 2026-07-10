@@ -6,6 +6,11 @@ on:
       - agent/phase43-canonical-v2-provenance
     paths-ignore:
       - backend/reports/phase43_ci_results.log
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - backend/reports/phase43_ci_results.log
 
 permissions:
   contents: write
