@@ -196,6 +196,12 @@ def test_phase42_golden_answer_contract(case):
         assert not response.ok
         assert response.clarification is None
 
+    # A clarification/unsupported response intentionally exposes no student answer.
+    # Its independent oracle remains in the fixture for the future regression,
+    # while numeric comparison is enforceable only for currently solved cases.
+    if case["expected_status"] != "solved":
+        return
+
     for expectation in case["expected_answers"]:
         answer = _find_answer(response, expectation)
         assert answer.numeric is not None
