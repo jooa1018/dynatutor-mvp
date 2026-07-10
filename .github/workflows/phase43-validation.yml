@@ -1,0 +1,73 @@
+name: Temporary Phase 43 Validation
+
+on:
+  push:
+    branches:
+      - agent/phase43-canonical-v2-provenance
+    paths-ignore:
+      - backend/reports/phase43_ci_results.log
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Run checks and capture exact evidence
+        id: validation
+        shell: bash
+        run: |
+          set +e
+          report="backend/reports/phase43_ci_results.log"
+          : > "$report"
+          overall=0
+
+          run_check() {
+            name="$1"
+            shift
+            start=$(date +%s)
+            {
+              echo "===== ${name} ====="
+              echo "COMMAND: $*"
+              "$@"
+              code=$?
+              duration=$(($(date +%s)-start))
+              echo "EXIT_CODE: ${code}"
+              echo "DURATION_SECONDS: ${duration}"
+              echo
+            } >> "$report" 2>&1
+            if [ "$code" -ne 0 ]; then overall=1; fi
+          }
+
+          run_check install python -m pip install -r backend/requirements-lock.txt
+          run_check phase43 env PYTHONPATH=backend python -m pytest backend/tests/test_phase43_canonical_problem_v2.py backend/tests/test_phase42_baseline_contracts.py -q -o "addopts="
+          run_check backend_fast bash scripts/check_backend_fast.sh
+          run_check backend_requested python -m pytest backend/tests -q
+          run_check frontend_metadata bash scripts/check_frontend_metadata.sh
+          run_check backend_unfiltered python -m pytest backend/tests -q -o "addopts="
+
+          echo "OVERALL_EXIT: ${overall}" >> "$report"
+          echo "overall=${overall}" >> "$GITHUB_OUTPUT"
+          cat "$report"
+      - name: Commit temporary validation evidence
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f backend/reports/phase43_ci_results.log
+          if ! git diff --cached --quiet; then
+            git commit -m "Record temporary Phase 43 validation"
+            git push
+          fi
+      - name: Fail when a check failed
+        if: steps.validation.outputs.overall != '0'
+        run: exit 1
