@@ -1,0 +1,89 @@
+name: temporary phase43 baseline audit
+
+on:
+  push:
+    branches:
+      - codex/phase43-provenance-corrective
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements-lock.txt
+      - name: Reproduce Phase 43 provenance findings
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          python - <<'PY'
+          import json
+          from engine.extraction.extractor import extract_problem
+          from engine.routing.clarify import apply_clarify_patch
+
+          def facts(raw):
+              cp = extract_problem(raw)
+              return cp, [
+                  {
+                      "key": f.compatibility_key,
+                      "subject": f.subject_id,
+                      "value": f.value,
+                      "unit": f.unit,
+                      "status": f.status,
+                      "provenance": f.provenance,
+                      "confidence": f.confidence,
+                      "span": f.source_span,
+                      "alternatives": f.alternatives,
+                  }
+                  for f in cp.canonical_v2.facts
+                  if f.kind == "quantity"
+              ]
+
+          cases = {}
+          prompts = {
+              "horizontal_theta": "공을 수평으로 10 m/s로 절벽에서 던졌다. 절벽의 높이는 20 m이다. 비행시간은?",
+              "v0_15": "공을 속력 v0=15 m/s, 발사각 30도로 던졌다. 사거리는?",
+              "v0_10": "공을 속력 v0=10 m/s, 발사각 30도로 던졌다. 사거리는?",
+              "v_25": "물체의 속력 v=25 m/s이다. 속도는?",
+              "equivalent": "자동차의 v0=36km/h, v0=10m/s이고 가속도 a=2m/s^2이다. 5s 후 최종속도는?",
+              "conflict": "질량 m1=2kg이고 다른 문장에는 m1=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?",
+              "same_numbers": "m1=2kg인 물체와 m2=2kg인 물체가 v1=5m/s, v2=5m/s로 충돌한다. 반발계수 e=1이다. 충돌 후 속도는?",
+              "background": "참고로 옆 트럭은 36 km/h로 달린다. 자동차는 v0=10 m/s이고 가속도 a=2 m/s^2이다. 5 s 후 최종속도는?",
+              "amplitude": "질량 m=2kg, 스프링 상수 k=8N/m, 진폭 A=0.5m인 진동의 주기는?",
+          }
+          cps = {}
+          for name, raw in prompts.items():
+              cp, result = facts(raw)
+              cps[name] = cp
+              cases[name] = {
+                  "knowns": {k: q.value for k, q in cp.knowns.items()},
+                  "facts": result,
+                  "conflicts": cp.canonical_v2.conflicts,
+              }
+
+          conflict_cp = cps["conflict"]
+          patched = apply_clarify_patch(
+              conflict_cp,
+              {"set_known": {"symbol": "m1", "value": 2, "unit": "kg", "label": "첫 번째 물체 질량"}},
+          )
+          cases["clarified_conflict"] = {
+              "facts": [
+                  {
+                      "key": f.compatibility_key,
+                      "value": f.value,
+                      "status": f.status,
+                      "provenance": f.provenance,
+                      "confidence": f.confidence,
+                      "alternatives": f.alternatives,
+                  }
+                  for f in patched.canonical_v2.facts
+                  if f.compatibility_key == "m1"
+              ],
+              "conflicts": patched.canonical_v2.conflicts,
+          }
+          print("PHASE43_BASELINE=" + json.dumps(cases, ensure_ascii=False, sort_keys=True))
+          PY
