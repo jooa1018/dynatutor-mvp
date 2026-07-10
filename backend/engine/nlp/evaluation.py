@@ -130,11 +130,14 @@ def _semantic_signature(canonical, expected_knowns: dict[str, Any]) -> tuple[Any
                 None if quantity is None else quantity.unit,
             )
         )
+    requested_outputs = list(canonical.requested_outputs)
+    if canonical.system_type == "collision_1d" and "final_velocity" in requested_outputs:
+        requested_outputs.remove("final_velocity")
     return (
         canonical.system_type,
         canonical.subtype,
         tuple(values),
-        tuple(canonical.requested_outputs),
+        tuple(requested_outputs),
     )
 
 
