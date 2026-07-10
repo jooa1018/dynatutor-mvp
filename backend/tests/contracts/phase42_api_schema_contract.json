@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "source_commit": "174e7ec0f724f584628fd85a719af9b5fd2a54b3",
+  "engine_dataclasses": {
+    "CanonicalProblem": [
+      "system_type",
+      "subtype",
+      "language",
+      "objects",
+      "knowns",
+      "unknowns",
+      "flags",
+      "assumptions",
+      "missing_info",
+      "confidence",
+      "raw_text",
+      "surface_type",
+      "pulley_topology",
+      "friction_type",
+      "body_shape",
+      "launch_height",
+      "landing_height",
+      "force_direction",
+      "displacement_direction",
+      "coordinate_data",
+      "requested_outputs",
+      "launch_angle_deg",
+      "launch_angle_source"
+    ],
+    "SolverResult": [
+      "ok",
+      "answer",
+      "answers",
+      "steps",
+      "verification",
+      "unsupported_reason",
+      "used_equations",
+      "fbd",
+      "coordinate_guide"
+    ],
+    "VerificationReport": [
+      "passed",
+      "dimension_summary",
+      "checks",
+      "warnings",
+      "errors"
+    ]
+  },
+  "api_models": {
+    "ProblemRequest": [
+      "problem_text",
+      "student_solution",
+      "level",
+      "clarify_patch",
+      "canonical_patch"
+    ],
+    "CanonicalProblemModel": [
+      "system_type",
+      "subtype",
+      "language",
+      "objects",
+      "knowns",
+      "unknowns",
+      "flags",
+      "assumptions",
+      "missing_info",
+      "confidence",
+      "surface_type",
+      "pulley_topology",
+      "friction_type",
+      "body_shape",
+      "launch_height",
+      "landing_height",
+      "force_direction",
+      "displacement_direction",
+      "coordinate_data",
+      "requested_outputs",
+      "launch_angle_deg",
+      "launch_angle_source"
+    ],
+    "DiagnosisResponse": [
+      "ok",
+      "fbd_diagram_svg",
+      "fbd_annotations",
+      "canonical",
+      "legacy_hints",
+      "selected_solver",
+      "solver_reason",
+      "fbd",
+      "coordinate_guide",
+      "applicable_equations",
+      "not_applicable_equations",
+      "cautions",
+      "next_questions",
+      "physical_model"
+    ],
+    "AnswerModel": [
+      "symbolic",
+      "numeric",
+      "unit",
+      "display"
+    ],
+    "AnswerItemModel": [
+      "label",
+      "symbol",
+      "numeric",
+      "unit",
+      "display",
+      "role"
+    ],
+    "VerificationReport": [
+      "passed",
+      "dimension_summary",
+      "checks",
+      "warnings",
+      "errors"
+    ],
+    "ClarificationOptionModel": [
+      "id",
+      "label",
+      "description",
+      "patch",
+      "needs_value"
+    ],
+    "ClarificationModel": [
+      "rule",
+      "question",
+      "why",
+      "options"
+    ],
+    "SolveResponse": [
+      "ok",
+      "teacher_summary",
+      "concept_summary",
+      "common_mistakes",
+      "study_tips",
+      "equation_sheet",
+      "diagnosis",
+      "answer",
+      "answers",
+      "steps",
+      "verification",
+      "unsupported_reason",
+      "clarification",
+      "physical_model"
+    ]
+  },
+  "response_contracts": {
+    "solved": {
+      "http_status": 200,
+      "ok": true,
+      "answer": "present",
+      "clarification": null,
+      "unsupported_reason": null
+    },
+    "clarification": {
+      "http_status": 200,
+      "ok": false,
+      "answer": null,
+      "clarification": "present",
+      "unsupported_reason": "present"
+    },
+    "unsupported": {
+      "http_status": 200,
+      "ok": false,
+      "answer": null,
+      "clarification": null,
+      "unsupported_reason": "present"
+    }
+  },
+  "compatibility_policy": [
+    "Existing student-facing fields may not be deleted or repurposed in Phase 42.",
+    "Phase 42 adds test/report artifacts only and does not change runtime response models."
+  ]
+}

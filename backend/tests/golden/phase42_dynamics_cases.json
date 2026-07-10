@@ -1,0 +1,1503 @@
+{
+  "schema_version": 1,
+  "source_commit": "174e7ec0f724f584628fd85a719af9b5fd2a54b3",
+  "oracle_policy": [
+    "Expected values are written from explicit independent formulas or limit laws shown in each case.",
+    "Tests must never rewrite these values from DynaTutor output.",
+    "Parser facts, route, requested outputs, answer, and status are separate contracts."
+  ],
+  "cases": [
+    {
+      "id": "kinematics_final_velocity",
+      "domain": "constant_acceleration",
+      "problem_text": "처음 속도 v0=0m/s인 물체가 일정한 가속도 a=3m/s^2로 4초 동안 움직인다. 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "constant_acceleration_1d",
+        "subtype": null,
+        "known_values": {
+          "v0": 0,
+          "a": 3,
+          "t": 4
+        }
+      },
+      "expected_route": "constant_acceleration_1d",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 12,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v_f=v_0+at",
+        "derivation": "0+3×4=12 m/s"
+      }
+    },
+    {
+      "id": "kinematics_distance",
+      "domain": "constant_acceleration",
+      "problem_text": "처음 속도 v0=2m/s인 물체가 일정한 가속도 a=3m/s^2로 4초 동안 움직였다. 이동거리를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "constant_acceleration_1d",
+        "subtype": null,
+        "known_values": {
+          "v0": 2,
+          "a": 3,
+          "t": 4
+        }
+      },
+      "expected_route": "constant_acceleration_1d",
+      "expected_requested_outputs": [
+        "distance"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 32,
+          "unit": "m"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "s=v_0t+(1/2)at^2",
+        "derivation": "2×4+0.5×3×4²=32 m"
+      }
+    },
+    {
+      "id": "kinematics_time",
+      "domain": "constant_acceleration",
+      "problem_text": "처음 속도 v0=0m/s에서 일정한 가속도 a=2m/s^2로 최종속도 vf=10m/s가 될 때까지 걸리는 시간을 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "constant_acceleration_1d",
+        "subtype": null,
+        "known_values": {
+          "v0": 0,
+          "a": 2,
+          "vf": 10
+        }
+      },
+      "expected_route": "constant_acceleration_1d",
+      "expected_requested_outputs": [
+        "time"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 5,
+          "unit": "s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "t=(v_f-v_0)/a",
+        "derivation": "(10-0)/2=5 s"
+      }
+    },
+    {
+      "id": "projectile_horizontal_drop",
+      "domain": "projectile",
+      "problem_text": "높이 20m인 절벽 위에서 공을 수평 방향으로 10m/s의 속력으로 던졌다. 공기저항을 무시할 때 지면에 닿을 때까지 걸리는 시간과 수평거리를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "projectile_motion",
+        "subtype": "general",
+        "known_values": {
+          "h": 20,
+          "v0": 10
+        }
+      },
+      "expected_route": "projectile_motion",
+      "expected_requested_outputs": [
+        "time",
+        "range"
+      ],
+      "expected_answers": [
+        {
+          "selector": "symbol",
+          "symbol": "t",
+          "numeric": 2.019275109384609,
+          "unit": "s"
+        },
+        {
+          "selector": "symbol",
+          "symbol": "R",
+          "numeric": 20.192751093846088,
+          "unit": "m"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.002,
+        "relative": 0.002
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "t=sqrt(2h/g), R=v_0t",
+        "derivation": "수평발사이므로 t=√(40/9.81), R=10t"
+      }
+    },
+    {
+      "id": "projectile_same_level_range",
+      "domain": "projectile",
+      "problem_text": "공기저항을 무시한다. 공을 지면에서 발사속도 15m/s, 발사각 theta=30도로 쏘아 올렸을 때 같은 높이에 도달하는 수평 사거리를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "projectile_motion",
+        "subtype": "same_level",
+        "known_values": {
+          "v0": 15,
+          "theta": 30
+        }
+      },
+      "expected_route": "projectile_motion",
+      "expected_requested_outputs": [
+        "range"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 19.862967976707306,
+          "unit": "m"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.003,
+        "relative": 0.003
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "R=v_0^2 sin(2theta)/g",
+        "derivation": "225×sin60°/9.81"
+      }
+    },
+    {
+      "id": "projectile_max_height",
+      "domain": "projectile",
+      "problem_text": "공기저항을 무시하고 공을 지면에서 발사속도 20m/s, 발사각 theta=30도로 발사했다. 최대높이를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "projectile_motion",
+        "subtype": "general",
+        "known_values": {
+          "v0": 20,
+          "theta": 30
+        }
+      },
+      "expected_route": "projectile_motion",
+      "expected_requested_outputs": [
+        "max_height"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 5.096839959225279,
+          "unit": "m"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.003,
+        "relative": 0.003
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "H=v_0^2 sin^2(theta)/(2g)",
+        "derivation": "수직 초속도 10m/s이므로 H=100/(2×9.81)"
+      }
+    },
+    {
+      "id": "incline_frictionless_30",
+      "domain": "incline",
+      "problem_text": "마찰이 없는 경사각 theta=30도의 경사면 위에 블록을 놓았다. 경사면을 따라 내려가는 가속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "particle_on_incline",
+        "subtype": "no_friction",
+        "known_values": {
+          "theta": 30
+        }
+      },
+      "expected_route": "incline_no_friction",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 4.904999999999999,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=g sin(theta)",
+        "derivation": "9.81×sin30°=4.905"
+      }
+    },
+    {
+      "id": "incline_frictionless_15",
+      "domain": "incline",
+      "problem_text": "마찰이 없는 경사각 theta=15도의 경사면 위에 블록을 놓았다. 경사면을 따라 내려가는 가속도는?",
+      "expected_canonical_facts": {
+        "system_type": "particle_on_incline",
+        "subtype": "no_friction",
+        "known_values": {
+          "theta": 15
+        }
+      },
+      "expected_route": "incline_no_friction",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 2.5390148324557287,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=g sin(theta)",
+        "derivation": "9.81×sin15°"
+      }
+    },
+    {
+      "id": "incline_kinetic_friction",
+      "domain": "friction",
+      "problem_text": "정지마찰계수 0.2, 운동마찰계수 0.1인 30도 경사면 위 블록의 가속도는?",
+      "expected_canonical_facts": {
+        "system_type": "particle_on_incline",
+        "subtype": "with_friction",
+        "known_values": {
+          "mu_s": 0.2,
+          "mu_k": 0.1,
+          "theta": 30
+        }
+      },
+      "expected_route": "incline_with_friction",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 4.055429078887465,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=g(sin(theta)-mu_k cos(theta))",
+        "derivation": "정지 한계 tan30°>0.2라 미끄러지고 mu_k=0.1 적용"
+      }
+    },
+    {
+      "id": "incline_static_hold",
+      "domain": "friction",
+      "problem_text": "정지마찰계수 0.8인 30도 경사면 위 블록이 있다. 가속도는?",
+      "expected_canonical_facts": {
+        "system_type": "particle_on_incline",
+        "subtype": "with_friction",
+        "known_values": {
+          "mu_s": 0.8,
+          "theta": 30
+        }
+      },
+      "expected_route": "incline_with_friction",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 0,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "tan(theta)<=mu_s implies a=0",
+        "derivation": "tan30°≈0.577<0.8이므로 정지마찰이 평형 유지"
+      }
+    },
+    {
+      "id": "horizontal_friction_force",
+      "domain": "friction",
+      "problem_text": "수평면 위 질량 m=5kg 물체의 운동마찰계수 mu=0.2이다. 운동마찰력은?",
+      "expected_canonical_facts": {
+        "system_type": "horizontal_friction_force",
+        "subtype": null,
+        "known_values": {
+          "m": 5,
+          "mu": 0.2
+        }
+      },
+      "expected_route": "horizontal_friction_force",
+      "expected_requested_outputs": [
+        "friction_force"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 9.81,
+          "unit": "N"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "f_k=mu_k m g",
+        "derivation": "0.2×5×9.81=9.81 N"
+      }
+    },
+    {
+      "id": "atwood_2_3",
+      "domain": "pulley",
+      "problem_text": "질량이 없는 줄과 마찰이 없는 도르래 양쪽에 m1=2kg, m2=3kg 물체가 매달려 있다. 계의 가속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "pulley_atwood",
+        "subtype": null,
+        "known_values": {
+          "m1": 2,
+          "m2": 3
+        }
+      },
+      "expected_route": "pulley_atwood",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 1.9620000000000002,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=(m2-m1)g/(m1+m2)",
+        "derivation": "(3-2)×9.81/(2+3)=1.962"
+      }
+    },
+    {
+      "id": "atwood_1_2",
+      "domain": "pulley",
+      "problem_text": "질량이 없는 줄과 마찰이 없는 도르래 양쪽에 m1=1kg, m2=2kg 물체가 매달려 있다. 계의 가속도는?",
+      "expected_canonical_facts": {
+        "system_type": "pulley_atwood",
+        "subtype": null,
+        "known_values": {
+          "m1": 1,
+          "m2": 2
+        }
+      },
+      "expected_route": "pulley_atwood",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 3.27,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=(m2-m1)g/(m1+m2)",
+        "derivation": "9.81/3=3.27"
+      }
+    },
+    {
+      "id": "table_pulley_kinetic",
+      "domain": "pulley",
+      "problem_text": "수평면 위의 m1=3kg 블록과 매달린 m2=2kg 추를 가벼운 줄과 도르래로 연결하였다. 수평면의 운동마찰계수 mu=0.1이다. 가속도는?",
+      "expected_canonical_facts": {
+        "system_type": "pulley_table_hanging",
+        "subtype": null,
+        "known_values": {
+          "m1": 3,
+          "m2": 2,
+          "mu": 0.1
+        }
+      },
+      "expected_route": "pulley_table_hanging",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 3.3354,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=(m2 g-mu m1 g)/(m1+m2)",
+        "derivation": "(19.62-2.943)/5=3.3354"
+      }
+    },
+    {
+      "id": "incline_pulley_frictionless",
+      "domain": "pulley",
+      "problem_text": "m1=10kg 블록은 30도 경사면 위에 있고 m2=1kg 추는 도르래에 매달려 있다. 마찰을 무시할 때 가속도 크기는?",
+      "expected_canonical_facts": {
+        "system_type": "pulley_incline_hanging",
+        "subtype": null,
+        "known_values": {
+          "m1": 10,
+          "m2": 1,
+          "theta": 30
+        }
+      },
+      "expected_route": "pulley_incline_hanging",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 3.567272727272727,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "|a|=|m2g-m1g sin(theta)|/(m1+m2)",
+        "derivation": "|9.81-49.05|/11=3.56727"
+      }
+    },
+    {
+      "id": "incline_pulley_kinetic",
+      "domain": "pulley",
+      "problem_text": "m1=10kg 블록은 30도 경사면 위에 있고 m2=8kg 추는 도르래에 매달려 있다. m2가 아래로 내려간다. 운동마찰계수 mu=0.2일 때 가속도는?",
+      "expected_canonical_facts": {
+        "system_type": "pulley_incline_hanging",
+        "subtype": null,
+        "known_values": {
+          "m1": 10,
+          "m2": 8,
+          "theta": 30,
+          "mu": 0.2
+        }
+      },
+      "expected_route": "pulley_incline_hanging",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 0.6910323098749621,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=(m2g-m1g sin(theta)-mu m1g cos(theta))/(m1+m2)",
+        "derivation": "m2 하강을 +로 하고 마찰은 반대 방향"
+      }
+    },
+    {
+      "id": "massive_pulley",
+      "domain": "pulley",
+      "problem_text": "질량 있는 도르래에 m1=2kg, m2=5kg가 줄로 연결되어 있다. 도르래 관성모멘트 I=0.12kgm^2, 도르래 반지름 R=0.3m일 때 가속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "massive_pulley_atwood",
+        "subtype": null,
+        "known_values": {
+          "m1": 2,
+          "m2": 5,
+          "I": 0.12,
+          "R": 0.3
+        }
+      },
+      "expected_route": "massive_pulley_atwood",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 3.5315999999999996,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a=(m2-m1)g/(m1+m2+I/R^2)",
+        "derivation": "도르래 회전을 등가질량 I/R²로 환산"
+      }
+    },
+    {
+      "id": "collision_inelastic_2_3",
+      "domain": "collision",
+      "problem_text": "마찰 없는 직선 트랙에서 m1=2kg 물체가 v1=4m/s, m2=3kg 물체가 v2=0m/s로 움직이다가 완전비탄성 충돌을 한다. 충돌 후 속도는?",
+      "expected_canonical_facts": {
+        "system_type": "collision_1d",
+        "subtype": null,
+        "known_values": {
+          "m1": 2,
+          "m2": 3,
+          "v1": 4,
+          "v2": 0
+        }
+      },
+      "expected_route": "collision_1d",
+      "expected_requested_outputs": [
+        "final_velocity",
+        "post_collision_velocity",
+        "v1_after",
+        "v2_after"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 1.6,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v_f=(m1v1+m2v2)/(m1+m2)",
+        "derivation": "(2×4+3×0)/5=1.6"
+      }
+    },
+    {
+      "id": "collision_inelastic_3_5",
+      "domain": "collision",
+      "problem_text": "마찰 없는 직선 트랙에서 m1=3kg 물체가 v1=2m/s, m2=5kg 물체가 v2=1m/s로 움직이다가 완전비탄성 충돌을 한다. 충돌 후 속도는?",
+      "expected_canonical_facts": {
+        "system_type": "collision_1d",
+        "subtype": null,
+        "known_values": {
+          "m1": 3,
+          "m2": 5,
+          "v1": 2,
+          "v2": 1
+        }
+      },
+      "expected_route": "collision_1d",
+      "expected_requested_outputs": [
+        "final_velocity",
+        "post_collision_velocity",
+        "v1_after",
+        "v2_after"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 1.375,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v_f=(m1v1+m2v2)/(m1+m2)",
+        "derivation": "(6+5)/8=1.375"
+      }
+    },
+    {
+      "id": "collision_elastic_equal",
+      "domain": "collision",
+      "problem_text": "m1=2kg 물체가 v1=3m/s로, m2=2kg 물체가 v2=0m/s로 일직선에서 완전탄성 충돌한다. 충돌 후 속도는?",
+      "expected_canonical_facts": {
+        "system_type": "collision_1d",
+        "subtype": null,
+        "known_values": {
+          "m1": 2,
+          "m2": 2,
+          "v1": 3,
+          "v2": 0
+        }
+      },
+      "expected_route": "collision_1d",
+      "expected_requested_outputs": [
+        "final_velocity",
+        "post_collision_velocity",
+        "v1_after",
+        "v2_after"
+      ],
+      "expected_answers": [
+        {
+          "selector": "symbol",
+          "symbol": "v1'",
+          "numeric": 0,
+          "unit": "m/s"
+        },
+        {
+          "selector": "symbol",
+          "symbol": "v2'",
+          "numeric": 3,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "equal-mass elastic exchange",
+        "derivation": "동일 질량 1D 완전탄성 충돌에서 두 속도를 교환"
+      }
+    },
+    {
+      "id": "work_collinear",
+      "domain": "work_energy",
+      "problem_text": "물체에 작용한 힘은 변위와 같은 방향이며 F=10N이다. 물체가 s=3m 이동하는 동안 이 힘이 한 일은?",
+      "expected_canonical_facts": {
+        "system_type": "constant_force_work",
+        "subtype": null,
+        "known_values": {
+          "F": 10,
+          "s": 3
+        }
+      },
+      "expected_route": "constant_force_work",
+      "expected_requested_outputs": [
+        "work"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 30,
+          "unit": "J"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "W=Fs cos(0)",
+        "derivation": "10×3=30 J"
+      }
+    },
+    {
+      "id": "work_at_angle",
+      "domain": "work_energy",
+      "problem_text": "물체에 F=10N의 힘이 작용하고 s=4m 이동한다. 힘과 변위 사이 각도 theta=60도일 때 힘이 한 일을 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "constant_force_work",
+        "subtype": null,
+        "known_values": {
+          "F": 10,
+          "s": 4,
+          "theta": 60
+        }
+      },
+      "expected_route": "constant_force_work",
+      "expected_requested_outputs": [
+        "work"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 20,
+          "unit": "J"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "W=Fs cos(theta)",
+        "derivation": "10×4×cos60°=20 J"
+      }
+    },
+    {
+      "id": "work_energy_2kg",
+      "domain": "work_energy",
+      "problem_text": "질량 m=2kg 물체에 알짜일 W=16J가 작용하고 처음 속도 v0=0m/s이다. 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "work_energy_speed",
+        "subtype": null,
+        "known_values": {
+          "m": 2,
+          "W": 16,
+          "v0": 0
+        }
+      },
+      "expected_route": "work_energy_speed",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 4,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v_f=sqrt(v0^2+2W/m)",
+        "derivation": "√(0+32/2)=4"
+      }
+    },
+    {
+      "id": "work_energy_5kg",
+      "domain": "work_energy",
+      "problem_text": "질량 m=5kg 물체에 알짜일 W=45J가 작용하고 처음 속도 v0=0m/s이다. 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "work_energy_speed",
+        "subtype": null,
+        "known_values": {
+          "m": 5,
+          "W": 45,
+          "v0": 0
+        }
+      },
+      "expected_route": "work_energy_speed",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 4.242640687119285,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v_f=sqrt(v0^2+2W/m)",
+        "derivation": "√(90/5)=√18"
+      }
+    },
+    {
+      "id": "impulse_only",
+      "domain": "impulse_momentum",
+      "problem_text": "일정한 힘 F=10N이 물체에 t=2s 동안 작용하였다. 이 힘이 물체에 준 충격량은?",
+      "expected_canonical_facts": {
+        "system_type": "impulse_momentum",
+        "subtype": null,
+        "known_values": {
+          "F": 10,
+          "t": 2
+        }
+      },
+      "expected_route": "impulse_momentum",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 20,
+          "unit": "N·s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "J=F Delta t",
+        "derivation": "10×2=20 N·s"
+      }
+    },
+    {
+      "id": "impulse_final_velocity",
+      "domain": "impulse_momentum",
+      "problem_text": "질량 m=2kg 물체가 처음 속도 v0=1m/s로 움직일 때 같은 방향의 힘 F=6N이 t=3s 동안 작용했다. 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "impulse_momentum",
+        "subtype": null,
+        "known_values": {
+          "m": 2,
+          "v0": 1,
+          "F": 6,
+          "t": 3
+        }
+      },
+      "expected_route": "impulse_momentum",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 10,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v_f=v0+F Delta t/m",
+        "derivation": "1+18/2=10"
+      }
+    },
+    {
+      "id": "rolling_solid_sphere",
+      "domain": "rolling",
+      "problem_text": "속이 찬 구가 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "pure_rolling_energy",
+        "subtype": "rolling_on_incline",
+        "known_values": {
+          "h": 1
+        }
+      },
+      "expected_route": "pure_rolling_energy",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 3.743565908900993,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v=sqrt(2gh/(1+2/5))",
+        "derivation": "solid sphere I/(mR²)=2/5"
+      }
+    },
+    {
+      "id": "rolling_disk",
+      "domain": "rolling",
+      "problem_text": "원판이 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "pure_rolling_energy",
+        "subtype": "rolling_on_incline",
+        "known_values": {
+          "h": 1
+        }
+      },
+      "expected_route": "pure_rolling_energy",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 3.616628264005025,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v=sqrt(2gh/(1+1/2))",
+        "derivation": "disk I/(mR²)=1/2"
+      }
+    },
+    {
+      "id": "rolling_ring",
+      "domain": "rolling",
+      "problem_text": "고리가 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "pure_rolling_energy",
+        "subtype": "rolling_on_incline",
+        "known_values": {
+          "h": 1
+        }
+      },
+      "expected_route": "pure_rolling_energy",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 3.132091952673165,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v=sqrt(2gh/(1+1))",
+        "derivation": "ring I/(mR²)=1"
+      }
+    },
+    {
+      "id": "fixed_axis_torque",
+      "domain": "fixed_axis_rotation",
+      "problem_text": "고정축을 중심으로 회전하는 강체의 관성모멘트는 I=2kgm^2이고 알짜토크는 tau=10Nm이다. 각가속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "fixed_axis_rotation",
+        "subtype": null,
+        "known_values": {
+          "I": 2,
+          "tau": 10
+        }
+      },
+      "expected_route": "fixed_axis_rotation",
+      "expected_requested_outputs": [
+        "angular_acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 5,
+          "unit": "rad/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "alpha=tau/I",
+        "derivation": "10/2=5 rad/s²"
+      }
+    },
+    {
+      "id": "fixed_axis_tangential_speed",
+      "domain": "fixed_axis_rotation",
+      "problem_text": "고정축 회전에서 각속도 omega=4rad/s이고 점의 반지름 r=0.5m이다. 접선속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "fixed_axis_rotation",
+        "subtype": null,
+        "known_values": {
+          "omega": 4,
+          "r": 0.5
+        }
+      },
+      "expected_route": "fixed_axis_rotation",
+      "expected_requested_outputs": [
+        "tangential_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 2,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "needs_clarification",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v=omega r",
+        "derivation": "4×0.5=2 m/s. 현재 검증 게이트는 계산된 v와 요청 토큰 v_t의 불일치로 evidence-confirm clarification을 반환하므로 상태는 needs_clarification으로 고정한다."
+      }
+    },
+    {
+      "id": "rigid_body_velocity",
+      "domain": "plane_rigid_body",
+      "problem_text": "평면강체에서 A점은 고정되어 있고 B점은 A점에서 오른쪽으로 r=0.5m 떨어져 있다. 강체가 반시계방향으로 각속도 omega=4rad/s로 회전할 때 B점 최종속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "plane_rigid_body_velocity",
+        "subtype": null,
+        "known_values": {
+          "r": 0.5,
+          "omega": 4
+        }
+      },
+      "expected_route": "plane_rigid_body_velocity",
+      "expected_requested_outputs": [
+        "final_velocity"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 2,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "|v_B|=omega r",
+        "derivation": "고정 A점에서 4×0.5=2"
+      }
+    },
+    {
+      "id": "rigid_body_acceleration",
+      "domain": "plane_rigid_body",
+      "problem_text": "평면강체 가속도 문제에서 A점 가속도 aA=0m/s^2이고 B는 A에서 오른쪽으로 r=0.5m 떨어져 있다. 각속도 omega=2rad/s, 각가속도 alpha=1rad/s^2이다. B점 가속도는?",
+      "expected_canonical_facts": {
+        "system_type": "plane_rigid_body_acceleration",
+        "subtype": null,
+        "known_values": {
+          "aA": 0,
+          "r": 0.5,
+          "omega": 2,
+          "alpha": 1
+        }
+      },
+      "expected_route": "plane_rigid_body_acceleration",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 2.0615528128088303,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "|a_B|=sqrt((alpha r)^2+(omega^2 r)^2)",
+        "derivation": "접선 0.5, 법선 2.0의 직교합성"
+      }
+    },
+    {
+      "id": "polar_acceleration",
+      "domain": "polar_coordinates",
+      "problem_text": "극좌표에서 r=2m, r_dot=0.5m/s, r_ddot=0.1m/s^2, theta_dot=3rad/s, theta_ddot=0.2rad/s^2일 때 가속도 성분을 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "polar_kinematics",
+        "subtype": null,
+        "known_values": {
+          "r": 2,
+          "rdot": 0.5,
+          "rddot": 0.1,
+          "thetadot": 3,
+          "thetaddot": 0.2
+        }
+      },
+      "expected_route": "polar_kinematics",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 18.220043907740724,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a_r=rddot-r thetadot^2; a_theta=r thetaddot+2 rdot thetadot",
+        "derivation": "a_r=-17.9, a_theta=3.4, magnitude by Pythagoras"
+      }
+    },
+    {
+      "id": "coriolis_components",
+      "domain": "rotating_frame",
+      "problem_text": "회전좌표계에서 r=0.5m, 상대속도 v_rel=0.4m/s, 상대가속도 a_rel=0.1m/s^2, 각속도 omega=6rad/s, 각가속도 alpha=2rad/s^2이다. 코리올리 가속도와 절대가속도 성분을 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "coriolis_relative_motion",
+        "subtype": null,
+        "known_values": {
+          "r": 0.5,
+          "vrel": 0.4,
+          "arel": 0.1,
+          "omega": 6,
+          "alpha": 2
+        }
+      },
+      "expected_route": "coriolis_relative_motion",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 18.816216410320113,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a_C=2 omega v_rel; a_r=a_rel-r omega^2; a_theta=r alpha+a_C",
+        "derivation": "a_C=4.8, a_r=-17.9, a_theta=5.8"
+      }
+    },
+    {
+      "id": "relative_translation",
+      "domain": "relative_motion",
+      "problem_text": "A점 가속도 aA=1.2m/s^2이고 A에 대한 B의 상대가속도 a_rel=0.8m/s^2이다. B점 가속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "relative_acceleration_translation",
+        "subtype": null,
+        "known_values": {
+          "aA": 1.2,
+          "arel": 0.8
+        }
+      },
+      "expected_route": "relative_acceleration_translation",
+      "expected_requested_outputs": [
+        "acceleration"
+      ],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 2,
+          "unit": "m/s²"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "a_B=a_A+a_rel",
+        "derivation": "동일 직선 방향 기본형 1.2+0.8"
+      }
+    },
+    {
+      "id": "instant_center_speed",
+      "domain": "plane_rigid_body",
+      "problem_text": "순간중심 IC에서 점 P까지 거리 r=0.8m, 각속도 omega=5rad/s이다. 점 P의 속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "instant_center_velocity",
+        "subtype": null,
+        "known_values": {
+          "r": 0.8,
+          "omega": 5
+        }
+      },
+      "expected_route": "instant_center_velocity",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 4,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v=omega r",
+        "derivation": "5×0.8=4"
+      }
+    },
+    {
+      "id": "slot_pin_speed",
+      "domain": "rotating_frame",
+      "problem_text": "회전 슬롯 안의 핀이 r=0.4m 위치에서 r_dot=0.3m/s로 미끄러지고 슬롯 각속도 omega=6rad/s이다. 핀의 절대속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "slot_pin_relative_motion",
+        "subtype": null,
+        "known_values": {
+          "r": 0.4,
+          "rdot": 0.3,
+          "omega": 6
+        }
+      },
+      "expected_route": "slot_pin_relative_motion",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 2.4186773244895647,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "|v|=sqrt(rdot^2+(r omega)^2)",
+        "derivation": "radial 0.3, transverse 2.4"
+      }
+    },
+    {
+      "id": "vibration_natural_frequency",
+      "domain": "vibration",
+      "problem_text": "스프링 상수 k=200N/m, 질량 m=2kg인 스프링-질량계의 고유진동수를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "spring_mass_vibration",
+        "subtype": null,
+        "known_values": {
+          "k": 200,
+          "m": 2
+        }
+      },
+      "expected_route": "spring_mass_vibration",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 10,
+          "unit": "rad/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "omega_n=sqrt(k/m)",
+        "derivation": "√(200/2)=10"
+      }
+    },
+    {
+      "id": "vibration_period",
+      "domain": "vibration",
+      "problem_text": "스프링 상수 k=200N/m, 질량 m=2kg인 스프링-질량계의 주기를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "spring_mass_vibration",
+        "subtype": null,
+        "known_values": {
+          "k": 200,
+          "m": 2
+        }
+      },
+      "expected_route": "spring_mass_vibration",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 0.6283185307179586,
+          "unit": "s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "T=2pi sqrt(m/k)",
+        "derivation": "2π√(2/200)=0.628319 s"
+      }
+    },
+    {
+      "id": "spring_energy_speed",
+      "domain": "vibration",
+      "problem_text": "스프링 상수 k=300N/m인 스프링이 압축량 x=0.2m만큼 압축되어 질량 m=1.5kg 물체를 밀어낸다. 속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "spring_energy",
+        "subtype": null,
+        "known_values": {
+          "k": 300,
+          "x": 0.2,
+          "m": 1.5
+        }
+      },
+      "expected_route": "spring_energy_speed",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 2.8284271247461903,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v=x sqrt(k/m)",
+        "derivation": "0.2√200=2.82843"
+      }
+    },
+    {
+      "id": "flat_curve_limit",
+      "domain": "curvilinear_motion",
+      "problem_text": "평평한 커브 반지름 R=50m, 마찰계수 mu=0.4일 때 미끄러지지 않는 최대속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "flat_curve_friction",
+        "subtype": null,
+        "known_values": {
+          "R": 50,
+          "mu": 0.4
+        }
+      },
+      "expected_route": "flat_curve_friction",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 14.007141035914502,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v_max=sqrt(mu g R)",
+        "derivation": "√(0.4×9.81×50)"
+      }
+    },
+    {
+      "id": "banked_curve_design",
+      "domain": "curvilinear_motion",
+      "problem_text": "마찰 없는 경사진 커브 반지름 R=80m, 뱅크각 theta=20도일 때 설계속도를 구하라.",
+      "expected_canonical_facts": {
+        "system_type": "banked_curve_no_friction",
+        "subtype": null,
+        "known_values": {
+          "R": 80,
+          "theta": 20
+        }
+      },
+      "expected_route": "banked_curve_no_friction",
+      "expected_requested_outputs": [],
+      "expected_answers": [
+        {
+          "selector": "primary",
+          "numeric": 16.901001149402823,
+          "unit": "m/s"
+        }
+      ],
+      "tolerance": {
+        "absolute": 0.00001,
+        "relative": 0.00001
+      },
+      "expected_status": "solved",
+      "oracle": {
+        "basis": "independent_physics_law",
+        "expression": "v=sqrt(g R tan(theta))",
+        "derivation": "√(9.81×80×tan20°)"
+      }
+    }
+  ]
+}
