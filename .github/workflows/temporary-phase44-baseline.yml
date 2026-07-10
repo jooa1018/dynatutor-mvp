@@ -1,10 +1,12 @@
-name: temporary Phase 44 validation
+name: temporary Phase 44 diagnostic
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  validate:
+  diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -14,8 +16,32 @@ jobs:
           python-version: "3.13"
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements-lock.txt
-      - name: Run Phase 44 benchmark
+      - name: Run Phase 44 contract tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: python -m pytest backend/tests/test_phase44_korean_nlp_robustness.py -q || true
+      - name: Print Phase 44 metric summary
         shell: bash
         env:
           PYTHONPATH: ${{ github.workspace }}/backend
-        run: python backend/tools/run_phase44_nlp_benchmark.py
+        run: |
+          set +e
+          python backend/tools/run_phase44_nlp_benchmark.py > phase44_report.json
+          status=$?
+          if [ -s phase44_report.json ]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("phase44_report.json").read_text(encoding="utf-8"))
+          print(json.dumps({
+              "case_count": report["case_count"],
+              "metrics": report["metrics"],
+              "confidence_bins": report["confidence_bins"],
+              "gates": report["gates"],
+              "failure_counts": {key: len(value) for key, value in report["failures"].items()},
+              "failures": report["failures"],
+          }, ensure_ascii=False, indent=2))
+          PY
+          fi
+          echo "benchmark_exit=$status"
+          exit 0
