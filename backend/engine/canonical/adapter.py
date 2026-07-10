@@ -156,14 +156,87 @@ def _source_representation(source_text: str | None) -> dict[str, Any] | None:
     }
 
 
+
+
+def _raw_normalization_evidence(
+    raw_text: str,
+    key: str,
+    quantity: Quantity,
+) -> tuple[tuple[int, int], str, dict[str, Any]] | None:
+    """Recover the pre-normalization representation from the original prompt."""
+
+    if quantity.value is None:
+        return None
+    specifications: list[tuple[set[str], str, str, float, str]] = [
+        (
+            {"v0", "vf", "v", "v1", "v2", "vA", "vB", "vrel", "rdot"},
+            r"(-?\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*km\\s*/\\s*(?:h|hr|hour|시)",
+            "km/h",
+            1.0 / 3.6,
+            "m/s",
+        ),
+        (
+            {"a", "aA", "aB", "arel", "rddot"},
+            r"(-?\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*cm\\s*/\\s*s(?:\\^?2|2|²)",
+            "cm/s^2",
+            0.01,
+            "m/s^2",
+        ),
+        (
+            {"m", "m1", "m2"},
+            r"(-?\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*g(?![A-Za-z/])",
+            "g",
+            0.001,
+            "kg",
+        ),
+        (
+            {"h", "h0", "yf", "s", "x", "R", "r", "Rp"},
+            r"(-?\\d+(?:,\\d{3})*(?:\\.\\d+)?)\\s*cm(?![A-Za-z/])",
+            "cm",
+            0.01,
+            "m",
+        ),
+    ]
+    for keys, pattern, source_unit, factor, target_unit in specifications:
+        if key not in keys or quantity.unit != target_unit:
+            continue
+        for match in re.finditer(pattern, raw_text, re.IGNORECASE):
+            source_value = float(match.group(1).replace(",", ""))
+            if math.isclose(
+                source_value * factor,
+                float(quantity.value),
+                rel_tol=1e-9,
+                abs_tol=1e-9,
+            ):
+                source_text = match.group(0)
+                return (
+                    (match.start(), match.end()),
+                    f"{source_text} → {quantity.value:g} {target_unit}",
+                    {
+                        "value": source_value,
+                        "unit": source_unit,
+                        "relation": "source_representation",
+                    },
+                )
+    return None
+
 def _quantity_fact(canonical: CanonicalProblem, key: str, quantity: Quantity) -> ExtractedFact:
     status, provenance, confidence = _quantity_status(quantity)
     subject_id, symbol = _subject_and_symbol(key)
     span = _source_span(canonical.raw_text, quantity.source_text)
+    source_text = quantity.source_text
     alternatives: list[dict[str, Any]] = []
     source_representation = _source_representation(quantity.source_text)
     if source_representation:
         alternatives.append(source_representation)
+    raw_normalization = _raw_normalization_evidence(canonical.raw_text, key, quantity)
+    if raw_normalization is not None:
+        span, source_text, raw_representation = raw_normalization
+        status = "normalized"
+        provenance = "unit_normalization"
+        confidence = 1.0
+        if raw_representation not in alternatives:
+            alternatives.append(raw_representation)
     direction = canonical.force_direction if key in {"F", "a"} else None
     identity = {
         "kind": "quantity",
@@ -184,7 +257,7 @@ def _quantity_fact(canonical: CanonicalProblem, key: str, quantity: Quantity) ->
         unit=quantity.unit,
         dimension=dimension_for_unit(quantity.unit),
         direction=direction,
-        source_text=quantity.source_text,
+        source_text=source_text,
         source_span=span,
         provenance=provenance,
         confidence=confidence,

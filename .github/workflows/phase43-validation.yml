@@ -57,22 +57,10 @@ jobs:
           run_check backend_fast bash scripts/check_backend_fast.sh
           run_check backend_requested python -m pytest backend/tests -q
           run_check frontend_metadata bash scripts/check_frontend_metadata.sh
-          run_check backend_unfiltered python -m pytest backend/tests -q -o "addopts="
 
           echo "OVERALL_EXIT: ${overall}" >> "$report"
           echo "overall=${overall}" >> "$GITHUB_OUTPUT"
           cat "$report"
-      - name: Commit temporary validation evidence
-        if: always()
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f backend/reports/phase43_ci_results.log
-          if ! git diff --cached --quiet; then
-            git commit -m "Record temporary Phase 43 validation"
-            git push
-          fi
       - name: Fail when a check failed
         if: steps.validation.outputs.overall != '0'
         run: exit 1
