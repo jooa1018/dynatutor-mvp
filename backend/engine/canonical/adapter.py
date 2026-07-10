@@ -44,7 +44,7 @@ _CONDITION_PATTERNS: list[tuple[str, str, str]] = [
     ("massless_string", r"질량\s*(?:이\s*)?없는\s*(?:줄|실|끈)|가벼운\s*(?:줄|실|끈)|massless\s+(?:string|rope)", "explicit"),
     ("inextensible_string", r"늘어나지\s*않는\s*(?:줄|실|끈)|inextensible\s+(?:string|rope)", "explicit"),
     ("frictionless_pulley", r"도르래(?:의|\s*축)?\s*마찰(?:을|은|이)?\s*(?:무시|없)|frictionless\s+pulley", "explicit"),
-    ("perfectly_inelastic", r"완전\s*비탄성|붙어서|붙는\s*충돌|붙어\s*움직|한\s*덩어리|perfectly\s+inelastic|stick\s+together", "explicit"),
+    ("perfectly_inelastic", r"완전\s*비탄성|붙어서|붙는\s*충돌|서로\s*붙|붙는다|붙은\s*뒤|붙어\s*움직|한\s*덩어리|perfectly\s+inelastic|stick\s+together", "explicit"),
     ("elastic_collision", r"완전\s*탄성|elastic\s+collision", "explicit"),
     ("initially_at_rest", r"정지\s*(?:상태|해\s*있|하여|에서)|가만히\s*있|starts?\s+from\s+rest", "explicit"),
 ]
@@ -278,9 +278,10 @@ def _condition_facts(canonical: CanonicalProblem) -> list[ExtractedFact]:
         status = declared_status
         provenance = "explicit_text"
         confidence = 1.0
-        if symbol == "no_friction" and re.search(r"\bsmooth\b|매끈|매끄러운", matched_text, re.IGNORECASE):
-            status = "normalized"
-            provenance = "domain_rule"
+        if symbol == "no_friction" and re.search(r"\bsmooth\b|매끈|매끄러운|매끄런", matched_text, re.IGNORECASE):
+            # The wording is normalized, but the condition itself was still
+            # explicitly supplied by the user rather than assumed.
+            provenance = "normalized_explicit_term"
             confidence = 0.95
         identity = {
             "kind": "condition",
