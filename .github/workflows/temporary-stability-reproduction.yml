@@ -1,27 +1,54 @@
-name: temporary stability reproduction
+name: temporary stability validation
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
-  reproduce:
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
       - name: Install backend dependencies
         run: python -m pip install -r backend/requirements-lock.txt
-      - name: Reproduce unfiltered and metadata failures
-        shell: bash
+      - name: Affected regression tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: >-
+          python -m pytest
+          backend/tests/test_phase10_korean_quality_benchmark.py
+          backend/tests/test_phase13_benchmark_300.py
+          backend/tests/test_phase20_benchmark_audit.py
+          backend/tests/test_phase24_final_polish_deployment.py
+          backend/tests/test_phase25_blind_textbook_benchmark.py
+          backend/tests/test_phase27_stability.py
+          backend/tests/test_phase28_stability.py
+          backend/tests/test_phase36_deploy_parser_cleanup.py
+          backend/tests/test_phase41_followup.py
+          -q -o addopts=
+      - name: Backend fast
+        run: bash scripts/check_backend_fast.sh
+      - name: Backend requested full
+        run: python -m pytest backend/tests -q
+      - name: Backend unfiltered full
+        run: python -m pytest backend/tests -q -o addopts=
+      - name: Frontend metadata
+        run: bash scripts/check_frontend_metadata.sh
+      - name: Frontend build
+        working-directory: frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          CI: "1"
         run: |
-          set +e
-          export PYTHONPATH="$PWD/backend"
-          python -m pytest backend/tests -q -o addopts= 2>&1 | tee unfiltered.log
-          backend_status=${PIPESTATUS[0]}
-          bash scripts/check_frontend_metadata.sh 2>&1 | tee frontend_metadata.log
-          frontend_status=${PIPESTATUS[0]}
-          echo "backend_status=$backend_status frontend_status=$frontend_status"
-          exit $(( backend_status || frontend_status ))
+          npm ci
+          npm run build
