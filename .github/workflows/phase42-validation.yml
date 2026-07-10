@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - agent/phase42-baseline-contracts
-    paths-ignore:
-      - backend/reports/phase42_ci_results.log
+    paths:
+      - .phase42-validation-trigger
 
 permissions:
   contents: write
