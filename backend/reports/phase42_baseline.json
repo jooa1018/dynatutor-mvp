@@ -21,8 +21,8 @@
       "failed": 0,
       "skipped": 0,
       "deselected": 0,
-      "duration_seconds": 2.43,
-      "wall_duration_seconds": 4
+      "duration_seconds": 2.72,
+      "wall_duration_seconds": 5
     },
     "backend_fast": {
       "command": "bash scripts/check_backend_fast.sh",
@@ -31,8 +31,8 @@
       "failed": 0,
       "skipped": 0,
       "deselected": 40,
-      "duration_seconds": 8.79,
-      "wall_duration_seconds": 9
+      "duration_seconds": 8.77,
+      "wall_duration_seconds": 10
     },
     "backend_requested_full": {
       "command": "python -m pytest backend/tests -q",
@@ -41,7 +41,7 @@
       "failed": 0,
       "skipped": 0,
       "deselected": 40,
-      "duration_seconds": 7.94,
+      "duration_seconds": 7.97,
       "wall_duration_seconds": 9,
       "notes": "backend/pytest.ini addopts excludes benchmark, audit, frontend, and slow markers, so this requested command is not an unfiltered full suite."
     },
@@ -52,8 +52,8 @@
       "failed": 11,
       "skipped": 0,
       "deselected": 0,
-      "duration_seconds": 16.33,
-      "wall_duration_seconds": 17,
+      "duration_seconds": 16.59,
+      "wall_duration_seconds": 18,
       "notes": "All 11 failures are pre-existing on main: one Korean quality verification failure, six repository-relative benchmark data failures, and four missing frontend metadata/deployment failures."
     },
     "frontend_metadata": {
@@ -73,7 +73,7 @@
       "failed": 1,
       "skipped": 0,
       "deselected": 0,
-      "duration_seconds": 4.35,
+      "duration_seconds": 4.3,
       "wall_duration_seconds": 6
     },
     "routing_existing": {
@@ -83,7 +83,7 @@
       "failed": 0,
       "skipped": 0,
       "deselected": 306,
-      "duration_seconds": 1.51,
+      "duration_seconds": 1.6,
       "wall_duration_seconds": 2
     },
     "clarification_unsupported_existing": {
@@ -93,7 +93,7 @@
       "failed": 0,
       "skipped": 0,
       "deselected": 304,
-      "duration_seconds": 1.53,
+      "duration_seconds": 1.66,
       "wall_duration_seconds": 3
     }
   },
@@ -283,7 +283,7 @@
       "passed_cases": 199,
       "failed_cases": 1,
       "accuracy": 0.995,
-      "pytest_result": "3 passed, 1 failed in 4.35s"
+      "pytest_result": "3 passed, 1 failed in 4.30s"
     }
   },
   "performance_baseline": {
@@ -293,10 +293,10 @@
     "repeats": 5,
     "warmups": 1,
     "samples": 215,
-    "mean_ms": 9.639277,
-    "p95_ms": 33.230674,
-    "min_ms": 1.610199,
-    "max_ms": 45.23826,
+    "mean_ms": 9.458354,
+    "p95_ms": 32.092011,
+    "min_ms": 1.584351,
+    "max_ms": 42.788948,
     "status_counts": {
       "solved": 210,
       "needs_clarification": 5,
@@ -309,6 +309,7 @@
       "pydy",
       "scipy"
     ],
-    "result": "passed"
+    "result": "passed",
+    "command_wall_duration_seconds": 4
   }
 }
