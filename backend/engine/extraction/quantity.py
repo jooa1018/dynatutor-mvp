@@ -62,7 +62,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     # 암시적 초기/최종 조건
     # ------------------------------------------------------------------
     # 한국어 교재에서 자주 나오는 표현: "정지 상태에서 출발", "가만히 있다가".
-    if _has(raw, [r"정지\s*상태에서\s*출발", r"정지해\s*있다가", r"정지해\s*있는", r"멈춰\s*있는", r"가만히\s*있다가", r"처음(?:에는)?\s*가만히", r"처음(?:에는)?\s*정지", r"초기\s*정지", r"from\s+rest", r"initially\s+at\s+rest"]):
+    if _has(raw, [r"정지\s*상태에서\s*출발", r"정지\s*상태(?:의|인)?\s*물체", r"정지해\s*있다가", r"정지해\s*있는", r"멈춰\s*있는", r"가만히\s*있다가", r"처음(?:에는)?\s*가만히", r"처음(?:에는)?\s*정지", r"초기\s*정지", r"from\s+rest", r"initially\s+at\s+rest"]):
         _set(knowns, "v0", 0.0, "m/s", "정지 상태에서 출발 → v0=0")
     # "멈출 때까지", "최종적으로 정지"는 최종속도 0으로 본다.
     if _has(raw, [r"멈출\s*때", r"정지할\s*때", r"멈춘다", r"정지한다", r"최종적으로\s*정지", r"나중(?:에는)?\s*정지", r"comes\s+to\s+rest", r"until\s+it\s+stops"]):
@@ -80,15 +80,24 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     # ------------------------------------------------------------------
     m1 = first_number(r"(?:m1|m_1|m_a|mass\s*1|물체\s*1|물체\s*a|블록\s*1|블록\s*a|왼쪽\s*물체|수평면\s*위\s*물체|첫\s*번째\s*물체|1번\s*물체)[^\d-]{0,12}" + _NUM + r"\s*kg", text)
     m2 = first_number(r"(?:m2|m_2|m_b|mass\s*2|물체\s*2|물체\s*b|블록\s*2|블록\s*b|오른쪽\s*물체|매달린\s*물체|두\s*번째\s*물체|2번\s*물체)[^\d-]{0,12}" + _NUM + r"\s*kg", text)
+    single_m = first_number(r"(?<![A-Za-z0-9_])m\s*(?:=|:|은|는)\s*" + _NUM + r"\s*kg", text)
     masses = re.findall(_NUM + r"\s*kg(?!\s*\*?\s*m|m)", text, flags=re.IGNORECASE)
+    if single_m:
+        _set(knowns, "m", single_m[0], "kg", single_m[1])
     if m1:
         _set(knowns, "m1", m1[0], "kg", m1[1])
     if m2:
         _set(knowns, "m2", m2[0], "kg", m2[1])
-    if "m1" not in knowns and masses:
+    if "m" not in knowns and "m1" not in knowns and masses:
         _set(knowns, "m", _float(masses[0]), "kg", masses[0] + " kg")
-    if "m1" not in knowns and len(masses) >= 2:
+    if "m" not in knowns and "m1" not in knowns and len(masses) >= 2:
         knowns.pop("m", None)
+        _set(knowns, "m1", _float(masses[0]), "kg", masses[0] + " kg")
+        _set(knowns, "m2", _float(masses[1]), "kg", masses[1] + " kg")
+    if re.search(r"(?:두|both)\s*매달린\s*물체", text, re.IGNORECASE) and len(masses) >= 2:
+        knowns.pop("m", None)
+        knowns.pop("m1", None)
+        knowns.pop("m2", None)
         _set(knowns, "m1", _float(masses[0]), "kg", masses[0] + " kg")
         _set(knowns, "m2", _float(masses[1]), "kg", masses[1] + " kg")
 
@@ -97,7 +106,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     if gram_mass and "m" not in knowns and "m1" not in knowns:
         _set(knowns, "m", gram_mass[0] / 1000.0, "kg", gram_mass[1] + " → kg")
 
-    mu = first_number(r"(?:mu|마찰계수|coefficient\s*of\s*friction)[^\d-]{0,12}" + _NUM, text)
+    mu = first_number(r"(?:mu|마찰계수|coefficient\s*of\s*friction)\s*(?:=|:|은|는|is)?[^\d-]{0,12}" + _NUM, text)
     if mu:
         _set(knowns, "mu", mu[0], None, mu[1])
 
@@ -111,7 +120,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     # (단위가 있는 기존 패턴이 먼저 잡고, _set은 첫 값을 유지하므로 안전.)
     # ------------------------------------------------------------------
     if "v0" not in knowns:
-        bare = first_number(r"(?<![a-z0-9_])v_?0\s*=\s*" + _NUM + r"(?!\s*(?:m/s|km/h|cm/s|m\b|km\b))", text)
+        bare = first_number(r"(?<![a-z0-9_])v_?0\s*=\s*" + _NUM + r"(?![\d.,]|\s*(?:m/s|km/h|cm/s|m\b|km\b))", text)
         if bare:
             _set(knowns, "v0", bare[0], "m/s", bare[1] + " (단위 생략 → m/s)")
     if "omega0" not in knowns:
@@ -127,7 +136,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     # Phase 35: 학생식 자연어 표현
     # ------------------------------------------------------------------
     # "3 m/s²로 움직인다/가속한다" — 라벨(가속도) 없이 값+단위+조사로 오는 가속도
-    bare_a = first_number(_NUM + r"\s*m/s\^?2\s*(?:로|의\s*(?:등)?가속도)", text)
+    bare_a = first_number(_NUM + r"\s*m/s\^?2\s*(?:로|의\s*(?:일정한\s*)?(?:등)?가속도)", text)
     if bare_a and "a" not in knowns:
         _set(knowns, "a", bare_a[0], "m/s^2", bare_a[1])
 
@@ -148,8 +157,14 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
         _set(knowns, "h", below[0], "m", below[1] + " → 발사점 아래 착지 (Δy = -h)")
 
     # "힘(의) 방향으로 5m 이동/밀었다/끌었다/작용한다" → 힘과 변위가 같은 방향 (θ=0)
-    if _has(raw, [r"힘(?:의)?\s*방향(?:으로|과\s*같은\s*방향으로)[^.\n]{0,24}(?:이동|움직|끌|밀|작용)"]):
-        _set(knowns, "theta", 0.0, "deg", "힘 방향으로 작용/이동 → θ=0")
+    if _has(raw, [
+        r"힘(?:의)?\s*방향(?:으로|을\s*따라)[^.\n]{0,24}(?:이동|움직|끌|밀|작용)",
+        r"힘[^.\n]{0,30}(?:변위|이동)[^.\n]{0,20}(?:같은|동일한|나란한)\s*방향",
+        r"(?:변위|이동)[^.\n]{0,30}힘[^.\n]{0,20}(?:같은|동일한|나란한)\s*방향",
+        r"(?:같은|동일한|나란한)\s*방향[^.\n]{0,30}(?:힘|변위|이동)",
+        r"힘과\s*(?:변위|이동)(?:는|가)?\s*(?:같은|동일한|나란한)\s*방향",
+    ]):
+        _set(knowns, "theta", 0.0, "deg", "힘과 변위의 명시적 같은 방향 → θ=0")
 
     # ------------------------------------------------------------------
     # 일/에너지/스프링
@@ -158,7 +173,9 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     if work:
         _set(knowns, "W", work[0], "J", work[1])
 
-    stiffness = first_number(r"(?:스프링\s*상수|spring\s*constant|stiffness|k\s*=)[^\d-]{0,12}" + _NUM + r"\s*(?:N/m|N\s*/\s*m)", text)
+    stiffness = first_number(r"(?:스프링\s*상수|용수철\s*상수|spring\s*constant|stiffness|k\s*(?:=|:|은|는))[^\d-]{0,12}" + _NUM + r"\s*(?:N/m|N\s*/\s*m)", text)
+    if not stiffness:
+        stiffness = first_number(_NUM + r"\s*(?:N/m|N\s*/\s*m)[^.\n]{0,20}(?:스프링|용수철)", text)
     if stiffness:
         _set(knowns, "k", stiffness[0], "N/m", stiffness[1])
 
@@ -206,7 +223,9 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     if v and "v0" not in knowns and "vf" not in knowns:
         _set_si_velocity(knowns, "v", v[0], v[1].replace(" ", ""), v[2])
     if ("던졌" in text or "던진" in text or "발사" in text or "projectile" in text.lower()) and "v0" not in knowns:
-        throw_speed = first_number(_NUM + r"\s*(?:m/s|mps)[^\.\n]{0,20}?(?:던졌|던진|발사)", text)
+        throw_speed = first_number(_NUM + r"\s*(?:m/s|mps)\s*(?:의\s*)?(?:초속도|발사속도)(?:로|으로)", text)
+        if not throw_speed:
+            throw_speed = first_number(_NUM + r"\s*(?:m/s|mps)[^\.\n]{0,32}?(?:던졌|던진|발사)", text)
         if not throw_speed:
             throw_speed = first_number(r"(?:수평으로|비스듬히)[^\.\n]{0,20}?" + _NUM + r"\s*(?:m/s|mps)", text)
         if throw_speed:
@@ -251,13 +270,13 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
 
     time = first_number(r"(?:시간|time|t\s*=)[^\d-]{0,12}" + _NUM + r"\s*s", text)
     if not time:
-        time = first_number(_NUM + r"\s*s\s*(?:동안|후|뒤|간|작용|동안\s*운동|동안\s*이동)", text)
+        time = first_number(_NUM + r"\s*s\s*(?:동안|후|뒤|간|작용|동안\s*운동|동안\s*이동|가속|운동|움직)", text)
     if time:
         _set(knowns, "t", time[0], "s", time[1])
 
     distance = first_number(r"(?:이동한\s*거리|수평거리|사거리|거리|변위|이동거리|displacement|distance|s\s*=|x\s*=)[^\d-]{0,12}" + _NUM + r"\s*m", text)
     if not distance:
-        distance = first_number(_NUM + r"\s*m\s*(?:동안|만큼|를|을|으로)?\s*(?:이동|움직|간다|갔다|전진|미끄러|밀|당|작용)", text)
+        distance = first_number(_NUM + r"\s*m\s*(?:동안|만큼|를|을|으로)?\s*(?:이동|움직|간다|갔다|전진|미끄러|밀|당|끌|작용)", text)
     if distance:
         _set(knowns, "s", distance[0], "m", distance[1])
 
@@ -265,7 +284,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     if not acceleration:
         acceleration = first_number(r"(?:가속|감속|등가속도)[^\n.]{0,30}?" + _NUM + r"\s*(?:m/s\^?2|m/s2|mps2)", text)
     if not acceleration:
-        acceleration = first_number(_NUM + r"\s*(?:m/s\^?2|m/s2|mps2|m/s²)\s*(?:의)?\s*(?:가속도|감속도|가속|감속|등가속)", text)
+        acceleration = first_number(_NUM + r"\s*(?:m/s\^?2|m/s2|mps2|m/s²)\s*(?:의\s*)?(?:일정한\s*)?(?:가속도|감속도|가속|감속|등가속)", text)
     if not acceleration:
         acceleration = first_number(_NUM + r"\s*(?:m/s\^?2|m/s2|mps2|m/s²)\s*(?:로|으로)?\s*(?:가속|감속|등가속)", text)
     if acceleration:
