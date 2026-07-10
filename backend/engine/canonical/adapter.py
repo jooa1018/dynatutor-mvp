@@ -86,158 +86,154 @@ def _stable_id(prefix: str, payload: Any) -> str:
     return f"{prefix}_{hashlib.sha256(encoded.encode('utf-8')).hexdigest()[:16]}"
 
 
-def _subject_and_symbol(key: str) -> tuple[str, str]:
-    if key in {"m1", "v1", "v1f"}:
-        return "object_1", {"m1": "m", "v1": "v", "v1f": "v_after"}[key]
-    if key in {"m2", "v2", "v2f"}:
-        return "object_2", {"m2": "m", "v2": "v", "v2f": "v_after"}[key]
-    if key in {"Ip", "Rp"}:
-        return "pulley", {"Ip": "I", "Rp": "R"}[key]
-    if key.endswith("A") or key in {"vAx", "vAy", "aAx", "aAy"}:
-        return "point_A", key
-    if key.endswith("B") or key in {"vBx", "vBy", "aBx", "aBy", "rBAx", "rBAy"}:
-        return "point_B", key
-    if key in {"g", "theta", "e", "mu", "mu_s", "mu_k", "W"}:
+_SUBJECT_BINDINGS: dict[str, tuple[str, str]] = {
+    "m1": ("object_1", "m"),
+    "v1": ("object_1", "v"),
+    "v1f": ("object_1", "v_after"),
+    "m2": ("object_2", "m"),
+    "v2": ("object_2", "v"),
+    "v2f": ("object_2", "v_after"),
+    "Ip": ("pulley", "I"),
+    "Rp": ("pulley", "R"),
+    "vA": ("point_A", "vA"),
+    "aA": ("point_A", "aA"),
+    "vAx": ("point_A", "vAx"),
+    "vAy": ("point_A", "vAy"),
+    "aAx": ("point_A", "aAx"),
+    "aAy": ("point_A", "aAy"),
+    "vB": ("point_B", "vB"),
+    "aB": ("point_B", "aB"),
+    "vBx": ("point_B", "vBx"),
+    "vBy": ("point_B", "vBy"),
+    "aBx": ("point_B", "aBx"),
+    "aBy": ("point_B", "aBy"),
+    "rBAx": ("point_B", "rBAx"),
+    "rBAy": ("point_B", "rBAy"),
+    "A": ("oscillator", "A"),
+    "k": ("oscillator", "k"),
+    "x": ("oscillator", "x"),
+}
+_SYSTEM_KEYS = {"g", "theta", "e", "mu", "mu_s", "mu_k", "W", "tau", "omega", "omega0", "alpha"}
+_BODY_KEYS = {
+    "m", "v", "v0", "vf", "F", "a", "t", "s", "h", "h0", "yf",
+    "I", "R", "r", "rdot", "rddot", "thetadot", "thetaddot",
+    "vrel", "arel",
+}
+_BACKGROUND_MARKERS = (
+    "참고로", "온도", "기온", "카메라", "관찰자", "기록지", "칠판",
+    "교과서", "시험지", "저울", "학생", "선생", "옆 반", "친구",
+    "무관하", "관계없", "사용하지 않", "날씨", "시험 시간",
+)
+
+
+def _valid_source_span(raw_text: str, quantity: Quantity) -> bool:
+    span = quantity.source_span
+    if span is None:
+        return False
+    start, end = span
+    if start < 0 or end <= start or end > len(raw_text):
+        return False
+    matched = quantity.matched_text
+    return bool(matched) and raw_text[start:end] == matched
+
+
+def _span_context(raw_text: str, span: tuple[int, int] | None) -> str:
+    if span is None:
+        return ""
+    start, end = span
+    left = max(raw_text.rfind(".", 0, start), raw_text.rfind("!", 0, start), raw_text.rfind("?", 0, start))
+    right_candidates = [pos for pos in (
+        raw_text.find(".", end), raw_text.find("!", end), raw_text.find("?", end)
+    ) if pos >= 0]
+    right = min(right_candidates) + 1 if right_candidates else len(raw_text)
+    return raw_text[left + 1:right]
+
+
+def _subject_and_symbol(
+    canonical: CanonicalProblem,
+    key: str,
+    quantity: Quantity,
+) -> tuple[str, str]:
+    if _valid_source_span(canonical.raw_text, quantity):
+        context = _span_context(canonical.raw_text, quantity.source_span)
+        if any(marker in context for marker in _BACKGROUND_MARKERS):
+            return "background", key
+    if key in _SUBJECT_BINDINGS:
+        return _SUBJECT_BINDINGS[key]
+    if key in _SYSTEM_KEYS:
         return "system", key
-    return "body", key
+    if key in _BODY_KEYS:
+        return "body", key
+    return "unbound", key
 
 
-def _quantity_status(quantity: Quantity) -> tuple[str, str, float]:
+def _quantity_status(
+    canonical: CanonicalProblem,
+    quantity: Quantity,
+) -> tuple[str, str, float]:
+    hint = quantity.provenance_hint
     source = quantity.source_text or ""
-    lower = source.lower()
-    if lower.startswith("사용자 입력"):
-        return "explicit", "user_confirmation", 1.0
-    if "기본값" in source:
+    has_raw_evidence = _valid_source_span(canonical.raw_text, quantity)
+
+    if hint == "user_confirmation":
+        return "inferred", "user_confirmation", 1.0
+    if hint == "domain_default" or (hint is None and "기본값" in source):
         return "defaulted", "domain_default", 0.95
-    if "충돌 진행 물체" in source:
-        return "inferred", "compatibility_alias", 0.9
-    if "→ m/s" in source or "→ m/s²" in source:
-        return "normalized", "unit_normalization", 1.0
-    if "단위 생략" in source:
-        return "inferred", "domain_rule", 0.8
-    if "→" in source or "inferred" in lower or "정지" in source and quantity.value == 0:
-        return "inferred", "domain_rule", 0.9
-    return "explicit", "text_extraction", 1.0
+    if hint == "compatibility_alias":
+        return "inferred", "compatibility_alias", 0.85
+    if hint == "unit_normalization":
+        return "normalized", "unit_normalization", 1.0 if has_raw_evidence else 0.7
+    if hint == "domain_rule":
+        return "inferred", "domain_rule", 0.85 if has_raw_evidence else 0.75
+    if has_raw_evidence:
+        return "explicit", "text_extraction", 1.0
+    return "inferred", "legacy_unverified", 0.5
 
-
-def _source_span(raw_text: str, source_text: str | None) -> tuple[int, int] | None:
-    if not source_text or source_text.startswith("기본값") or source_text.startswith("사용자 입력"):
+def _normalization_alternative(quantity: Quantity) -> dict[str, Any] | None:
+    evidence = quantity.normalization_evidence
+    if not evidence:
         return None
-    candidates = [source_text]
-    for separator in (" →", " ("):
-        candidates.extend(item.split(separator, 1)[0].strip() for item in list(candidates) if separator in item)
-    for candidate in sorted(set(candidates), key=len, reverse=True):
-        if not candidate:
-            continue
-        start = raw_text.lower().find(candidate.lower())
-        if start >= 0:
-            return start, start + len(candidate)
-        flexible = re.escape(candidate).replace(r"\ ", r"\s*")
-        match = re.search(flexible, raw_text, re.IGNORECASE)
-        if match:
-            return match.start(), match.end()
-    return None
-
-
-def _source_representation(source_text: str | None) -> dict[str, Any] | None:
-    if not source_text:
-        return None
-    match = re.search(
-        r"(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(km\s*/\s*h|km/h|cm/s(?:\^?2|2|²))",
-        source_text,
-        re.IGNORECASE,
-    )
-    if not match:
+    source_value = evidence.get("source_value")
+    source_unit = evidence.get("source_unit")
+    if source_value is None or source_unit is None:
         return None
     return {
-        "value": float(match.group(1).replace(",", "")),
-        "unit": match.group(2).replace(" ", ""),
+        "value": float(source_value),
+        "unit": str(source_unit).replace(" ", ""),
         "relation": "source_representation",
     }
 
 
-
-
-def _raw_normalization_evidence(
-    raw_text: str,
-    key: str,
-    quantity: Quantity,
-) -> tuple[tuple[int, int], str, dict[str, Any]] | None:
-    """Recover the pre-normalization representation from the original prompt."""
-
-    if quantity.value is None:
-        return None
-    specifications: list[tuple[set[str], str, str, float, str]] = [
-        (
-            {"v0", "vf", "v", "v1", "v2", "vA", "vB", "vrel", "rdot"},
-            r"(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*km\s*/\s*(?:h|hr|hour|시)",
-            "km/h",
-            1.0 / 3.6,
-            "m/s",
-        ),
-        (
-            {"a", "aA", "aB", "arel", "rddot"},
-            r"(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*cm\s*/\s*s(?:\^?2|2|²)",
-            "cm/s^2",
-            0.01,
-            "m/s^2",
-        ),
-        (
-            {"m", "m1", "m2"},
-            r"(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*g(?![A-Za-z/])",
-            "g",
-            0.001,
-            "kg",
-        ),
-        (
-            {"h", "h0", "yf", "s", "x", "R", "r", "Rp"},
-            r"(-?\d+(?:,\d{3})*(?:\.\d+)?)\s*cm(?![A-Za-z/])",
-            "cm",
-            0.01,
-            "m",
-        ),
-    ]
-    for keys, pattern, source_unit, factor, target_unit in specifications:
-        if key not in keys or quantity.unit != target_unit:
-            continue
-        for match in re.finditer(pattern, raw_text, re.IGNORECASE):
-            source_value = float(match.group(1).replace(",", ""))
-            if math.isclose(
-                source_value * factor,
-                float(quantity.value),
-                rel_tol=1e-9,
-                abs_tol=1e-9,
-            ):
-                source_text = match.group(0)
-                return (
-                    (match.start(), match.end()),
-                    f"{source_text} → {quantity.value:g} {target_unit}",
-                    {
-                        "value": source_value,
-                        "unit": source_unit,
-                        "relation": "source_representation",
-                    },
-                )
-    return None
-
 def _quantity_fact(canonical: CanonicalProblem, key: str, quantity: Quantity) -> ExtractedFact:
-    status, provenance, confidence = _quantity_status(quantity)
-    subject_id, symbol = _subject_and_symbol(key)
-    span = _source_span(canonical.raw_text, quantity.source_text)
-    source_text = quantity.source_text
+    status, provenance, confidence = _quantity_status(canonical, quantity)
+    subject_id, symbol = _subject_and_symbol(canonical, key, quantity)
+    span = quantity.source_span if _valid_source_span(canonical.raw_text, quantity) else None
+    if subject_id == "background":
+        status = "inferred"
+        provenance = "background_context"
+        confidence = min(confidence, 0.2)
+
     alternatives: list[dict[str, Any]] = []
-    source_representation = _source_representation(quantity.source_text)
+    source_representation = _normalization_alternative(quantity)
     if source_representation:
         alternatives.append(source_representation)
-    raw_normalization = _raw_normalization_evidence(canonical.raw_text, key, quantity)
-    if raw_normalization is not None:
-        span, source_text, raw_representation = raw_normalization
-        status = "normalized"
-        provenance = "unit_normalization"
-        confidence = 1.0
-        if raw_representation not in alternatives:
-            alternatives.append(raw_representation)
+
     direction = canonical.force_direction if key in {"F", "a"} else None
+    subject_evidence = dict(quantity.subject_evidence)
+    subject_evidence.update(
+        {
+            "binding_rule": "exact_compatibility_key",
+            "resolved_subject_id": subject_id,
+        }
+    )
+    extraction_evidence: dict[str, Any] = {
+        "subject_evidence": subject_evidence,
+    }
+    if span is not None:
+        extraction_evidence["matched_raw_text"] = canonical.raw_text[span[0]:span[1]]
+    if quantity.normalization_evidence is not None:
+        extraction_evidence["normalization_evidence"] = dict(quantity.normalization_evidence)
+
     identity = {
         "kind": "quantity",
         "subject_id": subject_id,
@@ -247,6 +243,7 @@ def _quantity_fact(canonical: CanonicalProblem, key: str, quantity: Quantity) ->
         "unit": quantity.unit,
         "source_span": span,
         "status": status,
+        "provenance": provenance,
     }
     return ExtractedFact(
         fact_id=_stable_id("fact", identity),
@@ -257,15 +254,15 @@ def _quantity_fact(canonical: CanonicalProblem, key: str, quantity: Quantity) ->
         unit=quantity.unit,
         dimension=dimension_for_unit(quantity.unit),
         direction=direction,
-        source_text=source_text,
+        source_text=quantity.source_text,
         source_span=span,
         provenance=provenance,
         confidence=confidence,
         status=status,
         alternatives=alternatives,
         compatibility_key=key,
+        extraction_evidence=extraction_evidence,
     )
-
 
 def _condition_facts(canonical: CanonicalProblem) -> list[ExtractedFact]:
     facts: list[ExtractedFact] = []
@@ -306,6 +303,13 @@ def _condition_facts(canonical: CanonicalProblem) -> list[ExtractedFact]:
                 status=status,
                 alternatives=[],
                 compatibility_key=None,
+                extraction_evidence={
+                    "matched_raw_text": raw[match.start():match.end()],
+                    "subject_evidence": {
+                        "binding_rule": "condition_pattern",
+                        "resolved_subject_id": "system",
+                    },
+                },
             )
         )
     return facts
@@ -332,7 +336,38 @@ def _normalize_labeled_value(label: str, value: float, unit: str | None) -> tupl
     return value, unit.replace(" ", "") if unit else None
 
 
-def _apply_conflicts(raw_text: str, facts: list[ExtractedFact]) -> list[str]:
+def _semantic_equal(
+    left: tuple[float, str | None],
+    right: tuple[float, str | None],
+) -> bool:
+    return (
+        math.isclose(left[0], right[0], rel_tol=1e-12, abs_tol=1e-12)
+        and (left[1] == right[1] or left[1] is None or right[1] is None)
+    )
+
+
+def _refresh_fact_id(fact: ExtractedFact) -> None:
+    fact.fact_id = _stable_id(
+        "fact",
+        {
+            "kind": fact.kind,
+            "subject_id": fact.subject_id,
+            "symbol": fact.symbol,
+            "compatibility_key": fact.compatibility_key,
+            "value": fact.value,
+            "unit": fact.unit,
+            "source_span": fact.source_span,
+            "status": fact.status,
+            "provenance": fact.provenance,
+            "alternatives": fact.alternatives,
+        },
+    )
+
+
+def _apply_conflicts(
+    raw_text: str,
+    facts: list[ExtractedFact],
+) -> tuple[list[str], list[str]]:
     occurrences: dict[str, list[dict[str, Any]]] = {}
     for match in _LABEL_PATTERN.finditer(raw_text):
         label = match.group("label")
@@ -351,29 +386,62 @@ def _apply_conflicts(raw_text: str, facts: list[ExtractedFact]) -> list[str]:
             }
         )
 
-    conflicts: list[str] = []
+    unresolved: list[str] = []
+    resolved: list[str] = []
     by_key = {fact.compatibility_key: fact for fact in facts if fact.compatibility_key}
     for label, items in occurrences.items():
-        if len(items) < 2 or label not in by_key:
+        fact = by_key.get(label)
+        if fact is None or fact.value is None:
             continue
+
         semantic_values: list[tuple[float, str | None]] = []
         for item in items:
             pair = (float(item["normalized_value"]), item["normalized_unit"])
-            if not any(
-                existing_unit == pair[1] and math.isclose(existing_value, pair[0], rel_tol=1e-12, abs_tol=1e-12)
-                for existing_value, existing_unit in semantic_values
-            ):
+            if not any(_semantic_equal(existing, pair) for existing in semantic_values):
                 semantic_values.append(pair)
-        fact = by_key[label]
-        fact.alternatives = items
-        if len(semantic_values) > 1:
+
+        fact_pair = _normalize_labeled_value(
+            label,
+            float(fact.value),
+            fact.unit,
+        )
+        fact_semantic = (float(fact_pair[0]), fact_pair[1])
+        fact_matches_occurrence = any(
+            _semantic_equal(fact_semantic, pair) for pair in semantic_values
+        )
+        has_conflict = len(semantic_values) > 1 or not fact_matches_occurrence
+        if len(items) > 1 or has_conflict:
+            fact.alternatives = items
+        if not has_conflict:
+            continue
+
+        rendered = ", ".join(
+            f"{item['value']} {item['unit'] or ''}".strip() for item in items
+        )
+        if fact.provenance == "user_confirmation":
+            fact.status = "inferred"
+            fact.confidence = 1.0
+            fact.extraction_evidence["conflict_resolution"] = {
+                "resolution": "user_confirmation",
+                "selected_value": fact.value,
+                "selected_unit": fact.unit,
+                "raw_candidates": items,
+            }
+            resolved.append(
+                f"{label} conflict resolved by user confirmation: "
+                f"{fact.value} {fact.unit or ''}; raw candidates: {rendered}"
+            )
+        else:
             fact.status = "conflicting"
             fact.provenance = "conflict_detection"
             fact.confidence = min(fact.confidence, 0.5)
-            rendered = ", ".join(f"{item['value']} {item['unit'] or ''}".strip() for item in items)
-            conflicts.append(f"{label} has conflicting explicit values: {rendered}")
-    return conflicts
+            unresolved.append(
+                f"{label} has conflicting explicit values: {rendered}"
+            )
 
+    for fact in facts:
+        _refresh_fact_id(fact)
+    return unresolved, resolved
 
 def _assumption_kind(reason: str) -> str:
     mapping = [
@@ -558,6 +626,11 @@ def _legacy_view(canonical: CanonicalProblem) -> dict[str, Any]:
                     "value": quantity.value,
                     "unit": quantity.unit,
                     "source_text": quantity.source_text,
+                    "source_span": quantity.source_span,
+                    "matched_text": quantity.matched_text,
+                    "provenance_hint": quantity.provenance_hint,
+                    "subject_evidence": copy.deepcopy(quantity.subject_evidence),
+                    "normalization_evidence": copy.deepcopy(quantity.normalization_evidence),
                 }
                 for key, quantity in value.items()
             }
@@ -578,7 +651,7 @@ def build_canonical_v2(
 
     facts = [_quantity_fact(canonical, key, quantity) for key, quantity in canonical.knowns.items()]
     facts.extend(_condition_facts(canonical))
-    conflicts = _apply_conflicts(canonical.raw_text, facts)
+    conflicts, resolved_conflicts = _apply_conflicts(canonical.raw_text, facts)
     assumptions = _assumption_records(canonical, facts)
     parse_candidates = _parse_candidates(canonical, facts, conflicts)
     warnings = [
@@ -603,6 +676,7 @@ def build_canonical_v2(
         conflicts=conflicts,
         warnings=warnings,
         legacy_view=_legacy_view(canonical),
+        resolved_conflicts=resolved_conflicts,
     )
 
 
@@ -631,6 +705,19 @@ def to_legacy_problem(canonical_v2: CanonicalProblemV2) -> CanonicalProblem:
                     value=value.get("value"),
                     unit=value.get("unit"),
                     source_text=value.get("source_text"),
+                    source_span=(
+                        tuple(value["source_span"])
+                        if value.get("source_span") is not None
+                        else None
+                    ),
+                    matched_text=value.get("matched_text"),
+                    provenance_hint=value.get("provenance_hint"),
+                    subject_evidence=dict(value.get("subject_evidence") or {}),
+                    normalization_evidence=(
+                        dict(value["normalization_evidence"])
+                        if value.get("normalization_evidence") is not None
+                        else None
+                    ),
                 )
                 for key, value in (view.get("knowns") or {}).items()
             }
