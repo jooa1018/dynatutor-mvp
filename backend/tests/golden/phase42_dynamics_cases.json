@@ -1351,7 +1351,9 @@
         }
       },
       "expected_route": "spring_mass_vibration",
-      "expected_requested_outputs": [],
+      "expected_requested_outputs": [
+        "angular_frequency"
+      ],
       "expected_answers": [
         {
           "selector": "primary",
@@ -1383,7 +1385,9 @@
         }
       },
       "expected_route": "spring_mass_vibration",
-      "expected_requested_outputs": [],
+      "expected_requested_outputs": [
+        "period"
+      ],
       "expected_answers": [
         {
           "selector": "primary",
