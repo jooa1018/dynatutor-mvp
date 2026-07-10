@@ -28,6 +28,8 @@ jobs:
         run: time bash scripts/check_backend_fast.sh
       - name: Backend full tests
         run: time python -m pytest backend/tests -q
+      - name: Backend unfiltered tests
+        run: time python -m pytest backend/tests -q -o addopts=
       - name: Frontend metadata
         run: time bash scripts/check_frontend_metadata.sh
       - name: Final repository state
