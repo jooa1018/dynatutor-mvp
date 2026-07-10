@@ -187,7 +187,7 @@ def _infer_requested_outputs(t: str) -> list[str]:
         r"장력\s*(?:은|는|이)?\s*(?:얼마|\?)",
         r"장력\s*(?:와|과|및)[^.\n?]{0,40}\?",
         r"(?:find|calculate)\s+tension",
-        r"tension\s*(?:과|와|and)?[^.\n?]{0,30}\?",
+        r"tension\s*(?:과|와|and)?[^.\n?]{0,30}(?:구|계산|찾|\?)",
     ):
         add("tension")
     if any(w in t for w in ["필요한 힘", "필요한 알짜힘", "힘을 구", "force?"]) or any(w in compact for w in ["힘은?", "힘을구", "알짜힘은?", "합력은?"]):
