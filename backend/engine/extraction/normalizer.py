@@ -198,7 +198,7 @@ def strip_irrelevant_background(text: str) -> str:
     merely because it contains an unfamiliar number. Raw text is still retained
     in CanonicalProblem for provenance and the student-facing diagnosis.
     """
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\\s+|[\\r\\n]+", text) if part.strip()]
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+|[\r\n]+", text) if part.strip()]
     if len(sentences) < 2:
         return text
     retained = [
