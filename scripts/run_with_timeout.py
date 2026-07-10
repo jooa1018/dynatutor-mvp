@@ -12,9 +12,9 @@ _CHILD: subprocess.Popen[bytes] | None = None
 _KILL_AFTER_SECONDS = int(os.environ.get("DYNATUTOR_RUN_KILL_AFTER", "10"))
 
 
-def _process_group_exists(pid: int) -> bool:
+def process_group_exists(pgid: int) -> bool:
     try:
-        os.killpg(pid, 0)
+        os.killpg(pgid, 0)
         return True
     except ProcessLookupError:
         return False
@@ -22,40 +22,79 @@ def _process_group_exists(pid: int) -> bool:
         return True
 
 
-def _kill_process_group(proc: subprocess.Popen[bytes], *, reason: str) -> None:
-    print(f"[run_with_timeout] {reason}; killing process group", file=sys.stderr, flush=True)
+def _wait_for_process_group_exit(
+    proc: subprocess.Popen[bytes],
+    timeout_seconds: float,
+) -> bool:
+    """Wait for the whole session to disappear, reaping its leader as it exits."""
+    deadline = time.monotonic() + max(timeout_seconds, 0.0)
+    while True:
+        # poll() reaps the group leader. Without this, a dead leader may remain a
+        # zombie and make killpg(pgid, 0) look alive for the full grace period.
+        proc.poll()
+        if not process_group_exists(proc.pid):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+
+
+def terminate_process_group(
+    proc: subprocess.Popen[bytes],
+    *,
+    reason: str,
+    kill_after_seconds: float,
+    log_prefix: str = "[run_with_timeout]",
+) -> None:
+    """Terminate every process in the child's session within a bounded grace period."""
+    print(f"{log_prefix} {reason}; terminating process group", file=sys.stderr, flush=True)
     try:
         os.killpg(proc.pid, signal.SIGTERM)
-        proc.wait(timeout=_KILL_AFTER_SECONDS)
-        print("[run_with_timeout] process group terminated with SIGTERM", flush=True)
-        return
     except ProcessLookupError:
+        proc.poll()
         return
-    except Exception:
+    except Exception as exc:
+        print(f"{log_prefix} SIGTERM failed: {exc}", file=sys.stderr, flush=True)
+
+    if _wait_for_process_group_exit(proc, kill_after_seconds):
+        print(f"{log_prefix} process group terminated with SIGTERM", flush=True)
+        return
+
+    print(
+        f"{log_prefix} SIGTERM grace period expired; sending SIGKILL",
+        file=sys.stderr,
+        flush=True,
+    )
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        proc.poll()
+        return
+    except Exception as exc:
+        print(f"{log_prefix} SIGKILL failed: {exc}", file=sys.stderr, flush=True)
+        return
+
+    # SIGKILL cannot be caught. Keep this final wait short and bounded so a
+    # pathological uninterruptible process can never pin the validation wrapper.
+    final_wait = min(max(kill_after_seconds, 0.1), 1.0)
+    if _wait_for_process_group_exit(proc, final_wait):
+        print(f"{log_prefix} process group terminated with SIGKILL", flush=True)
+    else:
         print(
-            "[run_with_timeout] SIGTERM did not finish; sending SIGKILL",
+            f"{log_prefix} process group still visible after SIGKILL; returning without waiting",
             file=sys.stderr,
             flush=True,
         )
 
-    try:
-        os.killpg(proc.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        return
-    except Exception as exc:
-        print(f"[run_with_timeout] SIGKILL failed: {exc}", file=sys.stderr, flush=True)
-        return
-
-    try:
-        proc.wait(timeout=_KILL_AFTER_SECONDS)
-    except Exception:
-        pass
-
 
 def _handle_parent_signal(signum: int, _frame: object) -> None:
     proc = _CHILD
-    if proc is not None and proc.poll() is None:
-        _kill_process_group(proc, reason=f"received signal {signum}")
+    if proc is not None and process_group_exists(proc.pid):
+        terminate_process_group(
+            proc,
+            reason=f"received signal {signum}",
+            kill_after_seconds=_KILL_AFTER_SECONDS,
+        )
     raise SystemExit(128 + signum)
 
 
@@ -105,10 +144,14 @@ def main() -> int:
         while True:
             rc = proc.poll()
             if rc is not None:
-                if _process_group_exists(proc.pid):
+                if process_group_exists(proc.pid):
                     # 자식이 정상 종료해도 손자(pytest 플러그인, esbuild service 등)가
                     # 프로세스 그룹에 남아 있으면 터미널/외부 timeout이 매달린다 (Phase 41).
-                    _kill_process_group(proc, reason="command exited but process group is still alive")
+                    terminate_process_group(
+                        proc,
+                        reason="command exited but process group is still alive",
+                        kill_after_seconds=_KILL_AFTER_SECONDS,
+                    )
                 print(f"[run_with_timeout] command exited with code {rc}", flush=True)
                 return int(rc)
 
@@ -117,7 +160,11 @@ def main() -> int:
                 raise subprocess.TimeoutExpired(cmd, timeout_seconds)
             time.sleep(0.2)
     except subprocess.TimeoutExpired:
-        _kill_process_group(proc, reason=f"timed out after {timeout_seconds}s")
+        terminate_process_group(
+            proc,
+            reason=f"timed out after {timeout_seconds}s",
+            kill_after_seconds=_KILL_AFTER_SECONDS,
+        )
         return 124
     finally:
         _CHILD = None

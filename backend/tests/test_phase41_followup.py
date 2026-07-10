@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import math
+import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -25,6 +28,7 @@ def test_flight_time_without_v0():
     """수평 발사의 비행시간은 v0 없이 t=√(2h/g) — unknown 거절 대신 부분 답."""
     cp, r = _solve("높이 10m에서 물체를 수평으로 던졌다. 비행시간은?")
     assert cp.system_type == "projectile_motion"
+    assert "초속도 v0" not in cp.missing_info
     assert r is not None and r.ok
     assert math.isclose(r.answer.numeric, math.sqrt(2 * 10 / 9.81), rel_tol=1e-4)
 
@@ -64,15 +68,87 @@ def test_anonymous_collision_v0_aliased_to_v1():
 
 
 @pytest.mark.regression
-def test_run_with_timeout_cleans_surviving_process_group():
-    """자식이 정상 종료해도 그룹에 남은 손자(sleep)를 정리하고 즉시 반환한다.
-    (11 passed 후에도 외부 timeout까지 매달리던 문제의 재현·방지.)"""
+def test_run_with_timeout_kills_term_ignoring_descendant():
+    """정상 종료한 리더 뒤에 SIGTERM을 무시하는 손자가 남아도 bounded SIGKILL로 끝낸다."""
     script = Path(__file__).resolve().parents[2] / "scripts" / "run_with_timeout.py"
+    env = os.environ.copy()
+    env["DYNATUTOR_RUN_KILL_AFTER"] = "1"
+    started = time.monotonic()
     proc = subprocess.run(
-        [sys.executable, str(script), "30", "--", "bash", "-c", "sleep 300 & echo done"],
+        [
+            sys.executable,
+            str(script),
+            "30",
+            "--",
+            "bash",
+            "-c",
+            "trap '' TERM; while :; do sleep 1; done & echo done",
+        ],
         capture_output=True,
         text=True,
-        timeout=25,  # 매달리면 여기서 실패
+        timeout=10,
+        env=env,
     )
-    assert proc.returncode == 0, proc.stderr[-300:]
-    assert "process group" in (proc.stderr + proc.stdout)  # 정리 로그 확인
+    elapsed = time.monotonic() - started
+    output = proc.stderr + proc.stdout
+    assert proc.returncode == 0, output[-500:]
+    assert elapsed < 8
+    assert "sending SIGKILL" in output
+    assert "command exited with code 0" in output
+
+
+@pytest.mark.regression
+def test_frontend_wrapper_cleans_child_on_parent_signal(monkeypatch):
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.syspath_prepend(str(root))
+    from scripts import check_frontend_build
+
+    child = subprocess.Popen(
+        ["bash", "-c", "trap '' TERM; while :; do sleep 1; done"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    monkeypatch.setattr(check_frontend_build, "_CHILD", child)
+    monkeypatch.setattr(check_frontend_build, "kill_after_seconds", 1)
+    try:
+        with pytest.raises(SystemExit) as exited:
+            check_frontend_build._handle_parent_signal(signal.SIGTERM, None)
+        assert exited.value.code == 128 + signal.SIGTERM
+        assert child.poll() is not None
+    finally:
+        if child.poll() is None:
+            os.killpg(child.pid, signal.SIGKILL)
+            child.wait(timeout=3)
+
+
+@pytest.mark.regression
+def test_backend_benchmark_wrapper_returns_after_real_pytest_summary():
+    """sleep 대역이 아니라 실제 benchmark pytest와 wrapper의 종료까지 검증한다."""
+    root = Path(__file__).resolve().parents[2]
+    script = root / "scripts" / "check_backend_benchmark.sh"
+    env = os.environ.copy()
+    env["DYNATUTOR_BACKEND_BENCHMARK_TIMEOUT"] = "90"
+    env["DYNATUTOR_RUN_KILL_AFTER"] = "1"
+    proc = subprocess.run(
+        ["bash", str(script)],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=env,
+    )
+    output = proc.stdout + proc.stderr
+    assert proc.returncode == 0, output[-1000:]
+    assert " passed" in output
+    assert "[run_with_timeout] command exited with code 0" in output
+
+
+@pytest.mark.regression
+def test_notebook_export_appends_download_anchor_once():
+    api = (
+        Path(__file__).resolve().parents[2] / "frontend" / "lib" / "api.ts"
+    ).read_text(encoding="utf-8")
+    export_body = api.split("export async function downloadNotebookExport()", 1)[1]
+    assert export_body.count("document.body.appendChild(a);") == 1

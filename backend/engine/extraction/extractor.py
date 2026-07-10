@@ -639,7 +639,14 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
         if len({"v0", "vf", "a", "t", "s"}.intersection(c.knowns.keys())) < 3:
             missing.append("등가속도 변수 3개 이상: v0, vf, a, t, s")
     elif c.system_type == "projectile_motion":
-        if "v0" not in c.knowns and "v" not in c.knowns:
+        # 수평 발사의 time-only 답은 연직 운동만으로 결정된다. canonical에
+        # stale v0 누락을 남기면 풀이 성공 뒤에도 UI가 불필요한 입력을 요구한다.
+        requested = set(c.requested_outputs or [])
+        if (
+            requested.intersection({"range", "distance"})
+            and "v0" not in c.knowns
+            and "v" not in c.knowns
+        ):
             missing.append("초속도 v0")
         if "theta" not in c.knowns and c.launch_angle_deg is None:
             missing.append("발사각 θ 또는 발사 방향")

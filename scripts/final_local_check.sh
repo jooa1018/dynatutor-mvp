@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
 
-echo "== Backend tests =="
-cd backend
-pytest -q
+echo "== Backend fast =="
+./scripts/check_backend_fast.sh
 
-echo "== Benchmark audit =="
-PYTHONPATH=. python tools/run_phase20_benchmark_audit.py
+echo "== Backend benchmark =="
+./scripts/check_backend_benchmark.sh
 
-echo "== Chrono validation harness =="
-PYTHONPATH=. python tools/chrono_validation/run_all_validations.py --strict
+echo "== Backend audit =="
+./scripts/check_backend_audit.sh
 
-echo "== Release candidate audit =="
-PYTHONPATH=. python tools/run_release_candidate_audit.py
+echo "== Frontend static build =="
+./scripts/check_frontend_build.sh
 
-cd ..
-
-echo "== Frontend build check =="
-if ./scripts/check_frontend_build.sh; then
-  echo "Frontend build passed."
+if [[ "${DYNATUTOR_DEEP_AUDIT:-0}" == "1" ]]; then
+  echo "== Optional deep audit =="
+  (
+    cd backend
+    PYTHONPATH=. python tools/run_phase20_benchmark_audit.py
+    PYTHONPATH=. python tools/chrono_validation/run_all_validations.py --strict
+    PYTHONPATH=. python tools/run_release_candidate_audit.py
+  )
 else
-  code=$?
-  if [ "$code" = "2" ]; then
-    echo "Frontend build check skipped because dependencies are not installed."
-    echo "Run: cd frontend && npm install && npm run build"
-  else
-    exit "$code"
-  fi
+  echo "== Optional deep audit skipped =="
+  echo "Run with DYNATUTOR_DEEP_AUDIT=1 to include benchmark audit, Chrono strict, and release-candidate audit."
 fi
+
+echo "All required Phase 41 local checks passed."
