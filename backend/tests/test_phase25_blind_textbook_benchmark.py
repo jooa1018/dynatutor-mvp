@@ -5,7 +5,7 @@ from pathlib import Path
 from engine.services import solve_problem
 
 
-ROOT = Path("tests/benchmarks/blind_textbook_style")
+ROOT = Path(__file__).resolve().parent / "benchmarks" / "blind_textbook_style"
 
 
 def assert_has_answer(answers, *, symbol=None, label=None, numeric=None, unit=None, tolerance=1e-3):
