@@ -110,7 +110,7 @@ def _unsupported_scope(t: str) -> str | None:
         ("deformable_body", [r"탄성\s*보", r"보의\s*변형", r"재료\s*변형", r"응력", r"변형률", r"유한요소", r"deformable", r"finite element"]),
         ("fluid_dynamics", [r"유체역학", r"관\s*속\s*유체", r"점성", r"fluid dynamics", r"viscosity"]),
         ("thermodynamics", [r"열역학", r"엔트로피", r"이상기체", r"thermodynamics", r"entropy"]),
-        ("electromagnetism", [r"전자기", r"전기장", r"자기장", r"(?<!회)전하(?=\\s|가|는|를|의|에|$)", r"회로의?\s*전압", r"electromagnet"]),
+        ("electromagnetism", [r"전자기", r"전기장", r"자기장", r"(?<!회)전하(?=\s|가|는|를|의|에|$)", r"회로의?\s*전압", r"electromagnet"]),
     ]
     for subtype, subtype_patterns in patterns:
         if any(re.search(pattern, t, re.IGNORECASE) for pattern in subtype_patterns):
