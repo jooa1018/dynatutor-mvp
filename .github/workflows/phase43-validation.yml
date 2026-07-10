@@ -56,7 +56,10 @@ jobs:
           run_check phase43 env PYTHONPATH=backend python -m pytest backend/tests/test_phase43_canonical_problem_v2.py backend/tests/test_phase42_baseline_contracts.py -q -o "addopts="
           run_check backend_fast bash scripts/check_backend_fast.sh
           run_check backend_requested python -m pytest backend/tests -q
-          run_check frontend_metadata bash scripts/check_frontend_metadata.sh\n          run_check phase42_latency env PYTHONPATH=backend python backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies\n          run_check backend_unfiltered python -m pytest backend/tests -q -o "addopts="\n
+          run_check frontend_metadata bash scripts/check_frontend_metadata.sh
+          run_check phase42_latency env PYTHONPATH=backend python backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies
+          run_check backend_unfiltered python -m pytest backend/tests -q -o "addopts="
+
           echo "OVERALL_EXIT: ${overall}" >> "$report"
           echo "overall=${overall}" >> "$GITHUB_OUTPUT"
           cat "$report"
