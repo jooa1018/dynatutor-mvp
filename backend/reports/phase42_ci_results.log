@@ -1,0 +1,2160 @@
+===== install =====
+COMMAND: python -m pip install -r backend/requirements-lock.txt
+Collecting fastapi==0.128.2 (from -r backend/requirements-lock.txt (line 4))
+  Downloading fastapi-0.128.2-py3-none-any.whl.metadata (30 kB)
+Collecting uvicorn==0.48.0 (from uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading uvicorn-0.48.0-py3-none-any.whl.metadata (6.7 kB)
+Collecting pydantic==2.13.4 (from -r backend/requirements-lock.txt (line 6))
+  Downloading pydantic-2.13.4-py3-none-any.whl.metadata (109 kB)
+Collecting sympy==1.14.0 (from -r backend/requirements-lock.txt (line 7))
+  Downloading sympy-1.14.0-py3-none-any.whl.metadata (12 kB)
+Collecting pytest==9.0.2 (from -r backend/requirements-lock.txt (line 8))
+  Downloading pytest-9.0.2-py3-none-any.whl.metadata (7.6 kB)
+Collecting httpx==0.28.1 (from -r backend/requirements-lock.txt (line 9))
+  Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting python-multipart==0.0.29 (from -r backend/requirements-lock.txt (line 10))
+  Downloading python_multipart-0.0.29-py3-none-any.whl.metadata (2.1 kB)
+Collecting pint==0.25.3 (from -r backend/requirements-lock.txt (line 11))
+  Downloading pint-0.25.3-py3-none-any.whl.metadata (10 kB)
+Collecting numpy==2.3.5 (from -r backend/requirements-lock.txt (line 12))
+  Downloading numpy-2.3.5-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+Collecting scipy==1.17.0 (from -r backend/requirements-lock.txt (line 13))
+  Downloading scipy-1.17.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+Collecting pydy==0.7.1 (from -r backend/requirements-lock.txt (line 14))
+  Downloading pydy-0.7.1.tar.gz (6.6 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.6/6.6 MB 100.2 MB/s  0:00:00
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Collecting starlette<0.51.0,>=0.40.0 (from fastapi==0.128.2->-r backend/requirements-lock.txt (line 4))
+  Downloading starlette-0.50.0-py3-none-any.whl.metadata (6.3 kB)
+Collecting typing-extensions>=4.8.0 (from fastapi==0.128.2->-r backend/requirements-lock.txt (line 4))
+  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+Collecting typing-inspection>=0.4.2 (from fastapi==0.128.2->-r backend/requirements-lock.txt (line 4))
+  Downloading typing_inspection-0.4.2-py3-none-any.whl.metadata (2.6 kB)
+Collecting annotated-doc>=0.0.2 (from fastapi==0.128.2->-r backend/requirements-lock.txt (line 4))
+  Downloading annotated_doc-0.0.4-py3-none-any.whl.metadata (6.6 kB)
+Collecting click>=7.0 (from uvicorn==0.48.0->uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading click-8.4.2-py3-none-any.whl.metadata (2.6 kB)
+Collecting h11>=0.8 (from uvicorn==0.48.0->uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting annotated-types>=0.6.0 (from pydantic==2.13.4->-r backend/requirements-lock.txt (line 6))
+  Downloading annotated_types-0.7.0-py3-none-any.whl.metadata (15 kB)
+Collecting pydantic-core==2.46.4 (from pydantic==2.13.4->-r backend/requirements-lock.txt (line 6))
+  Downloading pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (6.6 kB)
+Collecting mpmath<1.4,>=1.1.0 (from sympy==1.14.0->-r backend/requirements-lock.txt (line 7))
+  Downloading mpmath-1.3.0-py3-none-any.whl.metadata (8.6 kB)
+Collecting iniconfig>=1.0.1 (from pytest==9.0.2->-r backend/requirements-lock.txt (line 8))
+  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting packaging>=22 (from pytest==9.0.2->-r backend/requirements-lock.txt (line 8))
+  Downloading packaging-26.2-py3-none-any.whl.metadata (3.5 kB)
+Collecting pluggy<2,>=1.5 (from pytest==9.0.2->-r backend/requirements-lock.txt (line 8))
+  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+Collecting pygments>=2.7.2 (from pytest==9.0.2->-r backend/requirements-lock.txt (line 8))
+  Downloading pygments-2.20.0-py3-none-any.whl.metadata (2.5 kB)
+Collecting anyio (from httpx==0.28.1->-r backend/requirements-lock.txt (line 9))
+  Downloading anyio-4.14.1-py3-none-any.whl.metadata (4.6 kB)
+Collecting certifi (from httpx==0.28.1->-r backend/requirements-lock.txt (line 9))
+  Downloading certifi-2026.6.17-py3-none-any.whl.metadata (2.5 kB)
+Collecting httpcore==1.* (from httpx==0.28.1->-r backend/requirements-lock.txt (line 9))
+  Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting idna (from httpx==0.28.1->-r backend/requirements-lock.txt (line 9))
+  Downloading idna-3.18-py3-none-any.whl.metadata (6.1 kB)
+Collecting flexcache>=0.3 (from pint==0.25.3->-r backend/requirements-lock.txt (line 11))
+  Downloading flexcache-0.3-py3-none-any.whl.metadata (7.0 kB)
+Collecting flexparser>=0.4 (from pint==0.25.3->-r backend/requirements-lock.txt (line 11))
+  Downloading flexparser-0.4-py3-none-any.whl.metadata (18 kB)
+Collecting platformdirs>=2.1.0 (from pint==0.25.3->-r backend/requirements-lock.txt (line 11))
+  Downloading platformdirs-4.10.0-py3-none-any.whl.metadata (5.5 kB)
+Collecting setuptools>=44.0.0 (from pydy==0.7.1->-r backend/requirements-lock.txt (line 14))
+  Using cached setuptools-83.0.0-py3-none-any.whl.metadata (6.6 kB)
+Collecting httptools>=0.6.3 (from uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading httptools-0.8.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+Collecting python-dotenv>=0.13 (from uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading python_dotenv-1.2.2-py3-none-any.whl.metadata (27 kB)
+Collecting pyyaml>=5.1 (from uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (2.4 kB)
+Collecting uvloop>=0.15.1 (from uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading uvloop-0.22.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (4.9 kB)
+Collecting watchfiles>=0.20 (from uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading watchfiles-1.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+Collecting websockets>=10.4 (from uvicorn[standard]==0.48.0->-r backend/requirements-lock.txt (line 5))
+  Downloading websockets-16.1-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.8 kB)
+Downloading fastapi-0.128.2-py3-none-any.whl (104 kB)
+Downloading uvicorn-0.48.0-py3-none-any.whl (71 kB)
+Downloading pydantic-2.13.4-py3-none-any.whl (472 kB)
+Downloading sympy-1.14.0-py3-none-any.whl (6.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 6.3/6.3 MB 199.2 MB/s  0:00:00
+Downloading pytest-9.0.2-py3-none-any.whl (374 kB)
+Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+Downloading python_multipart-0.0.29-py3-none-any.whl (29 kB)
+Downloading pint-0.25.3-py3-none-any.whl (307 kB)
+Downloading numpy-2.3.5-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (16.6 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 16.6/16.6 MB 174.9 MB/s  0:00:00
+Downloading scipy-1.17.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.0/35.0 MB 227.8 MB/s  0:00:00
+Downloading pydantic_core-2.46.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.1 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.1/2.1 MB 273.8 MB/s  0:00:00
+Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+Downloading mpmath-1.3.0-py3-none-any.whl (536 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 536.2/536.2 kB 97.8 MB/s  0:00:00
+Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+Downloading starlette-0.50.0-py3-none-any.whl (74 kB)
+Downloading anyio-4.14.1-py3-none-any.whl (124 kB)
+Downloading annotated_doc-0.0.4-py3-none-any.whl (5.3 kB)
+Downloading annotated_types-0.7.0-py3-none-any.whl (13 kB)
+Downloading click-8.4.2-py3-none-any.whl (119 kB)
+Downloading flexcache-0.3-py3-none-any.whl (13 kB)
+Downloading flexparser-0.4-py3-none-any.whl (27 kB)
+Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+Downloading httptools-0.8.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (486 kB)
+Downloading idna-3.18-py3-none-any.whl (65 kB)
+Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+Downloading packaging-26.2-py3-none-any.whl (100 kB)
+Downloading platformdirs-4.10.0-py3-none-any.whl (22 kB)
+Downloading pygments-2.20.0-py3-none-any.whl (1.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.2/1.2 MB 177.2 MB/s  0:00:00
+Downloading python_dotenv-1.2.2-py3-none-any.whl (22 kB)
+Downloading pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (801 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 801.6/801.6 kB 154.2 MB/s  0:00:00
+Using cached setuptools-83.0.0-py3-none-any.whl (1.0 MB)
+Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Downloading typing_inspection-0.4.2-py3-none-any.whl (14 kB)
+Downloading uvloop-0.22.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.4/4.4 MB 319.5 MB/s  0:00:00
+Downloading watchfiles-1.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (454 kB)
+Downloading websockets-16.1-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (187 kB)
+Downloading certifi-2026.6.17-py3-none-any.whl (133 kB)
+Building wheels for collected packages: pydy
+  Building wheel for pydy (pyproject.toml): started
+  Building wheel for pydy (pyproject.toml): finished with status 'done'
+  Created wheel for pydy: filename=pydy-0.7.1-py3-none-any.whl size=5227247 sha256=c3b28483c042047e69dd7b2fdbc34ac62e62c4beb79a6490489f3408aa69d9bd
+  Stored in directory: /home/runner/.cache/pip/wheels/df/fe/2d/357c7facbef9ce30e2009044c2ba2d805f177cd4ddce578cac
+Successfully built pydy
+Installing collected packages: mpmath, websockets, uvloop, typing-extensions, sympy, setuptools, pyyaml, python-multipart, python-dotenv, pygments, pluggy, platformdirs, packaging, numpy, iniconfig, idna, httptools, h11, click, certifi, annotated-types, annotated-doc, uvicorn, typing-inspection, scipy, pytest, pydantic-core, httpcore, flexparser, flexcache, anyio, watchfiles, starlette, pydy, pydantic, pint, httpx, fastapi
+
+Successfully installed annotated-doc-0.0.4 annotated-types-0.7.0 anyio-4.14.1 certifi-2026.6.17 click-8.4.2 fastapi-0.128.2 flexcache-0.3 flexparser-0.4 h11-0.16.0 httpcore-1.0.9 httptools-0.8.0 httpx-0.28.1 idna-3.18 iniconfig-2.3.0 mpmath-1.3.0 numpy-2.3.5 packaging-26.2 pint-0.25.3 platformdirs-4.10.0 pluggy-1.6.0 pydantic-2.13.4 pydantic-core-2.46.4 pydy-0.7.1 pygments-2.20.0 pytest-9.0.2 python-dotenv-1.2.2 python-multipart-0.0.29 pyyaml-6.0.3 scipy-1.17.0 setuptools-83.0.0 starlette-0.50.0 sympy-1.14.0 typing-extensions-4.16.0 typing-inspection-0.4.2 uvicorn-0.48.0 uvloop-0.22.1 watchfiles-1.2.0 websockets-16.1
+EXIT_CODE: 0
+DURATION_SECONDS: 22
+
+===== phase42 =====
+COMMAND: env PYTHONPATH=backend python -m pytest backend/tests/test_phase42_baseline_contracts.py -q -o addopts=
+........FF........F..FFF.............F.................................. [ 52%]
+......................FF........................F...............F        [100%]
+=================================== FAILURES ===================================
+_______ test_phase42_golden_parser_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   1.0 = float(1.0)
+E            +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+E            +    and   15.0 = float(15)
+
+backend/tests/test_phase42_baseline_contracts.py:169: AssertionError
+__________ test_phase42_golden_parser_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   2.0 = float(2.0)
+E            +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+E            +    and   20.0 = float(20)
+
+backend/tests/test_phase42_baseline_contracts.py:169: AssertionError
+_______ test_phase42_golden_parser_contract[incline_pulley_frictionless] _______
+
+case = {'domain': 'pulley', 'expected_answers': [{'numeric': 3.567272727272727, 'selector': 'primary', 'unit': 'm/s²'}], 'exp...': 30}, 'subtype': None, 'system_type': 'pulley_incline_hanging'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_2_3] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.6, 'selector': 'primary', 'unit': 'm/s'}], 'expected_canoni...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_3_5] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.375, 'selector': 'primary', 'unit': 'm/s'}], 'expected_cano...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_elastic_equal] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 0, 'selector': 'symbol', 'symbol': "v1'", 'unit': 'm/s'}, {'n...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+___________ test_phase42_golden_parser_contract[polar_acceleration] ____________
+
+case = {'domain': 'polar_coordinates', 'expected_answers': [{'numeric': 18.220043907740724, 'selector': 'primary', 'unit': 'm...': 0.2, ...}, 'subtype': None, 'system_type': 'polar_kinematics'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_______ test_phase42_golden_answer_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+backend/tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.08828, expected = 19.862967976707306
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.08828 = float(0.08828)
+E        +    and   19.862967976707306 = float(19.862967976707306)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+backend/tests/test_phase42_baseline_contracts.py:64: AssertionError
+__________ test_phase42_golden_answer_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+backend/tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.050968, expected = 5.096839959225279
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.050968 = float(0.050968)
+E        +    and   5.096839959225279 = float(5.096839959225279)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+backend/tests/test_phase42_baseline_contracts.py:64: AssertionError
+_______ test_phase42_golden_answer_contract[fixed_axis_tangential_speed] _______
+
+case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}], 'expecte...5}, 'subtype': None, 'system_type': 'fixed_axis_rotation'}, 'expected_requested_outputs': ['tangential_velocity'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+>           assert response.ok, response.unsupported_reason
+E           AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+E           assert False
+E            +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+
+backend/tests/test_phase42_baseline_contracts.py:190: AssertionError
+__________ test_phase42_baseline_report_has_honest_measurement_states __________
+
+    @pytest.mark.unit
+    def test_phase42_baseline_report_has_honest_measurement_states():
+        assert BASELINE["schema_version"] == 1
+        allowed = {"passed", "failed", "not_run", "blocked", "skipped"}
+        for result in BASELINE["test_suites"].values():
+            assert result["status"] in allowed
+            for key in ("passed", "failed", "skipped", "deselected", "duration_seconds"):
+                assert key in result
+            if result["status"] == "not_run":
+                assert result["passed"] is None
+                assert result["failed"] is None
+    
+        versioned = BASELINE["current_versioned_artifacts"]
+        routing_source = _load(ROUTING_REPORT_PATH)
+        assert versioned["routing_confusion"]["routing_cases"] == routing_source["routing"]["total"]
+        assert versioned["routing_confusion"]["correct"] == routing_source["routing"]["correct"]
+>       assert versioned["routing_confusion"]["negative_cases"] == routing_source["negative"]["total"]
+                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'total'
+
+backend/tests/test_phase42_baseline_contracts.py:287: KeyError
+=========================== short test summary info ============================
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_same_level_range] - AssertionError: assert False
+ +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   1.0 = float(1.0)
+ +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+ +    and   15.0 = float(15)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_max_height] - AssertionError: assert False
+ +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   2.0 = float(2.0)
+ +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+ +    and   20.0 = float(20)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[incline_pulley_frictionless] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_2_3] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_3_5] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_elastic_equal] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[polar_acceleration] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_same_level_range] - AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.08828 = float(0.08828)
+ +    and   19.862967976707306 = float(19.862967976707306)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_max_height] - AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.050968 = float(0.050968)
+ +    and   5.096839959225279 = float(5.096839959225279)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+assert False
+ +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_baseline_report_has_honest_measurement_states - KeyError: 'total'
+11 failed, 126 passed in 2.29s
+EXIT_CODE: 1
+DURATION_SECONDS: 3
+
+===== backend_fast =====
+COMMAND: bash scripts/check_backend_fast.sh
+[backend_fast] pytest fast tests
+[run_with_timeout] timeout=120s
+[run_with_timeout] cwd=/home/runner/work/dynatutor-mvp/dynatutor-mvp/backend
+[run_with_timeout] command=pytest -q -o addopts= -m not benchmark and not audit and not frontend and not slow
+........................................................................ [ 17%]
+........................................................................ [ 35%]
+........................................................................ [ 52%]
+.................FF........F..FFF.............F......................... [ 70%]
+...............................FF........................F.............. [ 87%]
+.F................................................                       [100%]
+=================================== FAILURES ===================================
+_______ test_phase42_golden_parser_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   1.0 = float(1.0)
+E            +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+E            +    and   15.0 = float(15)
+
+tests/test_phase42_baseline_contracts.py:169: AssertionError
+__________ test_phase42_golden_parser_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   2.0 = float(2.0)
+E            +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+E            +    and   20.0 = float(20)
+
+tests/test_phase42_baseline_contracts.py:169: AssertionError
+_______ test_phase42_golden_parser_contract[incline_pulley_frictionless] _______
+
+case = {'domain': 'pulley', 'expected_answers': [{'numeric': 3.567272727272727, 'selector': 'primary', 'unit': 'm/s²'}], 'exp...': 30}, 'subtype': None, 'system_type': 'pulley_incline_hanging'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_2_3] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.6, 'selector': 'primary', 'unit': 'm/s'}], 'expected_canoni...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_3_5] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.375, 'selector': 'primary', 'unit': 'm/s'}], 'expected_cano...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_elastic_equal] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 0, 'selector': 'symbol', 'symbol': "v1'", 'unit': 'm/s'}, {'n...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+tests/test_phase42_baseline_contracts.py:170: AssertionError
+___________ test_phase42_golden_parser_contract[polar_acceleration] ____________
+
+case = {'domain': 'polar_coordinates', 'expected_answers': [{'numeric': 18.220043907740724, 'selector': 'primary', 'unit': 'm...': 0.2, ...}, 'subtype': None, 'system_type': 'polar_kinematics'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+tests/test_phase42_baseline_contracts.py:170: AssertionError
+_______ test_phase42_golden_answer_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.08828, expected = 19.862967976707306
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.08828 = float(0.08828)
+E        +    and   19.862967976707306 = float(19.862967976707306)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+tests/test_phase42_baseline_contracts.py:64: AssertionError
+__________ test_phase42_golden_answer_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.050968, expected = 5.096839959225279
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.050968 = float(0.050968)
+E        +    and   5.096839959225279 = float(5.096839959225279)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+tests/test_phase42_baseline_contracts.py:64: AssertionError
+_______ test_phase42_golden_answer_contract[fixed_axis_tangential_speed] _______
+
+case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}], 'expecte...5}, 'subtype': None, 'system_type': 'fixed_axis_rotation'}, 'expected_requested_outputs': ['tangential_velocity'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+>           assert response.ok, response.unsupported_reason
+E           AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+E           assert False
+E            +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+
+tests/test_phase42_baseline_contracts.py:190: AssertionError
+__________ test_phase42_baseline_report_has_honest_measurement_states __________
+
+    @pytest.mark.unit
+    def test_phase42_baseline_report_has_honest_measurement_states():
+        assert BASELINE["schema_version"] == 1
+        allowed = {"passed", "failed", "not_run", "blocked", "skipped"}
+        for result in BASELINE["test_suites"].values():
+            assert result["status"] in allowed
+            for key in ("passed", "failed", "skipped", "deselected", "duration_seconds"):
+                assert key in result
+            if result["status"] == "not_run":
+                assert result["passed"] is None
+                assert result["failed"] is None
+    
+        versioned = BASELINE["current_versioned_artifacts"]
+        routing_source = _load(ROUTING_REPORT_PATH)
+        assert versioned["routing_confusion"]["routing_cases"] == routing_source["routing"]["total"]
+        assert versioned["routing_confusion"]["correct"] == routing_source["routing"]["correct"]
+>       assert versioned["routing_confusion"]["negative_cases"] == routing_source["negative"]["total"]
+                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'total'
+
+tests/test_phase42_baseline_contracts.py:287: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_same_level_range] - AssertionError: assert False
+ +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   1.0 = float(1.0)
+ +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+ +    and   15.0 = float(15)
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_max_height] - AssertionError: assert False
+ +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   2.0 = float(2.0)
+ +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+ +    and   20.0 = float(20)
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[incline_pulley_frictionless] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_2_3] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_3_5] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_elastic_equal] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[polar_acceleration] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_same_level_range] - AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.08828 = float(0.08828)
+ +    and   19.862967976707306 = float(19.862967976707306)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_max_height] - AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.050968 = float(0.050968)
+ +    and   5.096839959225279 = float(5.096839959225279)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+assert False
+ +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+FAILED tests/test_phase42_baseline_contracts.py::test_phase42_baseline_report_has_honest_measurement_states - KeyError: 'total'
+11 failed, 399 passed, 40 deselected in 8.41s
+[run_with_timeout] command exited with code 1
+EXIT_CODE: 1
+DURATION_SECONDS: 9
+
+===== backend_requested =====
+COMMAND: python -m pytest backend/tests -q
+........................................................................ [ 17%]
+........................................................................ [ 35%]
+........................................................................ [ 52%]
+.................FF........F..FFF.............F......................... [ 70%]
+...............................FF........................F.............. [ 87%]
+.F................................................                       [100%]
+=================================== FAILURES ===================================
+_______ test_phase42_golden_parser_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   1.0 = float(1.0)
+E            +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+E            +    and   15.0 = float(15)
+
+backend/tests/test_phase42_baseline_contracts.py:169: AssertionError
+__________ test_phase42_golden_parser_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   2.0 = float(2.0)
+E            +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+E            +    and   20.0 = float(20)
+
+backend/tests/test_phase42_baseline_contracts.py:169: AssertionError
+_______ test_phase42_golden_parser_contract[incline_pulley_frictionless] _______
+
+case = {'domain': 'pulley', 'expected_answers': [{'numeric': 3.567272727272727, 'selector': 'primary', 'unit': 'm/s²'}], 'exp...': 30}, 'subtype': None, 'system_type': 'pulley_incline_hanging'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_2_3] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.6, 'selector': 'primary', 'unit': 'm/s'}], 'expected_canoni...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_3_5] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.375, 'selector': 'primary', 'unit': 'm/s'}], 'expected_cano...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_elastic_equal] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 0, 'selector': 'symbol', 'symbol': "v1'", 'unit': 'm/s'}, {'n...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+___________ test_phase42_golden_parser_contract[polar_acceleration] ____________
+
+case = {'domain': 'polar_coordinates', 'expected_answers': [{'numeric': 18.220043907740724, 'selector': 'primary', 'unit': 'm...': 0.2, ...}, 'subtype': None, 'system_type': 'polar_kinematics'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_______ test_phase42_golden_answer_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+backend/tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.08828, expected = 19.862967976707306
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.08828 = float(0.08828)
+E        +    and   19.862967976707306 = float(19.862967976707306)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+backend/tests/test_phase42_baseline_contracts.py:64: AssertionError
+__________ test_phase42_golden_answer_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+backend/tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.050968, expected = 5.096839959225279
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.050968 = float(0.050968)
+E        +    and   5.096839959225279 = float(5.096839959225279)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+backend/tests/test_phase42_baseline_contracts.py:64: AssertionError
+_______ test_phase42_golden_answer_contract[fixed_axis_tangential_speed] _______
+
+case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}], 'expecte...5}, 'subtype': None, 'system_type': 'fixed_axis_rotation'}, 'expected_requested_outputs': ['tangential_velocity'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+>           assert response.ok, response.unsupported_reason
+E           AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+E           assert False
+E            +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+
+backend/tests/test_phase42_baseline_contracts.py:190: AssertionError
+__________ test_phase42_baseline_report_has_honest_measurement_states __________
+
+    @pytest.mark.unit
+    def test_phase42_baseline_report_has_honest_measurement_states():
+        assert BASELINE["schema_version"] == 1
+        allowed = {"passed", "failed", "not_run", "blocked", "skipped"}
+        for result in BASELINE["test_suites"].values():
+            assert result["status"] in allowed
+            for key in ("passed", "failed", "skipped", "deselected", "duration_seconds"):
+                assert key in result
+            if result["status"] == "not_run":
+                assert result["passed"] is None
+                assert result["failed"] is None
+    
+        versioned = BASELINE["current_versioned_artifacts"]
+        routing_source = _load(ROUTING_REPORT_PATH)
+        assert versioned["routing_confusion"]["routing_cases"] == routing_source["routing"]["total"]
+        assert versioned["routing_confusion"]["correct"] == routing_source["routing"]["correct"]
+>       assert versioned["routing_confusion"]["negative_cases"] == routing_source["negative"]["total"]
+                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'total'
+
+backend/tests/test_phase42_baseline_contracts.py:287: KeyError
+=========================== short test summary info ============================
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_same_level_range] - AssertionError: assert False
+ +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   1.0 = float(1.0)
+ +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+ +    and   15.0 = float(15)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_max_height] - AssertionError: assert False
+ +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   2.0 = float(2.0)
+ +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+ +    and   20.0 = float(20)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[incline_pulley_frictionless] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_2_3] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_3_5] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_elastic_equal] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[polar_acceleration] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_same_level_range] - AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.08828 = float(0.08828)
+ +    and   19.862967976707306 = float(19.862967976707306)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_max_height] - AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.050968 = float(0.050968)
+ +    and   5.096839959225279 = float(5.096839959225279)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+assert False
+ +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_baseline_report_has_honest_measurement_states - KeyError: 'total'
+11 failed, 399 passed, 40 deselected in 7.64s
+EXIT_CODE: 1
+DURATION_SECONDS: 9
+
+===== backend_unfiltered =====
+COMMAND: python -m pytest backend/tests -q -o addopts=
+...........F......F..............................................FFFF... [ 16%]
+.............FF...F..................................................... [ 32%]
+........................................................................ [ 48%]
+..........FF.............................................FF........F..FF [ 64%]
+F.............F........................................................F [ 80%]
+F........................F...............F.............................. [ 96%]
+..................                                                       [100%]
+=================================== FAILURES ===================================
+_______ test_phase10_korean_quality_benchmark_all_supported_cases_solve ________
+
+    def test_phase10_korean_quality_benchmark_all_supported_cases_solve():
+        failures = []
+        for idx, (problem_text, expected_solver) in enumerate(KOREAN_BENCHMARK_CASES, start=1):
+            result = solve_problem(problem_text)
+            got_solver = result.diagnosis.selected_solver
+            missing = result.diagnosis.canonical.missing_info
+            if got_solver != expected_solver or not result.ok or missing or result.answer is None:
+                failures.append(
+                    {
+                        "index": idx,
+                        "problem": problem_text,
+                        "expected_solver": expected_solver,
+                        "got_solver": got_solver,
+                        "ok": result.ok,
+                        "missing": missing,
+                        "answer": result.answer.display if result.answer else None,
+                        "system_type": result.diagnosis.canonical.system_type,
+                    }
+                )
+>       assert not failures, failures
+E       AssertionError: [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
+E       assert not [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
+
+backend/tests/test_phase10_korean_quality_benchmark.py:24: AssertionError
+___________________ test_300_generated_benchmark_cases_pass ____________________
+
+    def test_300_generated_benchmark_cases_pass():
+>       cases = json.loads(Path("tests/benchmarks/generated_300.json").read_text(encoding="utf-8"))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_phase13_benchmark_300.py:7: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('tests/benchmarks/generated_300.json'), mode = 'r'
+buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+___________________ test_phase20_benchmark_inventory_counts ____________________
+
+    def test_phase20_benchmark_inventory_counts():
+>       synthetic = _load(BENCHMARK_ROOT / "generated_300.json")
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_phase20_benchmark_audit.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/tests/test_phase20_benchmark_audit.py:18: in _load
+    return json.loads(path.read_text(encoding="utf-8"))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('tests/benchmarks/generated_300.json'), mode = 'r'
+buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+__________________ test_phase20_derived_benchmark_cases_pass ___________________
+
+    def test_phase20_derived_benchmark_cases_pass():
+        failures = []
+        for path in DERIVED_PATHS:
+>           for case in _load(path):
+                        ^^^^^^^^^^^
+
+backend/tests/test_phase20_benchmark_audit.py:38: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/tests/test_phase20_benchmark_audit.py:18: in _load
+    return json.loads(path.read_text(encoding="utf-8"))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('tests/benchmarks/phase20_derived/openstax_style_derived_050.json')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+_________ test_phase20_negative_benchmark_cases_refuse_to_hallucinate __________
+
+    def test_phase20_negative_benchmark_cases_refuse_to_hallucinate():
+        failures = []
+>       for case in _load(NEGATIVE_PATH):
+                    ^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_phase20_benchmark_audit.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/tests/test_phase20_benchmark_audit.py:18: in _load
+    return json.loads(path.read_text(encoding="utf-8"))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('tests/benchmarks/phase20_negative/negative_unsupported_060.json')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_negative/negative_unsupported_060.json'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+________________ test_phase20_benchmark_source_families_present ________________
+
+    def test_phase20_benchmark_source_families_present():
+>       derived = [case for path in DERIVED_PATHS for case in _load(path)]
+                                                              ^^^^^^^^^^^
+
+backend/tests/test_phase20_benchmark_audit.py:66: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+backend/tests/test_phase20_benchmark_audit.py:18: in _load
+    return json.loads(path.read_text(encoding="utf-8"))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('tests/benchmarks/phase20_derived/openstax_style_derived_050.json')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+_____ test_phase24_deployment_audit_passes_without_frontend_build_attempt ______
+
+    def test_phase24_deployment_audit_passes_without_frontend_build_attempt():
+        report = audit(attempt_frontend_build=False)
+        assert report["phase"] == "phase24"
+>       assert report["overall_passed"] is True
+E       assert False is True
+
+backend/tests/test_phase24_final_polish_deployment.py:12: AssertionError
+________________ test_phase24_frontend_env_names_are_compatible ________________
+
+    def test_phase24_frontend_env_names_are_compatible():
+        api_ts = (PROJECT_ROOT / "frontend" / "lib" / "api.ts").read_text(encoding="utf-8")
+>       env_example = (PROJECT_ROOT / "frontend" / ".env.example").read_text(encoding="utf-8")
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_phase24_final_polish_deployment.py:23: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+____________________ test_phase25_blind_textbook_inventory _____________________
+
+    def test_phase25_blind_textbook_inventory():
+        cases = list(_cases())
+>       assert len(cases) == 100
+E       assert 0 == 100
+E        +  where 0 = len([])
+
+backend/tests/test_phase25_blind_textbook_benchmark.py:37: AssertionError
+________________ test_phase36_frontend_token_is_not_public_env _________________
+
+    def test_phase36_frontend_token_is_not_public_env():
+>       env_text = (PROJECT_ROOT / "frontend" / ".env.example").read_text(encoding="utf-8")
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_phase36_deploy_parser_cleanup.py:27: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+_________________ test_phase36_node_20_is_pinned_for_frontend __________________
+
+    def test_phase36_node_20_is_pinned_for_frontend():
+>       assert (PROJECT_ROOT / "frontend" / ".nvmrc").read_text(encoding="utf-8").strip() == "20"
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+backend/tests/test_phase36_deploy_parser_cleanup.py:36: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:546: in read_text
+    return PathBase.read_text(self, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_abc.py:632: in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = PosixPath('/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.nvmrc')
+mode = 'r', buffering = -1, encoding = 'utf-8', errors = None, newline = None
+
+    def open(self, mode='r', buffering=-1, encoding=None,
+             errors=None, newline=None):
+        """
+        Open the file pointed to by this path and return a file object, as
+        the built-in open() function does.
+        """
+        if "b" not in mode:
+            encoding = io.text_encoding(encoding)
+>       return io.open(self, mode, buffering, encoding, errors, newline)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.nvmrc'
+
+/opt/hostedtoolcache/Python/3.13.14/x64/lib/python3.13/pathlib/_local.py:537: FileNotFoundError
+_______ test_phase42_golden_parser_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   1.0 = float(1.0)
+E            +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+E            +    and   15.0 = float(15)
+
+backend/tests/test_phase42_baseline_contracts.py:169: AssertionError
+__________ test_phase42_golden_parser_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+>           assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+E           AssertionError: assert False
+E            +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+E            +    where <built-in function isclose> = math.isclose
+E            +    and   2.0 = float(2.0)
+E            +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+E            +    and   20.0 = float(20)
+
+backend/tests/test_phase42_baseline_contracts.py:169: AssertionError
+_______ test_phase42_golden_parser_contract[incline_pulley_frictionless] _______
+
+case = {'domain': 'pulley', 'expected_answers': [{'numeric': 3.567272727272727, 'selector': 'primary', 'unit': 'm/s²'}], 'exp...': 30}, 'subtype': None, 'system_type': 'pulley_incline_hanging'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_2_3] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.6, 'selector': 'primary', 'unit': 'm/s'}], 'expected_canoni...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_inelastic_3_5] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 1.375, 'selector': 'primary', 'unit': 'm/s'}], 'expected_cano...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_________ test_phase42_golden_parser_contract[collision_elastic_equal] _________
+
+case = {'domain': 'collision', 'expected_answers': [{'numeric': 0, 'selector': 'symbol', 'symbol': "v1'", 'unit': 'm/s'}, {'n...'system_type': 'collision_1d'}, 'expected_requested_outputs': ['post_collision_velocity', 'v1_after', 'v2_after'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+E         
+E         At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+E         Left contains one more item: 'v2_after'
+E         
+E         Full diff:
+E           [
+E         +     'final_velocity',
+E               'post_collision_velocity',
+E               'v1_after',
+E               'v2_after',
+E           ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+___________ test_phase42_golden_parser_contract[polar_acceleration] ____________
+
+case = {'domain': 'polar_coordinates', 'expected_answers': [{'numeric': 18.220043907740724, 'selector': 'primary', 'unit': 'm...': 0.2, ...}, 'subtype': None, 'system_type': 'polar_kinematics'}, 'expected_requested_outputs': ['acceleration'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_parser_contract(case):
+        canonical = extract_problem(case["problem_text"])
+        expected = case["expected_canonical_facts"]
+        assert canonical.system_type == expected["system_type"]
+        assert canonical.subtype == expected["subtype"]
+        for symbol, value in expected["known_values"].items():
+            assert symbol in canonical.knowns, f"{case['id']}: missing canonical known {symbol}"
+            assert canonical.knowns[symbol].value is not None
+            assert math.isclose(float(canonical.knowns[symbol].value), float(value), rel_tol=1e-9, abs_tol=1e-9)
+>       assert canonical.requested_outputs == case["expected_requested_outputs"]
+E       AssertionError: assert [] == ['acceleration']
+E         
+E         Right contains one more item: 'acceleration'
+E         
+E         Full diff:
+E         + []
+E         - [
+E         -     'acceleration',
+E         - ]
+
+backend/tests/test_phase42_baseline_contracts.py:170: AssertionError
+_______ test_phase42_golden_answer_contract[projectile_same_level_range] _______
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 19.862967976707306, 'selector': 'primary', 'unit': 'm'}], 'e... 'v0': 15}, 'subtype': 'same_level', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['range'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+backend/tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.08828, expected = 19.862967976707306
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.08828 = float(0.08828)
+E        +    and   19.862967976707306 = float(19.862967976707306)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+backend/tests/test_phase42_baseline_contracts.py:64: AssertionError
+__________ test_phase42_golden_answer_contract[projectile_max_height] __________
+
+case = {'domain': 'projectile', 'expected_answers': [{'numeric': 5.096839959225279, 'selector': 'primary', 'unit': 'm'}], 'ex...v0': 20}, 'subtype': 'general', 'system_type': 'projectile_motion'}, 'expected_requested_outputs': ['max_height'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+            assert response.ok, response.unsupported_reason
+            assert response.clarification is None
+        elif case["expected_status"] == "needs_clarification":
+            assert not response.ok
+            assert response.clarification is not None
+        else:
+            assert not response.ok
+            assert response.clarification is None
+    
+        for expectation in case["expected_answers"]:
+            answer = _find_answer(response, expectation)
+            assert answer.numeric is not None
+>           _assert_close(answer.numeric, expectation["numeric"], case["tolerance"])
+
+backend/tests/test_phase42_baseline_contracts.py:202: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+observed = 0.050968, expected = 5.096839959225279
+tolerance = {'absolute': 0.003, 'relative': 0.003}
+
+    def _assert_close(observed: float, expected: float, tolerance: dict) -> None:
+>       assert math.isclose(
+            float(observed),
+            float(expected),
+            rel_tol=float(tolerance["relative"]),
+            abs_tol=float(tolerance["absolute"]),
+        ), f"observed={observed}, expected={expected}, tolerance={tolerance}"
+E       AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+E       assert False
+E        +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+E        +    where <built-in function isclose> = math.isclose
+E        +    and   0.050968 = float(0.050968)
+E        +    and   5.096839959225279 = float(5.096839959225279)
+E        +    and   0.003 = float(0.003)
+E        +    and   0.003 = float(0.003)
+
+backend/tests/test_phase42_baseline_contracts.py:64: AssertionError
+_______ test_phase42_golden_answer_contract[fixed_axis_tangential_speed] _______
+
+case = {'domain': 'fixed_axis_rotation', 'expected_answers': [{'numeric': 2, 'selector': 'primary', 'unit': 'm/s'}], 'expecte...5}, 'subtype': None, 'system_type': 'fixed_axis_rotation'}, 'expected_requested_outputs': ['tangential_velocity'], ...}
+
+    @pytest.mark.parametrize("case", GOLDEN["cases"], ids=lambda case: case["id"])
+    @pytest.mark.regression
+    def test_phase42_golden_answer_contract(case):
+        response = solve_problem(case["problem_text"])
+        if case["expected_status"] == "solved":
+>           assert response.ok, response.unsupported_reason
+E           AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+E           assert False
+E            +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+
+backend/tests/test_phase42_baseline_contracts.py:190: AssertionError
+__________ test_phase42_baseline_report_has_honest_measurement_states __________
+
+    @pytest.mark.unit
+    def test_phase42_baseline_report_has_honest_measurement_states():
+        assert BASELINE["schema_version"] == 1
+        allowed = {"passed", "failed", "not_run", "blocked", "skipped"}
+        for result in BASELINE["test_suites"].values():
+            assert result["status"] in allowed
+            for key in ("passed", "failed", "skipped", "deselected", "duration_seconds"):
+                assert key in result
+            if result["status"] == "not_run":
+                assert result["passed"] is None
+                assert result["failed"] is None
+    
+        versioned = BASELINE["current_versioned_artifacts"]
+        routing_source = _load(ROUTING_REPORT_PATH)
+        assert versioned["routing_confusion"]["routing_cases"] == routing_source["routing"]["total"]
+        assert versioned["routing_confusion"]["correct"] == routing_source["routing"]["correct"]
+>       assert versioned["routing_confusion"]["negative_cases"] == routing_source["negative"]["total"]
+                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: 'total'
+
+backend/tests/test_phase42_baseline_contracts.py:287: KeyError
+=========================== short test summary info ============================
+FAILED backend/tests/test_phase10_korean_quality_benchmark.py::test_phase10_korean_quality_benchmark_all_supported_cases_solve - AssertionError: [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
+assert not [{'answer': 'f = 0.796 Hz', 'expected_solver': 'spring_mass_vibration', 'got_solver': 'spring_mass_vibration', 'index': 60, ...}]
+FAILED backend/tests/test_phase13_benchmark_300.py::test_300_generated_benchmark_cases_pass - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
+FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_benchmark_inventory_counts - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/generated_300.json'
+FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_derived_benchmark_cases_pass - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
+FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_negative_benchmark_cases_refuse_to_hallucinate - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_negative/negative_unsupported_060.json'
+FAILED backend/tests/test_phase20_benchmark_audit.py::test_phase20_benchmark_source_families_present - FileNotFoundError: [Errno 2] No such file or directory: 'tests/benchmarks/phase20_derived/openstax_style_derived_050.json'
+FAILED backend/tests/test_phase24_final_polish_deployment.py::test_phase24_deployment_audit_passes_without_frontend_build_attempt - assert False is True
+FAILED backend/tests/test_phase24_final_polish_deployment.py::test_phase24_frontend_env_names_are_compatible - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
+FAILED backend/tests/test_phase25_blind_textbook_benchmark.py::test_phase25_blind_textbook_inventory - assert 0 == 100
+ +  where 0 = len([])
+FAILED backend/tests/test_phase36_deploy_parser_cleanup.py::test_phase36_frontend_token_is_not_public_env - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.env.example'
+FAILED backend/tests/test_phase36_deploy_parser_cleanup.py::test_phase36_node_20_is_pinned_for_frontend - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/dynatutor-mvp/dynatutor-mvp/frontend/.nvmrc'
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_same_level_range] - AssertionError: assert False
+ +  where False = <built-in function isclose>(1.0, 15.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   1.0 = float(1.0)
+ +      where 1.0 = Quantity(symbol='v0', value=1.0, unit='m/s', source_text='v0=1 (단위 생략 → m/s)').value
+ +    and   15.0 = float(15)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[projectile_max_height] - AssertionError: assert False
+ +  where False = <built-in function isclose>(2.0, 20.0, rel_tol=1e-09, abs_tol=1e-09)
+ +    where <built-in function isclose> = math.isclose
+ +    and   2.0 = float(2.0)
+ +      where 2.0 = Quantity(symbol='v0', value=2.0, unit='m/s', source_text='v0=2 (단위 생략 → m/s)').value
+ +    and   20.0 = float(20)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[incline_pulley_frictionless] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_2_3] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_inelastic_3_5] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[collision_elastic_equal] - AssertionError: assert ['final_veloc...', 'v2_after'] == ['post_collis...', 'v2_after']
+  
+  At index 0 diff: 'final_velocity' != 'post_collision_velocity'
+  Left contains one more item: 'v2_after'
+  
+  Full diff:
+    [
+  +     'final_velocity',
+        'post_collision_velocity',
+        'v1_after',
+        'v2_after',
+    ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_parser_contract[polar_acceleration] - AssertionError: assert [] == ['acceleration']
+  
+  Right contains one more item: 'acceleration'
+  
+  Full diff:
+  + []
+  - [
+  -     'acceleration',
+  - ]
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_same_level_range] - AssertionError: observed=0.08828, expected=19.862967976707306, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.08828, 19.862967976707306, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.08828 = float(0.08828)
+ +    and   19.862967976707306 = float(19.862967976707306)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[projectile_max_height] - AssertionError: observed=0.050968, expected=5.096839959225279, tolerance={'absolute': 0.003, 'relative': 0.003}
+assert False
+ +  where False = <built-in function isclose>(0.050968, 5.096839959225279, rel_tol=0.003, abs_tol=0.003)
+ +    where <built-in function isclose> = math.isclose
+ +    and   0.050968 = float(0.050968)
+ +    and   5.096839959225279 = float(5.096839959225279)
+ +    and   0.003 = float(0.003)
+ +    and   0.003 = float(0.003)
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_golden_answer_contract[fixed_axis_tangential_speed] - AssertionError: 물리 검증(차원·타당성·역대입)에 실패했습니다. 계산 결과를 신뢰할 수 없어 답을 보류합니다.
+assert False
+ +  where False = SolveResponse(ok=False, teacher_summary=["먼저 이 문제를 'fixed_axis_rotation' 유형으로 구조화했습니다.", "계산은 'fixed_axis_rotation' 전용...d_equation_system': None, 'generated_energy_momentum_system': None, 'friction_decisions': [], 'string_topology': None}).ok
+FAILED backend/tests/test_phase42_baseline_contracts.py::test_phase42_baseline_report_has_honest_measurement_states - KeyError: 'total'
+22 failed, 428 passed in 16.18s
+EXIT_CODE: 1
+DURATION_SECONDS: 17
+
+===== frontend_metadata =====
+COMMAND: bash scripts/check_frontend_metadata.sh
+frontend metadata check passed
+EXIT_CODE: 0
+DURATION_SECONDS: 0
+
+OVERALL_EXIT: 1
