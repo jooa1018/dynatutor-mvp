@@ -14,6 +14,8 @@ def _has_any(t: str, words: list[str]) -> bool:
 WORK_PATTERNS = [
     r"한\s*일",
     r"일을\s*구",
+    r"일(?:을|를)\s*계산",
+    r"일(?:은|는)?\s*얼마",
     r"일은\s*\?",
     r"일의\s*(크기|양)",
     r"(마찰력|중력|알짜힘|힘)이\s*한\s*일",
@@ -84,7 +86,7 @@ def _has_string_connection_phrase(t: str) -> bool:
     return (
         _has_any(t, [
             "도르래", "pulley", "장력", "tension",
-            "끈", "string", "rope",
+            "끈으로 연결", "끈이 연결", "끈과 연결", "끈에 연결", "string", "rope",
             "실로 연결", "실이 연결", "실과 연결", "실에 연결",
             "줄로 연결", "줄이 연결", "줄과 연결", "줄에 연결",
             "끈으로 연결", "끈이 연결", "끈과 연결", "끈에 연결",
@@ -143,7 +145,7 @@ def _infer_requested_outputs(t: str) -> list[str]:
     ) or "걸리는시간" in compact:
         add("time")
 
-    if has_query(r"수평\s*거리", r"사거리", r"range\s*\?", r"find\s+range"):
+    if has_query(r"수평\s*거리", r"사거리", r"range\s*(?:는|은)?\s*\?", r"find\s+range"):
         add("range")
     elif has_query(
         r"(?:이동\s*거리|이동거리|변위|거리)\s*(?:을|를)\s*(?:구|계산|찾)",
@@ -165,18 +167,28 @@ def _infer_requested_outputs(t: str) -> list[str]:
         r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)\s*(?:은|는)\s*\?",
         r"(?<![가각])속도\s*(?:은|는)\s*\?",
         r"final\s+(velocity|speed)",
-        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|속도)\s*(?:가|는|은)?\s*얼마",
+        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|(?<!가)(?<!각)속도)\s*(?:가|는|은)?\s*얼마",
         r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)[^\.\n?]{0,35}(?:와|과|및|그리고)[^\.\n?]{0,35}(?:이동\s*거리|이동거리|변위|거리)[^\.\n?]{0,30}(?:구|계산|\?)",
         r"(?:이동\s*거리|이동거리|변위|거리)[^\.\n?]{0,35}(?:와|과|및|그리고)[^\.\n?]{0,35}(?:최종\s*속도|나중\s*속도|마지막\s*속도)[^\.\n?]{0,30}(?:구|계산|\?)",
     ):
         add("final_velocity")
     if has_query(r"(?:초기\s*속도|처음\s*속도)\s*(?:을|를)?\s*(?:구|계산|찾)", r"(?:초기\s*속도|처음\s*속도)\s*(?:은|는)\s*\?", r"initial\s+(velocity|speed)"):
         add("initial_velocity")
-    if any(w in compact for w in ["가속도는", "가속도와", "가속도를구", "가속도구", "가속도?", "가속도얼마"]) and not any(w in compact for w in ["각가속도는", "각가속도와", "각가속도를구", "각가속도?", "각가속도구"]):
+    if has_query(
+        r"(?<!각)가속도\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"(?<!각)가속도\s*(?:은|는|가)?\s*(?:얼마|\?)",
+        r"(?<!각)가속도\s*(?:와|과|및)[^.\n?]{0,40}\?",
+        r"(?:find|calculate)\s+acceleration",
+        r"acceleration\s*(?:과|와|and)?[^.\n?]{0,30}\?",
+    ):
         add("acceleration")
-    elif "acceleration?" in t or "find acceleration" in t:
-        add("acceleration")
-    if any(w in compact for w in ["장력은", "장력을", "장력?", "장력구"]) or "tension?" in t or "find tension" in t:
+    if has_query(
+        r"장력\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"장력\s*(?:은|는|이)?\s*(?:얼마|\?)",
+        r"장력\s*(?:와|과|및)[^.\n?]{0,40}\?",
+        r"(?:find|calculate)\s+tension",
+        r"tension\s*(?:과|와|and)?[^.\n?]{0,30}\?",
+    ):
         add("tension")
     if any(w in t for w in ["필요한 힘", "필요한 알짜힘", "힘을 구", "force?"]) or any(w in compact for w in ["힘은?", "힘을구", "알짜힘은?", "합력은?"]):
         add("force")
@@ -190,7 +202,7 @@ def _infer_requested_outputs(t: str) -> list[str]:
         add("elastic_energy")
     if has_query(r"위치에너지", r"potential\s+energy"):
         add("potential_energy")
-    if has_query(r"한\s*일\s*(?:은|는|을|를)?\s*\?", r"한\s*일\s*(?:은|는)?\s*얼마", r"한\s*일\s*(?:을|를)?\s*(?:구|계산|찾)", r"일을\s*(?:구|계산|찾)", r"일은\s*\?", r"일의\s*(크기|양)", r"work\s*\?", r"find\s+work", r"calculate\s+work"):
+    if has_query(r"한\s*일\s*(?:은|는|을|를)?\s*\?", r"한\s*일\s*(?:은|는)?\s*얼마", r"일\s*(?:은|는)\s*얼마", r"work\s*(?:을|를)?\s*(?:구|계산)", r"한\s*일\s*(?:을|를)?\s*(?:구|계산|찾)", r"일을\s*(?:구|계산|찾)", r"일은\s*\?", r"일의\s*(크기|양)", r"work\s*\?", r"find\s+work", r"calculate\s+work"):
         add("work")
     if has_query(r"충격량\s*(?:은|는|을|를)?\s*(?:구|계산|얼마|\?)", r"impulse\s*\?", r"find\s+impulse"):
         add("impulse")
@@ -200,7 +212,7 @@ def _infer_requested_outputs(t: str) -> list[str]:
         add("v2_after")
     if has_query(r"고유진동수", r"각진동수", r"natural\s+(?:angular\s+)?frequency", r"angular\s+frequency"):
         add("angular_frequency")
-    elif has_query(r"진동수", r"frequency"):
+    elif has_query(r"진동수", r"주파수", r"(?<![A-Za-z])f\s*(?:을|를)?\s*(?:구|계산|\?)", r"frequency"):
         add("frequency")
     if has_query(r"주기", r"period"):
         add("period")
@@ -243,8 +255,8 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "vertical_circle": _has_any(t, ["수직 원운동", "vertical circle", "loop", "최고점", "최저점"]),
         "top": _has_any(t, ["최고점", "top"]),
         "bottom": _has_any(t, ["최저점", "bottom"]),
-        "collision": _has_any(t, ["충돌", "collision", "impact"]),
-        "perfectly_inelastic": _has_any(t, ["완전비탄성", "붙어서", "함께 움직", "한 덩어리", "stick together", "perfectly inelastic"]),
+        "collision": _has_any(t, ["충돌", "collision", "impact", "서로 붙", "붙은 뒤", "붙어서 움직"]),
+        "perfectly_inelastic": _has_any(t, ["완전비탄성", "완전 비탄성", "붙어서", "붙는 충돌", "서로 붙", "붙은 뒤", "함께 움직", "한 덩어리", "stick together", "perfectly inelastic"]),
         "elastic": _has_any(t, ["완전탄성", "elastic collision", "탄성충돌"]),
         "energy": _has_any(t, ["에너지", "energy", "높이", "height"]),
         "table": _has_table_surface_phrase(t),
@@ -256,7 +268,7 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "impulse": _has_any(t, ["충격량", "impulse"]),
         "rotation_fixed_axis": _has_any(t, ["고정축", "각가속도", "각속도", "토크", "관성모멘트", "fixed axis", "angular acceleration", "rad/s"]),
         "spring": _has_spring_phrase(t),
-        "vibration": _has_any(t, ["진동", "고유진동수", "주기", "frequency", "period", "vibration", "oscillation"]),
+        "vibration": _has_any(t, ["진동", "고유진동수", "진동수", "주파수", "주기", "frequency", "period", "vibration", "oscillation"]),
         "curve": _has_any(t, ["커브", "곡선", "원형 도로", "curve", "turn"]),
         "banked": _has_any(t, ["경사진 커브", "뱅크", "banked"]),
         "flat_curve": _has_any(t, ["평평한 커브", "flat curve", "수평 커브"]),
@@ -279,6 +291,8 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     # 마찰 없음은 마찰 flag를 덮어쓴다.
     if flags["no_friction"]:
         flags["friction"] = False
+    elif any(key in knowns for key in ("mu", "mu_k", "mu_s")):
+        flags["friction"] = True
 
     unknowns: list[str] = []
     if _has_any(t, ["가속도", "acceleration", " a "]):
@@ -333,6 +347,9 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     friction_type = _infer_friction_type(t, flags)
     body_shape = infer_body_shape(analysis_text)
     force_dir = infer_direction_label(analysis_text)
+    force_angle = infer_angle_between_force_and_displacement(analysis_text)
+    if flags["work"] and force_angle is not None and "theta" not in knowns:
+        knowns["theta"] = Quantity("theta", force_angle, "deg", "명시적 힘-변위 방향 관계")
     surface_type = "incline" if flags["incline"] else "table" if flags["table"] else None
     launch_height = _infer_launch_height(knowns, t)
     landing_height = _infer_landing_height(knowns, t)
@@ -340,6 +357,11 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     requested_outputs = _infer_requested_outputs(t)
     if unsupported_subtype == "fluid_dynamics":
         requested_outputs = []
+    if flags["collision"] and "velocity" in unknowns:
+        requested_outputs = [item for item in requested_outputs if item != "final_velocity"]
+        for item in ("post_collision_velocity", "v1_after", "v2_after"):
+            if item not in requested_outputs:
+                requested_outputs.append(item)
     launch_angle_deg, launch_angle_source = _infer_launch_angle(knowns, t)
     if launch_angle_deg is not None and "theta" not in knowns:
         knowns["theta"] = Quantity("theta", launch_angle_deg, "deg", launch_angle_source or "inferred launch angle")
@@ -481,7 +503,7 @@ def _infer_pulley_topology(t: str, knowns: dict, flags: dict) -> str | None:
         return None
     if flags.get("massive_pulley") or ("I" in knowns and ("R" in knowns or "Rp" in knowns) and ("m1" in knowns and "m2" in knowns)):
         return "massive_pulley_atwood"
-    if _has_any(t, ["양쪽", "두 물체가 양쪽에 매달", "m1과m2가양쪽", "m1과 m2가 양쪽", "양쪽에 매달려", "both hanging", "atwood"]):
+    if _has_any(t, ["양쪽", "양편", "두 매달린 물체", "두 물체가 양쪽에 매달", "m1과m2가양쪽", "m1과 m2가 양쪽", "양쪽에 매달려", "both hanging", "atwood"]):
         return "atwood"
     if flags.get("incline") and flags.get("hanging"):
         return "incline_hanging"
