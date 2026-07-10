@@ -39,12 +39,12 @@ _DIMENSIONS = {
 
 _CONDITION_PATTERNS: list[tuple[str, str, str]] = [
     ("air_resistance_ignored", r"공기\s*저항(?:을|은|이)?\s*(?:무시|없)|air\s+resistance\s+(?:is\s+)?(?:ignored|neglected)", "explicit"),
-    ("no_friction", r"마찰(?:이|은|을)?\s*(?:없|무시)|frictionless|\bsmooth\b|매끈|매끄러운", "explicit"),
+    ("no_friction", r"마찰(?:이|은|을)?\s*(?:없|무시)|마찰\s*업는|frictionless|\bsmooth\b|매끈|매끄러운|매끄런", "explicit"),
     ("no_slip", r"미끄러지지\s*않|미끄럼\s*없이|no\s+slip|without\s+slipping|순수\s*구름", "explicit"),
     ("massless_string", r"질량\s*(?:이\s*)?없는\s*(?:줄|실|끈)|가벼운\s*(?:줄|실|끈)|massless\s+(?:string|rope)", "explicit"),
     ("inextensible_string", r"늘어나지\s*않는\s*(?:줄|실|끈)|inextensible\s+(?:string|rope)", "explicit"),
     ("frictionless_pulley", r"도르래(?:의|\s*축)?\s*마찰(?:을|은|이)?\s*(?:무시|없)|frictionless\s+pulley", "explicit"),
-    ("perfectly_inelastic", r"완전\s*비탄성|붙어서|한\s*덩어리|perfectly\s+inelastic|stick\s+together", "explicit"),
+    ("perfectly_inelastic", r"완전\s*비탄성|붙어서|붙는\s*충돌|붙어\s*움직|한\s*덩어리|perfectly\s+inelastic|stick\s+together", "explicit"),
     ("elastic_collision", r"완전\s*탄성|elastic\s+collision", "explicit"),
     ("initially_at_rest", r"정지\s*(?:상태|해\s*있|하여|에서)|가만히\s*있|starts?\s+from\s+rest", "explicit"),
 ]
