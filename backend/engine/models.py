@@ -10,6 +10,13 @@ class Quantity:
     value: float | None = None
     unit: str | None = None
     source_text: str | None = None
+    # Internal extraction evidence. These additive fields are deliberately absent
+    # from the student-facing API and preserve legacy positional construction.
+    source_span: tuple[int, int] | None = None
+    matched_text: str | None = None
+    provenance_hint: str | None = None
+    subject_evidence: dict[str, Any] = field(default_factory=dict)
+    normalization_evidence: dict[str, Any] | None = None
 
 
 @dataclass
