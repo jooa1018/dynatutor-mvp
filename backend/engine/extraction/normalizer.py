@@ -176,7 +176,7 @@ def normalize(text: str) -> str:
 
 
 _IRRELEVANT_SENTENCE_MARKERS = (
-    "참고로",
+    "관찰자의 질량",
     "실험실 온도",
     "교실 온도",
     "바깥 기온",
@@ -204,10 +204,7 @@ def strip_irrelevant_background(text: str) -> str:
     retained = [
         sentence
         for sentence in sentences
-        if not (
-            sentence.startswith("참고로")
-            or any(marker in sentence for marker in _IRRELEVANT_SENTENCE_MARKERS[1:])
-        )
+        if not any(marker in sentence for marker in _IRRELEVANT_SENTENCE_MARKERS)
     ]
     return " ".join(retained) if retained else text
 
