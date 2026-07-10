@@ -99,6 +99,8 @@ def test_run_with_timeout_kills_term_ignoring_descendant():
 
 @pytest.mark.regression
 def test_frontend_wrapper_cleans_child_on_parent_signal(monkeypatch):
+    root = Path(__file__).resolve().parents[2]
+    monkeypatch.syspath_prepend(str(root))
     from scripts import check_frontend_build
 
     child = subprocess.Popen(
