@@ -40,7 +40,9 @@ def test_phase43_major_values_have_provenance_confidence_and_raw_span():
     assert mass.dimension == "mass"
     assert mass.source_span is not None
     start, end = mass.source_span
-    assert re.sub(r"\\s+", "", raw[start:end].lower()) in re.sub(\n        r"\\s+", "", (mass.source_text or "").lower()\n    )
+    assert re.sub(r"\s+", "", raw[start:end].lower()) in re.sub(
+        r"\s+", "", (mass.source_text or "").lower()
+    )
 
 
 @pytest.mark.unit
