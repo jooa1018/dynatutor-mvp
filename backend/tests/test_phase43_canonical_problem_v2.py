@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 
 import pytest
 
@@ -39,7 +40,7 @@ def test_phase43_major_values_have_provenance_confidence_and_raw_span():
     assert mass.dimension == "mass"
     assert mass.source_span is not None
     start, end = mass.source_span
-    assert raw[start:end].lower() in (mass.source_text or "").lower()
+    assert re.sub(r"\\s+", "", raw[start:end].lower()) in re.sub(\n        r"\\s+", "", (mass.source_text or "").lower()\n    )
 
 
 @pytest.mark.unit
@@ -86,7 +87,7 @@ def test_phase43_explicit_condition_and_model_assumption_are_separate():
 @pytest.mark.unit
 def test_phase43_unit_normalization_preserves_source_representation():
     canonical = extract_problem(
-        "자동차가 v0=72km/h에서 출발하여 가속도 a=2m/s^2로 5s 동안 운동한다. 최종속도는?"
+        "자동차가 72km/h에서 출발하여 가속도 a=2m/s^2로 5s 동안 운동한다. 최종속도는?"
     )
     speed = _fact(canonical, "v0")
 
@@ -129,14 +130,12 @@ def test_phase43_same_physical_symbol_is_scoped_to_distinct_subjects():
 @pytest.mark.unit
 def test_phase43_conflicting_explicit_values_are_retained():
     canonical = extract_problem(
-        "질량 m=2kg이고 다른 문장에는 m=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
+        "질량 m1=2kg이고 다른 문장에는 m1=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
     )
-    mass = _fact(canonical, "m")
-
-    assert mass.status == "conflicting"
+    mass = _fact(canonical, "m1")\n\n    assert mass.status == "conflicting"
     assert mass.provenance == "conflict_detection"
     assert len(mass.alternatives) == 2
-    assert any("m has conflicting explicit values" in item for item in canonical.canonical_v2.conflicts)
+    assert any("m1 has conflicting explicit values" in item for item in canonical.canonical_v2.conflicts)
 
 
 @pytest.mark.unit

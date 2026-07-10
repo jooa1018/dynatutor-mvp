@@ -55,8 +55,8 @@ _LABEL_PATTERN = re.compile(
     r"rddot|rdot|thetaddot|thetadot|m|a|t|s|F|k|x|h|g|I|R|r|e|W)"
     r"(?![A-Za-z0-9_])\s*(?:=|:)\s*"
     r"(?P<value>-?\d+(?:,\d{3})*(?:\.\d+)?)\s*"
-    r"(?P<unit>kg\s*\*?\s*m\^?2|kgm\^?2|km\s*/\s*h|km/h|cm/s(?:\^?2|2|²)|"
-    r"m/s(?:\^?2|2|²)|rad/s(?:\^?2|2|²)|N\s*\*\s*m|N/m|N|J|kg|cm|m|s|deg|도|°|Hz)?",
+    r"(?P<unit>kg\s*\*?\s*m\^?2|kgm\^?2|km\s*/\s*h|km/h|cm/s(?:(?:\^?2|2|²))?|"
+    r"m/s(?:(?:\^?2|2|²))?|rad/s(?:(?:\^?2|2|²))?|N\s*\*\s*m|N/m|N|J|kg|cm|m|s|deg|도|°|Hz)?",
     re.IGNORECASE,
 )
 
