@@ -381,7 +381,7 @@ def test_phase43_rebuild_does_not_reintroduce_resolved_clarification():
 
 @pytest.mark.unit
 def test_phase43_identical_numbers_keep_distinct_subject_spans():
-    raw = "m1=2kg인 물체와 m2=2kg인 물체가 v1=5m/s, v2=5m/s로 충돌한다."
+    raw = "질량 2kg인 물체와 질량 2kg인 다른 물체가 v1=5m/s, v2=5m/s로 충돌한다."
     canonical = extract_problem(raw)
     mass_1 = _fact(canonical, "m1")
     mass_2 = _fact(canonical, "m2")
@@ -390,7 +390,7 @@ def test_phase43_identical_numbers_keep_distinct_subject_spans():
     assert mass_1.source_span is not None
     assert mass_2.source_span is not None
     assert mass_1.source_span != mass_2.source_span
-    assert raw[slice(*mass_1.source_span)] != raw[slice(*mass_2.source_span)]
+    assert raw[slice(*mass_1.source_span)] == raw[slice(*mass_2.source_span)] == "2kg"
 
 
 @pytest.mark.unit
