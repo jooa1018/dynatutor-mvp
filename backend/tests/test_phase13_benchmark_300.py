@@ -3,8 +3,11 @@ from pathlib import Path
 from engine.services import solve_problem
 
 
+BENCHMARK_PATH = Path(__file__).resolve().parent / "benchmarks" / "generated_300.json"
+
+
 def test_300_generated_benchmark_cases_pass():
-    cases = json.loads(Path("tests/benchmarks/generated_300.json").read_text(encoding="utf-8"))
+    cases = json.loads(BENCHMARK_PATH.read_text(encoding="utf-8"))
     assert len(cases) >= 300
     failures = []
     for i, case in enumerate(cases):
