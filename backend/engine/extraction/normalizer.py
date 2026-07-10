@@ -71,6 +71,15 @@ def normalize(text: str) -> str:
         "발사 속도": "발사속도",
         "발사 속력": "발사속도",
         "스프링상수": "스프링 상수",
+        "용수철상수": "스프링 상수",
+        "도르레": "도르래",
+        "매끄런": "매끄러운",
+        "마찰 업는": "마찰 없는",
+        "쵸속도": "초속도",
+        "구해 줘": "구하라",
+        "구해줘": "구하라",
+        "알려 줘": "구하라",
+        "알려줘": "구하라",
         "마찰 계수": "마찰계수",
         "관성 모멘트": "관성모멘트",
         "질량 중심": "질량중심",
@@ -164,6 +173,41 @@ def normalize(text: str) -> str:
     # 실제로는 위 2줄이 이미 충분하지만, '5 kg' 형태 유지 확인을 위해 공백만 정리한다.
     t = re.sub(r"\s+", " ", t).strip()
     return t
+
+
+_IRRELEVANT_SENTENCE_MARKERS = (
+    "참고로",
+    "실험실 온도",
+    "교실 온도",
+    "바깥 기온",
+    "오늘 날씨",
+    "벽시계",
+    "실험 날짜",
+    "팀 번호",
+    "학생 수",
+    "책상의 색",
+)
+
+
+def strip_irrelevant_background(text: str) -> str:
+    """Remove only clearly labelled background sentences before extraction.
+
+    This is intentionally conservative: it does not delete an arbitrary clause
+    merely because it contains an unfamiliar number. Raw text is still retained
+    in CanonicalProblem for provenance and the student-facing diagnosis.
+    """
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\\s+|[\\r\\n]+", text) if part.strip()]
+    if len(sentences) < 2:
+        return text
+    retained = [
+        sentence
+        for sentence in sentences
+        if not (
+            sentence.startswith("참고로")
+            or any(marker in sentence for marker in _IRRELEVANT_SENTENCE_MARKERS[1:])
+        )
+    ]
+    return " ".join(retained) if retained else text
 
 
 def lower_for_match(text: str) -> str:
