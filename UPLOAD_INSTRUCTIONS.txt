@@ -1,0 +1,6 @@
+1. 압축을 풉니다.
+2. 안의 goal/ 폴더를 GitHub 저장소 루트에 업로드합니다.
+3. 기존 goal/ 문서가 있다면 별도 브랜치에서 이 v2 문서로 교체합니다.
+4. goal/README.md와 goal/00_GLOBAL_RULES.md를 먼저 읽습니다.
+5. phase42부터 한 phase씩 Codex에 맡깁니다.
+6. 각 phase는 별도 브랜치와 PR로 진행합니다.
