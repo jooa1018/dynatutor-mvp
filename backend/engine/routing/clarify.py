@@ -543,7 +543,22 @@ def _rule_evidence_conflict_fallback(cp: CanonicalProblem) -> Clarification | No
     )
 
 
+def _rule_contradictory_input(cp: CanonicalProblem) -> Clarification | None:
+    """Do not choose between mutually inconsistent explicit facts."""
+    conflicts = list(cp.canonical_v2.conflicts) if cp.canonical_v2 is not None else []
+    if not conflicts:
+        return None
+    details = "; ".join(conflicts)
+    return Clarification(
+        rule="contradictory_input",
+        question="서로 다른 값으로 적힌 조건이 있습니다. 모순되는 값을 확인해 문제를 다시 입력해 주세요.",
+        why="명시적 조건이 충돌한 상태에서 한 값을 임의로 선택하면 높은 신뢰도의 오답이 될 수 있습니다. 감지된 충돌: " + details,
+        options=[],
+    )
+
+
 _RULES = [
+    _rule_contradictory_input,
     _rule_ambiguous_pulley,
     # 혼합 유형(모형 선택)이 마찰 유무(세부 조건)보다 근본적인 질문이므로 먼저.
     # 경사면을 선택하면 다음 턴에 friction 규칙이 자연스럽게 연쇄된다.
