@@ -417,6 +417,12 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     c.assumptions = _default_assumptions(c)
     c.missing_info = _missing_info(c)
     c.confidence = "높음" if not c.missing_info and c.system_type != "unknown" else "보통" if c.system_type != "unknown" else "낮음"
+
+    # Phase 43: build the provenance-rich contract only after the legacy view is
+    # complete. Solvers keep consuming the fields above without behavior changes.
+    from engine.canonical.adapter import attach_canonical_v2
+
+    attach_canonical_v2(c, normalized_text=normalized)
     return c
 
 
