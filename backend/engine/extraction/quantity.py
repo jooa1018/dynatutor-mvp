@@ -54,9 +54,11 @@ def _set(
     *,
     provenance_hint: str | None = None,
     normalization_evidence: dict | None = None,
+    replace: bool = False,
 ) -> None:
-    # 명시적인 표기가 먼저 들어온 경우는 덮어쓰지 않는다.
-    if key not in knowns:
+    # Preserve the first candidate unless the caller has positively identified a
+    # higher-priority labeled value. Positional fallbacks never request replacement.
+    if replace or key not in knowns:
         span = getattr(source, "source_span", None)
         matched = getattr(source, "matched_text", None)
         knowns[key] = Quantity(
@@ -74,7 +76,15 @@ def _set(
 
 
 
-def _set_si_velocity(knowns: dict[str, Quantity], key: str, value: float, unit: str, source: str) -> None:
+def _set_si_velocity(
+    knowns: dict[str, Quantity],
+    key: str,
+    value: float,
+    unit: str,
+    source: str,
+    *,
+    replace: bool = False,
+) -> None:
     if unit in {"km/h", "kmph", "km/hr"}:
         _set(
             knowns,
@@ -89,9 +99,27 @@ def _set_si_velocity(knowns: dict[str, Quantity], key: str, value: float, unit: 
                 "normalized_value": value / 3.6,
                 "normalized_unit": "m/s",
             },
+            replace=replace,
         )
     else:
-        _set(knowns, key, value, "m/s", source)
+        _set(knowns, key, value, "m/s", source, replace=replace)
+
+
+def _set_si_mass(knowns: dict[str, Quantity], key: str, value: float, unit: str, source: str) -> None:
+    _set(
+        knowns,
+        key,
+        value / 1000.0,
+        "kg",
+        source + " → kg",
+        provenance_hint="unit_normalization",
+        normalization_evidence={
+            "source_value": value,
+            "source_unit": unit,
+            "normalized_value": value / 1000.0,
+            "normalized_unit": "kg",
+        },
+    )
 
 
 def _set_si_acceleration(knowns: dict[str, Quantity], key: str, value: float, unit: str, source: str) -> None:
@@ -112,6 +140,12 @@ def _set_si_acceleration(knowns: dict[str, Quantity], key: str, value: float, un
         )
     else:
         _set(knowns, key, value, "m/s^2", source)
+
+
+def _matched_quantity_token(match: re.Match, num_group: str = "num", unit_group: str = "unit") -> _MatchedText:
+    start = match.start(num_group)
+    end = match.end(unit_group)
+    return _MatchedText(match.string[start:end], start, end)
 
 
 def _unit_value(pattern: str, text: str) -> tuple[float, str, str] | None:
@@ -170,10 +204,21 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
         _set(knowns, "m1", masses[0][0], "kg", masses[0][1])
         _set(knowns, "m2", masses[1][0], "kg", masses[1][1])
 
-    # Grams fallback for single-particle mass: 500 g -> 0.5 kg.
-    gram_mass = first_number(r"(?:질량|mass|m\s*=)[^\d-]{0,12}" + _NUM + r"\s*g(?![a-zA-Z/])", text)
-    if gram_mass and "m" not in knowns and "m1" not in knowns:
-        _set(knowns, "m", gram_mass[0] / 1000.0, "kg", gram_mass[1] + " → kg")
+    # Grams fallback for single-particle mass: retain the exact raw quantity token
+    # while storing the normalized SI value and its conversion evidence.
+    gram_match = re.search(
+        r"(?:질량|mass|m\s*=)[^\d-]{0,12}(?P<num>-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?P<unit>g)(?![a-zA-Z/])",
+        text,
+        re.IGNORECASE,
+    )
+    if gram_match and "m" not in knowns and "m1" not in knowns:
+        _set_si_mass(
+            knowns,
+            "m",
+            _float(gram_match.group("num")),
+            gram_match.group("unit"),
+            _matched_quantity_token(gram_match),
+        )
 
     mu = first_number(r"(?:mu|마찰계수|coefficient\s*of\s*friction)[^\d-]{0,12}" + _NUM, text)
     if mu:
@@ -270,18 +315,34 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
         _set_si_velocity(knowns, "v0", explicit_throw_kmh[0], explicit_throw_kmh[1].replace(" ", ""), explicit_throw_kmh[2])
 
     speed_unit = r"(?P<unit>m/s|mps|km/h|km\s*/\s*h|kmph|km/hr)"
-    v0 = _unit_value(r"(?:v0|v_i|vi|u\s*=|초속도|발사속도|초기속도|처음\s*속도|처음에는|처음에|initial\s*speed|initial\s*velocity)[^\d-]{0,12}(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit, text)
-    if not v0:
-        v0 = _unit_value(r"(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit + r"\s*(?:에서|로\s*달리다가|로\s*움직이다가|로\s*가다가|에서\s*출발|로\s*출발|로)", text)
+    labeled_v0 = _unit_value(r"(?:v0|v_i|vi|u\s*=|초속도|발사속도|초기속도|처음\s*속도|처음에는|처음에|initial\s*speed|initial\s*velocity)[^\d-]{0,12}(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit, text)
+    positional_v0 = None
+    if labeled_v0 is None and "v0" not in knowns:
+        positional_v0 = _unit_value(r"(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit + r"\s*(?:에서|로\s*달리다가|로\s*움직이다가|로\s*가다가|에서\s*출발|로\s*출발|로)", text)
     vf = _unit_value(r"(?:vf|v_f|최종속도|나중\s*속도|마지막\s*속도|final\s*speed|final\s*velocity)[^\d-]{0,12}(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit, text)
     if not vf:
         vf = _unit_value(r"(?:속도가|속력은|속도는)[^\d\n.]{0,25}?(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit + r"\s*(?:가|이)?\s*(?:되|도달)", text)
     v = _unit_value(r"(?:속도|속력|speed|velocity|v\s*=)[^\d-]{0,12}(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit, text)
-    if v0:
-        # A labeled/focused initial-speed match outranks an earlier generic
-        # sentence-level speed (which may belong to background context).
-        knowns.pop("v0", None)
-        _set_si_velocity(knowns, "v0", v0[0], v0[1].replace(" ", ""), v0[2])
+    if labeled_v0:
+        # A real initial-speed label is the only text match allowed to replace an
+        # earlier inferred/default candidate. Generic positional speeds may describe
+        # another object and therefore never replace an existing v0.
+        _set_si_velocity(
+            knowns,
+            "v0",
+            labeled_v0[0],
+            labeled_v0[1].replace(" ", ""),
+            labeled_v0[2],
+            replace=True,
+        )
+    elif positional_v0:
+        _set_si_velocity(
+            knowns,
+            "v0",
+            positional_v0[0],
+            positional_v0[1].replace(" ", ""),
+            positional_v0[2],
+        )
     if vf:
         _set_si_velocity(knowns, "vf", vf[0], vf[1].replace(" ", ""), vf[2])
     if v and "v0" not in knowns and "vf" not in knowns:
@@ -353,11 +414,25 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     if acceleration:
         _set(knowns, "a", acceleration[0], "m/s^2", acceleration[1])
     else:
-        acceleration_cm = first_number(r"(?:가속도|감속도|acceleration|deceleration|a\s*=)[^\d-]{0,12}" + _NUM + r"\s*(?:cm/s\^?2|cm/s2)", text)
-        if not acceleration_cm:
-            acceleration_cm = first_number(_NUM + r"\s*(?:cm/s\^?2|cm/s2)\s*(?:로|으로)?\s*(?:가속|감속|등가속)", text)
-        if acceleration_cm:
-            _set(knowns, "a", acceleration_cm[0] / 100.0, "m/s^2", acceleration_cm[1] + " → m/s²")
+        acceleration_cm_match = re.search(
+            r"(?:가속도|감속도|acceleration|deceleration|a\s*=)[^\d-]{0,12}(?P<num>-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?P<unit>cm/s(?:\^?2|2|²))",
+            text,
+            re.IGNORECASE,
+        )
+        if acceleration_cm_match is None:
+            acceleration_cm_match = re.search(
+                r"(?P<num>-?\d+(?:,\d{3})*(?:\.\d+)?)\s*(?P<unit>cm/s(?:\^?2|2|²))\s*(?:로|으로)?\s*(?:가속|감속|등가속)",
+                text,
+                re.IGNORECASE,
+            )
+        if acceleration_cm_match:
+            _set_si_acceleration(
+                knowns,
+                "a",
+                _float(acceleration_cm_match.group("num")),
+                acceleration_cm_match.group("unit"),
+                _matched_quantity_token(acceleration_cm_match),
+            )
 
     force = first_number(r"(?:힘|force|f\s*=|F\s*=)[^\d-]{0,12}" + _NUM + r"\s*N", text)
     if not force:
