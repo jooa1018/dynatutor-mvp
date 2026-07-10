@@ -64,6 +64,9 @@ def test_frontend_metadata_only_no_build_execution():
     assert (root / "frontend" / "package.json").exists()
     assert (root / "frontend" / "package-lock.json").exists()
     assert (root / "scripts" / "check_frontend_build.sh").exists()
-    text = (root / "scripts" / "check_frontend_build.py").read_text(encoding="utf-8")
-    assert "start_new_session=True" in text
-    assert "os.killpg" in text
+    wrapper_text = (root / "scripts" / "check_frontend_build.py").read_text(encoding="utf-8")
+    timeout_text = (root / "scripts" / "run_with_timeout.py").read_text(encoding="utf-8")
+    assert "start_new_session=True" in wrapper_text
+    assert "terminate_process_group(" in wrapper_text
+    assert "process_group_exists(" in wrapper_text
+    assert "os.killpg" in timeout_text
