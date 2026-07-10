@@ -173,6 +173,12 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     cp.assumptions = base_assumptions
     cp.missing_info = _missing_info(cp)
     cp.confidence = "높음" if not cp.missing_info and cp.system_type != "unknown" else "보통" if cp.system_type != "unknown" else "낮음"
+
+    # Phase 43: patches change facts/assumptions, so the v2 fingerprint and
+    # provenance view must be rebuilt before routing/verification continues.
+    from engine.canonical.adapter import attach_canonical_v2
+
+    attach_canonical_v2(cp)
     return cp
 
 
