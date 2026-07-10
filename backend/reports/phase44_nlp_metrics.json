@@ -93,7 +93,7 @@
   "final": {
     "source_revision": "ca6c9a33c431e9204fa10eccc33d3c0f7abfea87",
     "workflow_run_id": 29098760657,
-    "measured_at_utc": "2026-07-10T14:08:00Z",
+    "measured_at_utc": "2026-07-10T14:10:27.7214572Z",
     "duration_seconds": 5.863,
     "metrics": {
       "case_count": 320,
