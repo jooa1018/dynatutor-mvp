@@ -4,56 +4,97 @@
   "measured_at": "2026-07-10",
   "measurement_policy": "Fresh values are recorded only from executed commands. Historical artifacts are explicitly labeled and are not presented as fresh runs.",
   "fresh_execution": {
-    "environment": "current Codex Windows host",
-    "status": "blocked",
-    "reason": "Every shell_command failed before process start with Windows access denied; branch validation will run in a temporary GitHub Actions workflow before PR creation."
+    "environment": "GitHub Actions ubuntu-latest (Linux 6.17 Azure x86_64), CPython 3.13.14",
+    "status": "completed",
+    "dependency_install": "python -m pip install -r backend/requirements-lock.txt",
+    "main_runtime_changed": false,
+    "notes": [
+      "The shared Codex Windows host still denied local process creation, so all fresh command evidence was collected on the isolated branch runner.",
+      "The unfiltered suite retains 11 pre-existing failures; Phase 42 related, fast, requested backend, routing, clarification/unsupported, and frontend metadata checks have no new failures."
+    ]
   },
   "test_suites": {
     "phase42_related": {
-      "command": "python -m pytest backend/tests/test_phase42_baseline_contracts.py -q -o addopts=''",
-      "status": "not_run",
-      "passed": null,
-      "failed": null,
-      "skipped": null,
-      "deselected": null,
-      "duration_seconds": null
+      "command": "env PYTHONPATH=backend python -m pytest backend/tests/test_phase42_baseline_contracts.py -q -o addopts=",
+      "status": "passed",
+      "passed": 137,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "duration_seconds": 2.43,
+      "wall_duration_seconds": 4
     },
     "backend_fast": {
       "command": "bash scripts/check_backend_fast.sh",
-      "status": "not_run",
-      "passed": null,
-      "failed": null,
-      "skipped": null,
-      "deselected": null,
-      "duration_seconds": null
+      "status": "passed",
+      "passed": 410,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 40,
+      "duration_seconds": 8.79,
+      "wall_duration_seconds": 9
     },
     "backend_requested_full": {
       "command": "python -m pytest backend/tests -q",
-      "status": "not_run",
-      "passed": null,
-      "failed": null,
-      "skipped": null,
-      "deselected": null,
-      "duration_seconds": null,
-      "notes": "backend/pytest.ini addopts excludes benchmark, audit, frontend, and slow markers, so this command is not an unfiltered full suite."
+      "status": "passed",
+      "passed": 410,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 40,
+      "duration_seconds": 7.94,
+      "wall_duration_seconds": 9,
+      "notes": "backend/pytest.ini addopts excludes benchmark, audit, frontend, and slow markers, so this requested command is not an unfiltered full suite."
     },
     "backend_unfiltered_full": {
-      "command": "python -m pytest backend/tests -q -o addopts=''",
-      "status": "not_run",
-      "passed": null,
-      "failed": null,
-      "skipped": null,
-      "deselected": null,
-      "duration_seconds": null
+      "command": "python -m pytest backend/tests -q -o addopts=",
+      "status": "failed",
+      "passed": 439,
+      "failed": 11,
+      "skipped": 0,
+      "deselected": 0,
+      "duration_seconds": 16.33,
+      "wall_duration_seconds": 17,
+      "notes": "All 11 failures are pre-existing on main: one Korean quality verification failure, six repository-relative benchmark data failures, and four missing frontend metadata/deployment failures."
     },
     "frontend_metadata": {
       "command": "bash scripts/check_frontend_metadata.sh",
-      "status": "not_run",
-      "passed": null,
-      "failed": null,
-      "skipped": null,
-      "deselected": null,
-      "duration_seconds": null
+      "status": "passed",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 0,
+      "duration_seconds": 0,
+      "notes": "The integer wall timer reported 0 seconds (<1 second)."
+    },
+    "korean_benchmarks": {
+      "command": "cd backend && python -m pytest tests/test_phase10_korean_quality_benchmark.py tests/test_phase25_blind_textbook_benchmark.py -q -o addopts=",
+      "status": "failed",
+      "passed": 3,
+      "failed": 1,
+      "skipped": 0,
+      "deselected": 0,
+      "duration_seconds": 4.35,
+      "wall_duration_seconds": 6
+    },
+    "routing_existing": {
+      "command": "cd backend && python -m pytest tests -q -o addopts= --ignore=tests/test_phase42_baseline_contracts.py -k \"routing or route\"",
+      "status": "passed",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 306,
+      "duration_seconds": 1.51,
+      "wall_duration_seconds": 2
+    },
+    "clarification_unsupported_existing": {
+      "command": "cd backend && python -m pytest tests -q -o addopts= --ignore=tests/test_phase42_baseline_contracts.py -k \"clarification or unsupported or refusal\"",
+      "status": "passed",
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 304,
+      "duration_seconds": 1.53,
+      "wall_duration_seconds": 3
     }
   },
   "current_versioned_artifacts": {
@@ -124,21 +165,26 @@
   "optional_dependency_baseline": {
     "pychrono": {
       "installed": false,
+      "blocked_for_measurement": true,
       "actual_numeric_scene_executed": false,
-      "current_behavior": "skipped when unavailable; manual_required when importable"
+      "current_behavior": "No executable scene; current adapter remains unavailable/manual_required only."
     },
     "pydy": {
+      "installed_by_lock": true,
+      "blocked_for_measurement": true,
       "runtime_role": "optional adapter by design",
       "actual_system_constructed": false
     },
     "scipy": {
+      "installed_by_lock": true,
+      "blocked_for_measurement": true,
       "independent_time_integration": false
     },
     "rapier2d": {
       "installed": false,
       "dynamic_visualization": false
     },
-    "pint_artifact_backend": "shim"
+    "pint_artifact_backend": "Existing routing artifact used shim; fresh runner installed Pint but did not separately instrument the units backend."
   },
   "api_contract": {
     "fixture": "backend/tests/contracts/phase42_api_schema_contract.json",
@@ -147,9 +193,33 @@
   "known_existing_issues": [
     {
       "id": "root_gitignore_missing",
+      "status": "addressed_in_phase42",
+      "impact": "Generated sqlite/cache/node_modules artifacts were not protected and repository tests could fail.",
+      "phase42_action": "Added the minimum root .gitignore; no code logic change."
+    },
+    {
+      "id": "phase10_korean_quality_frequency_response",
       "status": "confirmed",
-      "impact": "Generated sqlite/cache/node_modules artifacts are not protected and external repository tests may fail.",
-      "phase42_action": "Add the minimum root .gitignore; no code logic change."
+      "impact": "One of 100 Phase 10 Korean cases computes f = 0.796 Hz with the expected spring solver but the solve response is not accepted as ok.",
+      "phase42_action": "Recorded only; solver/verification changes are Phase 43+."
+    },
+    {
+      "id": "unfiltered_benchmark_paths_depend_on_cwd",
+      "status": "confirmed",
+      "impact": "Six unfiltered tests fail from repository root because they resolve tests/benchmarks relative to the backend working directory.",
+      "phase42_action": "Recorded exact failures; no test-path refactor in Phase 42."
+    },
+    {
+      "id": "frontend_metadata_files_missing",
+      "status": "confirmed",
+      "impact": "Four unfiltered deployment/frontend tests fail because frontend/.env.example and frontend/.nvmrc are absent (including the aggregate Phase 24 audit).",
+      "phase42_action": "Recorded only; frontend was not changed."
+    },
+    {
+      "id": "fixed_axis_tangential_verification_mismatch",
+      "status": "confirmed",
+      "impact": "The solver computes v=omega*r, but answer-consistency compares requested v_t with answer symbol v and returns evidence-confirm clarification.",
+      "phase42_action": "Golden status and capability limitation recorded; no validator change."
     },
     {
       "id": "goal_files_uploaded_at_root",
@@ -167,13 +237,13 @@
       "id": "requested_full_command_is_filtered",
       "status": "confirmed",
       "impact": "python -m pytest backend/tests -q inherits backend/pytest.ini exclusions.",
-      "phase42_action": "Run and report both requested and unfiltered commands."
+      "phase42_action": "Ran and reported both requested and unfiltered commands."
     },
     {
       "id": "local_shell_access_denied",
       "status": "environment",
-      "impact": "Fresh local measurements unavailable.",
-      "phase42_action": "Use an isolated branch runner and report exact evidence."
+      "impact": "Fresh local Windows measurements unavailable.",
+      "phase42_action": "Used an isolated branch runner and recorded the exact environment."
     }
   ],
   "metrics_not_currently_measurable": [
@@ -186,8 +256,59 @@
       "reason": "Only curated crafted/negative sets are labeled."
     },
     {
-      "metric": "fresh mean and P95 solve latency on the Windows host",
-      "reason": "Local process creation is blocked; remote runner results must be labeled by environment."
+      "metric": "production or Windows-host mean/P95 solve latency",
+      "reason": "The measured 9.64 ms mean and 33.23 ms P95 are laboratory values from GitHub Actions; the local Windows host denied process creation and no production telemetry exists."
+    },
+    {
+      "metric": "real PyChrono cross-engine agreement",
+      "reason": "PyChrono is not installed and the current adapter does not execute numeric scenes."
     }
-  ]
+  ],
+  "fresh_benchmark_results": {
+    "phase10_korean_quality": {
+      "cases": 100,
+      "passed_cases": 99,
+      "failed_cases": 1,
+      "accuracy": 0.99,
+      "failure": "One spring-mass frequency case routes and computes f = 0.796 Hz but is not accepted as ok by the current response/verification contract."
+    },
+    "phase25_blind_textbook": {
+      "cases": 100,
+      "passed_cases": 100,
+      "failed_cases": 0,
+      "accuracy": 1
+    },
+    "combined": {
+      "cases": 200,
+      "passed_cases": 199,
+      "failed_cases": 1,
+      "accuracy": 0.995,
+      "pytest_result": "3 passed, 1 failed in 4.35s"
+    }
+  },
+  "performance_baseline": {
+    "command": "env PYTHONPATH=backend python backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies",
+    "environment": "GitHub Actions Linux 6.17 Azure x86_64, CPython 3.13.14",
+    "fixture_cases": 43,
+    "repeats": 5,
+    "warmups": 1,
+    "samples": 215,
+    "mean_ms": 9.639277,
+    "p95_ms": 33.230674,
+    "min_ms": 1.610199,
+    "max_ms": 45.23826,
+    "status_counts": {
+      "solved": 210,
+      "needs_clarification": 5,
+      "unsupported": 0
+    },
+    "optional_dependency_absence_method": "A meta-path gate blocked imports of chrono, pychrono, pydy, and scipy before engine import; installed packages were not uninstalled.",
+    "optional_dependencies_blocked": [
+      "chrono",
+      "pychrono",
+      "pydy",
+      "scipy"
+    ],
+    "result": "passed"
+  }
 }
