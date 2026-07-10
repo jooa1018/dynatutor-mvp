@@ -53,7 +53,7 @@ jobs:
           print("fixture_category_counts", json.dumps(counts, ensure_ascii=False, sort_keys=True))
           print("metrics", json.dumps(report["metrics"], ensure_ascii=False, sort_keys=True))
           print("confidence_bins", json.dumps(report["confidence_bins"], ensure_ascii=False, sort_keys=True))
-          print("known_failure_counts", json.dumps(report["known_failure_counts"], ensure_ascii=False, sort_keys=True))
+          print("failure_counts", json.dumps({key: len(items) for key, items in report["failures"].items()}, ensure_ascii=False, sort_keys=True))
           print("gates_passed", report["gates"]["passed"])
           print("all_gate_results", json.dumps(report["gates"]["results"], ensure_ascii=False, sort_keys=True))
           PY
