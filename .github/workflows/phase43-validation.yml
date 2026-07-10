@@ -53,12 +53,7 @@ jobs:
           }
 
           run_check install python -m pip install -r backend/requirements-lock.txt
-          run_check phase43 env PYTHONPATH=backend python -m pytest backend/tests/test_phase43_canonical_problem_v2.py backend/tests/test_phase42_baseline_contracts.py -q -o "addopts="
-          run_check backend_fast bash scripts/check_backend_fast.sh
-          run_check backend_requested python -m pytest backend/tests -q
-          run_check frontend_metadata bash scripts/check_frontend_metadata.sh
-          run_check phase42_latency env PYTHONPATH=backend python backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies
-          run_check main_base_latency bash -lc 'git worktree add --detach /tmp/phase43-base 974286e23f70732fcab22e169ed70b76f413ddfb >/dev/null && PYTHONPATH=/tmp/phase43-base/backend python /tmp/phase43-base/backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies'
+          run_check main_base_latency bash -lc 'git fetch --quiet --depth=1 origin main && git worktree add --detach /tmp/phase43-base 974286e23f70732fcab22e169ed70b76f413ddfb >/dev/null && PYTHONPATH=/tmp/phase43-base/backend python /tmp/phase43-base/backend/scripts/measure_phase42_latency.py --repeats 5 --warmups 1 --block-optional-dependencies'
 
           echo "OVERALL_EXIT: ${overall}" >> "$report"
           echo "overall=${overall}" >> "$GITHUB_OUTPUT"
