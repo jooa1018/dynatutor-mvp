@@ -1090,11 +1090,11 @@
         "absolute": 0.00001,
         "relative": 0.00001
       },
-      "expected_status": "unsupported",
+      "expected_status": "needs_clarification",
       "oracle": {
         "basis": "independent_physics_law",
         "expression": "v=omega r",
-        "derivation": "4×0.5=2 m/s. 현재 검증 게이트는 계산된 v와 요청 토큰 v_t의 불일치로 응답을 보류하므로 상태는 unsupported로 고정한다."
+        "derivation": "4×0.5=2 m/s. 현재 검증 게이트는 계산된 v와 요청 토큰 v_t의 불일치로 evidence-confirm clarification을 반환하므로 상태는 needs_clarification으로 고정한다."
       }
     },
     {
