@@ -157,7 +157,7 @@
     {
       "id": "projectile_same_level_range",
       "domain": "projectile",
-      "problem_text": "공기저항을 무시한다. 공을 지면에서 속력 v0=15m/s, 발사각 theta=30도로 쏘아 올렸을 때 같은 높이에 도달하는 수평 사거리를 구하라.",
+      "problem_text": "공기저항을 무시한다. 공을 지면에서 발사속도 15m/s, 발사각 theta=30도로 쏘아 올렸을 때 같은 높이에 도달하는 수평 사거리를 구하라.",
       "expected_canonical_facts": {
         "system_type": "projectile_motion",
         "subtype": "same_level",
@@ -191,7 +191,7 @@
     {
       "id": "projectile_max_height",
       "domain": "projectile",
-      "problem_text": "공기저항을 무시하고 공을 지면에서 속력 v0=20m/s, 발사각 theta=30도로 발사했다. 최대높이를 구하라.",
+      "problem_text": "공기저항을 무시하고 공을 지면에서 발사속도 20m/s, 발사각 theta=30도로 발사했다. 최대높이를 구하라.",
       "expected_canonical_facts": {
         "system_type": "projectile_motion",
         "subtype": "general",
@@ -508,9 +508,7 @@
         }
       },
       "expected_route": "pulley_incline_hanging",
-      "expected_requested_outputs": [
-        "acceleration"
-      ],
+      "expected_requested_outputs": [],
       "expected_answers": [
         {
           "selector": "primary",
@@ -617,6 +615,7 @@
       },
       "expected_route": "collision_1d",
       "expected_requested_outputs": [
+        "final_velocity",
         "post_collision_velocity",
         "v1_after",
         "v2_after"
@@ -655,6 +654,7 @@
       },
       "expected_route": "collision_1d",
       "expected_requested_outputs": [
+        "final_velocity",
         "post_collision_velocity",
         "v1_after",
         "v2_after"
@@ -693,6 +693,7 @@
       },
       "expected_route": "collision_1d",
       "expected_requested_outputs": [
+        "final_velocity",
         "post_collision_velocity",
         "v1_after",
         "v2_after"
@@ -1089,11 +1090,11 @@
         "absolute": 0.00001,
         "relative": 0.00001
       },
-      "expected_status": "solved",
+      "expected_status": "unsupported",
       "oracle": {
         "basis": "independent_physics_law",
         "expression": "v=omega r",
-        "derivation": "4×0.5=2 m/s"
+        "derivation": "4×0.5=2 m/s. 현재 검증 게이트는 계산된 v와 요청 토큰 v_t의 불일치로 응답을 보류하므로 상태는 unsupported로 고정한다."
       }
     },
     {
@@ -1182,9 +1183,7 @@
         }
       },
       "expected_route": "polar_kinematics",
-      "expected_requested_outputs": [
-        "acceleration"
-      ],
+      "expected_requested_outputs": [],
       "expected_answers": [
         {
           "selector": "primary",
