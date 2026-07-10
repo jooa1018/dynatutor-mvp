@@ -1,0 +1,45 @@
+name: Temporary Phase 42 Validation
+
+on:
+  push:
+    branches:
+      - agent/phase42-baseline-contracts
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements-lock.txt
+      - name: Phase 42 related tests
+        run: |
+          start=$(date +%s)
+          PYTHONPATH=backend python -m pytest backend/tests/test_phase42_baseline_contracts.py -q -o addopts=''
+          echo "PHASE42_DURATION_SECONDS=$(($(date +%s)-start))"
+      - name: Backend fast tests
+        run: |
+          start=$(date +%s)
+          bash scripts/check_backend_fast.sh
+          echo "BACKEND_FAST_DURATION_SECONDS=$(($(date +%s)-start))"
+      - name: Requested backend full command
+        run: |
+          start=$(date +%s)
+          python -m pytest backend/tests -q
+          echo "BACKEND_REQUESTED_DURATION_SECONDS=$(($(date +%s)-start))"
+      - name: Unfiltered backend full tests
+        run: |
+          start=$(date +%s)
+          python -m pytest backend/tests -q -o addopts=''
+          echo "BACKEND_UNFILTERED_DURATION_SECONDS=$(($(date +%s)-start))"
+      - name: Frontend metadata
+        run: |
+          start=$(date +%s)
+          bash scripts/check_frontend_metadata.sh
+          echo "FRONTEND_METADATA_DURATION_SECONDS=$(($(date +%s)-start))"

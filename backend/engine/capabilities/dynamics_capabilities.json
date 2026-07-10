@@ -1,0 +1,1628 @@
+{
+  "schema_version": 1,
+  "source_commit": "174e7ec0f724f584628fd85a719af9b5fd2a54b3",
+  "source_files": [
+    "backend/engine/solvers/registry.py",
+    "backend/engine/solvers/**",
+    "backend/engine/extraction/extractor.py",
+    "backend/engine/verification/suite.py",
+    "backend/engine/verification/residuals.py",
+    "backend/tools/chrono_validation/chrono_simulators.py",
+    "backend/engine/visualization/fbd.py"
+  ],
+  "notes": [
+    "One entry corresponds to one SolverRegistry solver; particle_on_incline therefore has separate subtype entries.",
+    "numeric_support means the current student-answer numeric path, not independent SciPy/PyDy simulation.",
+    "Chrono manual_required_hook is not a successful numerical simulation."
+  ],
+  "capabilities": [
+    {
+      "system_type": "single_particle_newton",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "minimum_present": 2,
+            "symbols": [
+              "m",
+              "F",
+              "a"
+            ],
+            "plus": "one requested unknown"
+          }
+        ]
+      },
+      "optional_inputs": [
+        "force direction",
+        "net-force confirmation"
+      ],
+      "requested_outputs": [
+        "acceleration",
+        "force",
+        "mass"
+      ],
+      "assumptions": [
+        "single particle",
+        "F is net force with an explicit or unambiguous direction"
+      ],
+      "analytic_solver": "single_particle_newton",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Requires two of m/F/a; common residual checker has no dedicated single-particle Newton rule."
+      ]
+    },
+    {
+      "system_type": "particle_on_incline",
+      "subtypes": [
+        "no_friction"
+      ],
+      "required_inputs": {
+        "all_of": [
+          "theta"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "optional_inputs": [
+        "m",
+        "g"
+      ],
+      "requested_outputs": [
+        "acceleration"
+      ],
+      "assumptions": [
+        "particle model",
+        "friction absent"
+      ],
+      "analytic_solver": "incline_no_friction",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "One-dimensional along-slope model; no contact-loss or finite-length integration."
+      ]
+    },
+    {
+      "system_type": "particle_on_incline",
+      "subtypes": [
+        "with_friction"
+      ],
+      "required_inputs": {
+        "all_of": [
+          "theta"
+        ],
+        "any_of": [
+          "mu",
+          "mu_s",
+          "mu_k"
+        ],
+        "conditional": []
+      },
+      "optional_inputs": [
+        "m",
+        "g",
+        "motion direction"
+      ],
+      "requested_outputs": [
+        "acceleration"
+      ],
+      "assumptions": [
+        "particle model",
+        "static-friction-first when static data are present",
+        "kinetic friction opposes motion"
+      ],
+      "analytic_solver": "incline_with_friction",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "manual_required_hook",
+        "case": "incline_friction",
+        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Requires friction state/coefficients; transition after static failure may require direction and mu_k."
+      ]
+    },
+    {
+      "system_type": "pulley_atwood",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "m1",
+          "m2"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "optional_inputs": [
+        "g"
+      ],
+      "requested_outputs": [
+        "acceleration",
+        "tension"
+      ],
+      "assumptions": [
+        "massless inextensible string",
+        "massless frictionless pulley"
+      ],
+      "analytic_solver": "pulley_atwood",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Two hanging masses only; slack string and pulley inertia are excluded."
+      ]
+    },
+    {
+      "system_type": "pulley_table_hanging",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "m1",
+          "m2"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "friction_type",
+              "mu",
+              "mu_s",
+              "mu_k",
+              "explicit no_friction"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "g",
+        "mu",
+        "mu_s",
+        "mu_k"
+      ],
+      "requested_outputs": [
+        "acceleration",
+        "tension",
+        "friction_force"
+      ],
+      "assumptions": [
+        "massless inextensible string",
+        "massless frictionless pulley",
+        "horizontal table"
+      ],
+      "analytic_solver": "pulley_table_hanging",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Friction state must be explicit; no slack-string/contact-loss model."
+      ]
+    },
+    {
+      "system_type": "pulley_incline_hanging",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "m1",
+          "m2",
+          "theta"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "optional_inputs": [
+        "g",
+        "mu",
+        "mu_s",
+        "mu_k",
+        "motion direction"
+      ],
+      "requested_outputs": [
+        "acceleration",
+        "tension",
+        "friction_force"
+      ],
+      "assumptions": [
+        "massless inextensible string",
+        "massless frictionless pulley",
+        "one mass on incline and one hanging"
+      ],
+      "analytic_solver": "pulley_incline_hanging",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Kinetic-friction cases require an actual motion direction when force balance alone cannot safely choose it."
+      ]
+    },
+    {
+      "system_type": "massive_pulley_atwood",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "m1",
+          "m2"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "I",
+              "Ip"
+            ]
+          },
+          {
+            "one_of": [
+              "R",
+              "Rp"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "g"
+      ],
+      "requested_outputs": [
+        "acceleration",
+        "angular_acceleration",
+        "tension"
+      ],
+      "assumptions": [
+        "inextensible no-slip string",
+        "fixed pulley axis"
+      ],
+      "analytic_solver": "massive_pulley_atwood",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "manual_required_hook",
+        "case": "massive_pulley",
+        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "No common residual checker; no real PyChrono scene; assumes a=alpha R and taut string."
+      ]
+    },
+    {
+      "system_type": "pure_rolling_energy",
+      "subtypes": [
+        "rolling_on_incline"
+      ],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "h",
+              "launch_height"
+            ]
+          },
+          {
+            "one_of": [
+              "body_shape",
+              "I"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "g"
+      ],
+      "requested_outputs": [
+        "final_velocity"
+      ],
+      "assumptions": [
+        "starts from rest",
+        "pure rolling",
+        "static friction does no work"
+      ],
+      "analytic_solver": "pure_rolling_energy",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "manual_required_hook",
+        "case": "rolling_sphere_or_disk",
+        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Uses an inertia-factor table; no slip transition, required friction, or trajectory."
+      ]
+    },
+    {
+      "system_type": "rolling_energy_general",
+      "subtypes": [
+        "rolling_on_incline"
+      ],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "h",
+              "launch_height"
+            ]
+          },
+          {
+            "one_of": [
+              "body_shape",
+              "I plus m and R"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "g",
+        "m",
+        "I",
+        "R"
+      ],
+      "requested_outputs": [
+        "final_velocity"
+      ],
+      "assumptions": [
+        "starts from rest",
+        "pure rolling"
+      ],
+      "analytic_solver": "rolling_energy_general",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "manual_required_hook",
+        "case": "rolling_general",
+        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Only endpoint energy speed; no trajectory or check that available friction can enforce no slip."
+      ]
+    },
+    {
+      "system_type": "vertical_circle",
+      "subtypes": [
+        "top",
+        "bottom"
+      ],
+      "required_inputs": {
+        "all_of": [
+          "R"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "v",
+              "minimum_speed request"
+            ]
+          },
+          {
+            "one_of": [
+              "top subtype",
+              "bottom subtype"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "m",
+        "g"
+      ],
+      "requested_outputs": [
+        "final_velocity",
+        "force"
+      ],
+      "assumptions": [
+        "particle constrained to a vertical circle"
+      ],
+      "analytic_solver": "vertical_circle",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Supports selected top/bottom tension or top minimum-speed forms; no contact-loss trajectory and no residual checker."
+      ]
+    },
+    {
+      "system_type": "collision_1d",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "m1",
+          "m2",
+          "v1",
+          "v2"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "perfectly_inelastic",
+              "elastic",
+              "e"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "post_collision_velocity",
+        "v1_after",
+        "v2_after"
+      ],
+      "assumptions": [
+        "one-dimensional collinear impact",
+        "external impulse negligible"
+      ],
+      "analytic_solver": "collision_1d",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "manual_required_hook",
+        "case": "collision_restitution",
+        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "No oblique impact, spin, finite contact duration, or real contact simulation."
+      ]
+    },
+    {
+      "system_type": "constant_acceleration_1d",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "minimum_present": 3,
+            "symbols": [
+              "v0",
+              "vf",
+              "a",
+              "t",
+              "s"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "time",
+        "distance",
+        "final_velocity",
+        "initial_velocity",
+        "acceleration"
+      ],
+      "assumptions": [
+        "one-dimensional motion",
+        "constant acceleration"
+      ],
+      "analytic_solver": "constant_acceleration_1d",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Solves textbook algebraic combinations; no piecewise acceleration or uncertainty model."
+      ]
+    },
+    {
+      "system_type": "projectile_motion",
+      "subtypes": [
+        "same_level",
+        "general"
+      ],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "v0",
+              "v"
+            ]
+          },
+          {
+            "one_of": [
+              "theta",
+              "launch_angle_deg"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "g",
+        "launch_height",
+        "landing_height"
+      ],
+      "requested_outputs": [
+        "time",
+        "range",
+        "max_height"
+      ],
+      "assumptions": [
+        "uniform gravity",
+        "no air resistance"
+      ],
+      "analytic_solver": "projectile_motion",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "No drag, wind, terrain collision, or trajectory integration; special horizontal-drop time path can omit v0 only for time."
+      ]
+    },
+    {
+      "system_type": "constant_force_work",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "F",
+          "s"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "theta",
+              "force_direction"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "work"
+      ],
+      "assumptions": [
+        "constant force over the displacement"
+      ],
+      "analytic_solver": "constant_force_work",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Requires direction/angle; no variable-force line integral."
+      ]
+    },
+    {
+      "system_type": "fixed_axis_rotation",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "tau and I",
+              "alpha and t for angular velocity",
+              "omega and r/R for tangential speed"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "omega0",
+        "g"
+      ],
+      "requested_outputs": [
+        "angular_acceleration",
+        "angular_velocity",
+        "tangential_velocity"
+      ],
+      "assumptions": [
+        "fixed rotation axis"
+      ],
+      "analytic_solver": "fixed_axis_rotation",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Only simple torque or constant-angular-acceleration kinematics; no general rigid-body dynamics."
+      ]
+    },
+    {
+      "system_type": "horizontal_friction_force",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "mu",
+              "mu_k"
+            ]
+          },
+          {
+            "one_of": [
+              "m",
+              "m1 when m2 absent"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "g"
+      ],
+      "requested_outputs": [
+        "friction_force",
+        "normal_force"
+      ],
+      "assumptions": [
+        "horizontal surface",
+        "kinetic Coulomb friction"
+      ],
+      "analytic_solver": "horizontal_friction_force",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Direct f=mu mg evaluation only; no static-friction inequality or coupled motion."
+      ]
+    },
+    {
+      "system_type": "impulse_momentum",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "F",
+          "t"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "impulse request",
+              "m plus v0/v for final velocity"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "m",
+        "v0",
+        "v"
+      ],
+      "requested_outputs": [
+        "final_velocity"
+      ],
+      "assumptions": [
+        "constant force over the stated interval",
+        "one-dimensional signed direction"
+      ],
+      "analytic_solver": "impulse_momentum",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Requested-output extractor has no explicit impulse key; force direction must be encoded by sign."
+      ]
+    },
+    {
+      "system_type": "work_energy_speed",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "m"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "W",
+              "F and s"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "v0",
+        "v",
+        "theta"
+      ],
+      "requested_outputs": [
+        "final_velocity"
+      ],
+      "assumptions": [
+        "net work equals change in kinetic energy"
+      ],
+      "analytic_solver": "work_energy_speed",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "No general potential-energy bookkeeping or path-dependent force integration."
+      ]
+    },
+    {
+      "system_type": "spring_mass_vibration",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "k",
+          "m"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "angular_frequency",
+        "frequency",
+        "period"
+      ],
+      "assumptions": [
+        "undamped unforced one-degree-of-freedom oscillator"
+      ],
+      "analytic_solver": "spring_mass_vibration",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "No damping/forcing/nonlinearity; requested_outputs currently does not encode period/frequency."
+      ]
+    },
+    {
+      "system_type": "spring_energy",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "k"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "x",
+              "A"
+            ]
+          },
+          {
+            "one_of": [
+              "m for speed",
+              "elastic_energy request"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "final_velocity",
+        "elastic_energy"
+      ],
+      "assumptions": [
+        "ideal spring",
+        "no friction"
+      ],
+      "analytic_solver": "spring_energy_speed",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Endpoint energy conversion only; no time response."
+      ]
+    },
+    {
+      "system_type": "flat_curve_friction",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "R",
+          "mu"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "optional_inputs": [
+        "g"
+      ],
+      "requested_outputs": [
+        "final_velocity"
+      ],
+      "assumptions": [
+        "uniform circular motion",
+        "static friction supplies centripetal force at limit"
+      ],
+      "analytic_solver": "flat_curve_friction",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Computes limiting speed only; no transient or banking/friction combination."
+      ]
+    },
+    {
+      "system_type": "banked_curve_no_friction",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "R",
+          "theta"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "optional_inputs": [
+        "g"
+      ],
+      "requested_outputs": [
+        "final_velocity"
+      ],
+      "assumptions": [
+        "uniform circular motion",
+        "no friction"
+      ],
+      "analytic_solver": "banked_curve_no_friction",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Single design speed only; no friction range or vehicle dynamics."
+      ]
+    },
+    {
+      "system_type": "relative_acceleration_translation",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "aA",
+          "arel"
+        ],
+        "any_of": [],
+        "conditional": []
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "acceleration"
+      ],
+      "assumptions": [
+        "translating reference relation",
+        "collinear components when directions absent"
+      ],
+      "analytic_solver": "relative_acceleration_translation",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Scalar default can hide vector-direction ambiguity."
+      ]
+    },
+    {
+      "system_type": "coriolis_relative_motion",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "omega"
+        ],
+        "any_of": [
+          "vrel",
+          "rdot"
+        ],
+        "conditional": []
+      },
+      "optional_inputs": [
+        "r",
+        "R",
+        "arel",
+        "rddot",
+        "alpha",
+        "thetaddot"
+      ],
+      "requested_outputs": [
+        "acceleration"
+      ],
+      "assumptions": [
+        "planar rotating frame"
+      ],
+      "analytic_solver": "coriolis_relative_motion",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Uses a prescribed 2D component form; no general 3D frame orientation or trajectory."
+      ]
+    },
+    {
+      "system_type": "plane_rigid_body_acceleration",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "omega",
+          "alpha"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "r/R",
+              "coordinate_data rBA vector"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "aA",
+        "coordinate_data aA vector"
+      ],
+      "requested_outputs": [
+        "acceleration"
+      ],
+      "assumptions": [
+        "planar rigid body"
+      ],
+      "analytic_solver": "plane_rigid_body_acceleration",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Requires explicit/reference geometry; only planar relation, no force dynamics."
+      ]
+    },
+    {
+      "system_type": "polar_kinematics",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "r",
+              "R"
+            ]
+          },
+          {
+            "one_of": [
+              "omega",
+              "thetadot"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "rdot",
+        "rddot",
+        "alpha",
+        "thetaddot"
+      ],
+      "requested_outputs": [
+        "final_velocity",
+        "acceleration"
+      ],
+      "assumptions": [
+        "planar polar coordinates"
+      ],
+      "analytic_solver": "polar_kinematics",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Missing radial/angular derivatives default to zero; that assumption may be implicit."
+      ]
+    },
+    {
+      "system_type": "instant_center_velocity",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "r",
+              "R"
+            ]
+          },
+          {
+            "one_of": [
+              "omega",
+              "v",
+              "vB"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "final_velocity",
+        "angular_velocity"
+      ],
+      "assumptions": [
+        "instantaneous planar rigid-body rotation about IC"
+      ],
+      "analytic_solver": "instant_center_velocity",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Velocity-only instantaneous relation; no acceleration validity and no residual checker."
+      ]
+    },
+    {
+      "system_type": "slot_pin_relative_motion",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "r",
+              "R"
+            ]
+          },
+          {
+            "all_of": [
+              "omega",
+              "rdot"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [
+        "rddot",
+        "alpha"
+      ],
+      "requested_outputs": [
+        "final_velocity",
+        "acceleration"
+      ],
+      "assumptions": [
+        "pin slides in a rotating slot",
+        "planar polar model"
+      ],
+      "analytic_solver": "slot_pin_relative_motion",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Simplified prescribed slot motion; no contact-force or slot-geometry solution."
+      ]
+    },
+    {
+      "system_type": "plane_rigid_body_velocity",
+      "subtypes": [],
+      "required_inputs": {
+        "all_of": [
+          "omega"
+        ],
+        "any_of": [],
+        "conditional": [
+          {
+            "one_of": [
+              "r/R",
+              "coordinate_data rBA vector"
+            ]
+          },
+          {
+            "one_of": [
+              "vA",
+              "coordinate_data vA vector",
+              "A fixed statement"
+            ]
+          }
+        ]
+      },
+      "optional_inputs": [],
+      "requested_outputs": [
+        "final_velocity"
+      ],
+      "assumptions": [
+        "planar rigid body"
+      ],
+      "analytic_solver": "plane_rigid_body_velocity",
+      "validators": [
+        "answer_consistency",
+        "dimension",
+        "plausibility",
+        "provenance",
+        "equation_residual"
+      ],
+      "numeric_support": {
+        "analytic_numeric": true,
+        "independent_time_integration": false,
+        "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
+      },
+      "chrono_support": {
+        "status": "none",
+        "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
+      },
+      "visualization_support": {
+        "status": "static_svg_fbd_only",
+        "dynamic_physics": false,
+        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+      },
+      "known_limitations": [
+        "Magnitude shortcut and vector path coexist; direction data are required for the general case."
+      ]
+    }
+  ]
+}
