@@ -134,7 +134,9 @@ def test_phase43_conflicting_explicit_values_are_retained():
     canonical = extract_problem(
         "질량 m1=2kg이고 다른 문장에는 m1=3kg이라고 적혀 있다. 힘 F=10N일 때 가속도는?"
     )
-    mass = _fact(canonical, "m1")\n\n    assert mass.status == "conflicting"
+    mass = _fact(canonical, "m1")
+
+    assert mass.status == "conflicting"
     assert mass.provenance == "conflict_detection"
     assert len(mass.alternatives) == 2
     assert any("m1 has conflicting explicit values" in item for item in canonical.canonical_v2.conflicts)
