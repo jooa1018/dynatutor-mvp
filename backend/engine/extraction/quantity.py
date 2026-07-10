@@ -278,6 +278,9 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
         vf = _unit_value(r"(?:속도가|속력은|속도는)[^\d\n.]{0,25}?(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit + r"\s*(?:가|이)?\s*(?:되|도달)", text)
     v = _unit_value(r"(?:속도|속력|speed|velocity|v\s*=)[^\d-]{0,12}(?P<num>" + _NUM[1:-1] + r")\s*" + speed_unit, text)
     if v0:
+        # A labeled/focused initial-speed match outranks an earlier generic
+        # sentence-level speed (which may belong to background context).
+        knowns.pop("v0", None)
         _set_si_velocity(knowns, "v0", v0[0], v0[1].replace(" ", ""), v0[2])
     if vf:
         _set_si_velocity(knowns, "vf", vf[0], vf[1].replace(" ", ""), vf[2])
