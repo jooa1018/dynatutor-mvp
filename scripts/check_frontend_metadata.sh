@@ -24,7 +24,9 @@ assert timeout_wrapper.exists(), "scripts/run_with_timeout.py missing"
 assert next_config.exists(), "frontend/next.config.js missing"
 
 pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+lock_text = lock_path.read_text(encoding="utf-8")
 assert "build" in pkg.get("scripts", {}), "frontend build script missing"
+assert "internal.api.openai.org" not in lock_text, "package lock references an inaccessible internal registry"
 
 deps = {}
 deps.update(pkg.get("dependencies", {}))
