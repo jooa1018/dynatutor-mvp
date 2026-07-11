@@ -3,7 +3,7 @@ from engine.services import solve_problem, diagnose_problem
 
 
 def test_relative_acceleration_translation_solver():
-    out = solve_problem("A점 가속도 aA=1.2 m/s^2 이고 A에 대한 B의 상대가속도 a_rel=0.8 m/s^2 이다. B점 가속도를 구하라.")
+    out = solve_problem("A점 가속도 aA=1.2 m/s^2가 오른쪽이고 A에 대한 B의 상대가속도 a_rel=0.8 m/s^2도 오른쪽이다. B점 가속도를 구하라.")
     assert out.ok
     assert out.diagnosis.selected_solver == "relative_acceleration_translation"
     assert abs(out.answer.numeric - 2.0) < 1e-6
@@ -24,7 +24,7 @@ def test_coriolis_relative_motion_solver():
 
 
 def test_plane_rigid_body_acceleration_solver():
-    out = solve_problem("평면강체 가속도 문제에서 거리 r=0.6 m, 각속도 omega=4 rad/s, 각가속도 alpha=3 rad/s^2 이다. B점의 A에 대한 가속도 성분을 구하라.")
+    out = solve_problem("평면강체에서 A점은 고정되어 있고 B는 A에서 오른쪽으로 r=0.6 m 떨어져 있다. 각속도 omega=4 rad/s와 각가속도 alpha=3 rad/s^2는 모두 반시계방향이다. B점의 A에 대한 가속도 성분을 구하라.")
     assert out.ok
     assert out.diagnosis.selected_solver == "plane_rigid_body_acceleration"
     assert abs(out.answer.numeric - math.hypot(1.8, 9.6)) < 1e-6
