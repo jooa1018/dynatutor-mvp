@@ -32,7 +32,7 @@ class AtwoodPulleySolver(BaseSolver):
         a_val = float(sol[S.a])
         T_val = float(sol[S.T])
         direction = "m2가 아래로, m1이 위로" if a_val >= 0 else "m1이 아래로, m2가 위로"
-        display = f"a = {abs(a_val):.3f} m/s² ({direction}), T = {T_val:.3f} N"
+        display = f"a = {a_val:.3f} m/s² ({direction}), T = {T_val:.3f} N"
         steps = [
             StepCard("토폴로지 확인", "두 물체가 도르래 양쪽에 매달린 Atwood 계입니다."),
             StepCard("방향 가정", "m2가 아래로 내려가는 방향을 +로 두었습니다. 결과가 음수면 실제 방향은 반대입니다."),
@@ -50,9 +50,9 @@ class AtwoodPulleySolver(BaseSolver):
         )
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="a=(m2-m1)g/(m1+m2), T=2m1m2g/(m1+m2)", numeric=round(abs(a_val), 6), unit="m/s²", display=display),
+            answer=Answer(symbolic="a=(m2-m1)g/(m1+m2), T=2m1m2g/(m1+m2)", numeric=round(a_val, 6), unit="m/s²", display=display),
             answers=[
-                AnswerItem("가속도", "a", round(abs(a_val), 6), "m/s²", f"가속도 a = {abs(a_val):.3f} m/s²", "primary"),
+                AnswerItem("가속도 성분", "a", round(a_val, 6), "m/s²", f"가속도 성분 a = {a_val:.3f} m/s² ({direction})", "primary"),
                 AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
             ],
             steps=steps,
