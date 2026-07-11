@@ -175,36 +175,58 @@ def normalize(text: str) -> str:
     return t
 
 
-_IRRELEVANT_SENTENCE_MARKERS = (
-    "관찰자의 질량",
-    "실험실 온도",
-    "교실 온도",
-    "바깥 기온",
-    "오늘 날씨",
-    "벽시계",
-    "실험 날짜",
-    "팀 번호",
-    "학생 수",
-    "실험을 지켜봤",
-    "책상의 색",
-    "교실 책상의 길이",
+NORMALIZATION_SURFACE_FORMS = (
+    "초기속도", "초기 속도", "처음 속도", "처음속도",
+    "나중 속도", "최종 속도", "최종 속력", "마찰 업는",
+    "도르레", "매끄런", "쵸속도", "관성 모멘트",
+    "마찰 계수", "미끄럼 없이", "마찰 없이",
+    "뉴턴미터", "킬로그램미터제곱", "미터퍼세컨드제곱",
+)
+
+_IRRELEVANT_SENTENCE_PATTERNS = (
+    r"^참고로\s+관찰자의\s+질량(?:은|는|이|가)?\b",
+    r"^(?:실험실|교실)\s+온도(?:는|가|는)?\b",
+    r"^바깥\s+기온(?:은|는|이|가)?\b",
+    r"^오늘\s+날씨(?:는|가|는)?\b",
+    r"^벽시계\s*(?:는|가)\s*[^.!?]*(?:가리켰|시각|시간)",
+    r"^실험\s+날짜(?:는|가|는)?\b",
+    r"^팀\s+번호(?:는|가|는)?\b",
+    r"^학생\s+수\s*(?:는|가|=|\d)",
+    r"^학생\s+\d+\s*명이\s+실험을\s+지켜봤",
+    r"^책상의\s+색(?:은|는|이|가)?\b",
+    r"^교실\s+책상의\s+길이(?:는|가|는)?\b",
 )
 
 
-def strip_irrelevant_background(text: str) -> str:
-    """Remove only clearly labelled background sentences before extraction.
+def is_irrelevant_background_sentence(sentence: str) -> bool:
+    candidate = sentence.strip()
+    return any(
+        re.search(pattern, candidate, re.IGNORECASE)
+        for pattern in _IRRELEVANT_SENTENCE_PATTERNS
+    )
 
-    This is intentionally conservative: it does not delete an arbitrary clause
-    merely because it contains an unfamiliar number. Raw text is still retained
-    in CanonicalProblem for provenance and the student-facing diagnosis.
-    """
-    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+|[\r\n]+", text) if part.strip()]
+
+def iter_sentence_spans(text: str):
+    """Yield exact sentence spans while retaining raw offsets and newlines."""
+    for match in re.finditer(r"[^.!?\r\n]+(?:[.!?]+|(?=[\r\n]|$))", text):
+        chunk = match.group(0)
+        leading = len(chunk) - len(chunk.lstrip())
+        trailing = len(chunk.rstrip())
+        start = match.start() + leading
+        end = match.start() + trailing
+        if start < end:
+            yield start, end, text[start:end]
+
+
+def strip_irrelevant_background(text: str) -> str:
+    """Remove only complete, explicitly recognized background statements."""
+    sentences = list(iter_sentence_spans(text))
     if len(sentences) < 2:
         return text
     retained = [
         sentence
-        for sentence in sentences
-        if not any(marker in sentence for marker in _IRRELEVANT_SENTENCE_MARKERS)
+        for _, _, sentence in sentences
+        if not is_irrelevant_background_sentence(sentence)
     ]
     return " ".join(retained) if retained else text
 
