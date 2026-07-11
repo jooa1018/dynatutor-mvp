@@ -264,9 +264,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         registry=registry,
         route_decision=route_decision,
     )
-    registry.last_route_decision = route_decision
-    registry._last_route_problem_identity = id(canonical)
-    solver = registry.select(canonical)
+    solver = registry.select(canonical, decision=route_decision)
 
     if not solver:
         verification = VerificationReportSchema(
