@@ -8,6 +8,8 @@ from app.schemas.solution import (
     FeedbackResponse,
     LegacyHintModel,
     QuantityModel,
+    RouteCandidateModel,
+    RouteDecisionModel,
     SolveResponse,
     StepCard as StepCardSchema,
     VerificationReport as VerificationReportSchema,
@@ -113,6 +115,66 @@ def _canonical_model(c):
     )
 
 
+def _route_decision_model(decision):
+    if decision is None:
+        return None
+    return RouteDecisionModel(
+        status=decision.status,
+        candidates=[
+            RouteCandidateModel(
+                solver_id=candidate.solver_id,
+                family=candidate.family,
+                raw_score=candidate.raw_score,
+                normalized_score=candidate.normalized_score,
+                evidence=candidate.evidence,
+                missing_requirements=candidate.missing_requirements,
+                contradictions=candidate.contradictions,
+                supported_outputs=candidate.supported_outputs,
+                risk_flags=candidate.risk_flags,
+                source_system_type=candidate.source_system_type,
+                source_subtype=candidate.source_subtype,
+                interpretation_score=candidate.interpretation_score,
+            )
+            for candidate in decision.candidates
+        ],
+        selected_solver_id=decision.selected_solver_id,
+        question=decision.question,
+        reason=decision.reason,
+        warnings=decision.warnings,
+    )
+
+
+def _route_clarification_model(decision):
+    if decision is None or decision.status != "clarify" or not decision.question:
+        return None
+    options = []
+    seen = set()
+    for candidate in decision.candidates:
+        key = (candidate.source_system_type, candidate.source_subtype)
+        if candidate.source_system_type is None or key in seen:
+            continue
+        seen.add(key)
+        patch = {"system_type": candidate.source_system_type}
+        if candidate.source_subtype in {"no_friction", "with_friction"}:
+            patch["subtype"] = candidate.source_subtype
+        options.append(
+            ClarificationOptionModel(
+                id=f"route_{candidate.solver_id}",
+                label=candidate.solver_id,
+                description="; ".join(candidate.evidence),
+                patch=patch,
+            )
+        )
+        if len(options) >= 3:
+            break
+    return ClarificationModel(
+        rule="route_decision",
+        question=decision.question,
+        why=decision.reason,
+        options=options,
+    )
+
+
 def _legacy_model(h):
     return LegacyHintModel(
         problem_type_candidates=h.problem_type_candidates,
@@ -128,12 +190,16 @@ def diagnose_problem(
     student_solution: str | None = None,
     canonical: "CanonicalProblem | None" = None,
     physical_model=None,
+    registry: SolverRegistry | None = None,
+    route_decision=None,
 ) -> DiagnosisResponse:
     """canonical을 직접 주면 그 기준으로 진단한다 (clarify patch 이후 재진단용)."""
     if canonical is None:
         canonical = extract_problem(problem_text)
     hints = make_legacy_hints(canonical)
-    solver = SolverRegistry().select(canonical)
+    registry = registry or SolverRegistry()
+    route_decision = route_decision or registry.route(canonical)
+    solver = registry.select(canonical, decision=route_decision)
     cards = build_diagnosis_cards(canonical, hints, solver)
     physical_model = physical_model or build_physical_model(canonical)
 
@@ -145,6 +211,7 @@ def diagnose_problem(
         legacy_hints=_legacy_model(hints),
         selected_solver=solver.name if solver else None,
         solver_reason=solver.reason if solver else None,
+        route_decision=_route_decision_model(route_decision),
         fbd=cards.fbd,
         coordinate_guide=cards.coordinate_guide,
         applicable_equations=cards.applicable_equations,
@@ -168,18 +235,26 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
     # Phase 45 vertical slices share one typed/legacy model across diagnosis,
     # solving, StepCards, and response serialization.
     physical_model = build_physical_model(canonical)
+    registry = SolverRegistry()
+    route_decision = registry.route(canonical)
     diagnosis = diagnose_problem(
         problem_text,
         student_solution,
         canonical=canonical,
         physical_model=physical_model,
+        registry=registry,
+        route_decision=route_decision,
     )
-    solver = SolverRegistry().select(canonical)
+    solver = registry.select(canonical, decision=route_decision)
 
     if not solver:
         verification = VerificationReportSchema(
             passed=False,
-            warnings=["현재 MVP solver가 직접 지원하지 않는 유형입니다."],
+            warnings=[
+                "풀이 전에 물리 모형 또는 추가 입력 확인이 필요합니다."
+                if route_decision.status == "clarify"
+                else "현재 MVP solver가 직접 지원하지 않는 유형입니다."
+            ],
             errors=[],
             checks=[],
         )
@@ -198,6 +273,8 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                     for o in clar.options
                 ],
             )
+        if clarification_model is None:
+            clarification_model = _route_clarification_model(route_decision)
         response = SolveResponse(
             ok=False,
             diagnosis=diagnosis,
@@ -207,9 +284,14 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
             verification=verification,
             unsupported_reason=(
                 clar.question if clar is not None
-                else ("; ".join(canonical.missing_info) if canonical.missing_info else "아직 이 유형을 계산까지 지원하지 않습니다. 진단 카드만 참고하세요.")
+                else (
+                    route_decision.question
+                    or route_decision.reason
+                    or ("; ".join(canonical.missing_info) if canonical.missing_info else "아직 이 유형을 계산까지 지원하지 않습니다. 진단 카드만 참고하세요.")
+                )
             ),
             clarification=clarification_model,
+            route_decision=_route_decision_model(route_decision),
             physical_model=diagnosis.physical_model,
         )
         response.teacher_summary = build_teacher_summary(response)
@@ -250,6 +332,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         steps=[StepCardSchema(**s.__dict__) for s in all_steps],
         verification=VerificationReportSchema(**result.verification.__dict__),
         unsupported_reason=result.unsupported_reason,
+        route_decision=_route_decision_model(route_decision),
         physical_model=physical_model.to_dict(),
     )
     # 실패 응답도 "완전히 못 풂" 대신 현재 가능한 것/필요한 조건을 보여준다.
