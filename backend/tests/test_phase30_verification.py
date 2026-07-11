@@ -168,8 +168,8 @@ def test_service_demotes_ok_on_verification_failure(monkeypatch):
                     a.numeric = a.numeric * 1.1
             return result
 
-    def fake_select(self, canonical):
-        inner = real_select(self, canonical)
+    def fake_select(self, canonical, decision=None):
+        inner = real_select(self, canonical, decision=decision)
         return _CorruptingSolver(inner) if inner else None
 
     monkeypatch.setattr(SolverRegistry, "select", fake_select)
