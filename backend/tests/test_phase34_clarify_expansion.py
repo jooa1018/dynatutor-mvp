@@ -46,8 +46,12 @@ def test_type_to_family_covers_allowed_system_types():
 def test_rigid_missing_reference_roundtrip():
     """negatives 5건 클래스: vA 부재 거절 → 되묻기 → 'A 고정' 원탭 → 정답."""
     cp = extract_problem("평면강체에서 A와 B 사이 거리는 0.5m, 각속도는 4rad/s이다. B점 속도는?")
-    r = _solve(cp)
-    assert r is not None and not r.ok  # 전제: solver 거절
+    from engine.solvers.registry import SolverRegistry
+
+    registry = SolverRegistry()
+    decision = registry.route(cp)
+    assert decision.status == "clarify"
+    assert registry.select(cp, decision=decision) is None
     clar = build_clarification(cp)
     assert clar is not None and clar.rule == "rigid_missing_reference"
     fix = next(o for o in clar.options if o.id == "fix_A")
