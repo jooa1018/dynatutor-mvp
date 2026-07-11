@@ -181,8 +181,8 @@ class SpringEnergySpeedSolver(BaseSolver):
         steps = [
             StepCard("에너지 관점", "마찰이 없고 수평 스프링이라면 스프링 탄성에너지가 물체의 운동에너지로 바뀝니다."),
             StepCard("에너지 보존", "스프링 에너지와 운동에너지를 같게 둡니다.", r"\frac12kx^2=\frac12mv^2"),
-            StepCard("속도 정리", "양변의 1/2를 지우고 v에 대해 풉니다.", r"v=x\sqrt{k/m}"),
-            StepCard("계산", f"v = {x_si:g} × √({k_si:g}/{m_si:g}) = {v:.5g} m/s"),
+            StepCard("속력 정리", "에너지식은 방향이 아닌 속력 크기를 정하므로 |x|를 사용합니다.", r"|v|=|x|\sqrt{k/m}"),
+            StepCard("계산", f"|v| = |{x_si:g}| × √({k_si:g}/{m_si:g}) = {v:.5g} m/s"),
         ]
         verification = VerificationReport(
             passed=True,
@@ -196,7 +196,7 @@ class SpringEnergySpeedSolver(BaseSolver):
         return SolverResult(
             ok=True,
             answer=Answer(
-                symbolic="v = x√(k/m)",
+                symbolic="|v| = |x|√(k/m)",
                 numeric=round(v, 5),
                 unit="m/s",
                 display=f"v = {v:.3f} m/s",
@@ -204,7 +204,7 @@ class SpringEnergySpeedSolver(BaseSolver):
             answers=answers,
             steps=steps,
             verification=verification,
-            used_equations=["1/2 kx² = 1/2 mv²", "v = x√(k/m)"],
+            used_equations=["1/2 kx² = 1/2 mv²", "|v| = |x|√(k/m)"],
         )
 
 
