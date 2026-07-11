@@ -8,6 +8,35 @@ from engine.physics_core.units import magnitude_si
 from engine.solvers.base import BaseSolver, SolverMatch
 
 
+
+def can_solve_flight_time_without_speed(c: CanonicalProblem) -> bool:
+    requested = {
+        item
+        for item in (c.requested_outputs or c.unknowns or [])
+        if item != "auto"
+    }
+    if not requested or not requested <= {"time"}:
+        return False
+    theta = (
+        c.launch_angle_deg
+        if c.launch_angle_deg is not None
+        else c.knowns["theta"].value
+        if "theta" in c.knowns
+        else None
+    )
+    if theta not in (0, 0.0):
+        return False
+    launch = (
+        c.launch_height
+        if c.launch_height is not None
+        else c.knowns["h"].value
+        if "h" in c.knowns
+        else None
+    )
+    landing = c.landing_height if c.landing_height is not None else 0.0
+    return launch is not None and float(launch) - float(landing) > 0
+
+
 class ProjectileMotionSolver(BaseSolver):
     name = "projectile_motion"
 
@@ -23,19 +52,15 @@ class ProjectileMotionSolver(BaseSolver):
         수평거리(range)까지 요구되면 None을 반환해 기존 "v0 필요" 경로로 —
         그 경우 missing_info("초속도 v0")가 안내한다.
         """
-        req = c.requested_outputs or []
-        if "time" not in req or "range" in req or "distance" in req:
+        if not can_solve_flight_time_without_speed(c):
             return None
-        theta = c.launch_angle_deg if c.launch_angle_deg is not None else (c.knowns["theta"].value if "theta" in c.knowns else None)
-        if theta not in (0, 0.0):
-            return None
-        launch = c.launch_height if c.launch_height is not None else (c.knowns["h"].value if "h" in c.knowns else None)
+        launch = (
+            c.launch_height
+            if c.launch_height is not None
+            else c.knowns["h"].value
+        )
         landing = c.landing_height if c.landing_height is not None else 0.0
-        if launch is None:
-            return None
-        dh = launch - landing
-        if dh <= 0:
-            return None
+        dh = float(launch) - float(landing)
         g = c.knowns["g"].value if "g" in c.knowns else 9.81
         t = math.sqrt(2 * dh / g)
         steps = [
