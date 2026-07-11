@@ -98,8 +98,17 @@ class PlaneRigidBodyVelocitySolver(BaseSolver):
             if rBA is None:
                 errs.append("r_B/A 벡터 또는 길이+방향 정보")
             return SolverResult(ok=False, verification=VerificationReport(False, errors=errs), unsupported_reason="평면강체 속도는 vA와 r_B/A 방향 정보가 필요합니다.")
-        sign = float(c.coordinate_data.get("angular_sign", 1.0))
-        omega = sign * magnitude_si(c.knowns["omega"], "rad/s")
+        omega_sign = c.coordinate_data.get("omega_sign", c.coordinate_data.get("angular_sign"))
+        if omega_sign is None:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["속도 벡터 성분을 계산하려면 각속도의 시계/반시계 방향이 필요합니다."],
+                ),
+                unsupported_reason="각속도 ω의 회전 방향을 명시해 주세요.",
+            )
+        omega = float(omega_sign) * magnitude_si(c.knowns["omega"], "rad/s")
         vB = rigid_body_velocity(vA, omega, rBA)
         warning = []
         if c.coordinate_data.get("parse_notes"):
