@@ -611,6 +611,13 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     else:
         c.system_type = "unknown"
 
+    # 원운동 문맥의 '속도 8 m/s'는 발사 초기속도(v0)가 아니라
+    # 해당 원 궤도 지점의 현재 속도(v)다.
+    if c.system_type == "vertical_circle" and "v" not in c.knowns and "v0" in c.knowns:
+        speed = c.knowns.pop("v0")
+        speed.symbol = "v"
+        c.knowns["v"] = speed
+
     c.objects = _objects_from_knowns(c)
     c.assumptions = _default_assumptions(c)
     c.missing_info = _missing_info(c)
