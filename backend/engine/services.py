@@ -29,13 +29,6 @@ from engine.verification.checks import merge_reports
 
 
 
-_TYPED_VERTICAL_SLICES = {
-    "particle_on_incline",
-    "collision_1d",
-    "massive_pulley_atwood",
-}
-
-
 def _partial_guidance_steps(c):
     """실패/되묻기 응답에서도 '현재 알 수 있는 것'과 '추가 조건'을 분리해 보여준다."""
     possible: list[str] = []
@@ -239,7 +232,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
     else:
         result = (
             solver.solve(canonical, physical_model)
-            if canonical.system_type in _TYPED_VERTICAL_SLICES
+            if getattr(solver, "uses_prebuilt_physical_model", False)
             else solver.solve(canonical)
         )
         # Phase 30: 물리 검증 스위트 (차원 · 타당성 · 역대입 잔차).
