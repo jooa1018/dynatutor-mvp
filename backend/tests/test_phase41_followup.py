@@ -36,7 +36,7 @@ def test_flight_time_without_v0():
 @pytest.mark.regression
 def test_range_without_v0_asks_for_v0():
     cp, r = _solve("높이 10m에서 물체를 수평으로 던졌다. 사거리는?")
-    assert r is not None and not r.ok
+    assert r is None  # v0 확인 전에는 projectile solver를 실행하지 않는다.
     assert "초속도 v0" in cp.missing_info
 
 
