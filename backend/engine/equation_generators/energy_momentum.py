@@ -89,7 +89,7 @@ def build_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
         unknowns = ["omega_n", "T", "f"]
     elif st in {"spring_energy", "spring_energy_speed"}:
         equations.append(_eq("spring_energy", "1/2*k*x^2 = 1/2*m*v^2", unknowns=["v"], body_id="body", source_forces=["spring_force"]))
-        equations.append(_eq("spring_speed", "v = x*sqrt(k/m)", unknowns=["v"], body_id="body"))
+        equations.append(_eq("spring_speed", "|v| = |x|*sqrt(k/m)", unknowns=["v"], body_id="body"))
         unknowns = ["v"]
     elif st in {"pure_rolling_energy", "rolling_energy_general"}:
         equations.append(_eq("rolling_energy", "m*g*h = 1/2*m*v^2 + 1/2*I*omega^2", unknowns=["v"], body_id="body", source_forces=["mg"]))
@@ -232,8 +232,13 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             x = _q(c, "x", "m") if "x" in c.knowns else _q(c, "A", "m") if "A" in c.knowns else None
             if k is None or m is None or x is None:
                 return EnergyMomentumSolve(False, {}, system, ["k, x, m이 필요합니다."])
-            v = x * math.sqrt(k / m)
-            return EnergyMomentumSolve(True, {"v": v, "x": x, "k": k, "m": m}, system, [])
+            speed = abs(x) * math.sqrt(k / m)
+            return EnergyMomentumSolve(
+                True,
+                {"v": speed, "x": x, "k": k, "m": m},
+                system,
+                [],
+            )
 
         if st in {"pure_rolling_energy", "rolling_energy_general"}:
             h = _q(c, "h", "m") if "h" in c.knowns else float(c.launch_height or 0.0)
