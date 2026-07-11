@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import copy
+import json
 import math
+from pathlib import Path
+
+import pytest
 
 from engine.canonical.adapter import attach_canonical_v2
 from engine.models import Answer, AnswerItem, CanonicalProblem, Quantity
 from engine.physics_core.answer_validators import validate_answer_consistency
-from engine.services import _route_decision_model
+from engine.services import _route_decision_model, solve_problem
+from engine.routing.clarify import ALLOWED_SYSTEM_TYPES
+from engine.routing.evidence import TYPE_TO_FAMILY
 from engine.solvers.energy_vibration import WorkEnergySpeedSolver
 from engine.solvers.kinematics import ConstantAcceleration1DSolver
 from engine.solvers.pulley.table_hanging import TableHangingPulleySolver
@@ -67,9 +74,50 @@ def test_route_decision_is_serializable_for_the_api():
 
 def test_capability_contract_covers_every_registered_solver():
     registry = SolverRegistry()
+    names = [solver.name for solver in registry.solvers]
 
-    assert len(registry.solvers) == 29
-    assert set(registry._capabilities) == {solver.name for solver in registry.solvers}
+    assert len(names) == len(set(names))
+    assert list(registry._capabilities) == names
+    assert ALLOWED_SYSTEM_TYPES <= set(TYPE_TO_FAMILY)
+
+
+def test_capability_contract_rejects_unsupported_conditions_and_duplicates():
+    registry = SolverRegistry()
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "engine"
+        / "capabilities"
+        / "dynamics_capabilities.json"
+    )
+    data = json.loads(path.read_text(encoding="utf-8"))
+
+    unsupported = copy.deepcopy(data)
+    unsupported["capabilities"][0]["required_inputs"]["conditional"][0][
+        "plus"
+    ] = "ignored"
+    with pytest.raises(ValueError, match="Unsupported conditional"):
+        registry._validate_capability_data(unsupported, source="test")
+
+    duplicate = copy.deepcopy(data)
+    duplicate["capabilities"].append(
+        copy.deepcopy(duplicate["capabilities"][0])
+    )
+    with pytest.raises(ValueError, match="Duplicate capability"):
+        registry._validate_capability_data(duplicate, source="test")
+
+
+def test_ambiguous_route_is_clarify_only_end_to_end():
+    response = solve_problem(
+        "도르래에 연결된 m1=2kg, m2=3kg 두 물체의 가속도는?"
+    )
+
+    assert response.ok is False
+    assert response.answer is None
+    assert response.answers == []
+    assert response.diagnosis.selected_solver is None
+    assert response.route_decision is not None
+    assert response.route_decision.status == "clarify"
+    assert response.route_decision.selected_solver_id is None
 
 
 def test_horizontal_drop_time_only_does_not_require_initial_speed():
