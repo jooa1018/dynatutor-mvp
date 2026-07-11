@@ -52,7 +52,25 @@ class SpringMassVibrationSolver(BaseSolver):
             ],
         )
         attach_unit_check(verification, expected_unknown=expected, actual_unit=ans.unit)
-        return SolverResult(ok=True, answer=ans, steps=steps, verification=verification, used_equations=["m x¨ + kx = 0", "ω_n = √(k/m)"])
+        symbol = {"period": "T", "frequency": "f", "angular_frequency": "omega_n"}[expected]
+        label = {"period": "주기", "frequency": "진동수", "angular_frequency": "고유각진동수"}[expected]
+        return SolverResult(
+            ok=True,
+            answer=ans,
+            answers=[
+                AnswerItem(
+                    label=label,
+                    symbol=symbol,
+                    numeric=ans.numeric,
+                    unit=ans.unit,
+                    display=ans.display or "",
+                    role="primary",
+                )
+            ],
+            steps=steps,
+            verification=verification,
+            used_equations=["m x¨ + kx = 0", "ω_n = √(k/m)"],
+        )
 
 
 class SpringEnergySpeedSolver(BaseSolver):
