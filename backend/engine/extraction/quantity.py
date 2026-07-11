@@ -1,5 +1,6 @@
 import re
 from engine.models import Quantity
+from engine.extraction.normalizer import iter_sentence_spans
 from engine.extraction.units import (
     MOMENT_OF_INERTIA_UNIT_PATTERN,
     TORQUE_UNIT_PATTERN,
@@ -188,8 +189,7 @@ def _subject_before(sentence: str, position: int) -> str | None:
 
 
 def _requested_velocity_subject(text: str) -> str | None:
-    for sentence_match in reversed(list(re.finditer(r"[^.!?\r\n]+", text))):
-        sentence = sentence_match.group(0)
+    for _, _, sentence in reversed(list(iter_sentence_spans(text))):
         query = re.search(r"(?:최종\s*속도|최종속도|나중\s*속도|마지막\s*속도)", sentence)
         if not query:
             continue
@@ -199,11 +199,10 @@ def _requested_velocity_subject(text: str) -> str | None:
 
 def _initial_speed_occurrences(text: str) -> list[dict]:
     occurrences: list[dict] = []
-    for sentence_match in re.finditer(r"[^.!?\r\n]+", text):
-        sentence = sentence_match.group(0)
+    for sentence_start, _, sentence in iter_sentence_spans(text):
         for match in _INITIAL_SPEED_LABEL_PATTERN.finditer(sentence):
-            start = sentence_match.start() + match.start()
-            end = sentence_match.start() + match.end()
+            start = sentence_start + match.start()
+            end = sentence_start + match.end()
             value, unit = normalize_labeled_value(
                 _float(match.group("num")),
                 match.group("unit"),
