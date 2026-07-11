@@ -26,7 +26,7 @@ from engine.visualization.fbd import build_fbd_annotations, build_fbd_svg
 from engine.physics_core.answer_validators import validate_solve_response
 from engine.verification.suite import verify_result
 from engine.verification.gate import apply_result_gate
-from engine.routing.clarify import ClarifyPatchError, apply_clarify_patch, build_clarification
+from engine.routing.clarify import ClarifyPatchError, apply_clarify_patch, build_clarification, validate_clarify_patch
 from engine.verification.checks import merge_reports
 
 
@@ -152,22 +152,31 @@ def _physical_model_payload(payload, decision):
     return out
 
 
-def _route_clarification_model(decision):
+def _route_clarification_model(decision, canonical):
     if decision is None or decision.status != "clarify" or not decision.question:
         return None
     options = []
     seen = set()
+    current = (canonical.system_type, canonical.subtype)
     for candidate in decision.candidates:
+        if "interpretation_variant" not in candidate.risk_flags:
+            continue
         key = (candidate.source_system_type, candidate.source_subtype)
-        if candidate.source_system_type is None or key in seen:
+        if candidate.source_system_type is None or key in seen or key == current:
+            continue
+        patch = {
+            "system_type": candidate.source_system_type,
+            "subtype": candidate.source_subtype,
+        }
+        try:
+            validate_clarify_patch(canonical, patch)
+        except ClarifyPatchError:
             continue
         seen.add(key)
-        patch = {"system_type": candidate.source_system_type}
-        if candidate.source_subtype in {"no_friction", "with_friction"}:
-            patch["subtype"] = candidate.source_subtype
+        subtype_id = candidate.source_subtype or "default"
         options.append(
             ClarificationOptionModel(
-                id=f"route_{candidate.solver_id}",
+                id=f"route_{candidate.solver_id}_{candidate.source_system_type}_{subtype_id}",
                 label=candidate.solver_id,
                 description="; ".join(candidate.evidence),
                 patch=patch,
@@ -207,9 +216,7 @@ def diagnose_problem(
     hints = make_legacy_hints(canonical)
     registry = registry or SolverRegistry()
     route_decision = route_decision or registry.route(canonical)
-    registry.last_route_decision = route_decision
-    registry._last_route_problem_identity = id(canonical)
-    solver = registry.select(canonical)
+    solver = registry.select(canonical, decision=route_decision)
     cards = build_diagnosis_cards(canonical, hints, solver)
     legacy_selected_solver = solver.name if solver is not None else None
     legacy_solver_reason = solver.reason if solver is not None else None
@@ -288,7 +295,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                 ],
             )
         if clarification_model is None:
-            clarification_model = _route_clarification_model(route_decision)
+            clarification_model = _route_clarification_model(route_decision, canonical)
         response = SolveResponse(
             ok=False,
             diagnosis=diagnosis,
