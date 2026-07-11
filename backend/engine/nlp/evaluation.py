@@ -72,6 +72,33 @@ def _close(actual: Any, expected: Any) -> bool:
         return actual == expected
 
 
+def _quantity_aliases(symbol: str) -> set[str]:
+    aliases = {symbol}
+    if symbol in {"mu", "mu_k"}:
+        aliases.update({"mu", "mu_k"})
+    return aliases
+
+
+def _is_compatible_quantity_extra(symbol: str, actual: Any, expected_knowns: dict[str, Any]) -> bool:
+    if symbol == "v":
+        # A legacy unscoped velocity fact can duplicate the scoped collision
+        # velocity oracle. It is not an independent extra measurement.
+        for scoped in ("v1", "v2"):
+            oracle = expected_knowns.get(scoped)
+            if oracle and _close(getattr(actual, "value", None), oracle.get("value")):
+                return True
+    if symbol in {"mu", "mu_k"}:
+        for alias in _quantity_aliases(symbol):
+            oracle = expected_knowns.get(alias)
+            if oracle and _close(getattr(actual, "value", None), oracle.get("value")):
+                return True
+    if symbol == "theta" and getattr(actual, "provenance_hint", None) == "domain_rule":
+        # Solver-orientation helper (for example an Atwood vertical rope angle),
+        # not an independently extracted text quantity.
+        return True
+    return False
+
+
 def _candidate_types(canonical) -> set[str]:
     v2 = canonical.canonical_v2
     candidates = {canonical.system_type}
@@ -275,7 +302,14 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
 
         for symbol, oracle in expected.get("knowns", {}).items():
             counters["quantity_expected"] += 1
-            actual = canonical.knowns.get(symbol)
+            actual = None
+            for alias in _quantity_aliases(symbol):
+                candidate = canonical.knowns.get(alias)
+                if candidate is not None and _close(candidate.value, oracle.get("value")):
+                    actual = candidate
+                    break
+            if actual is None:
+                actual = canonical.knowns.get(symbol)
             value_ok = actual is not None and _close(actual.value, oracle.get("value"))
             if value_ok:
                 counters["quantity_tp"] += 1
@@ -309,10 +343,16 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         expected_symbols = set(expected.get("knowns", {}))
         allowed_extra = set(expected.get("allowed_extra_knowns", [])) | {"g"}
         forbidden_symbols = set(expected.get("forbidden_knowns", []))
+        compatible_extra_symbols = {
+            symbol
+            for symbol, actual in canonical.knowns.items()
+            if _is_compatible_quantity_extra(symbol, actual, expected.get("knowns", {}))
+        }
         unexpected_symbols = (
             set(canonical.knowns)
             - expected_symbols
             - allowed_extra
+            - compatible_extra_symbols
         ) | (set(canonical.knowns) & forbidden_symbols)
         for unexpected in sorted(unexpected_symbols):
             counters["quantity_fp"] += 1
