@@ -5,6 +5,7 @@ import math
 import pytest
 import sympy as sp
 
+from engine.canonical.models import CanonicalProblemV2, ExtractedFact
 from engine.equation_generators.particle_newton import build_particle_newton_system
 from engine.model_builder import build_physical_model
 from engine.model_builder.typed_model import (
@@ -96,6 +97,7 @@ def test_frame_transform_round_trip_and_axis_reversal():
     assert float(world.y) == pytest.approx(2.0)
     assert float(restored.x) == pytest.approx(3.0)
     assert float(restored.y) == pytest.approx(-2.0)
+    assert model.frames["reversed"].transform is not None
 
 
 def test_vector_rejects_frame_and_dimension_mismatch():
@@ -269,3 +271,50 @@ def test_typed_to_legacy_serialization_preserves_contract():
     assert "typed_model" not in payload
     assert payload["forces"][0]["direction"] == "경사면 아래쪽"
     assert payload["coordinates"]["positive_directions"]["x"] == "경사면 아래쪽"
+
+
+
+def test_typed_quantity_preserves_phase43_source_fact_id():
+    canonical = _incline()
+    raw = "m=2kg"
+    fact = ExtractedFact(
+        fact_id="fact-mass-1",
+        kind="quantity",
+        subject_id="body",
+        symbol="m",
+        value=2.0,
+        unit="kg",
+        dimension="mass",
+        direction=None,
+        source_text=raw,
+        source_span=(0, len(raw)),
+        provenance="explicit_text",
+        confidence=0.9,
+        status="explicit",
+        compatibility_key="m",
+        extraction_evidence={"matched_raw_text": raw},
+    )
+    canonical.raw_text = raw
+    canonical.canonical_v2 = CanonicalProblemV2(
+        schema_version="2.0",
+        raw_text=raw,
+        normalized_text=raw,
+        language="ko",
+        system_type=canonical.system_type,
+        subtype=canonical.subtype,
+        facts=[fact],
+        assumptions=[],
+        parse_candidates=[],
+        requested_outputs=canonical.requested_outputs,
+        flags=canonical.flags,
+        objects=[],
+        missing_info=[],
+        conflicts=[],
+        warnings=[],
+        legacy_view={},
+    )
+
+    typed = build_physical_model(canonical).typed_model
+
+    assert typed.quantities["m"].source_fact_id == "fact-mass-1"
+    assert typed.quantities["m"].uncertainty == pytest.approx(0.1)
