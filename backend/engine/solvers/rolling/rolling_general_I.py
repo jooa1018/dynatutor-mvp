@@ -27,17 +27,18 @@ class RollingEnergyGeneralSolver(BaseSolver):
         v = float(generated.solution["v"])
         omega = generated.solution.get("omega")
         beta = float(generated.solution["beta"])
+        initial_speed = float(generated.solution.get("v0", 0.0))
         beta_info = f"β={beta:.3f}"
         if generated.solution.get("mode") == "I":
-            symbolic = "v = sqrt(2mgh/(m+I/R²))"
+            symbolic = "v = sqrt(v0²+2mgh/(m+I/R²))"
             used = ["mgh = 1/2mv² + 1/2Iω²", "v=ωR", "v=sqrt(2mgh/(m+I/R²))"]
         else:
-            symbolic = "v = sqrt(2gh/(1+β))"
+            symbolic = "v = sqrt(v0²+2gh/(1+β))"
             used = ["mgh = 1/2mv² + 1/2Iω²", "v=ωR", "I=βmR²"]
 
         steps = [
             StepCard("순수 구름 모델", "미끄러지지 않으므로 질량중심 속도와 각속도가 v=ωR로 연결됩니다."),
-            StepCard("에너지 보존", "Energy/Momentum generator가 위치에너지 감소와 병진+회전 운동에너지 식을 생성합니다.", r"mgh=\frac12mv^2+\frac12I\omega^2"),
+            StepCard("에너지 보존", f"초기속도 v0={initial_speed:g} m/s의 병진·회전 에너지를 포함합니다.", r"K_f=K_i+mgh"),
             StepCard("관성모멘트 적용", beta_info),
         ]
         display = f"v_G = {v:.3f} m/s" + (f", ω = {omega:.3f} rad/s" if omega is not None else "")
