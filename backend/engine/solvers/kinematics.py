@@ -4,6 +4,7 @@ from itertools import combinations
 import sympy as sp
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
+from engine.physics_core.units import magnitude_si
 from engine.verification.checks import require_no_missing, merge_reports
 
 
@@ -16,11 +17,65 @@ class ConstantAcceleration1DSolver(BaseSolver):
         return None
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
-        # 정지에서 출발 표현을 v0=0으로 보완
         raw = c.raw_text.replace(" ", "")
-        known = {k: q.value for k, q in c.knowns.items() if q.value is not None}
-        if "정지" in raw or "rest" in raw.lower():
+        unit_by_key = {
+            "v0": "m/s",
+            "vf": "m/s",
+            "v": "m/s",
+            "a": "m/s^2",
+            "t": "s",
+            "s": "m",
+        }
+        known = {}
+        try:
+            for key, quantity in c.knowns.items():
+                if quantity.value is None:
+                    continue
+                known[key] = (
+                    magnitude_si(quantity, unit_by_key[key])
+                    if key in unit_by_key
+                    else float(quantity.value)
+                )
+        except Exception as exc:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=[f"등가속도 입력 단위를 변환하지 못했습니다: {exc}"],
+                ),
+            )
+
+        compact_lower = raw.lower()
+        starts_from_rest = any(
+            phrase in compact_lower
+            for phrase in (
+                "정지상태에서",
+                "정지상태로부터",
+                "정지에서",
+                "처음에는정지",
+                "초기에는정지",
+                "처음에정지한",
+                "정지한물체",
+                "startsfromrest",
+                "initiallyatrest",
+            )
+        )
+        ends_at_rest = any(
+            phrase in compact_lower
+            for phrase in (
+                "정지할때",
+                "정지할때까지",
+                "마지막에정지",
+                "최종적으로정지",
+                "멈출때",
+                "comestorest",
+                "stopsafter",
+            )
+        )
+        if starts_from_rest:
             known.setdefault("v0", 0.0)
+        if ends_at_rest:
+            known.setdefault("vf", 0.0)
         if "v" in known and "v0" not in known and ("초속도" in raw or "처음" in raw):
             known["v0"] = known["v"]
         pre = require_no_missing(c)
@@ -70,13 +125,18 @@ class ConstantAcceleration1DSolver(BaseSolver):
             unknown_candidates,
         )
         if not states:
+            underdetermined = bool(state_error and "유일" in state_error)
             return SolverResult(
                 ok=False,
                 verification=VerificationReport(
                     passed=False,
                     errors=[state_error or "주어진 값들이 네 등가속도 운동식과 동시에 양립하지 않습니다."],
                 ),
-                unsupported_reason="입력한 v0, vf, a, t, s 중 서로 모순되는 값을 확인해 주세요.",
+                unsupported_reason=(
+                    "미지수를 유일하게 정하려면 독립적인 운동 조건을 하나 더 알려 주세요."
+                    if underdetermined
+                    else "입력한 v0, vf, a, t, s 중 서로 모순되는 값을 확인해 주세요."
+                ),
             )
 
         solved: list[tuple[str, float]] = []
@@ -152,7 +212,7 @@ def _requested_keys(c: CanonicalProblem, candidates: list[str]) -> list[str]:
         "initial_velocity": "v0",
     }
     keys: list[str] = []
-    for req in c.requested_outputs or []:
+    for req in (c.requested_outputs or c.unknowns or []):
         target = requested_map.get(req)
         if target in candidates and target not in keys:
             keys.append(target)
@@ -191,8 +251,10 @@ def _consistent_states(equations, substitutions, sym_map, unknown_candidates: li
             continue
 
     states: list[dict] = []
+    underdetermined = False
     for solution in raw_solutions:
         if any(symbol not in solution for symbol in unknown_symbols):
+            underdetermined = True
             continue
         state: dict = {}
         valid = True
@@ -218,6 +280,8 @@ def _consistent_states(equations, substitutions, sym_map, unknown_candidates: li
         if not any(_same_state(state, existing, unknown_symbols) for existing in states):
             states.append(state)
 
+    if not states and underdetermined:
+        return [], "주어진 조건만으로는 미지수가 유일하게 결정되지 않습니다."
     return states, None
 
 
