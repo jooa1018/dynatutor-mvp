@@ -585,14 +585,14 @@ def _rigid_velocity(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     if omega is None or radius is None:
         return []
     cd = getattr(cp, "coordinate_data", {}) or {}
-    sign = float(cd.get("angular_sign", 1.0))
-    w = sign * omega
+    omega_sign = _first_not_none(cd.get("omega_sign"), cd.get("angular_sign"))
+    w = float(omega_sign) * omega if omega_sign is not None else None
     rba = _rigid_rBA(cp)
     reference = _rigid_reference_vector(cp, "v", "m/s")
     vBx, vBy, vB = pool.get("v_Bx"), pool.get("v_By"), pool.get("v_B")
     checks: list[ResidualCheck] = []
 
-    if rba is not None and reference is not None:
+    if rba is not None and reference is not None and w is not None:
         vAx, vAy = reference
         rx, ry = rba
         if vBx is not None:
@@ -616,12 +616,14 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
     if omega is None or alpha is None or radius is None:
         return []
     cd = getattr(cp, "coordinate_data", {}) or {}
-    sign = float(cd.get("angular_sign", 1.0))
-    w, al = sign * omega, sign * alpha
+    omega_sign = _first_not_none(cd.get("omega_sign"), cd.get("angular_sign"))
+    alpha_sign = _first_not_none(cd.get("alpha_sign"), cd.get("angular_sign"))
+    w = float(omega_sign) * omega if omega_sign is not None else None
+    al = float(alpha_sign) * alpha if alpha_sign is not None else None
     checks: list[ResidualCheck] = []
     a_t, a_n = pool.get("a_t"), pool.get("a_n")
     if a_t is not None:
-        expected = abs(al) * radius
+        expected = abs(alpha) * radius
         checks.append(ResidualCheck("강체 a_t - |α|·r", a_t - expected, max(abs(expected), 1.0)))
     if a_n is not None:
         expected = omega * omega * radius
@@ -630,7 +632,7 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
     rba = _rigid_rBA(cp)
     reference = _rigid_reference_vector(cp, "a", "m/s^2")
     aBx, aBy, aB = pool.get("a_Bx"), pool.get("a_By"), pool.get("a_B")
-    if rba is not None and reference is not None:
+    if rba is not None and reference is not None and w is not None and al is not None:
         aAx, aAy = reference
         rx, ry = rba
         if aBx is not None:
