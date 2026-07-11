@@ -27,7 +27,10 @@ def _get_aA(c: CanonicalProblem) -> Vec2 | None:
         aA = magnitude_si(c.knowns["aA"], "m/s^2")
         if abs(aA) <= 1e-12:
             return Vec2(0.0, 0.0)
-    if _has_fixed_A(c):
+    if _has_fixed_A(c) or any(
+        phrase in (c.raw_text or "").replace(" ", "")
+        for phrase in ("A에대한", "A기준", "A에대해")
+    ):
         return Vec2(0.0, 0.0)
     return None
 
@@ -63,9 +66,8 @@ class PlaneRigidBodyAccelerationSolver(BaseSolver):
         pre = require_no_missing(c)
         rBA = _get_rBA(c)
         aA = _get_aA(c)
-        sign = float(c.coordinate_data.get("angular_sign", 1.0))
-        omega = sign * magnitude_si(c.knowns["omega"], "rad/s") if "omega" in c.knowns else None
-        alpha = sign * magnitude_si(c.knowns["alpha"], "rad/s^2") if "alpha" in c.knowns else None
+        omega_magnitude = magnitude_si(c.knowns["omega"], "rad/s") if "omega" in c.knowns else None
+        alpha_magnitude = magnitude_si(c.knowns["alpha"], "rad/s^2") if "alpha" in c.knowns else None
 
         if (
             pre.passed
@@ -74,7 +76,7 @@ class PlaneRigidBodyAccelerationSolver(BaseSolver):
             and rBA is None
         ):
             radius = _scalar_radius(c)
-            if radius is not None and omega is not None and alpha is not None:
+            if radius is not None and omega_magnitude is not None and alpha_magnitude is not None:
                 if radius < 0:
                     return SolverResult(
                         ok=False,
@@ -83,8 +85,8 @@ class PlaneRigidBodyAccelerationSolver(BaseSolver):
                             errors=["두 점 사이 거리 r은 0 이상이어야 합니다."],
                         ),
                     )
-                a_t = abs(alpha) * radius
-                a_n = omega * omega * radius
+                a_t = abs(alpha_magnitude) * radius
+                a_n = omega_magnitude * omega_magnitude * radius
                 magnitude = (a_t * a_t + a_n * a_n) ** 0.5
                 verification = VerificationReport(
                     passed=True,
@@ -131,6 +133,19 @@ class PlaneRigidBodyAccelerationSolver(BaseSolver):
                 verification=VerificationReport(False, errors=list(dict.fromkeys(errs))),
                 unsupported_reason="성분 계산에는 a_A와 r_B/A의 벡터 성분이 필요합니다.",
             )
+        omega_sign = c.coordinate_data.get("omega_sign", c.coordinate_data.get("angular_sign"))
+        alpha_sign = c.coordinate_data.get("alpha_sign", c.coordinate_data.get("angular_sign"))
+        if omega_sign is None or alpha_sign is None:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["가속도 벡터 성분에는 각속도와 각가속도의 회전 방향이 각각 필요합니다."],
+                ),
+                unsupported_reason="ω와 α의 시계/반시계 방향을 명시해 주세요.",
+            )
+        omega = float(omega_sign) * omega_magnitude
+        alpha = float(alpha_sign) * alpha_magnitude
         aB = rigid_body_acceleration(aA, alpha, omega, rBA)
         a_t = abs(alpha) * rBA.magnitude()
         a_n = omega**2 * rBA.magnitude()
