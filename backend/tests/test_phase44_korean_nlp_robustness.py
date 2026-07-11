@@ -161,7 +161,15 @@ def _primary_numeric(response):
 
 @pytest.mark.parametrize(
     "actor",
-    ["운전하는 사람이 탄 트럭", "자전하는 팽이", "도전하는 학생의 수레", "회전하는 물체"],
+    [
+        "도전하는 학생의 수레",
+        "실험하는 학생의 수레",
+        "관찰하는 학생의 수레",
+        "학생이 미는 수레",
+        "운전하는 사람이 탄 트럭",
+        "자전하는 팽이",
+        "회전하는 물체",
+    ],
 )
 def test_audit_f1_dynamics_words_containing_charge_syllables_are_not_electromagnetism(actor):
     response = solve_problem(
