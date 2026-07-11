@@ -42,8 +42,8 @@ ALLOWED_SYSTEM_TYPES = {
 }
 ALLOWED_SUBTYPES = {"no_friction", "with_friction", None}
 ALLOWED_FRICTION_TYPES = {"none", "kinetic", "static", "unspecified", None}
-ALLOWED_REQUESTED_OUTPUTS = {"time", "range", "distance", "max_height", "final_velocity", "initial_velocity", "acceleration", "tension", "force", "mass", "work", "kinetic_energy", "potential_energy", "post_collision_velocity", "v1_after", "v2_after", "angular_velocity", "angular_acceleration", "tangential_velocity", "centripetal_acceleration", "friction_force", "normal_force", "elastic_energy"}
-ALLOWED_KNOWN_SYMBOLS = {"mu", "mu_k", "mu_s", "m", "m1", "m2", "e", "v0", "v1", "v2", "vf", "theta", "h", "h0", "yf", "k", "x", "F", "s", "t", "tau", "I", "R", "r", "v", "vA", "vB", "aA", "aB", "omega", "alpha", "vrel", "arel", "a", "W"}
+ALLOWED_REQUESTED_OUTPUTS = {"time", "range", "distance", "max_height", "minimum_speed", "final_velocity", "initial_velocity", "acceleration", "tension", "force", "mass", "work", "impulse", "kinetic_energy", "potential_energy", "post_collision_velocity", "v1_after", "v2_after", "angular_velocity", "angular_acceleration", "angular_frequency", "frequency", "period", "tangential_velocity", "centripetal_acceleration", "friction_force", "normal_force", "elastic_energy"}
+ALLOWED_KNOWN_SYMBOLS = {"mu", "mu_k", "mu_s", "m", "m1", "m2", "e", "v0", "v1", "v2", "vf", "theta", "h", "h0", "yf", "k", "x", "F", "s", "t", "tau", "I", "R", "r", "v", "vA", "vAx", "vAy", "vB", "aA", "aAx", "aAy", "aB", "rBAx", "rBAy", "omega", "alpha", "vrel", "arel", "a", "W"}
 
 
 @dataclass
@@ -429,33 +429,66 @@ def _rule_incline_hanging_candidate(cp: CanonicalProblem) -> Clarification | Non
 
 
 def _rule_rigid_missing_reference(cp: CanonicalProblem) -> Clarification | None:
-    """평면강체 속도 문제에서 A점의 운동 상태(vA 또는 고정 조건)가 없어
-    solver가 거절하는 클래스. '모호'가 아니라 '기준점 누락'이므로
-    고정 가정 원탭 / 값 입력 두 갈래를 제시한다."""
-    if cp.system_type != "plane_rigid_body_velocity":
+    """Require a real reference-point vector instead of inventing a +x direction."""
+    if cp.system_type not in {
+        "plane_rigid_body_velocity",
+        "plane_rigid_body_acceleration",
+    }:
         return None
+    is_velocity = cp.system_type == "plane_rigid_body_velocity"
+    prefix = "v" if is_velocity else "a"
+    scalar_key = f"{prefix}A"
+    x_key, y_key = f"{prefix}Ax", f"{prefix}Ay"
+    unit = "m/s" if is_velocity else "m/s^2"
+    quantity_label = "속도" if is_velocity else "가속도"
     cd = getattr(cp, "coordinate_data", {}) or {}
-    if "vA" in (cp.knowns or {}) or "vAx" in cd or "vAy" in cd:
-        return None
+    has_vector = (
+        x_key in cd and y_key in cd
+    ) or (
+        x_key in (cp.knowns or {}) and y_key in (cp.knowns or {})
+    )
+    scalar = (cp.knowns or {}).get(scalar_key)
+    zero_reference = (
+        scalar is not None
+        and scalar.value is not None
+        and abs(float(scalar.value)) <= 1e-12
+    )
     raw = cp.raw_text or ""
-    if any(phrase in raw for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"]):
+    fixed = any(
+        phrase in raw
+        for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
+    )
+    if has_vector or zero_reference or fixed:
         return None
     return Clarification(
         rule="rigid_missing_reference",
-        question="기준점 A의 운동 상태가 문제에 없습니다. A점이 고정인가요, 아니면 속도를 갖나요?",
+        question=f"기준점 A의 {quantity_label} 방향이 없습니다. A점이 고정인가요, 아니면 벡터 성분을 갖나요?",
         options=[
             ClarifyOption(
                 id="fix_A",
-                label="A점 고정 (v_A = 0)",
-                description="A점을 순간 고정점으로 보고 v_B = ω×r_B/A 로 계산합니다.",
-                patch={"set_known": {"symbol": "vA", "value": 0.0, "unit": "m/s", "label": "A점 고정(vA=0)"}, "assume": "A점 고정"},
+                label=f"A점 고정 ({prefix}_A = 0)",
+                description=f"A점의 {quantity_label}를 0벡터로 두고 계산합니다.",
+                patch={
+                    "set_known": {
+                        "symbol": scalar_key,
+                        "value": 0.0,
+                        "unit": unit,
+                        "label": f"A점 고정({scalar_key}=0)",
+                    },
+                    "assume": "A점 고정",
+                },
             ),
             ClarifyOption(
-                id="provide_vA",
-                label="A점 속도 입력",
-                description="v_A 값을 입력하면 v_B = v_A + ω×r_B/A 로 계산합니다.",
-                patch={"set_known": {"symbol": "vA", "unit": "m/s", "label": "A점 속도 vA"}},
-                needs_value="vA",
+                id=f"provide_{prefix}A_vector",
+                label=f"A점 {quantity_label} 성분 입력",
+                description=f"{x_key}, {y_key} 두 성분을 모두 입력해야 합니다.",
+                patch={
+                    "set_knowns": [
+                        {"symbol": x_key, "unit": unit, "label": x_key},
+                        {"symbol": y_key, "unit": unit, "label": y_key},
+                    ]
+                },
+                needs_value=f"{x_key},{y_key}",
             ),
         ],
     )
