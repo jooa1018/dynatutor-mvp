@@ -14,6 +14,7 @@ from engine.model_builder.model_types import PhysicalModel
 
 
 class MassivePulleyAtwoodSolver(BaseSolver):
+    uses_prebuilt_physical_model = True
     name = "massive_pulley_atwood"
 
     def match(self, c: CanonicalProblem) -> SolverMatch | None:
