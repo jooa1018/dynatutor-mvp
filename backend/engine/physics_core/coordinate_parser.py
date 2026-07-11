@@ -167,7 +167,7 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
                         break
 
     # Directional vA / aA. These override scalar-only vA/aA.
-    vA = _directional_quantity([r"A\s*점\s*속도", r"점\s*A\s*속도", r"vA|v_A"], text, r"(?:m/s|mps)")
+    vA = _directional_quantity([r"A\s*점\s*속도", r"점\s*A\s*속도", r"A\s*점\s*(?:은|는)", r"vA|v_A"], text, r"(?:m/s|mps)")
     if vA:
         mag, direction, src = vA
         vec = vector_from_direction(mag, direction)
@@ -175,7 +175,7 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
             values["vAx"], values["vAy"] = vec.x, vec.y
             notes.append(f"v_A direction parsed: {src}")
 
-    aA = _directional_quantity([r"A\s*점\s*가속도", r"점\s*A\s*가속도", r"aA|a_A"], text, r"(?:m/s\^?2|m/s2|mps2)")
+    aA = _directional_quantity([r"A\s*점\s*가속도", r"점\s*A\s*가속도", r"A\s*점\s*(?:은|는)", r"aA|a_A"], text, r"(?:m/s\^?2|m/s2|mps2)")
     if aA:
         mag, direction, src = aA
         vec = vector_from_direction(mag, direction)
