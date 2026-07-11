@@ -61,13 +61,33 @@ class PlaneRigidBodyVelocitySolver(BaseSolver):
         pre = require_no_missing(c)
         vA = _get_vA(c)
         rBA = _get_r_vector(c)
+        omega_sign = c.coordinate_data.get(
+            "omega_sign", c.coordinate_data.get("angular_sign")
+        )
+        compact_raw = (c.raw_text or "").replace(" ", "").lower()
+        requested = set(c.requested_outputs or c.unknowns or [])
+        cartesian_requested = (
+            any(
+                token in compact_raw
+                for token in ("x성분", "y성분", "x-component", "y-component")
+            )
+            or bool(
+                requested
+                & {"velocity_x", "velocity_y", "v_bx", "v_by"}
+            )
+        )
         if (
             pre.passed
             and vA is not None
             and vA.magnitude() <= 1e-12
-            and rBA is None
+            and not cartesian_requested
+            and (rBA is None or omega_sign is None)
         ):
-            r_scalar = _scalar_radius(c)
+            r_scalar = (
+                rBA.magnitude()
+                if rBA is not None
+                else _scalar_radius(c)
+            )
             if r_scalar is not None and "omega" in c.knowns:
                 omega_abs = abs(magnitude_si(c.knowns["omega"], "rad/s"))
                 speed = omega_abs * r_scalar
@@ -98,7 +118,6 @@ class PlaneRigidBodyVelocitySolver(BaseSolver):
             if rBA is None:
                 errs.append("r_B/A 벡터 또는 길이+방향 정보")
             return SolverResult(ok=False, verification=VerificationReport(False, errors=errs), unsupported_reason="평면강체 속도는 vA와 r_B/A 방향 정보가 필요합니다.")
-        omega_sign = c.coordinate_data.get("omega_sign", c.coordinate_data.get("angular_sign"))
         if omega_sign is None:
             return SolverResult(
                 ok=False,
