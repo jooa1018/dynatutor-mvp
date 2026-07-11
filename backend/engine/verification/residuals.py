@@ -490,7 +490,13 @@ def _rolling(cp: CanonicalProblem, pool: dict, beta: float | None) -> list[Resid
     v = _first_not_none(pool.get("v"), pool.get("v_f"), pool.get("vf"))
     if None in (g, h) or v is None or beta is None:
         return []
-    return [ResidualCheck("구름 에너지: ½v²(1+β) - gh", 0.5 * v * v * (1 + beta) - g * h, g * h + 1.0)]
+    v0 = _first_not_none(_k(cp, "v0", "m/s"), _k(cp, "v", "m/s"))
+    if v0 is None and explicitly_starts_from_rest(cp):
+        v0 = 0.0
+    if v0 is None:
+        return []
+    residual = 0.5 * (v * v - v0 * v0) * (1 + beta) - g * h
+    return [ResidualCheck("구름 에너지: ½(v²-v0²)(1+β) - gh", residual, g * h + 0.5 * v0 * v0 * (1 + beta) + 1.0)]
 
 
 def _curve_flat(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
