@@ -50,3 +50,16 @@ def test_projectile_from_cliff():
     # 20 + 5t - 4.905t^2 = 0
     expected = (5 + math.sqrt(25 + 4 * 4.905 * 20)) / (2 * 4.905)
     assert math.isclose(out.answer.numeric, expected, rel_tol=1e-3)
+
+
+
+def test_vertical_circle_bottom_speed_is_current_state():
+    out = solve_problem(
+        "질량 1kg 물체가 수직 원운동 최저점에서 반지름 2m, "
+        "속도 8m/s로 움직일 때 줄의 장력을 구하라."
+    )
+    assert out.ok
+    assert out.diagnosis.selected_solver == "vertical_circle"
+    assert "v" in out.diagnosis.canonical.knowns
+    assert "v0" not in out.diagnosis.canonical.knowns
+    assert math.isclose(out.answer.numeric, 41.81, rel_tol=1e-5)
