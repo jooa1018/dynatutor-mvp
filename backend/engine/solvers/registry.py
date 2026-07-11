@@ -148,31 +148,119 @@ class SolverRegistry:
         ]
 
     def _has_symbol(self, c: CanonicalProblem, symbol: str) -> bool:
-        if " and " in symbol:
-            return all(self._has_symbol(c, part.strip()) for part in symbol.split(" and "))
-        if " or " in symbol:
-            return any(self._has_symbol(c, part.strip()) for part in symbol.split(" or "))
-        if symbol in {"theta", "launch_angle_deg"}:
-            return "theta" in c.knowns or c.launch_angle_deg is not None
-        if symbol == "friction_type":
-            return bool(c.friction_type)
-        if symbol == "minimum_speed request":
-            return "minimum_speed" in set(c.requested_outputs or c.unknowns or [])
-        if symbol == "top subtype":
-            return c.subtype == "top"
-        if symbol == "bottom subtype":
-            return c.subtype == "bottom"
-        if symbol == "explicit no_friction":
-            return c.friction_type in {"none", "no_friction"} or c.subtype == "no_friction"
-        if c.flags.get(symbol):
-            return True
-        requested_aliases = {"vf": "final_velocity", "v0": "initial_velocity", "s": "distance"}
+        expression = symbol.strip()
         requested = set(c.requested_outputs or c.unknowns or [])
-        if requested_aliases.get(symbol, symbol) in requested:
-            return True
-        return symbol in c.knowns and c.knowns[symbol].value is not None
+        raw = (c.raw_text or "").lower()
+        coordinate_data = c.coordinate_data or {}
 
-    def _missing_requirements(self, c: CanonicalProblem, capability: dict[str, Any]) -> list[str]:
+        special = {
+            "theta": "theta" in c.knowns or c.launch_angle_deg is not None,
+            "launch_angle_deg": c.launch_angle_deg is not None,
+            "launch_height": c.launch_height is not None or "h" in c.knowns,
+            "body_shape": bool(c.body_shape),
+            "friction_type": bool(c.friction_type),
+            "force_direction": bool(c.force_direction) or "theta" in c.knowns,
+            "minimum_speed request": "minimum_speed" in requested,
+            "top subtype": c.subtype == "top",
+            "bottom subtype": c.subtype == "bottom",
+            "explicit no_friction": (
+                c.friction_type in {"none", "no_friction"}
+                or c.subtype == "no_friction"
+                or bool((c.flags or {}).get("no_friction"))
+            ),
+            "I plus m and R": all(key in c.knowns for key in ("I", "m", "R")),
+            "alpha and t for angular velocity": (
+                "alpha" in c.knowns and "t" in c.knowns
+                and "angular_velocity" in requested
+            ),
+            "omega and r/R for tangential speed": (
+                "omega" in c.knowns
+                and ("r" in c.knowns or "R" in c.knowns)
+                and "tangential_velocity" in requested
+            ),
+            "m1 when m2 absent": "m1" in c.knowns and "m2" not in c.knowns,
+            "impulse request": "impulse" in requested,
+            "m plus v0/v for final velocity": (
+                "m" in c.knowns
+                and ("v0" in c.knowns or "v" in c.knowns)
+                and "final_velocity" in requested
+            ),
+            "m for speed": "m" in c.knowns,
+            "elastic_energy request": "elastic_energy" in requested,
+            "r/R": "r" in c.knowns or "R" in c.knowns,
+            "v0/v": "v0" in c.knowns or "v" in c.knowns,
+            "coordinate_data rBA vector": (
+                "rBAx" in coordinate_data and "rBAy" in coordinate_data
+            ),
+            "coordinate_data vA vector": (
+                "vAx" in coordinate_data and "vAy" in coordinate_data
+            ),
+            "A fixed statement": any(
+                phrase in raw
+                for phrase in (
+                    "고정점",
+                    "a점이 고정",
+                    "a점은 고정",
+                    "a점 고정",
+                    "a is fixed",
+                )
+            ),
+        }
+        if expression in special:
+            return bool(special[expression])
+        if " plus " in expression:
+            return all(self._has_symbol(c, part) for part in expression.split(" plus "))
+        if " and " in expression:
+            return all(self._has_symbol(c, part) for part in expression.split(" and "))
+        if " or " in expression:
+            return any(self._has_symbol(c, part) for part in expression.split(" or "))
+        if "/" in expression and " " not in expression:
+            return any(self._has_symbol(c, part) for part in expression.split("/"))
+        if (c.flags or {}).get(expression):
+            return True
+        requested_aliases = {
+            "vf": "final_velocity",
+            "v0": "initial_velocity",
+            "s": "distance",
+        }
+        if requested_aliases.get(expression, expression) in requested:
+            return True
+        return expression in c.knowns and c.knowns[expression].value is not None
+
+    def _projectile_time_without_speed(self, c: CanonicalProblem) -> bool:
+        requested = {
+            item
+            for item in (c.requested_outputs or c.unknowns or [])
+            if item != "auto"
+        }
+        angle = c.launch_angle_deg
+        if angle is None and "theta" in c.knowns:
+            angle = c.knowns["theta"].value
+        has_vertical_drop = c.launch_height is not None or "h" in c.knowns
+        return bool(requested) and requested <= {"time"} and angle == 0 and has_vertical_drop
+
+    def _starts_from_rest(self, c: CanonicalProblem) -> bool:
+        raw = (c.raw_text or "").lower()
+        return any(
+            phrase in raw
+            for phrase in (
+                "정지 상태에서",
+                "정지 상태로부터",
+                "정지에서",
+                "처음에는 정지",
+                "초기에는 정지",
+                "가만히 있다가",
+                "starts from rest",
+                "initially at rest",
+            )
+        )
+
+    def _missing_requirements(
+        self,
+        c: CanonicalProblem,
+        capability: dict[str, Any],
+        solver_id: str,
+    ) -> list[str]:
         req = capability.get("required_inputs", {})
         missing: list[str] = []
         for symbol in req.get("all_of", []):
@@ -182,19 +270,77 @@ class SolverRegistry:
         if any_of and not any(self._has_symbol(c, symbol) for symbol in any_of):
             missing.append("one of: " + ", ".join(any_of))
         for condition in req.get("conditional", []):
-            if "one_of" in condition and not any(self._has_symbol(c, symbol) for symbol in condition["one_of"]):
-                missing.append("one of: " + ", ".join(condition["one_of"]))
+            if "one_of" in condition:
+                alternatives = condition["one_of"]
+                if (
+                    solver_id == "projectile_motion"
+                    and set(alternatives) == {"v0", "v"}
+                    and self._projectile_time_without_speed(c)
+                ):
+                    continue
+                if not any(self._has_symbol(c, symbol) for symbol in alternatives):
+                    missing.append("one of: " + ", ".join(alternatives))
+            if "all_of" in condition:
+                missing.extend(
+                    symbol
+                    for symbol in condition["all_of"]
+                    if not self._has_symbol(c, symbol)
+                )
             if "minimum_present" in condition:
                 symbols = condition.get("symbols", [])
                 if sum(1 for symbol in symbols if self._has_symbol(c, symbol)) < int(condition["minimum_present"]):
                     missing.append(f"{condition['minimum_present']} of: {', '.join(symbols)}")
-        return missing
 
-    def _requested_output_contradictions(self, c: CanonicalProblem, supported: list[str]) -> list[str]:
-        requested = [item for item in (c.requested_outputs or c.unknowns or []) if item != "auto"]
+        requested = set(c.requested_outputs or c.unknowns or [])
+        if (
+            solver_id == "vertical_circle"
+            and "minimum_speed" not in requested
+            and "m" not in c.knowns
+        ):
+            missing.append("m for force output")
+        if solver_id == "work_energy_speed":
+            if "v0" not in c.knowns and "v" not in c.knowns and not self._starts_from_rest(c):
+                missing.append("initial velocity or explicit rest condition")
+            if (
+                "W" not in c.knowns
+                and "F" in c.knowns
+                and "s" in c.knowns
+                and not self._has_symbol(c, "force_direction")
+            ):
+                missing.append("force-displacement direction or theta")
+        if solver_id in {"pulley_table_hanging", "pulley_incline_hanging"}:
+            if c.friction_type == "static" and not any(
+                key in c.knowns for key in ("mu_s", "mu")
+            ):
+                missing.append("mu_s")
+            if c.friction_type in {"kinetic", "unspecified"} and not any(
+                key in c.knowns for key in ("mu_k", "mu")
+            ):
+                missing.append("mu_k")
+        return list(dict.fromkeys(missing))
+
+    def _requested_output_contradictions(
+        self,
+        c: CanonicalProblem,
+        supported: list[str],
+    ) -> list[str]:
+        requested = [
+            item
+            for item in (c.requested_outputs or c.unknowns or [])
+            if item != "auto"
+        ]
         if not requested or not supported:
             return []
-        aliases = {"distance": "range", "x": "range", "height": "max_height", "a": "acceleration", "alpha": "angular_acceleration", "velocity": "final_velocity", "v": "final_velocity", "vf": "final_velocity"}
+        aliases = {
+            "distance": "range",
+            "x": "range",
+            "height": "max_height",
+            "a": "acceleration",
+            "alpha": "angular_acceleration",
+            "velocity": "final_velocity",
+            "v": "final_velocity",
+            "vf": "final_velocity",
+        }
         supported_set = set(supported)
         bad: list[str] = []
         for out in requested:
@@ -204,6 +350,8 @@ class SolverRegistry:
                 acceptable.add("post_collision_velocity")
             if out == "minimum_speed":
                 acceptable.add("final_velocity")
+            if out == "tension":
+                acceptable.add("force")
             if not (acceptable & supported_set):
                 bad.append(out)
         return [f"unsupported requested output: {out}" for out in bad]
