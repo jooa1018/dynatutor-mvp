@@ -176,12 +176,27 @@ class ProjectileMotionSolver(BaseSolver):
         if y_final is not None:
             times = positive_times_for_height(y_final)
             if times:
-                t_f = max(times)
+                asks_first = any(word in raw for word in ("처음", "최초", "first"))
+                asks_later = any(word in raw for word in ("다시", "두 번째", "두번째", "나중", "later", "second time"))
+                if len(times) > 1 and not (asks_first or asks_later):
+                    alternatives = ", ".join(f"{value:.3f} s" for value in times)
+                    return SolverResult(
+                        ok=False,
+                        verification=VerificationReport(
+                            passed=False,
+                            errors=[f"목표 높이에 도달하는 양수 시간이 여러 개입니다: {alternatives}"],
+                        ),
+                        unsupported_reason="올라가며 처음 도달하는 때인지, 내려오며 다시 도달하는 때인지 알려 주세요.",
+                    )
+                t_f = min(times) if asks_first else max(times)
                 range_x = vx * t_f
+                range_magnitude = abs(range_x)
+                horizontal_direction = "왼쪽" if range_x < -1e-12 else "오른쪽" if range_x > 1e-12 else "수평 변위 0"
                 computed["time"] = AnswerItem("시간", "t", round(t_f, 6), "s", f"시간 t = {t_f:.3f} s", "primary")
-                computed["range"] = AnswerItem("수평거리", "R", round(range_x, 6), "m", f"수평거리 R = {range_x:.3f} m", "primary")
+                computed["range"] = AnswerItem("수평 사거리", "R", round(range_magnitude, 6), "m", f"수평 사거리 R = {range_magnitude:.3f} m ({horizontal_direction}, Δx={range_x:.3f} m)", "primary")
                 computed["distance"] = computed["range"]
-                steps.append(StepCard("착지/목표 높이 조건", f"y_final={y_final:g} m를 대입해 양수 시간 해를 고릅니다.", r"y_0+v_0\sin\theta\,t-\frac12gt^2=y_f"))
+                event_note = "첫 도달" if len(times) > 1 and asks_first else "다시 도달" if len(times) > 1 else "유일한 양수 사건"
+                steps.append(StepCard("착지/목표 높이 조건", f"y_final={y_final:g} m에서 {event_note} 시간 해를 사용합니다.", r"y_0+v_0\sin\theta\,t-\frac12gt^2=y_f"))
                 steps.append(StepCard("수평 운동", "수평방향 가속도는 0이므로 x=vx t입니다.", r"x=v_0\cos\theta\,t"))
         hmax = y0 + vy**2 / (2 * g)
         computed["max_height"] = AnswerItem("최대높이", "H", round(hmax, 6), "m", f"최대높이 H = {hmax:.3f} m", "primary")
