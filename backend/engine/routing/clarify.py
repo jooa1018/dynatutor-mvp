@@ -56,7 +56,7 @@ ALLOWED_SYSTEM_TYPES = {
 ALLOWED_SUBTYPES = {"no_friction", "with_friction", "top", "bottom", "general", "same_level", "rolling_on_incline", None}
 ALLOWED_FRICTION_TYPES = {"none", "kinetic", "static", "unspecified", None}
 ALLOWED_REQUESTED_OUTPUTS = {"time", "range", "distance", "max_height", "minimum_speed", "final_velocity", "initial_velocity", "acceleration", "tension", "force", "mass", "work", "impulse", "kinetic_energy", "potential_energy", "post_collision_velocity", "v1_after", "v2_after", "angular_velocity", "angular_acceleration", "angular_frequency", "frequency", "period", "tangential_velocity", "centripetal_acceleration", "friction_force", "normal_force", "elastic_energy"}
-ALLOWED_KNOWN_SYMBOLS = {"mu", "mu_k", "mu_s", "m", "m1", "m2", "e", "v0", "v1", "v2", "vf", "theta", "h", "h0", "yf", "k", "x", "F", "s", "t", "tau", "I", "R", "r", "v", "vA", "vAx", "vAy", "vB", "aA", "aAx", "aAy", "aB", "rBAx", "rBAy", "omega", "alpha", "vrel", "arel", "a", "W"}
+ALLOWED_KNOWN_SYMBOLS = {"mu", "mu_k", "mu_s", "m", "m1", "m2", "e", "v0", "v1", "v2", "vf", "theta", "h", "h0", "yf", "k", "x", "F", "s", "t", "tau", "I", "R", "r", "v", "vA", "vAx", "vAy", "vB", "aA", "aAx", "aAy", "aB", "rBAx", "rBAy", "omega", "omega0", "alpha", "vrel", "arel", "a", "W"}
 
 
 _VALID_SUBTYPES_BY_SYSTEM = {
@@ -90,7 +90,8 @@ _UNITS_BY_SYMBOL = {
     "F": {"N", None}, "W": {"J", None}, "t": {"s", None},
     "k": {"N/m", None}, "tau": {"N*m", "N·m", "Nm", None},
     "I": {"kg*m^2", "kg·m²", None},
-    "omega": {"rad/s", None}, "alpha": {"rad/s^2", "rad/s²", None},
+    "omega": {"rad/s", None}, "omega0": {"rad/s", None},
+    "alpha": {"rad/s^2", "rad/s²", None},
     "vrel": {"m/s", None},
 }
 
@@ -501,6 +502,7 @@ _MISSING_TO_SYMBOL: list[tuple[str, str, str, str]] = [
     ("반지름 R", "R", "반지름 R", "m"),
     ("반발계수", "e", "반발계수 e", ""),
     ("속도 v ", "v", "속도 v", "m/s"),
+    ("초기 각속도", "omega0", "초기 각속도 ω₀", "rad/s"),
     ("각속도", "omega", "각속도 ω", "rad/s"),
     ("각가속도", "alpha", "각가속도 α", "rad/s^2"),
     ("상대속도", "vrel", "상대속도 v_rel", "m/s"),
