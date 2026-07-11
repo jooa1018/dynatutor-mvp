@@ -492,3 +492,24 @@ def test_answer_validator_knows_extended_output_symbols():
     )
 
     assert report.passed, report.errors
+
+
+
+def test_impulse_final_velocity_requires_force_direction():
+    response = solve_problem(
+        "질량 2kg 물체가 초속도 3m/s이고 힘 4N이 5s 작용한다. 최종속도를 구하라."
+    )
+
+    assert response.ok is False
+    assert response.answer is None
+    assert any("방향" in error for error in response.verification.errors)
+
+
+def test_impulse_final_velocity_solves_with_explicit_force_direction():
+    response = solve_problem(
+        "질량 2kg 물체가 초속도 3m/s이고 운동 방향과 같은 방향으로 힘 4N이 5s 작용한다. 최종속도를 구하라."
+    )
+
+    assert response.ok is True
+    assert response.answer is not None
+    assert math.isclose(response.answer.numeric, 13.0, rel_tol=1e-6)
