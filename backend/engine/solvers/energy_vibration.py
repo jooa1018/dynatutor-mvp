@@ -130,8 +130,30 @@ class WorkEnergySpeedSolver(BaseSolver):
         Wq = c.knowns.get("W")
         Fq, sq = c.knowns.get("F"), c.knowns.get("s")
         v0q = c.knowns.get("v0") or c.knowns.get("v")
+        starts_from_rest = any(
+            phrase in (c.raw_text or "").lower()
+            for phrase in (
+                "정지 상태에서",
+                "정지 상태로부터",
+                "정지에서",
+                "처음에는 정지",
+                "초기에는 정지",
+                "가만히 있다가",
+                "starts from rest",
+                "initially at rest",
+            )
+        )
         if not mq or not (Wq or (Fq and sq)):
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["일-에너지 속도 계산에는 질량 m과 일 W 또는 힘 F, 거리 s가 필요합니다."]))
+        if not v0q and not starts_from_rest:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["초기속도 v_i 또는 정지 상태에서 출발한다는 조건이 필요합니다."],
+                ),
+                unsupported_reason="초기 운동 상태를 명시해 주세요.",
+            )
         generated = solve_energy_momentum_system(c)
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 일-에너지 방정식 생성/풀이에 실패했습니다.")
@@ -142,7 +164,7 @@ class WorkEnergySpeedSolver(BaseSolver):
         vf = float(generated.solution["v_f"])
         steps = [
             StepCard("일-운동에너지 정리", "Energy/Momentum generator가 W_net=ΔK를 생성합니다. 알짜일은 운동에너지 변화량과 같습니다.", r"W_{net}=\Delta K"),
-            StepCard("식 세우기", "초기속도가 없으면 0으로 해석합니다.", "W=\frac12m v_f^2-\frac12m v_i^2"),
+            StepCard("식 세우기", "문제에 주어진 초기속도(또는 명시된 정지 출발 조건)를 사용합니다.", "W=\frac12m v_f^2-\frac12m v_i^2"),
             StepCard("계산", f"{work_text}, v_i={v0:g} m/s 이므로 v_f = {vf:.5g} m/s"),
         ]
         verification = VerificationReport(
