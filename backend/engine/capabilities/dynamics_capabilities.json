@@ -832,7 +832,7 @@
           {
             "one_of": [
               "tau and I",
-              "alpha and t for angular velocity",
+              "alpha and t with initial angular state",
               "omega and r/R for tangential speed"
             ]
           }
