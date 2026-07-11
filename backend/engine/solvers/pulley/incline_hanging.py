@@ -59,7 +59,25 @@ class InclineHangingPulleySolver(BaseSolver):
             g = magnitude_si(c.knowns["g"], "m/s^2")
             theta = math.radians(magnitude_si(c.knowns["theta"], "deg"))
             mu_s_q = c.knowns.get("mu_s") or c.knowns.get("mu")
-            decision = decide_incline_hanging_static(m1, m2, theta, float(mu_s_q.value), g)
+            if mu_s_q is None or mu_s_q.value is None:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["정지마찰 판정에는 정지마찰계수 μ_s가 필요합니다."],
+                    ),
+                    unsupported_reason="정지마찰계수 μ_s를 알려 주세요.",
+                )
+            mu_s = float(mu_s_q.value)
+            if mu_s < 0:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["정지마찰계수 μ_s는 0 이상이어야 합니다."],
+                    ),
+                )
+            decision = decide_incline_hanging_static(m1, m2, theta, mu_s, g)
             if decision.holds_static:
                 T_static = m2 * g
                 verification = VerificationReport(
@@ -92,8 +110,31 @@ class InclineHangingPulleySolver(BaseSolver):
         m2 = magnitude_si(c.knowns["m2"], "kg")
         g = magnitude_si(c.knowns["g"], "m/s^2")
         theta = math.radians(magnitude_si(c.knowns["theta"], "deg"))
-        mu_q = c.knowns.get("mu_k") or c.knowns.get("mu")
+        mu_q = (
+            c.knowns.get("mu_k")
+            if c.friction_type == "static"
+            else c.knowns.get("mu_k") or c.knowns.get("mu")
+        )
+        if c.friction_type in {"static", "kinetic", "unspecified"} and (
+            mu_q is None or mu_q.value is None
+        ):
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["운동마찰을 포함한 후속 운동에는 운동마찰계수 μ_k가 필요합니다."],
+                ),
+                unsupported_reason="정지마찰계수와 별도로 운동마찰계수 μ_k를 알려 주세요.",
+            )
         mu = float(mu_q.value) if mu_q and mu_q.value is not None else 0.0
+        if mu < 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["운동마찰계수 μ_k는 0 이상이어야 합니다."],
+                ),
+            )
         direction_hint = _motion_direction(c)
 
         if c.friction_type in {"kinetic", "unspecified"} and mu > 0 and direction_hint is None:
@@ -135,6 +176,7 @@ class InclineHangingPulleySolver(BaseSolver):
 
         if direction_hint:
             a_val, T_val, direction_label, eqs = _solve_candidate(m1, m2, theta, mu, g, direction_hint)
+            f_val = mu * m1 * g * math.cos(theta)
             if a_val < -1e-9:
                 return SolverResult(
                     ok=False,
@@ -162,7 +204,20 @@ class InclineHangingPulleySolver(BaseSolver):
                 answers=[
                     AnswerItem("가속도", "a", round(a_val, 6), "m/s²", f"가속도 a = {a_val:.3f} m/s²", "primary"),
                     AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
-                ],
+                ] + (
+                    [
+                        AnswerItem(
+                            "운동마찰력",
+                            "f_k",
+                            round(f_val, 6),
+                            "N",
+                            f"운동마찰력 f_k = {f_val:.3f} N",
+                            "component",
+                        )
+                    ]
+                    if c.friction_type in {"static", "kinetic", "unspecified"}
+                    else []
+                ),
                 steps=steps,
                 verification=merge_reports(pre, verification),
                 used_equations=eqs,
@@ -210,6 +265,7 @@ class InclineHangingPulleySolver(BaseSolver):
         sol = generated.solution
         a_val = float(sol[S.a])
         T_val = float(sol[S.T])
+        f_val = float(sol[S.F]) if S.F in sol else 0.0
         direction = "m2가 내려가고 m1이 경사면 위로" if a_val >= 0 else "m1이 경사면 아래로"
         steps = [
             StepCard("방향 가정", "마찰이 없거나 방향 영향이 없는 경우 m2 아래, m1 경사면 위를 +방향으로 둡니다."),
@@ -231,7 +287,20 @@ class InclineHangingPulleySolver(BaseSolver):
             answers=[
                 AnswerItem("가속도", "a", round(abs(a_val), 6), "m/s²", f"가속도 a = {abs(a_val):.3f} m/s²", "primary"),
                 AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
-            ],
+            ] + (
+                [
+                    AnswerItem(
+                        "운동마찰력",
+                        "f_k",
+                        round(f_val, 6),
+                        "N",
+                        f"운동마찰력 f_k = {f_val:.3f} N",
+                        "component",
+                    )
+                ]
+                if c.friction_type in {"static", "kinetic", "unspecified"}
+                else []
+            ),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=["T - m1g sinθ = m1a", "m2g - T = m2a"],
