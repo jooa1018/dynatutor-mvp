@@ -160,6 +160,11 @@ class SolverRegistry:
             "body_shape": bool(c.body_shape),
             "friction_type": bool(c.friction_type),
             "force_direction": bool(c.force_direction) or "theta" in c.knowns,
+            "vA": (
+                "vA" in c.knowns
+                and c.knowns["vA"].value is not None
+                and abs(float(c.knowns["vA"].value)) <= 1e-12
+            ),
             "minimum_speed request": "minimum_speed" in requested,
             "top subtype": c.subtype == "top",
             "bottom subtype": c.subtype == "bottom",
@@ -310,6 +315,34 @@ class SolverRegistry:
                 key in c.knowns for key in ("mu_k", "mu")
             ):
                 missing.append("mu_k")
+        if solver_id in {"plane_rigid_body_velocity", "plane_rigid_body_acceleration"}:
+            raw = c.raw_text or ""
+            fixed_A = any(
+                phrase in raw
+                for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
+            )
+            ref_symbol = "vA" if solver_id == "plane_rigid_body_velocity" else "aA"
+            zero_reference = (
+                ref_symbol in c.knowns
+                and c.knowns[ref_symbol].value is not None
+                and abs(float(c.knowns[ref_symbol].value)) <= 1e-12
+            )
+            prefix = "v" if solver_id == "plane_rigid_body_velocity" else "a"
+            has_reference_vector = (
+                f"{prefix}Ax" in (c.coordinate_data or {})
+                and f"{prefix}Ay" in (c.coordinate_data or {})
+            ) or (
+                f"{prefix}Ax" in c.knowns and f"{prefix}Ay" in c.knowns
+            )
+            has_r_vector = (
+                "rBAx" in (c.coordinate_data or {})
+                and "rBAy" in (c.coordinate_data or {})
+            ) or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+            has_scalar_r = "r" in c.knowns or "R" in c.knowns
+            if not has_reference_vector and not fixed_A and not zero_reference:
+                missing.append(f"{ref_symbol} vector or fixed A")
+            if not has_r_vector and not ((fixed_A or zero_reference) and has_scalar_r):
+                missing.append("rBA vector (scalar r only for fixed A magnitude)")
         return list(dict.fromkeys(missing))
 
     def _requested_output_contradictions(
