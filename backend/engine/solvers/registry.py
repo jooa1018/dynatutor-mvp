@@ -13,13 +13,14 @@ from engine.solvers.rolling import PureRollingEnergySolver, RollingEnergyGeneral
 from engine.solvers.vertical_circle import VerticalCircleSolver
 from engine.solvers.collision import Collision1DSolver
 from engine.solvers.kinematics import ConstantAcceleration1DSolver
-from engine.solvers.projectile import ProjectileMotionSolver
+from engine.solvers.projectile import ProjectileMotionSolver, can_solve_flight_time_without_speed
 from engine.solvers.work_rotation_impulse import ConstantForceWorkSolver, FixedAxisRotationSolver, ImpulseMomentumSolver
 from engine.solvers.energy_vibration import SpringMassVibrationSolver, SpringEnergySpeedSolver, WorkEnergySpeedSolver, HorizontalFrictionForceSolver
 from engine.solvers.curves import FlatCurveFrictionSolver, BankedCurveNoFrictionSolver
 from engine.solvers.advanced_motion import PolarKinematicsSolver, InstantCenterVelocitySolver, SlotPinRelativeMotionSolver
 from engine.solvers.advanced_dynamics import CoriolisRelativeMotionSolver
 from engine.solvers.rigid_body_2d import PlaneRigidBodyVelocitySolver, PlaneRigidBodyAccelerationSolver, RelativeAccelerationTranslationSolver
+from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
 from engine.routing.config import ROUTING_CONFIG
 from engine.routing.evidence import TYPE_TO_FAMILY, rank_type_evidence
 
@@ -87,10 +88,116 @@ class SolverRegistry:
         self.last_route_decision: RouteDecision | None = None
         self._capabilities = self._load_capabilities()
 
+    def _validate_capability_data(
+        self, data: Any, *, source: str
+    ) -> dict[str, dict[str, Any]]:
+        if (
+            not isinstance(data, dict)
+            or data.get("schema_version") != 1
+            or not isinstance(data.get("capabilities"), list)
+        ):
+            raise ValueError(
+                f"Invalid capability configuration at {source}: "
+                "schema_version=1 and a capabilities list are required"
+            )
+        entries = data["capabilities"]
+        expected = [solver.name for solver in self.solvers]
+        if len(expected) != len(set(expected)):
+            raise ValueError("Solver registry contains duplicate solver names")
+
+        actual: list[str] = []
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"Invalid capability entry {index} at {source}: expected object"
+                )
+            name = entry.get("analytic_solver")
+            if not isinstance(name, str) or not name:
+                raise ValueError(
+                    f"Invalid capability entry {index} at {source}: "
+                    "analytic_solver is required"
+                )
+            actual.append(name)
+            required = entry.get("required_inputs")
+            required_keys = {"all_of", "any_of", "conditional"}
+            if not isinstance(required, dict) or set(required) != required_keys:
+                raise ValueError(
+                    f"Invalid required_inputs for {name}: "
+                    f"expected exactly {sorted(required_keys)}"
+                )
+            for key in ("all_of", "any_of"):
+                values = required[key]
+                if not isinstance(values, list) or not all(
+                    isinstance(value, str) and value for value in values
+                ):
+                    raise ValueError(
+                        f"Invalid required_inputs.{key} for {name}: "
+                        "expected symbol strings"
+                    )
+            conditions = required["conditional"]
+            if not isinstance(conditions, list):
+                raise ValueError(
+                    f"Invalid required_inputs.conditional for {name}: "
+                    "expected a list"
+                )
+            for rule_index, condition in enumerate(conditions):
+                if not isinstance(condition, dict):
+                    raise ValueError(
+                        f"Invalid conditional rule {rule_index} for {name}: "
+                        "expected object"
+                    )
+                keys = set(condition)
+                if keys in ({"one_of"}, {"all_of"}):
+                    values = condition[next(iter(keys))]
+                    valid = (
+                        isinstance(values, list)
+                        and bool(values)
+                        and all(isinstance(value, str) and value for value in values)
+                    )
+                elif keys == {"minimum_present", "symbols"}:
+                    values = condition["symbols"]
+                    minimum = condition["minimum_present"]
+                    valid = (
+                        isinstance(values, list)
+                        and bool(values)
+                        and all(isinstance(value, str) and value for value in values)
+                        and isinstance(minimum, int)
+                        and not isinstance(minimum, bool)
+                        and 1 <= minimum <= len(values)
+                    )
+                else:
+                    raise ValueError(
+                        f"Unsupported conditional rule keys for {name}: "
+                        f"{sorted(keys)}"
+                    )
+                if not valid:
+                    raise ValueError(
+                        f"Invalid conditional rule {rule_index} for {name}"
+                    )
+
+        duplicates = sorted(
+            {name for name in actual if actual.count(name) > 1}
+        )
+        if duplicates:
+            raise ValueError(f"Duplicate capability entries: {duplicates}")
+        missing = sorted(set(expected) - set(actual))
+        extra = sorted(set(actual) - set(expected))
+        if missing or extra:
+            raise ValueError(
+                f"Capability/registry mismatch: missing={missing}, extra={extra}"
+            )
+        if actual != expected:
+            raise ValueError("Capability entries must follow SolverRegistry order")
+        return {entry["analytic_solver"]: entry for entry in entries}
+
     def _load_capabilities(self) -> dict[str, dict[str, Any]]:
-        path = Path(__file__).resolve().parents[1] / "capabilities" / "dynamics_capabilities.json"
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "capabilities"
+            / "dynamics_capabilities.json"
+        )
         data = json.loads(path.read_text(encoding="utf-8"))
-        return {entry["analytic_solver"]: entry for entry in data.get("capabilities", [])}
+        return self._validate_capability_data(data, source=str(path))
 
     def _family(self, solver_id: str) -> str:
         solver_family = {
@@ -167,7 +274,12 @@ class SolverRegistry:
             "launch_height": c.launch_height is not None or "h" in c.knowns,
             "body_shape": bool(c.body_shape),
             "friction_type": bool(c.friction_type),
-            "force_direction": bool(c.force_direction) or "theta" in c.knowns,
+            "force_direction": (
+                bool(c.force_direction)
+                or "theta" in c.knowns
+                or infer_angle_between_force_and_displacement(c.raw_text or "")
+                is not None
+            ),
             "vA": (
                 "vA" in c.knowns
                 and c.knowns["vA"].value is not None
@@ -189,7 +301,16 @@ class SolverRegistry:
             "omega and r/R for tangential speed": (
                 "omega" in c.knowns
                 and ("r" in c.knowns or "R" in c.knowns)
-                and "tangential_velocity" in requested
+                and (
+                    bool(
+                        requested
+                        & {"tangential_velocity", "final_velocity"}
+                    )
+                    or any(
+                        word in raw
+                        for word in ("속력", "속도는", "speed")
+                    )
+                )
             ),
             "m1 when m2 absent": "m1" in c.knowns and "m2" not in c.knowns,
             "impulse request": "impulse" in requested,
@@ -220,7 +341,10 @@ class SolverRegistry:
             ),
             "explicit rest condition": self._starts_from_rest(c),
             "force-displacement direction": (
-                bool(c.force_direction) or "theta" in c.knowns
+                bool(c.force_direction)
+                or "theta" in c.knowns
+                or infer_angle_between_force_and_displacement(c.raw_text or "")
+                is not None
             ),
             "rBA vector": (
                 ("rBAx" in coordinate_data and "rBAy" in coordinate_data)
@@ -301,16 +425,7 @@ class SolverRegistry:
         return expression in c.knowns and c.knowns[expression].value is not None
 
     def _projectile_time_without_speed(self, c: CanonicalProblem) -> bool:
-        requested = {
-            item
-            for item in (c.requested_outputs or c.unknowns or [])
-            if item != "auto"
-        }
-        angle = c.launch_angle_deg
-        if angle is None and "theta" in c.knowns:
-            angle = c.knowns["theta"].value
-        has_vertical_drop = c.launch_height is not None or "h" in c.knowns
-        return bool(requested) and requested <= {"time"} and angle == 0 and has_vertical_drop
+        return can_solve_flight_time_without_speed(c)
 
     def _starts_from_rest(self, c: CanonicalProblem) -> bool:
         raw = (c.raw_text or "").lower()
@@ -318,8 +433,10 @@ class SolverRegistry:
             phrase in raw
             for phrase in (
                 "정지 상태에서",
-            "처음에 정지한",
-            "정지한 물체",
+                "정지 상태의",
+                "정지 상태인",
+                "처음에 정지한",
+                "정지한 물체",
                 "정지 상태로부터",
                 "정지에서",
                 "처음에는 정지",
@@ -439,13 +556,53 @@ class SolverRegistry:
                 missing.append(f"{ref_symbol} vector, fixed A, or relative-to-A request")
             if not has_r_vector and not ((fixed_A or zero_reference or relative_to_A) and has_scalar_r):
                 missing.append("rBA vector (scalar r only for fixed/relative magnitude)")
-            if has_r_vector and solver_id == "plane_rigid_body_velocity":
-                if "omega_sign" not in (c.coordinate_data or {}) and "angular_sign" not in (c.coordinate_data or {}):
+            compact_raw = raw.replace(" ", "").lower()
+            explicit_cartesian_components = (
+                any(
+                    token in compact_raw
+                    for token in (
+                        "x성분",
+                        "y성분",
+                        "x-component",
+                        "y-component",
+                    )
+                )
+                or bool(
+                    requested
+                    & {
+                        "acceleration_x",
+                        "acceleration_y",
+                        "velocity_x",
+                        "velocity_y",
+                        "a_bx",
+                        "a_by",
+                        "v_bx",
+                        "v_by",
+                    }
+                )
+            )
+            if (
+                explicit_cartesian_components
+                and has_r_vector
+                and solver_id == "plane_rigid_body_velocity"
+                and "omega_sign" not in (c.coordinate_data or {})
+                and "angular_sign" not in (c.coordinate_data or {})
+            ):
+                missing.append("explicit omega direction for components")
+            if (
+                explicit_cartesian_components
+                and has_r_vector
+                and solver_id == "plane_rigid_body_acceleration"
+            ):
+                if (
+                    "omega_sign" not in (c.coordinate_data or {})
+                    and "angular_sign" not in (c.coordinate_data or {})
+                ):
                     missing.append("explicit omega direction for components")
-            if has_r_vector and solver_id == "plane_rigid_body_acceleration":
-                if "omega_sign" not in (c.coordinate_data or {}) and "angular_sign" not in (c.coordinate_data or {}):
-                    missing.append("explicit omega direction for components")
-                if "alpha_sign" not in (c.coordinate_data or {}) and "angular_sign" not in (c.coordinate_data or {}):
+                if (
+                    "alpha_sign" not in (c.coordinate_data or {})
+                    and "angular_sign" not in (c.coordinate_data or {})
+                ):
                     missing.append("explicit alpha direction for components")
         return list(dict.fromkeys(missing))
 
@@ -480,8 +637,6 @@ class SolverRegistry:
                 acceptable.add("post_collision_velocity")
             if out == "minimum_speed":
                 acceptable.add("final_velocity")
-            if out == "tension":
-                acceptable.add("force")
             if not (acceptable & supported_set):
                 bad.append(out)
         return [f"unsupported requested output: {out}" for out in bad]
@@ -500,6 +655,8 @@ class SolverRegistry:
         joined = ", ".join(dict.fromkeys(missing))
         if candidates and candidates[0].solver_id == "single_particle_newton":
             return "여러 힘의 방향 또는 각 힘의 합력(알짜힘), 그리고 질량을 알려 주세요."
+        if candidates and candidates[0].solver_id == "work_energy_speed":
+            return "초기속도 또는 정지 상태에서 출발한다는 조건을 알려 주세요."
         if any("mu" in item or "friction_type" in item for item in missing):
             return "정지마찰계수와 운동마찰계수 중 어떤 값인지, 그리고 실제 운동 방향/경향이 무엇인지 알려 주세요."
         if any(item in {"I", "R"} or "I" in item or "R" in item for item in missing):
@@ -622,9 +779,19 @@ class SolverRegistry:
                     question=self._clarification_question(viable),
                     reason="Top route margin is too small.",
                 )
+            best_other_family = next(
+                (
+                    candidate
+                    for candidate in viable[1:]
+                    if candidate.family != top.family
+                ),
+                None,
+            )
             if (
-                top.family != second.family
-                and margin < ROUTING_CONFIG.cross_family_margin
+                best_other_family is not None
+                and top.normalized_score
+                - best_other_family.normalized_score
+                < ROUTING_CONFIG.cross_family_margin
             ):
                 return RouteDecision(
                     "clarify",
@@ -644,15 +811,8 @@ class SolverRegistry:
         c: CanonicalProblem,
         decision: RouteDecision | None = None,
     ) -> BaseSolver | None:
-        if (
-            decision is None
-            and self.last_route_decision is not None
-            and getattr(self, "_last_route_problem_identity", None) == id(c)
-        ):
-            decision = self.last_route_decision
         decision = decision or self.route(c)
         self.last_route_decision = decision
-        self._last_route_problem_identity = id(c)
         if decision.status != "select" or decision.selected_solver_id is None:
             return None
         chosen = next(
