@@ -96,13 +96,33 @@ def test_incline_hanging_candidate_without_word_pulley():
     cp = extract_problem("m1=10kg가 30도 경사면 위에 있고 m2=1kg가 매달려 있다. 가속도는?")
     patch = next(o for o in out.clarification.options if o.id == "connected_pulley").patch
     cp2 = apply_clarify_patch(_copy.deepcopy(cp), dict(patch))
+    from engine.routing.clarify import build_clarification
     from engine.solvers.registry import SolverRegistry
-    r = SolverRegistry().select(cp2).solve(cp2)
-    assert r.ok
+
+    registry = SolverRegistry()
+    assert registry.select(cp2) is None
+    friction = build_clarification(cp2)
+    assert friction is not None
+    assert friction.rule == "incline_hanging_friction_unknown"
+    no_friction = next(o for o in friction.options if o.id == "no_friction")
+    cp3 = apply_clarify_patch(_copy.deepcopy(cp2), dict(no_friction.patch))
+    solver = registry.select(cp3)
+    assert solver is not None
+    assert solver.solve(cp3).ok
 
 
-def test_incline_hanging_with_pulley_word_should_solve_or_check_direction():
-    out = solve_problem("m1=10kg가 30도 경사면 위에 있고 m2=1kg가 도르래에 매달려 있다. 가속도는?")
+def test_incline_hanging_with_pulley_word_requires_friction_state():
+    problem = "m1=10kg가 30도 경사면 위에 있고 m2=1kg가 도르래에 매달려 있다. 가속도는?"
+    out = solve_problem(problem)
     assert out.diagnosis.canonical.system_type == "pulley_incline_hanging"
-    assert out.diagnosis.selected_solver == "pulley_incline_hanging"
-    assert out.ok
+    assert out.diagnosis.selected_solver is None
+    assert not out.ok
+    assert out.clarification is not None
+    assert out.clarification.rule == "incline_hanging_friction_unknown"
+
+    no_friction = next(
+        option for option in out.clarification.options if option.id == "no_friction"
+    )
+    solved = solve_problem(problem, clarify_patch=no_friction.patch)
+    assert solved.ok
+    assert solved.diagnosis.selected_solver == "pulley_incline_hanging"
