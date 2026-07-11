@@ -61,6 +61,8 @@ ALLOWED_KNOWN_SYMBOLS = {"mu", "mu_k", "mu_s", "m", "m1", "m2", "e", "v0", "v1",
 
 _VALID_SUBTYPES_BY_SYSTEM = {
     "particle_on_incline": {"no_friction", "with_friction", None},
+    "pulley_table_hanging": {"no_friction", "with_friction", None},
+    "pulley_incline_hanging": {"no_friction", "with_friction", None},
     "projectile_motion": {"general", "same_level", None},
     "vertical_circle": {"top", "bottom", None},
     "pure_rolling_energy": {"rolling_on_incline", None},
@@ -142,22 +144,31 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
         raise ClarifyPatchError(f"허용되지 않는 patch 키: {sorted(unknown_keys)}")
 
     target_system = patch.get("system_type", cp.system_type)
-    if target_system not in ALLOWED_SYSTEM_TYPES:
+    system_changed = (
+        "system_type" in patch and target_system != cp.system_type
+    )
+    if "system_type" in patch and target_system not in ALLOWED_SYSTEM_TYPES:
         raise ClarifyPatchError(f"허용되지 않는 system_type: {target_system}")
+
     target_subtype = (
         patch["subtype"]
         if "subtype" in patch
         else None
-        if "system_type" in patch and target_system != cp.system_type
+        if system_changed
         else cp.subtype
     )
-    if target_subtype not in ALLOWED_SUBTYPES:
+    if "subtype" in patch and target_subtype not in ALLOWED_SUBTYPES:
         raise ClarifyPatchError(f"허용되지 않는 subtype: {target_subtype}")
-    allowed_subtypes = _VALID_SUBTYPES_BY_SYSTEM.get(target_system, {None})
-    if target_subtype not in allowed_subtypes:
-        raise ClarifyPatchError(
-            f"{target_system}과 양립하지 않는 subtype입니다: {target_subtype}"
-        )
+    if "system_type" in patch or "subtype" in patch:
+        if target_system not in ALLOWED_SYSTEM_TYPES:
+            raise ClarifyPatchError(
+                f"subtype을 설정하기 전에 지원되는 system_type이 필요합니다: {target_system}"
+            )
+        allowed_subtypes = _VALID_SUBTYPES_BY_SYSTEM.get(target_system, {None})
+        if target_subtype not in allowed_subtypes:
+            raise ClarifyPatchError(
+                f"{target_system}과 양립하지 않는 subtype입니다: {target_subtype}"
+            )
 
     if "friction_type" in patch:
         friction_type = patch.get("friction_type")
@@ -240,7 +251,10 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     if st is not None:
         if st not in ALLOWED_SYSTEM_TYPES:
             raise ClarifyPatchError(f"허용되지 않는 system_type: {st}")
+        system_changed = st != cp.system_type
         cp.system_type = st
+        if system_changed and "subtype" not in patch:
+            cp.subtype = None
         cp.flags["_clarify_model_chosen"] = True
     sub = patch.get("subtype", "__unset__")
     if sub != "__unset__":
@@ -366,6 +380,50 @@ def _rule_table_hanging_friction(cp: CanonicalProblem) -> Clarification | None:
                 label="마찰 있음 — 운동마찰계수 입력",
                 description="입력한 μ로 f = μN을 포함해 풉니다.",
                 patch={"subtype": "with_friction", "set_known": {"symbol": "mu", "unit": "", "label": "운동마찰계수"}},
+                needs_value="mu",
+            ),
+        ],
+    )
+
+
+def _rule_incline_hanging_friction(cp: CanonicalProblem) -> Clarification | None:
+    if cp.system_type != "pulley_incline_hanging":
+        return None
+    if (
+        cp.friction_type is not None
+        or (cp.flags or {}).get("no_friction")
+        or any(key in cp.knowns for key in ("mu", "mu_k", "mu_s"))
+    ):
+        return None
+    return Clarification(
+        rule="incline_hanging_friction_unknown",
+        question=(
+            "경사면 위 물체와 경사면 사이에 마찰이 있나요? "
+            "마찰 조건에 따라 가속도와 장력이 달라집니다."
+        ),
+        why=(
+            "경사면 위 물체에는 m₁g sinθ와 함께 마찰력이 작용할 수 있습니다. "
+            "마찰 유무와 계수를 임의로 가정하지 않습니다."
+        ),
+        options=[
+            ClarifyOption(
+                id="no_friction",
+                label="마찰 없음",
+                description="경사면 마찰을 무시하고 연결된 두 물체를 풉니다.",
+                patch={"subtype": "no_friction", "assume": "경사면 마찰 무시"},
+            ),
+            ClarifyOption(
+                id="with_friction",
+                label="마찰 있음 — 운동마찰계수 입력",
+                description="입력한 μ로 운동마찰력을 포함해 풉니다.",
+                patch={
+                    "subtype": "with_friction",
+                    "set_known": {
+                        "symbol": "mu",
+                        "unit": "",
+                        "label": "운동마찰계수",
+                    },
+                },
                 needs_value="mu",
             ),
         ],
@@ -741,6 +799,7 @@ _RULES = [
     _rule_unknown_with_evidence,
     _rule_incline_friction,
     _rule_table_hanging_friction,
+    _rule_incline_hanging_friction,
     _rule_missing_values,
     # 최후 안전망 — '값 입력' 질문(missing_values)을 가로채지 않도록 맨 뒤.
     _rule_evidence_conflict_fallback,
