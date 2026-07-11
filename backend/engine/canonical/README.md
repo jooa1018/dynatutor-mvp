@@ -29,6 +29,7 @@ parse candidates, and the fingerprint cannot remain stale.
 - provenance category and confidence;
 - explicit/normalized/inferred/assumed/defaulted/conflicting status;
 - source representations or conflicting alternatives;
+- extractor-captured matched text, subject evidence, and normalization evidence;
 - the legacy compatibility key when one exists.
 
 `AssumptionRecord` separates model/default/user-confirmed assumptions from
@@ -44,16 +45,26 @@ alternatives but does not change the Phase 46 routing-score policy.
 
 | Status | Meaning |
 |---|---|
-| `explicit` | Direct user text or confirmed user patch |
+| `explicit` | Direct raw text proven by a valid half-open source span |
 | `normalized` | Source representation converted by a deterministic unit/domain rule |
 | `inferred` | Deterministic domain inference such as “at rest” → zero velocity |
 | `assumed` | Reserved for a fact introduced as an explicit modeling assumption |
 | `defaulted` | Engine default such as gravity 9.81 m/s² |
 | `conflicting` | Two non-equivalent explicit values were retained |
 
-No value absent from the raw text is labeled `explicit`. Unit normalization
-recovers the original representation and span from `raw_text` even when the
-legacy normalizer converted it before quantity extraction.
+No value absent from the raw text is labeled `explicit`; the model rejects
+an explicit fact without a span. User-confirmed values use
+`provenance=user_confirmation` and remain non-explicit because the confirmation
+does not create a span in the original problem statement. Quantity extractors
+carry the original match span and matched text at extraction time. Unit
+normalization carries its source and normalized representations with that
+evidence instead of searching later for the first equal number.
+
+Conflict comparison includes the selected fact value and every labeled raw
+occurrence after unit normalization. Physically equivalent values do not
+conflict. A user confirmation moves the original candidates to
+`resolved_conflicts`, keeps them as alternatives for audit, and removes them
+from unresolved `conflicts`; rebuilding v2 preserves that resolution.
 
 ## Serialization and fingerprint
 
@@ -72,11 +83,13 @@ covered by solver-route regression tests.
 
 ## Deliberate Phase 43 limits
 
-- It does not broaden Korean grammar or repair the existing `v0=<multi-digit>`
-  parser ambiguity; that belongs to Phase 44.
+- It fixes the narrow multi-digit extraction boundary needed for trustworthy
+  provenance, but does not broaden the Phase 44 Korean grammar or benchmark.
+- Subject binding uses exact compatibility-key rules and leaves unrecognized
+  quantities `unbound`; richer discourse/entity resolution remains Phase 44.
 - It does not change routing margins or clarification policy; that belongs to
   Phase 46.
+- Canonical v2 preserves unresolved conflicts, but the complete rule that blocks
+  every final solve on an unresolved conflict remains the Phase 46 solve gate.
 - It does not build the typed frame/vector/constraint model; that belongs to
   Phase 45.
-- Subject assignment uses current compatibility symbols (`m1`, `m2`, point A/B,
-  pulley symbols). Richer discourse/entity resolution is deferred to Phase 44.

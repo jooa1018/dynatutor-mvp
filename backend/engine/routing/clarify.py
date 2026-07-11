@@ -80,6 +80,11 @@ def _apply_one_known(cp: CanonicalProblem, sk: dict) -> None:
         value=value,
         unit=sk.get("unit") or None,
         source_text=f"사용자 입력: {sk.get('label', symbol)}",
+        provenance_hint="user_confirmation",
+        subject_evidence={
+            "compatibility_key": symbol,
+            "method": "clarification_patch",
+        },
     )
     if symbol in {"mu", "mu_k"} and cp.friction_type in (None, "none"):
         cp.friction_type = "kinetic"

@@ -1,3 +1,4 @@
+import math
 import re
 from engine.models import CanonicalProblem, Quantity
 from engine.extraction.normalizer import normalize, strip_irrelevant_background
@@ -235,11 +236,58 @@ def _infer_launch_angle(knowns: dict, t: str) -> tuple[float | None, str | None]
     return None, None
 
 
+def _attach_raw_extraction_evidence(
+    knowns: dict[str, Quantity],
+    *,
+    raw_text: str,
+    normalized_text: str,
+) -> None:
+    """Transfer evidence captured while matching raw text onto normalized values."""
+
+    if normalized_text == raw_text:
+        return
+    raw_knowns = extract_quantities(raw_text)
+    for quantity in knowns.values():
+        # A span in normalized text is not a raw-text span.
+        quantity.source_span = None
+        quantity.matched_text = None
+    for key, quantity in knowns.items():
+        raw_quantity = raw_knowns.get(key)
+        if (
+            raw_quantity is None
+            or raw_quantity.source_span is None
+            or raw_quantity.value is None
+            or quantity.value is None
+            or not math.isclose(
+                float(raw_quantity.value),
+                float(quantity.value),
+                rel_tol=1e-12,
+                abs_tol=1e-12,
+            )
+        ):
+            continue
+        quantity.source_text = raw_quantity.source_text
+        quantity.source_span = raw_quantity.source_span
+        quantity.matched_text = raw_quantity.matched_text
+        quantity.provenance_hint = raw_quantity.provenance_hint
+        quantity.subject_evidence = dict(raw_quantity.subject_evidence)
+        quantity.normalization_evidence = (
+            dict(raw_quantity.normalization_evidence)
+            if raw_quantity.normalization_evidence is not None
+            else None
+        )
+
+
 def extract_problem(problem_text: str) -> CanonicalProblem:
     normalized = normalize(problem_text)
     analysis_text = strip_irrelevant_background(normalized)
     t = analysis_text.lower()
     knowns = extract_quantities(analysis_text)
+    _attach_raw_extraction_evidence(
+        knowns,
+        raw_text=problem_text,
+        normalized_text=normalized,
+    )
     unsupported_subtype = _unsupported_scope(t)
 
     flags = {
@@ -291,6 +339,11 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         flags["friction"] = False
     elif any(key in knowns for key in ("mu", "mu_k", "mu_s")):
         flags["friction"] = True
+
+    # Multi-object collision symbols are authoritative. A generic initial-speed
+    # match over the same sentence must not create a phantom body-level v0.
+    if flags["collision"] and "v1" in knowns and "v2" in knowns:
+        knowns.pop("v0", None)
 
     unknowns: list[str] = []
     if _has_any(t, ["가속도", "acceleration", " a "]):
@@ -361,7 +414,14 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
                 requested_outputs.append(item)
     launch_angle_deg, launch_angle_source = _infer_launch_angle(knowns, t)
     if launch_angle_deg is not None and "theta" not in knowns:
-        knowns["theta"] = Quantity("theta", launch_angle_deg, "deg", launch_angle_source or "inferred launch angle")
+        knowns["theta"] = Quantity(
+            "theta",
+            launch_angle_deg,
+            "deg",
+            launch_angle_source or "inferred launch angle",
+            provenance_hint="domain_rule",
+            subject_evidence={"compatibility_key": "theta", "method": "launch_direction_rule"},
+        )
 
     c = CanonicalProblem(
         knowns=knowns,
@@ -387,7 +447,21 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     # 여기서 해야 방정식 generator·검증·출처 추적이 전부 같은 값을 본다.
     if flags["collision"] and "v1" not in knowns and "v0" in knowns:
         v0q = knowns["v0"]
-        knowns["v1"] = Quantity("v1", v0q.value, v0q.unit or "m/s", (v0q.source_text or "") + " (충돌 진행 물체 → v1)")
+        knowns["v1"] = Quantity(
+            "v1",
+            v0q.value,
+            v0q.unit or "m/s",
+            (v0q.source_text or "") + " (충돌 진행 물체 → v1)",
+            source_span=v0q.source_span,
+            matched_text=v0q.matched_text,
+            provenance_hint="compatibility_alias",
+            subject_evidence={"compatibility_key": "v1", "method": "collision_progress_alias"},
+            normalization_evidence=(
+                dict(v0q.normalization_evidence)
+                if v0q.normalization_evidence is not None
+                else None
+            ),
+        )
 
     if unsupported_subtype is not None:
         c.system_type = "unsupported"
