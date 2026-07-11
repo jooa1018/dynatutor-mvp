@@ -43,6 +43,16 @@ _FAMILIES: dict[str, tuple[str, str, tuple[str, ...], tuple[str, ...]]] = {
 
 # system_type → 소속 패밀리 (현재 해석이 어느 패밀리인지 판정용)
 TYPE_TO_FAMILY: dict[str, str] = {
+    "single_particle_newton": "newton",
+    "horizontal_friction_force": "friction",
+    "vertical_circle": "circular_motion",
+    "relative_acceleration_translation": "relative_motion",
+    "coriolis_relative_motion": "relative_motion",
+    "plane_rigid_body_velocity": "rigid_body",
+    "plane_rigid_body_acceleration": "rigid_body",
+    "instant_center_velocity": "rigid_body",
+    "polar_kinematics": "advanced_motion",
+    "slot_pin_relative_motion": "advanced_motion",
     "particle_on_incline": "incline",
     "pulley_atwood": "pulley", "pulley_table_hanging": "pulley",
     "pulley_incline_hanging": "pulley", "massive_pulley_atwood": "pulley",
