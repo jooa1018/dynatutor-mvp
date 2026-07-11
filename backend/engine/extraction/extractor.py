@@ -812,6 +812,10 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("수평면 마찰 유무")
         if c.system_type == "pulley_incline_hanging" and "theta" not in c.knowns:
             missing.append("경사면 각도 θ")
+        if c.friction_type == "static" and not any(key in c.knowns for key in ("mu_s", "mu")):
+            missing.append("정지마찰계수 μ_s")
+        if c.friction_type in {"kinetic", "unspecified"} and not any(key in c.knowns for key in ("mu_k", "mu")):
+            missing.append("운동마찰계수 μ_k")
     elif c.system_type == "ambiguous_pulley":
         missing.append("도르래 구조: 양쪽 매달림/수평면-매달림/경사면-매달림 중 하나")
     elif c.system_type == "incline_hanging_candidate":
@@ -935,8 +939,26 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
         if "vrel" not in c.knowns and "rdot" not in c.knowns:
             missing.append("상대속도 v_rel 또는 r_dot")
     elif c.system_type == "plane_rigid_body_acceleration":
-        if "R" not in c.knowns and "r" not in c.knowns and not ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data):
-            missing.append("두 점 사이 거리 r_B/A")
+        raw = c.raw_text or ""
+        fixed_A = any(phrase in raw for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"])
+        zero_aA = (
+            "aA" in c.knowns
+            and c.knowns["aA"].value is not None
+            and abs(float(c.knowns["aA"].value)) <= 1e-12
+        )
+        has_aA_vector = (
+            ("aAx" in c.coordinate_data and "aAy" in c.coordinate_data)
+            or ("aAx" in c.knowns and "aAy" in c.knowns)
+        )
+        has_r_vector = (
+            ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data)
+            or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+        )
+        has_scalar_r = "R" in c.knowns or "r" in c.knowns
+        if not has_r_vector and not ((fixed_A or zero_aA) and has_scalar_r):
+            missing.append("r_B/A 벡터 성분(고정 A에서 크기만 구할 때는 거리 r)")
+        if not has_aA_vector and not fixed_A and not zero_aA:
+            missing.append("A점 가속도 벡터 또는 A점 고정 조건")
         if "omega" not in c.knowns:
             missing.append("강체 각속도 ω")
         if "alpha" not in c.knowns:
@@ -977,11 +999,27 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
         if "rdot" not in c.knowns:
             missing.append("슬롯을 따라 미끄러지는 상대속도 r_dot")
     elif c.system_type == "plane_rigid_body_velocity":
-        if "R" not in c.knowns and "r" not in c.knowns and not ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data):
-            missing.append("두 점 사이 거리 r_B/A")
+        raw = c.raw_text or ""
+        fixed_A = any(phrase in raw for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"])
+        zero_vA = (
+            "vA" in c.knowns
+            and c.knowns["vA"].value is not None
+            and abs(float(c.knowns["vA"].value)) <= 1e-12
+        )
+        has_vA_vector = (
+            ("vAx" in c.coordinate_data and "vAy" in c.coordinate_data)
+            or ("vAx" in c.knowns and "vAy" in c.knowns)
+        )
+        has_r_vector = (
+            ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data)
+            or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+        )
+        has_scalar_r = "R" in c.knowns or "r" in c.knowns
+        if not has_r_vector and not ((fixed_A or zero_vA) and has_scalar_r):
+            missing.append("r_B/A 벡터 성분(고정 A에서 속력만 구할 때는 거리 r)")
         if "omega" not in c.knowns:
             missing.append("강체 각속도 ω")
-        if "vA" not in c.knowns and "vAx" not in c.knowns and "vAy" not in c.knowns and "vAx" not in c.coordinate_data and "vAy" not in c.coordinate_data and not any(phrase in c.raw_text for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"]):
+        if not has_vA_vector and not fixed_A and not zero_vA:
             missing.append("A점 속도 벡터 또는 A점 고정 조건")
     elif c.system_type == "unknown":
         missing.append("문제 유형을 판별할 핵심 단서")
