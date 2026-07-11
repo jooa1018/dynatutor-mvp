@@ -56,11 +56,6 @@ def _common_subs(c: CanonicalProblem) -> dict:
             if qk.value is not None:
                 subs[S.mu] = float(qk.value)
             continue
-        if key == "mu_k" and "mu" not in c.knowns:
-            qk = c.knowns["mu_k"] if "mu_k" in c.knowns else None
-            if qk is not None and qk.value is not None:
-                subs[S.mu] = float(qk.value)
-            continue
         if key not in c.knowns:
             continue
         q = c.knowns[key]
@@ -74,6 +69,21 @@ def _common_subs(c: CanonicalProblem) -> dict:
             subs[sym] = magnitude_si(q, unit)
     if S.g not in subs and "g" in c.knowns:
         subs[S.g] = c.knowns["g"].value or 9.81
+    return subs
+
+
+def _model_subs(c: CanonicalProblem, typed) -> dict:
+    """Keep Phase 45-only aliases out of the shared legacy substitution contract."""
+
+    subs = _common_subs(c)
+    if (
+        typed is not None
+        and c.system_type == "particle_on_incline"
+        and "mu" not in c.knowns
+        and "mu_k" in c.knowns
+        and c.knowns["mu_k"].value is not None
+    ):
+        subs[S.mu] = float(c.knowns["mu_k"].value)
     return subs
 
 
@@ -91,7 +101,10 @@ def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
         if c.subtype == "no_friction":
             eq_y = sp.Eq(S.T - S.m * S.g * sp.cos(S.theta), 0)  # informational N balance
             eq_x = (
-                sp.Eq(typed.sum_forces("body", "incline").x, S.m * S.a)
+                sp.Eq(
+                    sp.expand(typed.sum_forces("body", "incline").x / S.m),
+                    S.a,
+                )
                 if typed is not None
                 else sp.Eq(S.g * sp.sin(S.theta), S.a)
             )
@@ -102,7 +115,10 @@ def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
             eq_y = sp.Eq(S.T - S.m * S.g * sp.cos(S.theta), 0)  # informational N balance
             eq_f = sp.Eq(S.F, S.mu * S.T)  # informational friction law
             eq_x = (
-                sp.Eq(typed.sum_forces("body", "incline").x, S.m * S.a)
+                sp.Eq(
+                    sp.expand(typed.sum_forces("body", "incline").x / S.m),
+                    S.a,
+                )
                 if typed is not None
                 else sp.Eq(
                     S.g * sp.sin(S.theta) - S.mu * S.g * sp.cos(S.theta),
@@ -215,7 +231,7 @@ def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
         generator="particle_newton",
         equations=equations,
         unknowns=[str(u) for u in unknowns],
-        substitutions={str(k): float(v) for k, v in _common_subs(c).items()},
+        substitutions={str(k): float(v) for k, v in _model_subs(c, typed).items()},
         equations_ready=ready,
         warnings=warnings,
         errors=errors,
@@ -249,7 +265,11 @@ def _subs_from_system(system: GeneratedEquationSystem) -> dict:
 
 
 def solve_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | None = None) -> GeneratedSolve:
-    system = build_particle_newton_system(c, model)
+    system = (
+        model.generated_equation_system
+        if model is not None and model.generated_equation_system is not None
+        else build_particle_newton_system(c, model)
+    )
     if not system.equations_ready:
         return GeneratedSolve(False, {}, system, system.errors or ["방정식 생성 실패"])
     eqs = _sympy_equations(system)
