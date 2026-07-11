@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "source_commit": "174e7ec0f724f584628fd85a719af9b5fd2a54b3",
+  "schema_version": 2,
+  "source_commit": "a87596c56232b229e775693f39d62209c062ab8f",
   "engine_dataclasses": {
     "CanonicalProblem": [
       "system_type",
@@ -87,6 +87,7 @@
       "legacy_hints",
       "selected_solver",
       "solver_reason",
+      "route_decision",
       "fbd",
       "coordinate_guide",
       "applicable_equations",
@@ -143,6 +144,7 @@
       "verification",
       "unsupported_reason",
       "clarification",
+      "route_decision",
       "physical_model"
     ]
   },
@@ -171,7 +173,8 @@
   },
   "compatibility_policy": [
     "Existing student-facing fields may not be deleted or repurposed.",
-    "Phase 43 adds the internal CanonicalProblem.canonical_v2 field while keeping every Pydantic/API response field unchanged.",
+    "New optional fields may be added when the schema contract version is incremented.",
+    "route_decision is additive and distinguishes select, clarify, and unsupported without changing legacy answer fields.",
     "Legacy solvers continue to consume knowns, flags, and requested_outputs through the v1 compatibility view."
   ]
 }
