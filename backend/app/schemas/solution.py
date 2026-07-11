@@ -142,7 +142,6 @@ class SolveResponse(BaseModel):
     verification: VerificationReport
     unsupported_reason: str | None = None
     clarification: ClarificationModel | None = None
-    route_decision: RouteDecisionModel | None = None
     physical_model: dict[str, Any] | None = None
 
 
