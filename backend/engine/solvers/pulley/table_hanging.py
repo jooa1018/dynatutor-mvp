@@ -27,7 +27,7 @@ class TableHangingPulleySolver(BaseSolver):
 
         m1 = magnitude_si(c.knowns["m1"], "kg")
         m2 = magnitude_si(c.knowns["m2"], "kg")
-        g = magnitude_si(c.knowns["g"], "m/s^2")
+        g = magnitude_si(c.knowns["g"], "m/s^2") if "g" in c.knowns else 9.81
         if m1 <= 0 or m2 <= 0 or g <= 0:
             return SolverResult(
                 ok=False,
@@ -38,7 +38,24 @@ class TableHangingPulleySolver(BaseSolver):
             )
         mu_q = c.knowns.get("mu_k") or c.knowns.get("mu")
         mu_val = float(mu_q.value) if mu_q and mu_q.value is not None else 0.0
-        friction_type = c.friction_type or ("none" if mu_q is None else "kinetic")
+        friction_type = c.friction_type
+        if friction_type is None:
+            if "mu_s" in c.knowns:
+                friction_type = "static"
+            elif mu_q is not None:
+                friction_type = "kinetic"
+            elif (c.flags or {}).get("no_friction") or c.subtype == "no_friction":
+                friction_type = "none"
+            else:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["수평면의 마찰 유무 또는 마찰계수가 필요합니다."],
+                    ),
+                    unsupported_reason="수평면이 무마찰인지, 정지/운동마찰이 있는지 알려 주세요.",
+                )
+        requested = set(c.requested_outputs or c.unknowns or [])
         if mu_val < 0:
             return SolverResult(
                 ok=False,
@@ -161,6 +178,17 @@ class TableHangingPulleySolver(BaseSolver):
                     )
                 ]
                 if friction_type in {"kinetic", "unspecified"}
+                else [
+                    AnswerItem(
+                        "마찰력",
+                        "f",
+                        0.0,
+                        "N",
+                        "마찰력 f = 0.000 N",
+                        "component",
+                    )
+                ]
+                if "friction_force" in requested
                 else []
             ),
             steps=steps,
