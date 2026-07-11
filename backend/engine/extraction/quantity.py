@@ -203,14 +203,18 @@ def _initial_speed_occurrences(text: str) -> list[dict]:
         for match in _INITIAL_SPEED_LABEL_PATTERN.finditer(sentence):
             start = sentence_start + match.start()
             end = sentence_start + match.end()
-            value, unit = normalize_labeled_value(
-                _float(match.group("num")),
-                match.group("unit"),
+            raw_value = _float(match.group("num"))
+            raw_unit = match.group("unit").replace(" ", "")
+            normalized_value, normalized_unit = normalize_labeled_value(
+                raw_value,
+                raw_unit,
             )
             occurrences.append(
                 {
-                    "value": value,
-                    "unit": unit or "m/s",
+                    "raw_value": raw_value,
+                    "raw_unit": raw_unit,
+                    "normalized_value": normalized_value,
+                    "normalized_unit": normalized_unit or "m/s",
                     "subject": _subject_before(sentence, match.start()),
                     "source": _MatchedText(text[start:end], start, end),
                 }
@@ -250,8 +254,8 @@ def _select_subject_scoped_initial_speed(
     _set_si_velocity(
         knowns,
         "v0",
-        float(selected["value"]),
-        selected["unit"],
+        float(selected["raw_value"]),
+        selected["raw_unit"],
         selected["source"],
         replace=True,
     )
