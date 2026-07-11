@@ -218,13 +218,6 @@ class SolverRegistry:
             return any(self._has_symbol(c, part) for part in expression.split("/"))
         if (c.flags or {}).get(expression):
             return True
-        requested_aliases = {
-            "vf": "final_velocity",
-            "v0": "initial_velocity",
-            "s": "distance",
-        }
-        if requested_aliases.get(expression, expression) in requested:
-            return True
         return expression in c.knowns and c.knowns[expression].value is not None
 
     def _projectile_time_without_speed(self, c: CanonicalProblem) -> bool:
