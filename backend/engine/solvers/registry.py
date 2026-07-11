@@ -21,6 +21,7 @@ from engine.solvers.advanced_motion import PolarKinematicsSolver, InstantCenterV
 from engine.solvers.advanced_dynamics import CoriolisRelativeMotionSolver
 from engine.solvers.rigid_body_2d import PlaneRigidBodyVelocitySolver, PlaneRigidBodyAccelerationSolver, RelativeAccelerationTranslationSolver
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
+from engine.physics_core.initial_conditions import explicitly_starts_from_rest
 from engine.routing.config import ROUTING_CONFIG
 from engine.routing.evidence import TYPE_TO_FAMILY, rank_type_evidence
 
@@ -428,24 +429,8 @@ class SolverRegistry:
         return can_solve_flight_time_without_speed(c)
 
     def _starts_from_rest(self, c: CanonicalProblem) -> bool:
-        raw = (c.raw_text or "").lower()
-        return any(
-            phrase in raw
-            for phrase in (
-                "정지 상태에서",
-                "정지 상태의",
-                "정지 상태인",
-                "처음에 정지한",
-                "정지한 물체",
-                "정지 상태로부터",
-                "정지에서",
-                "처음에는 정지",
-                "초기에는 정지",
-                "가만히 있다가",
-                "starts from rest",
-                "initially at rest",
-            )
-        )
+        return explicitly_starts_from_rest(c)
+
 
     def _missing_requirements(
         self,
