@@ -73,6 +73,14 @@ def build_physical_model(c: CanonicalProblem) -> PhysicalModel:
         friction_decisions=friction_decisions,
         string_topology=topology.to_dict() if topology else None,
     )
+    # Phase 45: keep the legacy dataclass/API view stable while attaching an
+    # internal typed model for the three declared vertical slices. Dynamic
+    # attachment deliberately keeps PhysicalModel.to_dict() byte-for-byte
+    # compatible with the pre-Phase-45 serialization contract.
+    from .typed_builder import build_typed_dynamics_model
+
+    model.typed_model = build_typed_dynamics_model(c, model)
+
     from engine.equation_generators.particle_newton import build_particle_newton_system
     from engine.equation_generators.energy_momentum import build_energy_momentum_system
 
