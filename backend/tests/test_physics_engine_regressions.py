@@ -11,7 +11,8 @@ from engine.canonical.adapter import attach_canonical_v2
 from engine.models import Answer, AnswerItem, CanonicalProblem, Quantity
 from engine.physics_core.answer_validators import validate_answer_consistency
 from engine.services import _route_decision_model, solve_problem
-from engine.routing.clarify import ALLOWED_SYSTEM_TYPES
+from engine.extraction.extractor import extract_problem
+from engine.routing.clarify import ALLOWED_SYSTEM_TYPES, apply_clarify_patch
 from engine.routing.evidence import TYPE_TO_FAMILY
 from engine.solvers.energy_vibration import WorkEnergySpeedSolver
 from engine.solvers.kinematics import ConstantAcceleration1DSolver
@@ -118,6 +119,50 @@ def test_ambiguous_route_is_clarify_only_end_to_end():
     assert response.route_decision is not None
     assert response.route_decision.status == "clarify"
     assert response.route_decision.selected_solver_id is None
+
+
+def test_registry_does_not_reuse_route_after_in_place_patch():
+    problem = extract_problem("30도 경사면 위 블록의 가속도를 구하라.")
+    registry = SolverRegistry()
+    decision = registry.route(problem)
+
+    assert decision.status == "clarify"
+    assert registry.select(problem, decision=decision) is None
+
+    apply_clarify_patch(
+        problem,
+        {"subtype": "no_friction", "assume": "마찰 무시"},
+    )
+    selected = registry.select(problem)
+
+    assert selected is not None
+    assert selected.name == "incline_no_friction"
+
+
+def test_projectile_time_only_requires_a_positive_vertical_drop():
+    problem = CanonicalProblem(
+        system_type="projectile_motion",
+        subtype="general",
+        raw_text="지면에서 수평으로 놓았다. 비행시간은?",
+        knowns={
+            "h": q("h", 0.0, "m"),
+            "g": q("g", 9.81, "m/s^2"),
+        },
+        requested_outputs=["time"],
+        unknowns=["time"],
+        launch_height=0.0,
+        landing_height=0.0,
+        launch_angle_deg=0.0,
+    )
+    attach_canonical_v2(problem)
+    decision = SolverRegistry().route(problem)
+
+    assert decision.status == "clarify"
+    assert any(
+        "v0" in item
+        for candidate in decision.candidates
+        for item in candidate.missing_requirements
+    )
 
 
 def test_horizontal_drop_time_only_does_not_require_initial_speed():
