@@ -106,8 +106,47 @@ def build_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
     )
 
 
+def _solve_two_linear_residuals(
+    residuals: list[sp.Expr],
+    unknowns: list[sp.Symbol],
+    substitutions: dict[sp.Symbol, float],
+) -> tuple[sp.Expr, sp.Expr]:
+    """Solve the typed 2x2 collision system without general-purpose sp.solve."""
+
+    if len(residuals) != 2 or len(unknowns) != 2:
+        raise ValueError("typed collision requires exactly two residuals and unknowns")
+    u1, u2 = unknowns
+    rows: list[tuple[sp.Expr, sp.Expr, sp.Expr]] = []
+    for expression in residuals:
+        coefficient_1 = expression.coeff(u1)
+        coefficient_2 = expression.coeff(u2)
+        constant = expression - coefficient_1 * u1 - coefficient_2 * u2
+        if constant.has(u1, u2):
+            raise ValueError("typed collision residual is not linear")
+        rows.append(
+            (
+                coefficient_1.subs(substitutions),
+                coefficient_2.subs(substitutions),
+                (-constant).subs(substitutions),
+            )
+        )
+    a11, a12, b1 = rows[0]
+    a21, a22, b2 = rows[1]
+    determinant = a11 * a22 - a12 * a21
+    if determinant == 0:
+        raise ValueError("typed collision residual matrix is singular")
+    return (
+        (b1 * a22 - a12 * b2) / determinant,
+        (a11 * b2 - b1 * a21) / determinant,
+    )
+
+
 def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | None = None) -> EnergyMomentumSolve:
-    system = build_energy_momentum_system(c, model)
+    system = (
+        model.generated_energy_momentum_system
+        if model is not None and model.generated_energy_momentum_system is not None
+        else build_energy_momentum_system(c, model)
+    )
     if not system.equations_ready:
         return EnergyMomentumSolve(False, {}, system, system.errors or system.warnings or ["에너지/운동량 방정식 생성 실패"])
 
@@ -236,20 +275,13 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
                 if "e" in symbol_by_name and e is not None:
                     substitutions[symbol_by_name["e"]] = e
                 unknowns = [symbol_by_name["v1f"], symbol_by_name["v2f"]]
-                solved = sp.solve(
-                    [sp.Eq(expression.subs(substitutions), 0) for expression in residuals],
+                v1f_value, v2f_value = _solve_two_linear_residuals(
+                    residuals,
                     unknowns,
-                    dict=True,
+                    substitutions,
                 )
-                if not solved:
-                    return EnergyMomentumSolve(
-                        False,
-                        {},
-                        system,
-                        ["typed 충돌 constraint에서 물리 해를 찾지 못했습니다."],
-                    )
-                v1p = float(solved[0][unknowns[0]])
-                v2p = float(solved[0][unknowns[1]])
+                v1p = float(v1f_value)
+                v2p = float(v2f_value)
                 if c.flags.get("perfectly_inelastic"):
                     return EnergyMomentumSolve(True, {"v_f": v1p}, system, [])
                 return EnergyMomentumSolve(
