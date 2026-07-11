@@ -28,6 +28,7 @@ from engine.verification.suite import verify_result
 from engine.verification.gate import apply_result_gate
 from engine.routing.clarify import ClarifyPatchError, apply_clarify_patch, build_clarification, validate_clarify_patch
 from engine.verification.checks import merge_reports
+from engine.verification.plausibility import check_knowns
 
 
 
@@ -321,6 +322,11 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         return response
 
     conflicts = list(canonical.canonical_v2.conflicts) if canonical.canonical_v2 is not None else []
+    domain_errors = [
+        issue.message
+        for issue in check_knowns(canonical.knowns, system_type=canonical.system_type)
+        if issue.kind == "error"
+    ]
     if conflicts:
         result = SolverResult(
             ok=False,
@@ -329,6 +335,12 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                 errors=["contradictory explicit inputs: " + "; ".join(conflicts)],
             ),
             unsupported_reason="서로 다른 값으로 적힌 조건을 먼저 확인해 주세요.",
+        )
+    elif domain_errors:
+        result = SolverResult(
+            ok=False,
+            verification=VerificationReport(passed=False, errors=domain_errors),
+            unsupported_reason="입력값의 물리적 범위를 확인해 주세요.",
         )
     else:
         result = (
