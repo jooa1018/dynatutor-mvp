@@ -337,6 +337,18 @@ class TypedDynamicsModel:
                 total += moment.scalar
         return sp.simplify(self.frames[target].angular_positive * total)
 
+    def to_legacy_dict(self, legacy_model: Any) -> dict[str, Any]:
+        """Serialize through the existing compatibility adapter.
+
+        The typed layer intentionally owns no student-facing schema. Requiring
+        an explicit legacy model prevents symbolic expressions from leaking into
+        API payloads while preserving the established PhysicalModel contract.
+        """
+
+        if getattr(legacy_model, "system_type", None) != self.system_type:
+            raise ValueError("Typed and legacy model system types do not match")
+        return legacy_model.to_dict()
+
     def constraint(self, kind_or_id: str) -> Constraint:
         matches = [
             item
