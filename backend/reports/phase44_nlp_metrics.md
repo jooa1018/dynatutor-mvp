@@ -1,9 +1,9 @@
 # Phase 44 Korean NLP Metrics
 
-- Fixture: 320 independently reviewed Korean dynamics cases
+- Fixture: 320-case curated Korean NLP regression suite
 - Execution: deterministic rule-based path; LLM=false; external optional physics engines used=none
 - Environment: GitHub-hosted Ubuntu 24.04, CPython 3.13.14
-- Release gates: **passed**
+- Historical pre-audit release gates: **passed**
 - Final benchmark failures: none
 
 ## Baseline to final
@@ -31,7 +31,8 @@
 | false_solve_rate | 0.252632 | 0 | -0.252632 |
 | unnecessary_clarification_rate | 0.12 | 0 | -0.120000 |
 | missing_clarification_rate | 0.333333 | 0 | -0.333333 |
-| silent_assumption_rate | 0.164835 | 0 | -0.164835 |
+| condition_classification_error_rate (legacy name: silent_assumption_rate) | 0.164835 | 0 | -0.164835 |
+| silent_assumption_rate | N/A | N/A | per-case allowed-assumption oracle required |
 | contradictory_input_detection_rate | 0.75 | 1 | 0.250000 |
 | canonical_consistency_accuracy | 0.692308 | 1 | 0.307692 |
 | high_confidence_false_solves | 24 | 0 | -24.000000 |
@@ -42,7 +43,7 @@ The principal safety result is a false-solve reduction from **25.2632% (24/95)**
 
 | Score bin | Baseline accuracy | Baseline false solves | Final accuracy | Final false solves |
 |---|---:|---:|---:|---:|
-| 0.00–0.59 | 0 | 0 | 1.0 (empty bin) | 0 |
+| 0.00–0.59 | 0 | 0 | N/A (0 samples) | 0 |
 | 0.60–0.79 | 0.606742 | 0 | 1.0 | 0 |
 | 0.80–1.00 | 0.941463 | 24 | 1.0 | 0 |
 
@@ -54,7 +55,7 @@ The principal safety result is a false-solve reduction from **25.2632% (24/95)**
 
 These timings include Python startup and report generation. They establish a reproducible Phase 44 baseline, not a production latency SLO.
 
-## Final validation
+## Historical pre-audit validation
 
 | Command | Passed | Failed | Skipped | Deselected | Duration |
 |---|---:|---:|---:|---:|---:|
@@ -72,3 +73,33 @@ The frontend build was not run because no frontend source or configuration chang
 The benchmark covers paraphrases, subjects/context, units/symbols, typos/colloquialisms, irrelevant background, multiple objects, ambiguity, missing information, contradictions, and unsupported domains. It does not claim statistical coverage of all Korean student language. Phase 44 does not change solver equations, root selection, routing score policy, or introduce SciPy/PyChrono/Rapier2D architecture.
 
 Machine-readable details, thresholds, environment, failures, and comparison deltas are in `backend/reports/phase44_nlp_metrics.json`.
+
+
+## Metric safeguards added by the audit
+
+The evaluator now records a numerator, denominator, minimum sample requirement, and sufficiency state for each metric. A required metric with no eligible samples is `N/A / insufficient_samples` and fails its gate. Quantity precision compares every observed quantity with the oracle and explicitly declared compatibility aliases, so an unlisted extra fact is a false positive even when `forbidden_knowns` is absent. System-type top-k is fixed at `k=3`. Empty confidence bins report `N/A`.
+
+The historical `silent_assumption_rate` was the complement of condition classification accuracy and has been renamed `condition_classification_error_rate`. The genuine silent-assumption metric evaluates only solved cases with a per-case `allowed_assumption_kinds` oracle. The 320 historical fixtures do not yet carry that annotation, so the versioned historical value is `N/A`; annotating the complete suite is follow-up work rather than silently treating zero eligible cases as success.
+
+## Benchmark reliability and independence
+
+- Completely identical sentences beyond the first copy: **81**
+- Exact unique sentences: **239**
+- Numeric-only/template duplicates beyond one representative: **60**
+- Unique sentence stimuli after collapsing numeric templates: **179**
+- Parser normalization-dictionary surface forms directly present: **8** (`나중 속도`, `도르레`, `마찰 업는`, `매끄런`, `미터퍼세컨드제곱`, `최종 속도`, `최종 속력`, `쵸속도`)
+
+| Category | Cases | Exact unique | Unique stimuli |
+|---|---:|---:|---:|
+| paraphrase | 80 | 80 | 80 |
+| subject_context | 30 | 6 | 6 |
+| unit_symbol | 40 | 40 | 39 |
+| typo_colloquial | 20 | 10 | 10 |
+| irrelevant_background | 25 | 25 | 25 |
+| multi_object | 30 | 2 | 2 |
+| ambiguity | 30 | 22 | 3 |
+| missing_information | 25 | 17 | 5 |
+| contradiction | 20 | 20 | 4 |
+| unsupported | 20 | 17 | 5 |
+
+The 320 cases are a curated regression suite. They do not prove generalization to the distribution of real student inputs. A 1.0 score applies only to the current fixed fixtures. Benchmark independence is limited by repeated templates and direct parser-dictionary overlap. An external held-out validation set remains follow-up work.
