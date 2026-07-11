@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from engine.qa.korean_benchmark import KOREAN_BENCHMARK_CASES
@@ -19,13 +21,18 @@ def test_phase10_korean_quality_benchmark_all_supported_cases_solve(
 ):
     result = solve_problem(problem_text)
     canonical = result.diagnosis.canonical
-    assert result.diagnosis.selected_solver == expected_solver, {
-        "index": case_index,
-        "problem": problem_text,
-        "expected_solver": expected_solver,
-        "got_solver": result.diagnosis.selected_solver,
-        "route": result.route_decision.model_dump() if result.route_decision else None,
-    }
+    if result.diagnosis.selected_solver != expected_solver:
+        print(json.dumps({
+            "index": case_index,
+            "problem": problem_text,
+            "expected_solver": expected_solver,
+            "got_solver": result.diagnosis.selected_solver,
+            "canonical_knowns": sorted(canonical.knowns),
+            "requested_outputs": canonical.requested_outputs,
+            "missing_info": canonical.missing_info,
+            "route": result.route_decision.model_dump() if result.route_decision else None,
+        }, ensure_ascii=False, indent=2))
+    assert result.diagnosis.selected_solver == expected_solver
     assert result.ok, {
         "index": case_index,
         "problem": problem_text,
