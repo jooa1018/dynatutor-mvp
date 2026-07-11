@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
+from engine.physics_core.units import magnitude_si
 from engine.units.dimensions import attach_unit_check, unit_hint_for_equation
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
 
@@ -26,16 +27,42 @@ class SpringMassVibrationSolver(BaseSolver):
         omega = float(generated.solution["omega_n"])
         period = float(generated.solution["T"])
         freq = float(generated.solution["f"])
-        # Unknown selection: if period/frequency asked, report that; otherwise natural angular frequency.
-        if "period" in c.unknowns:
-            ans = Answer(symbolic="T = 2π√(m/k)", numeric=round(period, 5), unit="s", display=f"T = {period:.3f} s")
-            expected = "period"
-        elif "angular_frequency" in c.unknowns or "frequency" not in c.unknowns:
-            ans = Answer(symbolic="ω_n = √(k/m)", numeric=round(omega, 5), unit="rad/s", display=f"ω_n = {omega:.3f} rad/s")
-            expected = "angular_frequency"
-        else:
-            ans = Answer(symbolic="f = (1/2π)√(k/m)", numeric=round(freq, 5), unit="Hz", display=f"f = {freq:.3f} Hz")
-            expected = "frequency"
+        requested = list(dict.fromkeys(c.requested_outputs or c.unknowns or []))
+        targets = [
+            item
+            for item in requested
+            if item in {"angular_frequency", "frequency", "period"}
+        ] or ["angular_frequency"]
+        answer_specs = {
+            "period": (
+                Answer(symbolic="T = 2π√(m/k)", numeric=round(period, 5), unit="s", display=f"T = {period:.3f} s"),
+                "T",
+                "주기",
+            ),
+            "frequency": (
+                Answer(symbolic="f = (1/2π)√(k/m)", numeric=round(freq, 5), unit="Hz", display=f"f = {freq:.3f} Hz"),
+                "f",
+                "진동수",
+            ),
+            "angular_frequency": (
+                Answer(symbolic="ω_n = √(k/m)", numeric=round(omega, 5), unit="rad/s", display=f"ω_n = {omega:.3f} rad/s"),
+                "omega_n",
+                "고유각진동수",
+            ),
+        }
+        expected = targets[0]
+        ans = answer_specs[expected][0]
+        answer_items = [
+            AnswerItem(
+                label=answer_specs[target][2],
+                symbol=answer_specs[target][1],
+                numeric=answer_specs[target][0].numeric,
+                unit=answer_specs[target][0].unit,
+                display=answer_specs[target][0].display or "",
+                role="primary",
+            )
+            for target in targets
+        ]
 
         steps = [
             StepCard("모델링", "질량 m이 스프링 k에 연결된 1자유도 자유진동으로 봅니다. 감쇠와 외력은 없는 기본 모델입니다."),
@@ -52,21 +79,10 @@ class SpringMassVibrationSolver(BaseSolver):
             ],
         )
         attach_unit_check(verification, expected_unknown=expected, actual_unit=ans.unit)
-        symbol = {"period": "T", "frequency": "f", "angular_frequency": "omega_n"}[expected]
-        label = {"period": "주기", "frequency": "진동수", "angular_frequency": "고유각진동수"}[expected]
         return SolverResult(
             ok=True,
             answer=ans,
-            answers=[
-                AnswerItem(
-                    label=label,
-                    symbol=symbol,
-                    numeric=ans.numeric,
-                    unit=ans.unit,
-                    display=ans.display or "",
-                    role="primary",
-                )
-            ],
+            answers=answer_items,
             steps=steps,
             verification=verification,
             used_equations=["m x¨ + kx = 0", "ω_n = √(k/m)"],
@@ -82,40 +98,91 @@ class SpringEnergySpeedSolver(BaseSolver):
         return None
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
-        kq, xq, mq = c.knowns.get("k"), c.knowns.get("x") or c.knowns.get("A"), c.knowns.get("m")
-        # Phase 39: "저장된/탄성 에너지는?" 직접 질문 — 질량 없이 E = ½kx².
-        if kq and xq and ("elastic_energy" in (c.requested_outputs or []) or (not mq and "에너지" in c.raw_text)):
-            k, x = kq.value, xq.value
-            E = 0.5 * k * x * x
-            steps = [
-                StepCard("문제 유형", "용수철을 x만큼 늘이거나 압축하면 탄성 퍼텐셜 에너지가 저장됩니다."),
-                StepCard("공식", "저장 에너지는 변형량의 제곱에 비례합니다.", r"E=\frac12 kx^2"),
-                StepCard("계산", f"E = ½ × {k:g} × ({x:g})² = {E:.5g} J"),
-            ]
-            verification = VerificationReport(passed=True, checks=[
-                "단위: (N/m)×m² = N·m = J.",
-                "x의 부호와 무관하게 (제곱이므로) 에너지는 0 이상입니다.",
-            ])
-            return SolverResult(
-                ok=True,
-                answer=Answer(symbolic="E = ½kx²", numeric=round(E, 6), unit="J", display=f"E = {E:.3f} J"),
-                answers=[AnswerItem(label="탄성 퍼텐셜 에너지", symbol="E", numeric=round(E, 6), unit="J", display=f"E = {E:.3f} J", role="primary")],
-                steps=steps,
-                verification=verification,
-                used_equations=["E = ½kx²"],
+        kq = c.knowns.get("k")
+        xq = c.knowns.get("x") or c.knowns.get("A")
+        mq = c.knowns.get("m")
+        requested = set(c.requested_outputs or c.unknowns or [])
+        wants_energy = "elastic_energy" in requested or (
+            not mq and "에너지" in (c.raw_text or "")
+        )
+        wants_speed = bool(
+            requested.intersection({"final_velocity", "velocity", "speed"})
+        ) or not wants_energy
+        energy_item = None
+        energy_value = None
+
+        if kq and xq and wants_energy:
+            k_si = magnitude_si(kq, "N/m")
+            x_si = magnitude_si(xq, "m")
+            energy_value = 0.5 * k_si * x_si * x_si
+            energy_item = AnswerItem(
+                label="탄성 퍼텐셜 에너지",
+                symbol="E",
+                numeric=round(energy_value, 6),
+                unit="J",
+                display=f"E = {energy_value:.3f} J",
+                role="primary",
             )
+            if not wants_speed:
+                return SolverResult(
+                    ok=True,
+                    answer=Answer(
+                        symbolic="E = ½kx²",
+                        numeric=round(energy_value, 6),
+                        unit="J",
+                        display=f"E = {energy_value:.3f} J",
+                    ),
+                    answers=[energy_item],
+                    steps=[
+                        StepCard("문제 유형", "용수철을 x만큼 늘이거나 압축하면 탄성 퍼텐셜 에너지가 저장됩니다."),
+                        StepCard("공식", "저장 에너지는 변형량의 제곱에 비례합니다.", r"E=\frac12 kx^2"),
+                        StepCard("계산", f"E = ½ × {k_si:g} × ({x_si:g})² = {energy_value:.5g} J"),
+                    ],
+                    verification=VerificationReport(
+                        passed=True,
+                        checks=[
+                            "단위: (N/m)×m² = N·m = J.",
+                            "x의 부호와 무관하게 에너지는 0 이상입니다.",
+                        ],
+                    ),
+                    used_equations=["E = ½kx²"],
+                )
+
         if not kq or not xq or not mq:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["스프링 에너지 속도 계산에는 k, 압축/변위 x, 질량 m이 필요합니다."]))
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["스프링 속도 계산에는 k, 압축/변위 x, 질량 m이 필요합니다."],
+                ),
+            )
         generated = solve_energy_momentum_system(c)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 스프링 에너지 방정식 생성/풀이에 실패했습니다.")
-        k, x, m = kq.value, xq.value, mq.value
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(passed=False, errors=generated.errors),
+                unsupported_reason="모델 기반 스프링 에너지 방정식 생성/풀이에 실패했습니다.",
+            )
+        k_si = magnitude_si(kq, "N/m")
+        x_si = magnitude_si(xq, "m")
+        m_si = magnitude_si(mq, "kg")
         v = float(generated.solution["v"])
+        velocity_item = AnswerItem(
+            label="최종속도",
+            symbol="v",
+            numeric=round(v, 5),
+            unit="m/s",
+            display=f"v = {v:.3f} m/s",
+            role="primary",
+        )
+        answers = [velocity_item]
+        if energy_item is not None:
+            answers.append(energy_item)
         steps = [
             StepCard("에너지 관점", "마찰이 없고 수평 스프링이라면 스프링 탄성에너지가 물체의 운동에너지로 바뀝니다."),
-            StepCard("에너지 보존", "Energy/Momentum generator가 스프링 에너지와 운동에너지를 같게 두는 식을 생성합니다.", "\frac12kx^2=\frac12mv^2"),
-            StepCard("속도 정리", "양변의 1/2를 지우고 v에 대해 풀면 됩니다.", r"v=x\sqrt{k/m}"),
-            StepCard("계산", f"v = {x:g} × √({k:g}/{m:g}) = {v:.5g} m/s"),
+            StepCard("에너지 보존", "스프링 에너지와 운동에너지를 같게 둡니다.", r"\frac12kx^2=\frac12mv^2"),
+            StepCard("속도 정리", "양변의 1/2를 지우고 v에 대해 풉니다.", r"v=x\sqrt{k/m}"),
+            StepCard("계산", f"v = {x_si:g} × √({k_si:g}/{m_si:g}) = {v:.5g} m/s"),
         ]
         verification = VerificationReport(
             passed=True,
@@ -128,7 +195,13 @@ class SpringEnergySpeedSolver(BaseSolver):
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="v = x√(k/m)", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s"),
+            answer=Answer(
+                symbolic="v = x√(k/m)",
+                numeric=round(v, 5),
+                unit="m/s",
+                display=f"v = {v:.3f} m/s",
+            ),
+            answers=answers,
             steps=steps,
             verification=verification,
             used_equations=["1/2 kx² = 1/2 mv²", "v = x√(k/m)"],
