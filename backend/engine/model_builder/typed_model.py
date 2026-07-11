@@ -130,6 +130,16 @@ class CoordinateFrame:
         )
         if determinant == 0:
             raise ValueError(f"Coordinate frame {self.id!r} has a singular basis")
+        if self.transform is None:
+            object.__setattr__(
+                self,
+                "transform",
+                (
+                    (self.basis_x[0], self.basis_y[0], self.origin[0]),
+                    (self.basis_x[1], self.basis_y[1], self.origin[1]),
+                    (0, 0, 1),
+                ),
+            )
 
     def to_parent(self, vector: Vector2) -> Vector2:
         if vector.frame_id != self.id:
