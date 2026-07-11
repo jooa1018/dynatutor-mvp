@@ -304,6 +304,8 @@ class SolverRegistry:
             phrase in raw
             for phrase in (
                 "정지 상태에서",
+            "처음에 정지한",
+            "정지한 물체",
                 "정지 상태로부터",
                 "정지에서",
                 "처음에는 정지",
