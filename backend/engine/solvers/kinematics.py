@@ -208,7 +208,8 @@ def _consistent_states(equations, substitutions, sym_map, unknown_candidates: li
             state[symbol] = float(complex_value.real)
         if not valid:
             continue
-        if t_symbol := sym_map.get("t"):
+        t_symbol = sym_map.get("t")
+        if t_symbol is not None:
             time_value = state.get(t_symbol, substitutions.get(t_symbol))
             if time_value is not None and float(time_value) < -1e-9:
                 continue
