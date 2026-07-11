@@ -1,7 +1,12 @@
 import math
 import re
 from engine.models import CanonicalProblem, Quantity
-from engine.extraction.normalizer import normalize, strip_irrelevant_background
+from engine.extraction.normalizer import (
+    is_irrelevant_background_sentence,
+    iter_sentence_spans,
+    normalize,
+    strip_irrelevant_background,
+)
 from engine.extraction.quantity import extract_quantities
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement, infer_direction_label
 from engine.physics_core.inertia import infer_body_shape
@@ -104,6 +109,25 @@ def _has_hanging_mass_phrase(t: str) -> bool:
     ])
 
 
+def _has_charge_noun_context(t: str) -> bool:
+    charge_noun = re.search(
+        r"(?<![가-힣A-Za-z])(?:점|시험|양|음)?전하"
+        r"(?:량|가|는|를|의|에|로|와|과|은|이|\s|$)",
+        t,
+        re.IGNORECASE,
+    )
+    electric_context = re.search(
+        r"전자기|전기장|자기장|전기력|쿨롱|coulomb|electric\s+field|magnetic\s+field",
+        t,
+        re.IGNORECASE,
+    )
+    charge_unit = re.search(
+        r"(?:\d+(?:\.\d+)?\s*(?:C|쿨롱))(?![A-Za-z])",
+        t,
+    )
+    return bool(electric_context or charge_noun or (charge_unit and "전기" in t))
+
+
 def _unsupported_scope(t: str) -> str | None:
     """Classify only explicit domains outside the declared 2-D rigid-body scope."""
     patterns = [
@@ -111,11 +135,13 @@ def _unsupported_scope(t: str) -> str | None:
         ("deformable_body", [r"탄성\s*보", r"보의\s*변형", r"재료\s*변형", r"응력", r"변형률", r"유한요소", r"deformable", r"finite element"]),
         ("fluid_dynamics", [r"유체역학", r"관\s*속\s*유체", r"점성", r"fluid dynamics", r"viscosity"]),
         ("thermodynamics", [r"열역학", r"엔트로피", r"이상기체", r"thermodynamics", r"entropy"]),
-        ("electromagnetism", [r"전자기", r"전기장", r"자기장", r"(?<!회)전하(?=\s|가|는|를|의|에|$)", r"회로의?\s*전압", r"electromagnet"]),
+        ("electromagnetism", [r"회로의?\s*전압", r"electromagnet"]),
     ]
     for subtype, subtype_patterns in patterns:
         if any(re.search(pattern, t, re.IGNORECASE) for pattern in subtype_patterns):
             return subtype
+    if _has_charge_noun_context(t):
+        return "electromagnetism"
     return None
 
 
@@ -240,37 +266,81 @@ def _attach_raw_extraction_evidence(
     knowns: dict[str, Quantity],
     *,
     raw_text: str,
-    normalized_text: str,
+    analysis_text: str,
 ) -> None:
-    """Transfer evidence captured while matching raw text onto normalized values."""
+    """Re-anchor analysis quantities to retained raw sentences.
 
-    if normalized_text == raw_text:
-        return
-    raw_knowns = extract_quantities(raw_text)
-    for quantity in knowns.values():
-        # A span in normalized text is not a raw-text span.
+    Extraction runs on normalized/background-filtered text, so its offsets are
+    never assumed to be raw offsets. Re-extracting each retained raw sentence
+    preserves exact positions and avoids anchoring a repeated value to a removed
+    background sentence.
+    """
+
+    candidates: dict[str, list[Quantity]] = {}
+    for sentence_start, _, sentence in iter_sentence_spans(raw_text):
+        if is_irrelevant_background_sentence(sentence):
+            continue
+        sentence_knowns = extract_quantities(sentence)
+        for key, raw_quantity in sentence_knowns.items():
+            if raw_quantity.source_span is None or raw_quantity.value is None:
+                continue
+            local_start, local_end = raw_quantity.source_span
+            anchored = Quantity(
+                symbol=raw_quantity.symbol,
+                value=raw_quantity.value,
+                unit=raw_quantity.unit,
+                source_text=raw_quantity.source_text,
+                source_span=(sentence_start + local_start, sentence_start + local_end),
+                matched_text=raw_text[
+                    sentence_start + local_start:sentence_start + local_end
+                ],
+                provenance_hint=raw_quantity.provenance_hint,
+                subject_evidence=dict(raw_quantity.subject_evidence),
+                normalization_evidence=(
+                    dict(raw_quantity.normalization_evidence)
+                    if raw_quantity.normalization_evidence is not None
+                    else None
+                ),
+            )
+            candidates.setdefault(key, []).append(anchored)
+
+    for key, quantity in knowns.items():
+        # Any span produced from analysis_text is provisional until matched
+        # against the exact raw slice.
         quantity.source_span = None
         quantity.matched_text = None
-    for key, quantity in knowns.items():
-        raw_quantity = raw_knowns.get(key)
-        if (
-            raw_quantity is None
-            or raw_quantity.source_span is None
-            or raw_quantity.value is None
-            or quantity.value is None
-            or not math.isclose(
-                float(raw_quantity.value),
+        if quantity.value is None:
+            continue
+        matching = [
+            candidate
+            for candidate in candidates.get(key, [])
+            if candidate.value is not None
+            and math.isclose(
+                float(candidate.value),
                 float(quantity.value),
                 rel_tol=1e-12,
                 abs_tol=1e-12,
             )
-        ):
+        ]
+        resolved_entity = quantity.subject_evidence.get("resolved_entity")
+        if resolved_entity:
+            entity_matches = [
+                candidate
+                for candidate in matching
+                if candidate.subject_evidence.get("resolved_entity") == resolved_entity
+            ]
+            if entity_matches:
+                matching = entity_matches
+        if not matching:
             continue
+        raw_quantity = matching[0]
         quantity.source_text = raw_quantity.source_text
         quantity.source_span = raw_quantity.source_span
         quantity.matched_text = raw_quantity.matched_text
         quantity.provenance_hint = raw_quantity.provenance_hint
-        quantity.subject_evidence = dict(raw_quantity.subject_evidence)
+        merged_subject_evidence = dict(raw_quantity.subject_evidence)
+        merged_subject_evidence.update(quantity.subject_evidence)
+        quantity.subject_evidence = merged_subject_evidence
         quantity.normalization_evidence = (
             dict(raw_quantity.normalization_evidence)
             if raw_quantity.normalization_evidence is not None
@@ -286,7 +356,7 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     _attach_raw_extraction_evidence(
         knowns,
         raw_text=problem_text,
-        normalized_text=normalized,
+        analysis_text=analysis_text,
     )
     unsupported_subtype = _unsupported_scope(t)
 
@@ -406,8 +476,6 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     landing_height = _infer_landing_height(knowns, t)
     coordinate_data = _infer_coordinate_data(knowns, t)
     requested_outputs = _infer_requested_outputs(t)
-    if unsupported_subtype == "fluid_dynamics":
-        requested_outputs = []
     if flags["collision"] and "velocity" in unknowns:
         for item in ("post_collision_velocity", "v1_after", "v2_after"):
             if item not in requested_outputs:
