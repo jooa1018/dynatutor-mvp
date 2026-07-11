@@ -80,8 +80,8 @@ class Vector2:
     def __add__(self, other: "Vector2") -> "Vector2":
         self._require_compatible(other)
         return Vector2(
-            sp.simplify(self.x + other.x),
-            sp.simplify(self.y + other.y),
+            self.x + other.x,
+            self.y + other.y,
             self.frame_id,
             self.dimension,
         )
@@ -89,16 +89,16 @@ class Vector2:
     def __sub__(self, other: "Vector2") -> "Vector2":
         self._require_compatible(other)
         return Vector2(
-            sp.simplify(self.x - other.x),
-            sp.simplify(self.y - other.y),
+            self.x - other.x,
+            self.y - other.y,
             self.frame_id,
             self.dimension,
         )
 
     def scaled(self, scalar: Scalar, *, dimension: str | None = None) -> "Vector2":
         return Vector2(
-            sp.simplify(self.x * scalar),
-            sp.simplify(self.y * scalar),
+            self.x * scalar,
+            self.y * scalar,
             self.frame_id,
             dimension or self.dimension,
         )
@@ -124,7 +124,7 @@ class CoordinateFrame:
     def __post_init__(self) -> None:
         if self.angular_positive not in {-1, 1}:
             raise ValueError("angular_positive must be +1 (CCW) or -1 (CW)")
-        determinant = sp.simplify(
+        determinant = (
             self.basis_x[0] * self.basis_y[1]
             - self.basis_x[1] * self.basis_y[0]
         )
@@ -153,7 +153,7 @@ class CoordinateFrame:
         if vector.dimension == Dimension.LENGTH:
             x += self.origin[0]
             y += self.origin[1]
-        return Vector2(sp.simplify(x), sp.simplify(y), self.parent_frame, vector.dimension)
+        return Vector2(x, y, self.parent_frame, vector.dimension)
 
     def from_parent(self, vector: Vector2) -> Vector2:
         if self.parent_frame is None:
@@ -177,8 +177,8 @@ class CoordinateFrame:
         local_x = (d * x - b * y) / determinant
         local_y = (-c * x + a * y) / determinant
         return Vector2(
-            sp.simplify(local_x),
-            sp.simplify(local_y),
+            local_x,
+            local_y,
             self.id,
             vector.dimension,
         )
@@ -345,7 +345,9 @@ class TypedDynamicsModel:
                 if moment.frame_id != target:
                     raise ValueError("Explicit moment frame conversion is not supported")
                 total += moment.scalar
-        return sp.simplify(self.frames[target].angular_positive * total)
+        # Moment assembly is a public symbolic boundary. factor_terms gives a
+        # deterministic compact expression without the cost of general simplify.
+        return sp.factor_terms(self.frames[target].angular_positive * total)
 
     def to_legacy_dict(self, legacy_model: Any) -> dict[str, Any]:
         """Serialize through the existing compatibility adapter.
