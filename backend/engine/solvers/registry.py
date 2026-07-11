@@ -397,6 +397,13 @@ class SolverRegistry:
                 for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
             )
             ref_symbol = "vA" if solver_id == "plane_rigid_body_velocity" else "aA"
+            relative_to_A = (
+                solver_id == "plane_rigid_body_acceleration"
+                and any(
+                    phrase in raw.replace(" ", "")
+                    for phrase in ("A에대한", "A기준", "A에대해")
+                )
+            )
             zero_reference = (
                 ref_symbol in c.knowns
                 and c.knowns[ref_symbol].value is not None
@@ -414,10 +421,18 @@ class SolverRegistry:
                 and "rBAy" in (c.coordinate_data or {})
             ) or ("rBAx" in c.knowns and "rBAy" in c.knowns)
             has_scalar_r = "r" in c.knowns or "R" in c.knowns
-            if not has_reference_vector and not fixed_A and not zero_reference:
-                missing.append(f"{ref_symbol} vector or fixed A")
-            if not has_r_vector and not ((fixed_A or zero_reference) and has_scalar_r):
-                missing.append("rBA vector (scalar r only for fixed A magnitude)")
+            if not has_reference_vector and not fixed_A and not zero_reference and not relative_to_A:
+                missing.append(f"{ref_symbol} vector, fixed A, or relative-to-A request")
+            if not has_r_vector and not ((fixed_A or zero_reference or relative_to_A) and has_scalar_r):
+                missing.append("rBA vector (scalar r only for fixed/relative magnitude)")
+            if has_r_vector and solver_id == "plane_rigid_body_velocity":
+                if "omega_sign" not in (c.coordinate_data or {}) and "angular_sign" not in (c.coordinate_data or {}):
+                    missing.append("explicit omega direction for components")
+            if has_r_vector and solver_id == "plane_rigid_body_acceleration":
+                if "omega_sign" not in (c.coordinate_data or {}) and "angular_sign" not in (c.coordinate_data or {}):
+                    missing.append("explicit omega direction for components")
+                if "alpha_sign" not in (c.coordinate_data or {}) and "angular_sign" not in (c.coordinate_data or {}):
+                    missing.append("explicit alpha direction for components")
         return list(dict.fromkeys(missing))
 
     def _requested_output_contradictions(
