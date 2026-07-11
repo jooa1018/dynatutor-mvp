@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import copy
 import math
 
 import pytest
 import sympy as sp
 
 from engine.canonical.models import CanonicalProblemV2, ExtractedFact
-from engine.equation_generators.particle_newton import build_particle_newton_system
+from engine.equation_generators import energy_momentum, particle_newton
+from engine.equation_generators.energy_momentum import build_energy_momentum_system
+from engine.equation_generators.particle_newton import (
+    build_particle_newton_system,
+    solve_particle_newton_system,
+)
+from engine.extraction.extractor import extract_problem
 from engine.model_builder import build_physical_model
+from engine.model_builder import typed_builder
 from engine.model_builder.typed_model import (
     Body,
     CoordinateFrame,
@@ -21,6 +29,7 @@ from engine.model_builder.typed_model import (
 )
 from engine.models import CanonicalProblem, Quantity
 from engine.physics_core.units import angle_to_radians, radians_to_degrees
+from engine import services
 from engine.solvers.collision import Collision1DSolver
 from engine.solvers.incline import InclineWithFrictionSolver
 from engine.solvers.pulley.massive_pulley import MassivePulleyAtwoodSolver
@@ -73,6 +82,36 @@ def _massive_pulley() -> CanonicalProblem:
         },
         requested_outputs=["acceleration", "tension"],
     )
+
+
+
+
+def _pulley_incline(coefficient: str) -> CanonicalProblem:
+    return CanonicalProblem(
+        system_type="pulley_incline_hanging",
+        friction_type="kinetic",
+        knowns={
+            "m1": _q("m1", 2.0, "kg"),
+            "m2": _q("m2", 4.0, "kg"),
+            "g": _q("g", 9.81, "m/s^2"),
+            "theta": _q("theta", 30.0, "deg"),
+            coefficient: _q(coefficient, 0.2, None),
+        },
+        requested_outputs=["acceleration"],
+    )
+
+
+def _legacy_generator_view(canonical: CanonicalProblem) -> dict:
+    model = build_physical_model(canonical)
+    legacy_newton = build_particle_newton_system(canonical)
+    model.generated_equation_system = (
+        legacy_newton if legacy_newton.equations else None
+    )
+    legacy_energy = build_energy_momentum_system(canonical)
+    model.generated_energy_momentum_system = (
+        legacy_energy if legacy_energy.equations else None
+    )
+    return model.to_dict()
 
 
 def test_frame_transform_round_trip_and_axis_reversal():
@@ -318,3 +357,161 @@ def test_typed_quantity_preserves_phase43_source_fact_id():
 
     assert typed.quantities["m"].source_fact_id == "fact-mass-1"
     assert typed.quantities["m"].uncertainty == pytest.approx(0.1)
+
+
+
+def test_vector_add_and_scale_do_not_call_general_simplify(monkeypatch):
+    def fail_simplify(*args, **kwargs):
+        raise AssertionError("basic vector arithmetic must not call sp.simplify")
+
+    monkeypatch.setattr(sp, "simplify", fail_simplify)
+    x, y, scalar = sp.symbols("x y scalar")
+    left = Vector2(x, y, "world", Dimension.FORCE)
+    right = Vector2(y, x, "world", Dimension.FORCE)
+
+    added = left + right
+    scaled = added.scaled(scalar)
+
+    assert added.x == x + y
+    assert scaled.x == scalar * (x + y)
+
+
+def test_incline_solve_reuses_prebuilt_typed_model_and_equations(monkeypatch):
+    canonical = _incline()
+    model = build_physical_model(canonical)
+
+    def fail_build(*args, **kwargs):
+        raise AssertionError("prebuilt generated equation system was not reused")
+
+    monkeypatch.setattr(
+        particle_newton,
+        "build_particle_newton_system",
+        fail_build,
+    )
+
+    result = InclineWithFrictionSolver().solve(canonical, model)
+
+    assert result.ok is True
+    assert result.answer.numeric == pytest.approx(3.20167, abs=1e-5)
+
+
+def test_user_facing_incline_request_builds_typed_model_and_equations_once(
+    monkeypatch,
+):
+    canonical = _incline()
+    counts = {"model": 0, "typed": 0, "newton": 0, "energy": 0}
+
+    original_model = services.build_physical_model
+    original_typed = typed_builder.build_typed_dynamics_model
+    original_newton = particle_newton.build_particle_newton_system
+    original_energy = energy_momentum.build_energy_momentum_system
+
+    def counted_model(*args, **kwargs):
+        counts["model"] += 1
+        return original_model(*args, **kwargs)
+
+    def counted_typed(*args, **kwargs):
+        counts["typed"] += 1
+        return original_typed(*args, **kwargs)
+
+    def counted_newton(*args, **kwargs):
+        counts["newton"] += 1
+        return original_newton(*args, **kwargs)
+
+    def counted_energy(*args, **kwargs):
+        counts["energy"] += 1
+        return original_energy(*args, **kwargs)
+
+    monkeypatch.setattr(services, "extract_problem", lambda _: canonical)
+    monkeypatch.setattr(services, "build_physical_model", counted_model)
+    monkeypatch.setattr(typed_builder, "build_typed_dynamics_model", counted_typed)
+    monkeypatch.setattr(
+        particle_newton,
+        "build_particle_newton_system",
+        counted_newton,
+    )
+    monkeypatch.setattr(
+        energy_momentum,
+        "build_energy_momentum_system",
+        counted_energy,
+    )
+
+    response = services.solve_problem("phase45 counted request")
+
+    assert response.ok is True
+    assert counts == {"model": 1, "typed": 1, "newton": 1, "energy": 1}
+
+
+@pytest.mark.parametrize(
+    "canonical",
+    [_incline(), _collision(), _massive_pulley()],
+)
+def test_three_vertical_slices_match_complete_legacy_view(canonical):
+    actual = build_physical_model(copy.deepcopy(canonical)).to_dict()
+    expected = _legacy_generator_view(copy.deepcopy(canonical))
+
+    assert actual == expected
+
+
+def test_incline_legacy_sympy_repr_is_base_compatible():
+    model = build_physical_model(_incline())
+
+    assert model.generated_equation_system.equations[-1].sympy_repr == (
+        "Eq(-g*mu*cos(theta) + g*sin(theta), a)"
+    )
+
+
+def test_phase45_friction_incline_supports_mu_k_locally():
+    canonical = _incline()
+    canonical.knowns["mu_k"] = canonical.knowns.pop("mu")
+    canonical.knowns["mu_k"].symbol = "mu_k"
+
+    result = InclineWithFrictionSolver().solve(canonical)
+
+    assert result.ok is True
+    assert result.answer.numeric == pytest.approx(3.20167, abs=1e-5)
+
+
+def test_out_of_scope_pulley_mu_k_only_keeps_main_no_solution_contract():
+    result = solve_particle_newton_system(_pulley_incline("mu_k"))
+
+    assert result.ok is False
+    assert result.solution == {}
+
+
+def test_out_of_scope_pulley_existing_mu_still_solves():
+    result = solve_particle_newton_system(_pulley_incline("mu"))
+
+    assert result.ok is True
+    assert result.solution
+
+
+@pytest.mark.parametrize("mass", [0.0, -1.0])
+def test_incline_rejects_nonpositive_mass_explicitly(mass):
+    canonical = _incline()
+    canonical.knowns["m"] = _q("m", mass, "kg")
+
+    result = InclineWithFrictionSolver().solve(canonical)
+
+    assert result.ok is False
+    assert result.unsupported_reason == "질량 m은 양수여야 합니다."
+    assert result.verification.errors == [
+        "잘못된 물리 입력: 질량 m은 0보다 커야 합니다."
+    ]
+
+
+def test_phase44_subject_binding_and_conflict_contracts_remain_intact():
+    subject = extract_problem(
+        "트럭은 v0=20 m/s이다. 자동차는 v0=15 m/s이다. "
+        "자동차는 2 m/s²로 5초 가속한다. 자동차의 최종 속도는?"
+    )
+    conflict = services.solve_problem(
+        "v0=0m/s라고 했지만 v0=5m/s라고도 적혀 있다. "
+        "a=2m/s^2, t=3s일 때 최종속도는?"
+    )
+
+    assert subject.knowns["v0"].value == pytest.approx(15.0)
+    assert subject.canonical_v2.conflicts == []
+    assert conflict.ok is False
+    assert conflict.answer is None
+    assert conflict.clarification.rule == "contradictory_input"
