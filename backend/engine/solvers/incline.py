@@ -28,6 +28,7 @@ def _invalid_mass_result(c: CanonicalProblem) -> SolverResult | None:
 
 
 class InclineNoFrictionSolver(BaseSolver):
+    uses_prebuilt_physical_model = True
     name = "incline_no_friction"
 
     def match(self, c: CanonicalProblem) -> SolverMatch | None:
@@ -77,6 +78,7 @@ class InclineNoFrictionSolver(BaseSolver):
 
 
 class InclineWithFrictionSolver(BaseSolver):
+    uses_prebuilt_physical_model = True
     name = "incline_with_friction"
 
     def match(self, c: CanonicalProblem) -> SolverMatch | None:
