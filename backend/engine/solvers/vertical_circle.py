@@ -16,6 +16,24 @@ class VerticalCircleSolver(BaseSolver):
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
         requested = set(c.requested_outputs or c.unknowns or [])
+        if c.subtype not in {"top", "bottom"}:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["수직 원운동에서 계산 지점이 최고점인지 최저점인지 필요합니다."],
+                ),
+                unsupported_reason="최고점 또는 최저점을 명시해 주세요.",
+            )
+        if "minimum_speed" in requested and c.subtype != "top":
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["현재 minimum_speed 한계식 v_min=sqrt(gR)은 최고점 조건 전용입니다."],
+                ),
+                unsupported_reason="최소속도를 묻는 지점이 최고점인지 확인해 주세요.",
+            )
         # 최고점 최소속도는 질량과 무관하므로 R만 있으면 계산할 수 있다.
         if c.subtype == "top" and "minimum_speed" in requested and "R" in c.knowns:
             R = magnitude_si(c.knowns["R"], "m")
@@ -59,7 +77,20 @@ class VerticalCircleSolver(BaseSolver):
                         f"v_min = {vmin:.3f} m/s",
                         "primary",
                     )
-                ],
+                ] + (
+                    [
+                        AnswerItem(
+                            "한계 장력/수직항력",
+                            "T",
+                            0.0,
+                            "N",
+                            "한계 구속력 T = 0.000 N",
+                            "primary",
+                        )
+                    ]
+                    if requested.intersection({"tension", "force", "normal_force"})
+                    else []
+                ),
                 steps=steps,
                 verification=ver,
                 used_equations=["mg = mv²/R", "v_min = sqrt(gR)"],
