@@ -17,24 +17,34 @@ def can_solve_flight_time_without_speed(c: CanonicalProblem) -> bool:
     }
     if not requested or not requested <= {"time"}:
         return False
-    theta = (
-        c.launch_angle_deg
-        if c.launch_angle_deg is not None
-        else c.knowns["theta"].value
-        if "theta" in c.knowns
-        else None
-    )
-    if theta not in (0, 0.0):
+    try:
+        theta = (
+            float(c.launch_angle_deg)
+            if c.launch_angle_deg is not None
+            else magnitude_si(c.knowns["theta"], "deg")
+            if "theta" in c.knowns
+            else None
+        )
+        launch = (
+            float(c.launch_height)
+            if c.launch_height is not None
+            else magnitude_si(c.knowns["h"], "m")
+            if "h" in c.knowns
+            else None
+        )
+        landing = (
+            float(c.landing_height)
+            if c.landing_height is not None
+            else 0.0
+        )
+    except (TypeError, ValueError):
         return False
-    launch = (
-        c.launch_height
-        if c.launch_height is not None
-        else c.knowns["h"].value
-        if "h" in c.knowns
-        else None
+    return (
+        theta is not None
+        and math.isclose(theta, 0.0, abs_tol=1e-12)
+        and launch is not None
+        and launch - landing > 0
     )
-    landing = c.landing_height if c.landing_height is not None else 0.0
-    return launch is not None and float(launch) - float(landing) > 0
 
 
 class ProjectileMotionSolver(BaseSolver):
@@ -55,13 +65,30 @@ class ProjectileMotionSolver(BaseSolver):
         if not can_solve_flight_time_without_speed(c):
             return None
         launch = (
-            c.launch_height
+            float(c.launch_height)
             if c.launch_height is not None
-            else c.knowns["h"].value
+            else magnitude_si(c.knowns["h"], "m")
         )
-        landing = c.landing_height if c.landing_height is not None else 0.0
-        dh = float(launch) - float(landing)
-        g = c.knowns["g"].value if "g" in c.knowns else 9.81
+        landing = (
+            float(c.landing_height)
+            if c.landing_height is not None
+            else 0.0
+        )
+        dh = launch - landing
+        g = (
+            magnitude_si(c.knowns["g"], "m/s^2")
+            if "g" in c.knowns
+            else 9.81
+        )
+        if g <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["중력가속도 g는 0보다 커야 합니다."],
+                ),
+                unsupported_reason="중력가속도의 값과 단위를 확인해 주세요.",
+            )
         t = math.sqrt(2 * dh / g)
         steps = [
             StepCard("문제 유형", "수평으로 던진 물체의 연직 운동은 자유낙하와 같습니다. 비행시간은 수평 속도와 무관합니다."),
@@ -99,6 +126,15 @@ class ProjectileMotionSolver(BaseSolver):
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["발사각 θ 또는 발사 방향이 필요합니다."]))
         theta = math.radians(theta_deg)
         g = magnitude_si(c.knowns["g"], "m/s^2")
+        if g <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["중력가속도 g는 0보다 커야 합니다."],
+                ),
+                unsupported_reason="중력가속도의 값과 단위를 확인해 주세요.",
+            )
         y0 = c.launch_height if c.launch_height is not None else 0.0
         y_final = c.landing_height
         raw = c.raw_text.lower()
