@@ -199,8 +199,25 @@ def diagnose_problem(
     hints = make_legacy_hints(canonical)
     registry = registry or SolverRegistry()
     route_decision = route_decision or registry.route(canonical)
-    solver = registry.select(canonical, decision=route_decision)
+    registry.last_route_decision = route_decision
+    registry._last_route_problem_identity = id(canonical)
+    solver = registry.select(canonical)
     cards = build_diagnosis_cards(canonical, hints, solver)
+    legacy_candidate = route_decision.candidates[0] if route_decision.candidates else None
+    legacy_selected_solver = (
+        solver.name
+        if solver is not None
+        else legacy_candidate.solver_id
+        if route_decision.status == "clarify" and legacy_candidate is not None
+        else None
+    )
+    legacy_solver_reason = (
+        solver.reason
+        if solver is not None
+        else "; ".join(legacy_candidate.evidence)
+        if legacy_candidate is not None
+        else None
+    )
     physical_model = physical_model or build_physical_model(canonical)
 
     return DiagnosisResponse(
@@ -209,8 +226,8 @@ def diagnose_problem(
         fbd_annotations=build_fbd_annotations(canonical),
         canonical=_canonical_model(canonical),
         legacy_hints=_legacy_model(hints),
-        selected_solver=solver.name if solver else None,
-        solver_reason=solver.reason if solver else None,
+        selected_solver=legacy_selected_solver,
+        solver_reason=legacy_solver_reason,
         route_decision=_route_decision_model(route_decision),
         fbd=cards.fbd,
         coordinate_guide=cards.coordinate_guide,
@@ -245,7 +262,9 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         registry=registry,
         route_decision=route_decision,
     )
-    solver = registry.select(canonical, decision=route_decision)
+    registry.last_route_decision = route_decision
+    registry._last_route_problem_identity = id(canonical)
+    solver = registry.select(canonical)
 
     if not solver:
         verification = VerificationReportSchema(
