@@ -1,5 +1,6 @@
 import math
 from engine.physics_core.initial_conditions import explicitly_starts_from_rest
+from engine.physics_core.units import magnitude_si
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
