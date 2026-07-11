@@ -21,7 +21,7 @@ from engine.solvers.advanced_motion import PolarKinematicsSolver, InstantCenterV
 from engine.solvers.advanced_dynamics import CoriolisRelativeMotionSolver
 from engine.solvers.rigid_body_2d import PlaneRigidBodyVelocitySolver, PlaneRigidBodyAccelerationSolver, RelativeAccelerationTranslationSolver
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
-from engine.physics_core.initial_conditions import explicitly_starts_from_rest
+from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest, explicitly_starts_from_rest
 from engine.routing.config import ROUTING_CONFIG
 from engine.routing.evidence import TYPE_TO_FAMILY, rank_type_evidence
 
@@ -302,7 +302,7 @@ class SolverRegistry:
                 and (
                     "omega0" in c.knowns
                     or "omega" in c.knowns
-                    or self._starts_from_rest(c)
+                    or explicitly_starts_from_angular_rest(c)
                 )
             ),
             "omega and r/R for tangential speed": (
@@ -494,9 +494,9 @@ class SolverRegistry:
             and "angular_velocity" in requested
             and "omega0" not in c.knowns
             and "omega" not in c.knowns
-            and not self._starts_from_rest(c)
+            and not explicitly_starts_from_angular_rest(c)
         ):
-            missing.append("initial angular velocity or explicit rest condition")
+            missing.append("initial angular velocity or explicit angular rest condition")
         if solver_id == "work_energy_speed":
             if "v0" not in c.knowns and "v" not in c.knowns and not self._starts_from_rest(c):
                 missing.append("initial velocity or explicit rest condition")
