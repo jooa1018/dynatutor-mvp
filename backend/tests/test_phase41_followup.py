@@ -140,7 +140,9 @@ def test_backend_benchmark_wrapper_returns_after_real_pytest_summary():
         env=env,
     )
     output = proc.stdout + proc.stderr
-    assert proc.returncode == 0, output[-1000:]
+    if proc.returncode != 0:
+        print(output)  # CI에서 실패한 benchmark case를 잘리지 않게 남긴다.
+    assert proc.returncode == 0, output
     assert " passed" in output
     assert "[run_with_timeout] command exited with code 0" in output
 
