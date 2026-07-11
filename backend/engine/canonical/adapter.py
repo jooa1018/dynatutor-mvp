@@ -55,8 +55,8 @@ _LABEL_PATTERN = re.compile(
     r"rddot|rdot|thetaddot|thetadot|m|a|t|s|F|k|x|h|g|I|R|r|e|W)"
     r"(?![A-Za-z0-9_])\s*(?:=|:)\s*"
     r"(?P<value>-?\d+(?:,\d{3})*(?:\.\d+)?)\s*"
-    r"(?P<unit>kg\s*\*?\s*m\^?2|kgm\^?2|km\s*/\s*h|km/h|cm/s(?:(?:\^?2|2|²))?|"
-    r"m/s(?:(?:\^?2|2|²))?|rad/s(?:(?:\^?2|2|²))?|N\s*\*?\s*m(?![A-Za-z0-9_/])|N/m|N|J|kg|cm|m|s|deg|도|°|Hz)?",
+    r"(?P<unit>kg\s*\*?\s*m\^?2(?!\s*[=:])|kgm\^?2(?!\s*[=:])|km\s*/\s*h|km/h|cm/s(?:(?:\^?2|2|²))?|"
+    r"m/s(?:(?:\^?2|2|²))?|rad/s(?:(?:\^?2|2|²))?|N\s*\*?\s*m(?![A-Za-z0-9_/])|N/m|N|J|kg|g(?![A-Za-z0-9_/])|cm|m|s|deg|도|°|Hz)?",
     re.IGNORECASE,
 )
 
@@ -335,6 +335,8 @@ def _normalize_labeled_value(label: str, value: float, unit: str | None) -> tupl
         return value / 100.0, "m/s^2"
     if normalized_unit == "cm":
         return value / 100.0, "m"
+    if normalized_unit == "g":
+        return value / 1000.0, "kg"
     if normalized_unit in {"도", "°", "deg"}:
         return value, "deg"
     if normalized_unit in {"m/s2", "m/s^2"}:
