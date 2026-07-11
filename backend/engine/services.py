@@ -211,21 +211,8 @@ def diagnose_problem(
     registry._last_route_problem_identity = id(canonical)
     solver = registry.select(canonical)
     cards = build_diagnosis_cards(canonical, hints, solver)
-    legacy_candidate = route_decision.candidates[0] if route_decision.candidates else None
-    legacy_selected_solver = (
-        solver.name
-        if solver is not None
-        else legacy_candidate.solver_id
-        if route_decision.status == "clarify" and legacy_candidate is not None
-        else None
-    )
-    legacy_solver_reason = (
-        solver.reason
-        if solver is not None
-        else "; ".join(legacy_candidate.evidence)
-        if legacy_candidate is not None
-        else None
-    )
+    legacy_selected_solver = solver.name if solver is not None else None
+    legacy_solver_reason = solver.reason if solver is not None else None
     physical_model = physical_model or build_physical_model(canonical)
 
     return DiagnosisResponse(
@@ -236,6 +223,7 @@ def diagnose_problem(
         legacy_hints=_legacy_model(hints),
         selected_solver=legacy_selected_solver,
         solver_reason=legacy_solver_reason,
+        route_decision=_route_decision_model(route_decision),
         fbd=cards.fbd,
         coordinate_guide=cards.coordinate_guide,
         applicable_equations=cards.applicable_equations,
@@ -317,6 +305,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                 )
             ),
             clarification=clarification_model,
+            route_decision=_route_decision_model(route_decision),
             physical_model=diagnosis.physical_model,
         )
         response.teacher_summary = build_teacher_summary(response)
@@ -357,6 +346,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         steps=[StepCardSchema(**s.__dict__) for s in all_steps],
         verification=VerificationReportSchema(**result.verification.__dict__),
         unsupported_reason=result.unsupported_reason,
+        route_decision=_route_decision_model(route_decision),
         physical_model=_physical_model_payload(physical_model.to_dict(), route_decision),
     )
     # 실패 응답도 "완전히 못 풂" 대신 현재 가능한 것/필요한 조건을 보여준다.
