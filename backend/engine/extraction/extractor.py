@@ -9,6 +9,7 @@ from engine.extraction.normalizer import (
 )
 from engine.extraction.quantity import extract_quantities
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement, infer_direction_label
+from engine.physics_core.initial_conditions import explicitly_starts_from_rest
 from engine.physics_core.inertia import infer_body_shape
 from engine.physics_core.coordinate_parser import parse_coordinate_data_from_text
 
@@ -882,9 +883,27 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("힘과 변위 사이 방향 또는 각도")
     elif c.system_type == "fixed_axis_rotation":
         # Phase 40: 회전 kinematics(ω=ω₀+αt, v=ωr)로 풀리는 조합이면 τ·I는 필요 없다.
-        kin_omega = ("alpha" in c.knowns and "t" in c.knowns and "angular_velocity" in (c.requested_outputs or []))
-        kin_speed = ("omega" in c.knowns and ("r" in c.knowns or "R" in c.knowns) and "alpha" not in c.knowns)
-        if not (kin_omega or kin_speed):
+        angular_kinematics_requested = (
+            "alpha" in c.knowns
+            and "t" in c.knowns
+            and "angular_velocity" in (c.requested_outputs or [])
+        )
+        has_initial_angular_state = (
+            "omega0" in c.knowns
+            or "omega" in c.knowns
+            or explicitly_starts_from_rest(c)
+        )
+        kin_omega = (
+            angular_kinematics_requested and has_initial_angular_state
+        )
+        kin_speed = (
+            "omega" in c.knowns
+            and ("r" in c.knowns or "R" in c.knowns)
+            and "alpha" not in c.knowns
+        )
+        if angular_kinematics_requested and not has_initial_angular_state:
+            missing.append("초기 각속도 ω₀ 또는 회전 정지 출발 조건")
+        elif not (kin_omega or kin_speed):
             if "tau" not in c.knowns:
                 missing.append("토크 τ")
             if "I" not in c.knowns:
