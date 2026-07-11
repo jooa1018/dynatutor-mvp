@@ -380,60 +380,151 @@ class SolverRegistry:
 
     def route(self, c: CanonicalProblem) -> RouteDecision:
         unsupported = self._unsupported_reasons(c)
-        matches = [m for s in self.solvers if (m := s.match(c))]
-        candidates: list[RouteCandidate] = []
-        for match in matches:
-            solver_id = match.solver.name
-            capability = self._capabilities.get(solver_id, {})
-            strict = capability and solver_id in _STRICT_CAPABILITY_SOLVERS
-            missing = self._missing_requirements(c, capability) if strict else []
-            contradictions = self._requested_output_contradictions(c, capability.get("requested_outputs", [])) if strict else []
-            risk_flags: list[str] = []
-            if "generic" in match.reason.lower() or solver_id == "single_particle_newton":
-                risk_flags.append("generic_fallback")
-            penalty = 0.15 * len(missing) + 0.2 * len(contradictions)
-            normalized = max(0.0, min(1.0, match.score / 100.0 - penalty))
-            candidates.append(RouteCandidate(
-                solver_id=solver_id,
-                family=self._family(solver_id),
-                raw_score=match.score,
-                normalized_score=round(normalized, 4),
-                evidence=[match.reason],
-                missing_requirements=missing,
-                contradictions=contradictions,
-                supported_outputs=capability.get("requested_outputs", []),
-                risk_flags=risk_flags,
-                solver=match.solver,
-            ))
-        candidates.sort(key=lambda item: item.normalized_score, reverse=True)
+        by_solver: dict[str, RouteCandidate] = {}
+
+        for system_type, subtype, interpretation_score, interpretation_evidence in self._variant_specs(c):
+            variant = replace(c, system_type=system_type, subtype=subtype)
+            for solver in self.solvers:
+                match = solver.match(variant)
+                if match is None:
+                    continue
+                solver_id = match.solver.name
+                capability = self._capabilities.get(solver_id, {})
+                missing = self._missing_requirements(variant, capability, solver_id)
+                contradictions = self._requested_output_contradictions(
+                    variant,
+                    capability.get("requested_outputs", []),
+                )
+                risk_flags: list[str] = []
+                if "generic" in match.reason.lower() or solver_id == "single_particle_newton":
+                    risk_flags.append("generic_fallback")
+                if (system_type, subtype) != (c.system_type, c.subtype):
+                    risk_flags.append("interpretation_variant")
+                penalty = (
+                    ROUTING_CONFIG.missing_requirement_penalty * len(missing)
+                    + ROUTING_CONFIG.output_contradiction_penalty * len(contradictions)
+                )
+                normalized = max(
+                    0.0,
+                    min(1.0, match.score / 100.0 * interpretation_score - penalty),
+                )
+                evidence = [match.reason] + list(interpretation_evidence)
+                candidate = RouteCandidate(
+                    solver_id=solver_id,
+                    family=self._family(solver_id),
+                    raw_score=match.score,
+                    normalized_score=round(normalized, 4),
+                    evidence=list(dict.fromkeys(evidence)),
+                    missing_requirements=missing,
+                    contradictions=contradictions,
+                    supported_outputs=capability.get("requested_outputs", []),
+                    risk_flags=risk_flags,
+                    source_system_type=system_type,
+                    source_subtype=subtype,
+                    interpretation_score=round(interpretation_score, 4),
+                    solver=match.solver,
+                )
+                previous = by_solver.get(solver_id)
+                if previous is None or candidate.normalized_score > previous.normalized_score:
+                    by_solver[solver_id] = candidate
+                elif candidate.normalized_score == previous.normalized_score:
+                    previous.evidence = list(
+                        dict.fromkeys(previous.evidence + candidate.evidence)
+                    )
+
+        candidates = sorted(
+            by_solver.values(),
+            key=lambda item: item.normalized_score,
+            reverse=True,
+        )
         if unsupported:
-            return RouteDecision("unsupported", candidates, reason="; ".join(unsupported))
+            return RouteDecision(
+                "unsupported",
+                candidates,
+                reason="; ".join(unsupported),
+            )
         if not candidates:
-            return RouteDecision("unsupported", [], reason="No solver matched the canonical problem.")
-        viable = [cand for cand in candidates if not cand.missing_requirements and not cand.contradictions]
+            return RouteDecision(
+                "unsupported",
+                [],
+                reason="No solver matched any retained interpretation.",
+            )
+
+        viable = [
+            candidate
+            for candidate in candidates
+            if not candidate.missing_requirements and not candidate.contradictions
+        ]
         if not viable:
-            return RouteDecision("clarify", candidates, question=self._clarification_question(candidates), reason="Matched solvers lack required inputs or requested outputs.")
+            return RouteDecision(
+                "clarify",
+                candidates,
+                question=self._clarification_question(candidates),
+                reason="Matched solvers lack required inputs or requested outputs.",
+            )
+
         top = viable[0]
-        warnings = ["generic fallback selected"] if "generic_fallback" in top.risk_flags else []
+        warnings = (
+            ["generic fallback selected"]
+            if "generic_fallback" in top.risk_flags
+            else []
+        )
+        if (
+            (top.source_system_type, top.source_subtype)
+            != (c.system_type, c.subtype)
+            and not (c.flags or {}).get("_clarify_model_chosen")
+        ):
+            return RouteDecision(
+                "clarify",
+                candidates,
+                question=self._clarification_question(viable),
+                reason="The leading route is an unconfirmed alternative interpretation.",
+            )
         if len(viable) > 1:
             second = viable[1]
-            if top.normalized_score - second.normalized_score < _ROUTING_MARGIN:
-                return RouteDecision("clarify", candidates, question=self._clarification_question(viable), reason="Top route margin is too small.")
-            if top.family != second.family and top.normalized_score - second.normalized_score < (_ROUTING_MARGIN * 2):
-                return RouteDecision("clarify", candidates, question=self._clarification_question(viable), reason="Different solver families are competing.")
-        return RouteDecision("select", candidates, selected_solver_id=top.solver_id, warnings=warnings)
+            margin = top.normalized_score - second.normalized_score
+            if margin < ROUTING_CONFIG.selection_margin:
+                return RouteDecision(
+                    "clarify",
+                    candidates,
+                    question=self._clarification_question(viable),
+                    reason="Top route margin is too small.",
+                )
+            if (
+                top.family != second.family
+                and margin < ROUTING_CONFIG.cross_family_margin
+            ):
+                return RouteDecision(
+                    "clarify",
+                    candidates,
+                    question=self._clarification_question(viable),
+                    reason="Different solver families are competing.",
+                )
+        return RouteDecision(
+            "select",
+            candidates,
+            selected_solver_id=top.solver_id,
+            warnings=warnings,
+        )
 
-    def select(self, c: CanonicalProblem) -> BaseSolver | None:
-        decision = self.route(c)
+    def select(
+        self,
+        c: CanonicalProblem,
+        decision: RouteDecision | None = None,
+    ) -> BaseSolver | None:
+        decision = decision or self.route(c)
         self.last_route_decision = decision
-        if decision.status == "unsupported":
+        if decision.status != "select" or decision.selected_solver_id is None:
             return None
-        selected_solver_id = decision.selected_solver_id
-        if selected_solver_id is None and decision.candidates:
-            selected_solver_id = decision.candidates[0].solver_id
-        if selected_solver_id is None:
+        chosen = next(
+            (
+                candidate
+                for candidate in decision.candidates
+                if candidate.solver_id == decision.selected_solver_id
+            ),
+            None,
+        )
+        if chosen is None or chosen.solver is None:
             return None
-        chosen = next(cand for cand in decision.candidates if cand.solver_id == selected_solver_id)
-        assert chosen.solver is not None
         chosen.solver.reason = "; ".join(chosen.evidence)
         return chosen.solver
