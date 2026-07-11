@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "source_commit": "174e7ec0f724f584628fd85a719af9b5fd2a54b3",
+  "source_commit": "a87596c56232b229e775693f39d62209c062ab8f",
   "source_files": [
     "backend/engine/solvers/registry.py",
     "backend/engine/solvers/**",
@@ -561,7 +561,9 @@
       ],
       "requested_outputs": [
         "final_velocity",
-        "force"
+        "force",
+        "minimum_speed",
+        "tension"
       ],
       "assumptions": [
         "particle constrained to a vertical circle"
@@ -958,6 +960,7 @@
         "v"
       ],
       "requested_outputs": [
+        "impulse",
         "final_velocity"
       ],
       "assumptions": [
@@ -1003,6 +1006,19 @@
             "one_of": [
               "W",
               "F and s"
+            ]
+          },
+          {
+            "one_of": [
+              "v0",
+              "v",
+              "explicit rest condition"
+            ]
+          },
+          {
+            "one_of": [
+              "W",
+              "force-displacement direction"
             ]
           }
         ]
@@ -1352,8 +1368,15 @@
         "conditional": [
           {
             "one_of": [
-              "r/R",
-              "coordinate_data rBA vector"
+              "rBA vector",
+              "fixed A plus scalar radius"
+            ]
+          },
+          {
+            "one_of": [
+              "aA vector",
+              "zero aA",
+              "A fixed statement"
             ]
           }
         ]
@@ -1579,14 +1602,14 @@
         "conditional": [
           {
             "one_of": [
-              "r/R",
-              "coordinate_data rBA vector"
+              "rBA vector",
+              "fixed A plus scalar radius"
             ]
           },
           {
             "one_of": [
-              "vA",
-              "coordinate_data vA vector",
+              "vA vector",
+              "zero vA",
               "A fixed statement"
             ]
           }
@@ -1625,5 +1648,6 @@
         "Magnitude shortcut and vector path coexist; direction data are required for the general case."
       ]
     }
-  ]
+  ],
+  "source_ref": "codex/fix-physics-audit"
 }
