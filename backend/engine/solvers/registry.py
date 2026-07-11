@@ -295,9 +295,15 @@ class SolverRegistry:
                 or bool((c.flags or {}).get("no_friction"))
             ),
             "I plus m and R": all(key in c.knowns for key in ("I", "m", "R")),
-            "alpha and t for angular velocity": (
-                "alpha" in c.knowns and "t" in c.knowns
+            "alpha and t with initial angular state": (
+                "alpha" in c.knowns
+                and "t" in c.knowns
                 and "angular_velocity" in requested
+                and (
+                    "omega0" in c.knowns
+                    or "omega" in c.knowns
+                    or self._starts_from_rest(c)
+                )
             ),
             "omega and r/R for tangential speed": (
                 "omega" in c.knowns
@@ -481,6 +487,16 @@ class SolverRegistry:
             and "m" not in c.knowns
         ):
             missing.append("m for force output")
+        if (
+            solver_id == "fixed_axis_rotation"
+            and "alpha" in c.knowns
+            and "t" in c.knowns
+            and "angular_velocity" in requested
+            and "omega0" not in c.knowns
+            and "omega" not in c.knowns
+            and not self._starts_from_rest(c)
+        ):
+            missing.append("initial angular velocity or explicit rest condition")
         if solver_id == "work_energy_speed":
             if "v0" not in c.knowns and "v" not in c.knowns and not self._starts_from_rest(c):
                 missing.append("initial velocity or explicit rest condition")
@@ -642,6 +658,8 @@ class SolverRegistry:
             return "여러 힘의 방향 또는 각 힘의 합력(알짜힘), 그리고 질량을 알려 주세요."
         if candidates and candidates[0].solver_id == "work_energy_speed":
             return "초기속도 또는 정지 상태에서 출발한다는 조건을 알려 주세요."
+        if candidates and candidates[0].solver_id == "fixed_axis_rotation":
+            return "초기 각속도 ω₀ 또는 회전 정지 상태에서 출발한다는 조건을 알려 주세요."
         if any("mu" in item or "friction_type" in item for item in missing):
             return "정지마찰계수와 운동마찰계수 중 어떤 값인지, 그리고 실제 운동 방향/경향이 무엇인지 알려 주세요."
         if any(item in {"I", "R"} or "I" in item or "R" in item for item in missing):
