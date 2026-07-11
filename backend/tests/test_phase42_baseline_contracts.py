@@ -74,7 +74,9 @@ def test_phase42_capability_matrix_is_complete_and_machine_readable():
     assert CAPABILITY["schema_version"] == 1
     entries = CAPABILITY["capabilities"]
     registry_names = [solver.name for solver in SolverRegistry().solvers]
-    assert len(entries) == len(registry_names) == 29
+    assert len(entries) == len(registry_names)
+    assert len(registry_names) == len(set(registry_names))
+    assert len(entries) == len({entry["analytic_solver"] for entry in entries})
     assert [entry["analytic_solver"] for entry in entries] == registry_names
 
     required = {
