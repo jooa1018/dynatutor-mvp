@@ -18,32 +18,79 @@ clarify_patch는 API로 노출되므로 화이트리스트 검증을 반드시 �
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 
 from engine.models import CanonicalProblem, Quantity
 
 # patch로 지정 가능한 값 화이트리스트 (API 노출 지점 — 임의 값 주입 차단)
 ALLOWED_SYSTEM_TYPES = {
+    "single_particle_newton",
     "particle_on_incline",
     "pulley_atwood",
     "pulley_table_hanging",
     "pulley_incline_hanging",
-    "projectile_motion",
-    "collision_1d",
-    "spring_energy",
-    "spring_mass_vibration",
-    "work_energy_speed",
-    "constant_force_work",
-    "constant_acceleration_1d",
-    # Phase 34: 일반 혼합 규칙(evidence_conflict)이 제시하는 대표 모형들
-    "impulse_momentum",
-    "fixed_axis_rotation",
+    "massive_pulley_atwood",
     "pure_rolling_energy",
+    "rolling_energy_general",
+    "vertical_circle",
+    "collision_1d",
+    "constant_acceleration_1d",
+    "projectile_motion",
+    "constant_force_work",
+    "fixed_axis_rotation",
+    "horizontal_friction_force",
+    "impulse_momentum",
+    "work_energy_speed",
+    "spring_mass_vibration",
+    "spring_energy",
     "flat_curve_friction",
+    "banked_curve_no_friction",
+    "relative_acceleration_translation",
+    "coriolis_relative_motion",
+    "plane_rigid_body_acceleration",
+    "polar_kinematics",
+    "instant_center_velocity",
+    "slot_pin_relative_motion",
+    "plane_rigid_body_velocity",
 }
-ALLOWED_SUBTYPES = {"no_friction", "with_friction", None}
+ALLOWED_SUBTYPES = {"no_friction", "with_friction", "top", "bottom", "general", "same_level", "rolling_on_incline", None}
 ALLOWED_FRICTION_TYPES = {"none", "kinetic", "static", "unspecified", None}
 ALLOWED_REQUESTED_OUTPUTS = {"time", "range", "distance", "max_height", "minimum_speed", "final_velocity", "initial_velocity", "acceleration", "tension", "force", "mass", "work", "impulse", "kinetic_energy", "potential_energy", "post_collision_velocity", "v1_after", "v2_after", "angular_velocity", "angular_acceleration", "angular_frequency", "frequency", "period", "tangential_velocity", "centripetal_acceleration", "friction_force", "normal_force", "elastic_energy"}
 ALLOWED_KNOWN_SYMBOLS = {"mu", "mu_k", "mu_s", "m", "m1", "m2", "e", "v0", "v1", "v2", "vf", "theta", "h", "h0", "yf", "k", "x", "F", "s", "t", "tau", "I", "R", "r", "v", "vA", "vAx", "vAy", "vB", "aA", "aAx", "aAy", "aB", "rBAx", "rBAy", "omega", "alpha", "vrel", "arel", "a", "W"}
+
+
+_VALID_SUBTYPES_BY_SYSTEM = {
+    "particle_on_incline": {"no_friction", "with_friction", None},
+    "projectile_motion": {"general", "same_level", None},
+    "vertical_circle": {"top", "bottom", None},
+    "pure_rolling_energy": {"rolling_on_incline", None},
+    "rolling_energy_general": {"rolling_on_incline", None},
+}
+_FRICTION_SYSTEM_TYPES = {
+    "particle_on_incline",
+    "pulley_table_hanging",
+    "pulley_incline_hanging",
+    "horizontal_friction_force",
+}
+_UNITS_BY_SYMBOL = {
+    "mu": {"", None}, "mu_k": {"", None}, "mu_s": {"", None}, "e": {"", None},
+    "m": {"kg", None}, "m1": {"kg", None}, "m2": {"kg", None},
+    "v0": {"m/s", None}, "v1": {"m/s", None}, "v2": {"m/s", None},
+    "vf": {"m/s", None}, "v": {"m/s", None}, "vA": {"m/s", None},
+    "vAx": {"m/s", None}, "vAy": {"m/s", None}, "vB": {"m/s", None},
+    "a": {"m/s^2", "m/s²", None}, "aA": {"m/s^2", "m/s²", None},
+    "aAx": {"m/s^2", "m/s²", None}, "aAy": {"m/s^2", "m/s²", None},
+    "aB": {"m/s^2", "m/s²", None}, "arel": {"m/s^2", "m/s²", None},
+    "theta": {"deg", "rad", None},
+    "h": {"m", None}, "h0": {"m", None}, "yf": {"m", None},
+    "x": {"m", None}, "s": {"m", None}, "R": {"m", None}, "r": {"m", None},
+    "rBAx": {"m", None}, "rBAy": {"m", None},
+    "F": {"N", None}, "W": {"J", None}, "t": {"s", None},
+    "k": {"N/m", None}, "tau": {"N*m", "N·m", "Nm", None},
+    "I": {"kg*m^2", "kg·m²", None},
+    "omega": {"rad/s", None}, "alpha": {"rad/s^2", "rad/s²", None},
+    "vrel": {"m/s", None},
+}
 
 
 @dataclass
@@ -63,11 +110,96 @@ class Clarification:
     why: str | None = None
 
 
+def _validate_known_spec(spec, *, field_name: str) -> None:
+    if not isinstance(spec, dict):
+        raise ClarifyPatchError(f"{field_name} 항목은 객체여야 합니다.")
+    symbol = spec.get("symbol")
+    if symbol not in ALLOWED_KNOWN_SYMBOLS:
+        raise ClarifyPatchError(f"clarification으로 설정할 수 없는 값: {symbol}")
+    try:
+        value = float(spec.get("value"))
+    except (TypeError, ValueError):
+        raise ClarifyPatchError(f"{symbol} 값이 숫자가 아닙니다.")
+    if not math.isfinite(value):
+        raise ClarifyPatchError(f"{symbol} 값은 유한한 숫자여야 합니다.")
+    unit = spec.get("unit") or None
+    allowed_units = _UNITS_BY_SYMBOL.get(symbol, {None})
+    if unit not in allowed_units:
+        raise ClarifyPatchError(
+            f"{symbol}에 허용되지 않는 단위입니다: {unit}. allowed={sorted(str(x) for x in allowed_units)}"
+        )
+
+
+def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
+    if not isinstance(patch, dict):
+        raise ClarifyPatchError("clarify_patch는 객체여야 합니다.")
+    allowed_keys = {
+        "system_type", "subtype", "assume", "set_known", "set_knowns",
+        "remove_knowns", "requested_outputs", "friction_type",
+    }
+    unknown_keys = set(patch) - allowed_keys
+    if unknown_keys:
+        raise ClarifyPatchError(f"허용되지 않는 patch 키: {sorted(unknown_keys)}")
+
+    target_system = patch.get("system_type", cp.system_type)
+    if target_system not in ALLOWED_SYSTEM_TYPES:
+        raise ClarifyPatchError(f"허용되지 않는 system_type: {target_system}")
+    target_subtype = (
+        patch["subtype"]
+        if "subtype" in patch
+        else None
+        if "system_type" in patch and target_system != cp.system_type
+        else cp.subtype
+    )
+    if target_subtype not in ALLOWED_SUBTYPES:
+        raise ClarifyPatchError(f"허용되지 않는 subtype: {target_subtype}")
+    allowed_subtypes = _VALID_SUBTYPES_BY_SYSTEM.get(target_system, {None})
+    if target_subtype not in allowed_subtypes:
+        raise ClarifyPatchError(
+            f"{target_system}과 양립하지 않는 subtype입니다: {target_subtype}"
+        )
+
+    if "friction_type" in patch:
+        friction_type = patch.get("friction_type")
+        if friction_type not in ALLOWED_FRICTION_TYPES:
+            raise ClarifyPatchError(f"허용되지 않는 friction_type: {friction_type}")
+        if friction_type is not None and target_system not in _FRICTION_SYSTEM_TYPES:
+            raise ClarifyPatchError(
+                f"{target_system}에는 friction_type을 설정할 수 없습니다."
+            )
+
+    if "assume" in patch and patch["assume"] is not None and not isinstance(patch["assume"], str):
+        raise ClarifyPatchError("assume은 문자열이어야 합니다.")
+    if "set_known" in patch and patch["set_known"] is not None:
+        _validate_known_spec(patch["set_known"], field_name="set_known")
+    if "set_knowns" in patch:
+        values = patch.get("set_knowns")
+        if not isinstance(values, list):
+            raise ClarifyPatchError("set_knowns는 리스트여야 합니다.")
+        for item in values:
+            _validate_known_spec(item, field_name="set_knowns")
+    if "remove_knowns" in patch:
+        values = patch.get("remove_knowns")
+        if not isinstance(values, list):
+            raise ClarifyPatchError("remove_knowns는 리스트여야 합니다.")
+        bad = [symbol for symbol in values if symbol not in ALLOWED_KNOWN_SYMBOLS]
+        if bad:
+            raise ClarifyPatchError(f"제거할 수 없는 값: {bad}")
+    if "requested_outputs" in patch:
+        values = patch.get("requested_outputs")
+        if not isinstance(values, list):
+            raise ClarifyPatchError("requested_outputs는 리스트여야 합니다.")
+        bad = [value for value in values if value not in ALLOWED_REQUESTED_OUTPUTS]
+        if bad:
+            raise ClarifyPatchError(f"허용되지 않는 requested_outputs: {bad}")
+
+
 class ClarifyPatchError(ValueError):
     pass
 
 
 def _apply_one_known(cp: CanonicalProblem, sk: dict) -> None:
+    _validate_known_spec(sk, field_name="set_known")
     symbol = sk.get("symbol")
     if symbol not in ALLOWED_KNOWN_SYMBOLS:
         raise ClarifyPatchError(f"clarification으로 설정할 수 없는 값: {symbol}")
@@ -102,11 +234,7 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     Phase 38부터 clarification뿐 아니라 "앱이 이해한 조건" 카드의 직접 수정도
     같은 안전한 patch 통로를 사용한다.
     """
-    if not isinstance(patch, dict):
-        raise ClarifyPatchError("clarify_patch는 객체여야 합니다.")
-    unknown_keys = set(patch) - {"system_type", "subtype", "assume", "set_known", "set_knowns", "remove_knowns", "requested_outputs", "friction_type"}
-    if unknown_keys:
-        raise ClarifyPatchError(f"허용되지 않는 patch 키: {sorted(unknown_keys)}")
+    validate_clarify_patch(cp, patch)
 
     st = patch.get("system_type")
     if st is not None:
@@ -172,9 +300,13 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     from engine.extraction.extractor import _missing_info, _objects_from_knowns, _default_assumptions  # 지연 import (순환 방지)
 
     cp.objects = _objects_from_knowns(cp)
+    prior_user_assumptions = [
+        item for item in cp.assumptions if str(item).startswith("[사용자 확인]")
+    ]
     base_assumptions = _default_assumptions(cp)
-    if user_assumption and user_assumption not in base_assumptions:
-        base_assumptions.append(user_assumption)
+    for item in [*prior_user_assumptions, user_assumption]:
+        if item and item not in base_assumptions:
+            base_assumptions.append(item)
     cp.assumptions = base_assumptions
     cp.missing_info = _missing_info(cp)
     cp.confidence = "높음" if not cp.missing_info and cp.system_type != "unknown" else "보통" if cp.system_type != "unknown" else "낮음"
