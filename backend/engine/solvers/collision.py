@@ -6,6 +6,7 @@ from engine.model_builder.model_types import PhysicalModel
 
 
 class Collision1DSolver(BaseSolver):
+    uses_prebuilt_physical_model = True
     name = "collision_1d"
 
     def match(self, c: CanonicalProblem) -> SolverMatch | None:
