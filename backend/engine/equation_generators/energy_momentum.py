@@ -96,7 +96,7 @@ def build_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
         equations.append(_eq("spring_speed", "|v| = |x|*sqrt(k/m)", unknowns=["v"], body_id="body"))
         unknowns = ["v"]
     elif st in {"pure_rolling_energy", "rolling_energy_general"}:
-        equations.append(_eq("rolling_energy", "m*g*h = 1/2*m*v^2 + 1/2*I*omega^2", unknowns=["v"], body_id="body", source_forces=["mg"]))
+        equations.append(_eq("rolling_energy", "K_f = K_i + m*g*h, with K=1/2*m*v^2+1/2*I*omega^2", unknowns=["v"], body_id="body", source_forces=["mg"]))
         equations.append(_eq("rolling_constraint", "v = omega*R", unknowns=["omega"], body_id="body"))
         if "I" in c.knowns:
             equations.append(_eq("general_inertia", "v = sqrt(2*m*g*h/(m + I/R^2))", unknowns=["v"], body_id="body"))
@@ -247,21 +247,32 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
         if st in {"pure_rolling_energy", "rolling_energy_general"}:
             h = _q(c, "h", "m") if "h" in c.knowns else float(c.launch_height or 0.0)
             g = _q(c, "g", "m/s^2") or 9.81
+            initial_speed = (
+                _q(c, "v0", "m/s")
+                if "v0" in c.knowns
+                else _q(c, "v", "m/s")
+                if "v" in c.knowns
+                else 0.0
+                if _explicitly_starts_from_rest(c)
+                else None
+            )
+            if initial_speed is None:
+                return EnergyMomentumSolve(False, {}, system, ["초기속도 v0 또는 명시적인 정지 출발 조건이 필요합니다."])
             if "I" in c.knowns:
                 m = _q(c, "m", "kg")
                 R = _q(c, "R", "m")
                 I = _q(c, "I", "kg*m^2")
                 if m is None or R is None or I is None:
                     return EnergyMomentumSolve(False, {}, system, ["I 기반 구름운동에는 m, I, R이 필요합니다."])
-                v = math.sqrt(2 * m * g * h / (m + I / R**2))
+                v = math.sqrt(initial_speed * initial_speed + 2 * m * g * h / (m + I / R**2))
                 omega = v / R
                 beta = I / (m * R**2)
-                return EnergyMomentumSolve(True, {"v": v, "omega": omega, "beta": beta, "mode": "I"}, system, [])
+                return EnergyMomentumSolve(True, {"v": v, "v0": initial_speed, "omega": omega, "beta": beta, "mode": "I"}, system, [])
             beta = beta_for_shape(c.body_shape)
             if beta is None:
                 return EnergyMomentumSolve(False, {}, system, ["물체 종류 또는 관성모멘트 I가 필요합니다."])
-            v = math.sqrt(2 * g * h / (1 + beta))
-            return EnergyMomentumSolve(True, {"v": v, "beta": beta, "mode": "shape"}, system, [])
+            v = math.sqrt(initial_speed * initial_speed + 2 * g * h / (1 + beta))
+            return EnergyMomentumSolve(True, {"v": v, "v0": initial_speed, "beta": beta, "mode": "shape"}, system, [])
 
         if st == "impulse_momentum":
             force = _q(c, "F", "N")
