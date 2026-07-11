@@ -3,10 +3,10 @@ from typing import Any
 
 
 class RecordCreate(BaseModel):
-    problem_text: str = Field(..., min_length=2)
-    student_solution: str | None = None
+    problem_text: str = Field(..., min_length=2, max_length=10_000)
+    student_solution: str | None = Field(None, max_length=10_000)
     solver: str | None = None
-    answer_display: str | None = None
+    answer_display: str | None = Field(None, max_length=2_000)
     problem_type: str | None = None
     tags: list[str] = Field(default_factory=list)
     note: str | None = None
