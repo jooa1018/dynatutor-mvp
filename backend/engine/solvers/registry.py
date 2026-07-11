@@ -355,6 +355,12 @@ class SolverRegistry:
         requested = set(c.requested_outputs or c.unknowns or [])
         if (
             solver_id == "vertical_circle"
+            and "minimum_speed" in requested
+            and c.subtype != "top"
+        ):
+            missing.append("top subtype for minimum_speed")
+        if (
+            solver_id == "vertical_circle"
             and "minimum_speed" not in requested
             and "m" not in c.knowns
         ):
