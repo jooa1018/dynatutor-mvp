@@ -71,6 +71,15 @@ def normalize(text: str) -> str:
         "발사 속도": "발사속도",
         "발사 속력": "발사속도",
         "스프링상수": "스프링 상수",
+        "용수철상수": "스프링 상수",
+        "도르레": "도르래",
+        "매끄런": "매끄러운",
+        "마찰 업는": "마찰 없는",
+        "쵸속도": "초속도",
+        "구해 줘": "구하라",
+        "구해줘": "구하라",
+        "알려 줘": "구하라",
+        "알려줘": "구하라",
         "마찰 계수": "마찰계수",
         "관성 모멘트": "관성모멘트",
         "질량 중심": "질량중심",
@@ -122,7 +131,7 @@ def normalize(text: str) -> str:
     t = re.sub(r"미터\s*매\s*초\s*제곱", "m/s^2", t, flags=re.IGNORECASE)
     t = re.sub(r"m\s*/\s*s\s*(?:\^\s*2|²|2)", "m/s^2", t, flags=re.IGNORECASE)
     t = re.sub(r"rad\s*/\s*s\s*(?:\^\s*2|²|2)", "rad/s^2", t, flags=re.IGNORECASE)
-    t = re.sub(r"kg\s*m\s*(?:\^\s*2|²|2)", "kg*m^2", t, flags=re.IGNORECASE)
+    t = re.sub(r"kg\s*m\s*(?:\^\s*2|²|2)(?!\s*(?:=|:))", "kg*m^2", t, flags=re.IGNORECASE)
     t = re.sub(r"kg\s+meter\s*(?:\^\s*2|squared)", "kg*m^2", t, flags=re.IGNORECASE)
     t = re.sub(r"N\s*[-·*]?\s*m\b", "N*m", t, flags=re.IGNORECASE)
 
@@ -135,7 +144,7 @@ def normalize(text: str) -> str:
     t = re.sub(r"rad\s*/\s*s", "rad/s", t, flags=re.IGNORECASE)
     t = re.sub(r"N\s*/\s*m", "N/m", t, flags=re.IGNORECASE)
     t = re.sub(r"N\s*\*?\s*m", "N*m", t, flags=re.IGNORECASE)
-    t = re.sub(r"kg\s*\*?\s*m\s*\^?\s*2", "kg*m^2", t, flags=re.IGNORECASE)
+    t = re.sub(r"kg\s*\*?\s*m\s*\^?\s*2(?!\s*(?:=|:))", "kg*m^2", t, flags=re.IGNORECASE)
     t = re.sub(r"kgm\s*\^?\s*2", "kg*m^2", t, flags=re.IGNORECASE)
 
     # SI 변환: 파서 내부는 m, kg, s 기준으로 처리한다.
@@ -164,6 +173,71 @@ def normalize(text: str) -> str:
     # 실제로는 위 2줄이 이미 충분하지만, '5 kg' 형태 유지 확인을 위해 공백만 정리한다.
     t = re.sub(r"\s+", " ", t).strip()
     return t
+
+
+NORMALIZATION_SURFACE_FORMS = (
+    "초기속도", "초기 속도", "처음 속도", "처음속도",
+    "나중 속도", "최종 속도", "최종 속력", "마찰 업는",
+    "도르레", "매끄런", "쵸속도", "관성 모멘트",
+    "마찰 계수", "미끄럼 없이", "마찰 없이",
+    "뉴턴미터", "킬로그램미터제곱", "미터퍼세컨드제곱",
+)
+
+_IRRELEVANT_SENTENCE_PATTERNS = (
+    r"^참고로\s+관찰자의\s+질량(?:은|는|이|가)?\b",
+    r"^(?:실험실|교실)\s+온도(?:는|가|는)?\b",
+    r"^바깥\s+기온(?:은|는|이|가)?\b",
+    r"^오늘\s+날씨(?:는|가|는)?\b",
+    r"^벽시계\s*(?:는|가)\s*[^.!?]*(?:가리켰|시각|시간)",
+    r"^실험\s+날짜(?:는|가|는)?\b",
+    r"^팀\s+번호(?:는|가|는)?\b",
+    r"^학생\s+수\s*(?:는|가|=|\d)",
+    r"^학생\s+\d+\s*명이\s+실험을\s+지켜봤",
+    r"^책상의\s+색(?:은|는|이|가)?\b",
+    r"^교실\s+책상의\s+길이(?:는|가|는)?\b",
+)
+
+
+def is_irrelevant_background_sentence(sentence: str) -> bool:
+    candidate = sentence.strip()
+    return any(
+        re.search(pattern, candidate, re.IGNORECASE)
+        for pattern in _IRRELEVANT_SENTENCE_PATTERNS
+    )
+
+
+def iter_sentence_spans(text: str):
+    """Yield exact sentence spans without splitting decimal points."""
+    cursor = 0
+    for separator in re.finditer(r"(?<=[.!?])\s+|[\r\n]+", text):
+        chunk = text[cursor:separator.start()]
+        leading = len(chunk) - len(chunk.lstrip())
+        trailing = len(chunk.rstrip())
+        start = cursor + leading
+        end = cursor + trailing
+        if start < end:
+            yield start, end, text[start:end]
+        cursor = separator.end()
+    chunk = text[cursor:]
+    leading = len(chunk) - len(chunk.lstrip())
+    trailing = len(chunk.rstrip())
+    start = cursor + leading
+    end = cursor + trailing
+    if start < end:
+        yield start, end, text[start:end]
+
+
+def strip_irrelevant_background(text: str) -> str:
+    """Remove only complete, explicitly recognized background statements."""
+    sentences = list(iter_sentence_spans(text))
+    if len(sentences) < 2:
+        return text
+    retained = [
+        sentence
+        for _, _, sentence in sentences
+        if not is_irrelevant_background_sentence(sentence)
+    ]
+    return " ".join(retained) if retained else text
 
 
 def lower_for_match(text: str) -> str:

@@ -16,6 +16,14 @@ from engine.canonical.models import (
     SystemTypeCandidate,
 )
 from engine.models import CanonicalProblem, Quantity
+from engine.extraction.quantity import (
+    _initial_speed_occurrences,
+)
+from engine.extraction.units import (
+    LABELED_UNIT_PATTERN,
+    compact_unit,
+    normalize_labeled_value as _normalize_unit_value,
+)
 
 
 _DIMENSIONS = {
@@ -39,12 +47,12 @@ _DIMENSIONS = {
 
 _CONDITION_PATTERNS: list[tuple[str, str, str]] = [
     ("air_resistance_ignored", r"공기\s*저항(?:을|은|이)?\s*(?:무시|없)|air\s+resistance\s+(?:is\s+)?(?:ignored|neglected)", "explicit"),
-    ("no_friction", r"마찰(?:이|은|을)?\s*(?:없|무시)|frictionless|\bsmooth\b|매끈|매끄러운", "explicit"),
+    ("no_friction", r"마찰(?:이|은|을)?\s*(?:없|무시)|마찰\s*업는|frictionless|\bsmooth\b|매끈|매끄러운|매끄런", "explicit"),
     ("no_slip", r"미끄러지지\s*않|미끄럼\s*없이|no\s+slip|without\s+slipping|순수\s*구름", "explicit"),
     ("massless_string", r"질량\s*(?:이\s*)?없는\s*(?:줄|실|끈)|가벼운\s*(?:줄|실|끈)|massless\s+(?:string|rope)", "explicit"),
     ("inextensible_string", r"늘어나지\s*않는\s*(?:줄|실|끈)|inextensible\s+(?:string|rope)", "explicit"),
     ("frictionless_pulley", r"도르래(?:의|\s*축)?\s*마찰(?:을|은|이)?\s*(?:무시|없)|frictionless\s+pulley", "explicit"),
-    ("perfectly_inelastic", r"완전\s*비탄성|붙어서|한\s*덩어리|perfectly\s+inelastic|stick\s+together", "explicit"),
+    ("perfectly_inelastic", r"완전\s*비탄성|붙어서|붙는\s*충돌|서로\s*붙|붙는다|붙은\s*뒤|붙어\s*움직|한\s*덩어리|perfectly\s+inelastic|stick\s+together", "explicit"),
     ("elastic_collision", r"완전\s*탄성|elastic\s+collision", "explicit"),
     ("initially_at_rest", r"정지\s*(?:상태|해\s*있|하여|에서)|가만히\s*있|starts?\s+from\s+rest", "explicit"),
 ]
@@ -55,8 +63,7 @@ _LABEL_PATTERN = re.compile(
     r"rddot|rdot|thetaddot|thetadot|m|a|t|s|F|k|x|h|g|I|R|r|e|W)"
     r"(?![A-Za-z0-9_])\s*(?:=|:)\s*"
     r"(?P<value>-?\d+(?:,\d{3})*(?:\.\d+)?)\s*"
-    r"(?P<unit>kg\s*\*?\s*m\^?2|kgm\^?2|km\s*/\s*h|km/h|cm/s(?:(?:\^?2|2|²))?|"
-    r"m/s(?:(?:\^?2|2|²))?|rad/s(?:(?:\^?2|2|²))?|N\s*\*\s*m|N/m|N|J|kg|cm|m|s|deg|도|°|Hz)?",
+    rf"(?P<unit>{LABELED_UNIT_PATTERN})?",
     re.IGNORECASE,
 )
 
@@ -286,9 +293,10 @@ def _condition_facts(canonical: CanonicalProblem) -> list[ExtractedFact]:
         status = declared_status
         provenance = "explicit_text"
         confidence = 1.0
-        if symbol == "no_friction" and re.search(r"\bsmooth\b|매끈|매끄러운", matched_text, re.IGNORECASE):
-            status = "normalized"
-            provenance = "domain_rule"
+        if symbol == "no_friction" and re.search(r"\bsmooth\b|매끈|매끄러운|매끄런", matched_text, re.IGNORECASE):
+            # The wording is normalized, but the condition itself was still
+            # explicitly supplied by the user rather than assumed.
+            provenance = "normalized_explicit_term"
             confidence = 0.95
         identity = {
             "kind": "condition",
@@ -326,25 +334,13 @@ def _condition_facts(canonical: CanonicalProblem) -> list[ExtractedFact]:
     return facts
 
 
-def _normalize_labeled_value(label: str, value: float, unit: str | None) -> tuple[float, str | None]:
-    normalized_unit = (unit or "").replace(" ", "").replace("²", "^2").lower()
-    if normalized_unit in {"km/h", "km/h"}:
-        return value / 3.6, "m/s"
-    if normalized_unit in {"cm/s^2", "cm/s2"}:
-        return value / 100.0, "m/s^2"
-    if normalized_unit == "cm":
-        return value / 100.0, "m"
-    if normalized_unit in {"도", "°", "deg"}:
-        return value, "deg"
-    if normalized_unit in {"m/s2", "m/s^2"}:
-        return value, "m/s^2"
-    if normalized_unit in {"rad/s2", "rad/s^2"}:
-        return value, "rad/s^2"
-    if normalized_unit in {"kgm^2", "kg*m^2", "kg*m2"}:
-        return value, "kg*m^2"
-    if normalized_unit in {"n*m", "n*m"}:
-        return value, "N*m"
-    return value, unit.replace(" ", "") if unit else None
+def _normalize_labeled_value(
+    label: str,
+    value: float,
+    unit: str | None,
+) -> tuple[float, str | None]:
+    del label  # label is retained for the compatibility call signature.
+    return _normalize_unit_value(value, unit)
 
 
 def _semantic_equal(
@@ -376,26 +372,50 @@ def _refresh_fact_id(fact: ExtractedFact) -> None:
 
 
 def _apply_conflicts(
-    raw_text: str,
+    canonical: CanonicalProblem,
     facts: list[ExtractedFact],
 ) -> tuple[list[str], list[str]]:
+    raw_text = canonical.raw_text
     occurrences: dict[str, list[dict[str, Any]]] = {}
     for match in _LABEL_PATTERN.finditer(raw_text):
         label = match.group("label")
+        if label.lower() == "v0":
+            # Natural-language and symbolic initial-speed labels share one
+            # subject-aware scanner below.
+            continue
         value = float(match.group("value").replace(",", ""))
         raw_unit = match.group("unit") or None
         normalized_value, normalized_unit = _normalize_labeled_value(label, value, raw_unit)
         occurrences.setdefault(label, []).append(
             {
                 "value": value,
-                "unit": raw_unit.replace(" ", "") if raw_unit else None,
+                "unit": compact_unit(raw_unit) if raw_unit else None,
                 "normalized_value": normalized_value,
                 "normalized_unit": normalized_unit,
                 "source_text": match.group(0),
                 "source_span": [match.start(), match.end()],
                 "relation": "explicit_occurrence",
+                "subject": None,
             }
         )
+
+    initial_speed_items = []
+    for item in _initial_speed_occurrences(raw_text):
+        source = item["source"]
+        initial_speed_items.append(
+            {
+                "value": float(item["raw_value"]),
+                "unit": compact_unit(item["raw_unit"]),
+                "normalized_value": float(item["normalized_value"]),
+                "normalized_unit": item["normalized_unit"],
+                "source_text": str(source),
+                "source_span": [source.source_span[0], source.source_span[1]],
+                "relation": "explicit_occurrence",
+                "subject": item["subject"],
+            }
+        )
+    if initial_speed_items:
+        occurrences["v0"] = initial_speed_items
 
     unresolved: list[str] = []
     resolved: list[str] = []
@@ -404,6 +424,18 @@ def _apply_conflicts(
         fact = by_key.get(label)
         if fact is None or fact.value is None:
             continue
+
+        if label == "v0":
+            subject_evidence = fact.extraction_evidence.get("subject_evidence", {})
+            resolved_entity = subject_evidence.get("resolved_entity")
+            if resolved_entity:
+                scoped = [
+                    item
+                    for item in items
+                    if item.get("subject") in {None, resolved_entity}
+                ]
+                if scoped:
+                    items = scoped
 
         semantic_values: list[tuple[float, str | None]] = []
         for item in items:
@@ -662,7 +694,7 @@ def build_canonical_v2(
 
     facts = [_quantity_fact(canonical, key, quantity) for key, quantity in canonical.knowns.items()]
     facts.extend(_condition_facts(canonical))
-    conflicts, resolved_conflicts = _apply_conflicts(canonical.raw_text, facts)
+    conflicts, resolved_conflicts = _apply_conflicts(canonical, facts)
     assumptions = _assumption_records(canonical, facts)
     parse_candidates = _parse_candidates(canonical, facts, conflicts)
     warnings = [

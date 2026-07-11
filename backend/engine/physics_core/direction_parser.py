@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 DIRECTION_PATTERNS = {
-    "same": ["같은 방향", "이동 방향으로", "힘 방향으로", "힘의 방향으로", "나란히", "along the motion", "in the direction of motion", "밀었다", "당겼다", "끌었다", "이동시켰다", "이동시킨"],
+    "same": ["같은 방향", "동일한 방향", "이동 방향으로", "힘 방향으로", "힘의 방향으로", "힘 방향을 따라", "힘의 방향을 따라", "나란히", "along the motion", "in the direction of motion", "밀었다", "당겼다", "끌었다", "이동시켰다", "이동시킨"],
     "opposite": ["반대 방향", "이동 방향 반대로", "거슬러", "마찰력", "저항력", "opposite"],
     "perpendicular": ["수직", "직각", "perpendicular", "normal to"],
 }

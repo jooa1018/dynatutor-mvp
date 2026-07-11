@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "phase": 44,
+  "title": "Korean dynamics NLP robustness baseline and release metrics",
+  "fixture": {
+    "path": "backend/tests/benchmarks/phase44_korean_nlp_curated.json",
+    "case_count": 320,
+    "category_counts": {
+      "paraphrase": 80,
+      "subject_context": 30,
+      "unit_symbol": 40,
+      "typo_colloquial": 20,
+      "irrelevant_background": 25,
+      "multi_object": 30,
+      "ambiguity": 30,
+      "missing_information": 25,
+      "contradiction": 20,
+      "unsupported": 20
+    },
+    "oracle_policy": "Independent wording, SI conversion, physical law, and intentional omission/conflict/scope review; expected values were not copied from engine output.",
+    "benchmark_reliability": {
+      "suite_kind": "curated_regression_suite",
+      "identical_sentence_count": 81,
+      "exact_unique_sentence_count": 239,
+      "numeric_only_duplicate_count": 60,
+      "unique_sentence_stimulus_count": 179,
+      "category_unique_sentence_counts": {
+        "paraphrase": {
+          "case_count": 80,
+          "exact_unique_count": 80,
+          "unique_stimulus_count": 80
+        },
+        "subject_context": {
+          "case_count": 30,
+          "exact_unique_count": 6,
+          "unique_stimulus_count": 6
+        },
+        "unit_symbol": {
+          "case_count": 40,
+          "exact_unique_count": 40,
+          "unique_stimulus_count": 39
+        },
+        "typo_colloquial": {
+          "case_count": 20,
+          "exact_unique_count": 10,
+          "unique_stimulus_count": 10
+        },
+        "irrelevant_background": {
+          "case_count": 25,
+          "exact_unique_count": 25,
+          "unique_stimulus_count": 25
+        },
+        "multi_object": {
+          "case_count": 30,
+          "exact_unique_count": 2,
+          "unique_stimulus_count": 2
+        },
+        "ambiguity": {
+          "case_count": 30,
+          "exact_unique_count": 22,
+          "unique_stimulus_count": 3
+        },
+        "missing_information": {
+          "case_count": 25,
+          "exact_unique_count": 17,
+          "unique_stimulus_count": 5
+        },
+        "contradiction": {
+          "case_count": 20,
+          "exact_unique_count": 20,
+          "unique_stimulus_count": 4
+        },
+        "unsupported": {
+          "case_count": 20,
+          "exact_unique_count": 17,
+          "unique_stimulus_count": 5
+        }
+      },
+      "parser_dictionary_surface_overlap_count": 8,
+      "parser_dictionary_surface_overlaps": [
+        "나중 속도",
+        "도르레",
+        "마찰 업는",
+        "매끄런",
+        "미터퍼세컨드제곱",
+        "최종 속도",
+        "최종 속력",
+        "쵸속도"
+      ],
+      "limitations": [
+        "The 320 cases are a curated regression suite.",
+        "They do not demonstrate generalization to the distribution of real student inputs.",
+        "A score of 1.0 applies only to the current fixed fixtures.",
+        "Benchmark independence is limited by repeated templates and parser-dictionary overlap.",
+        "An external held-out validation set is follow-up work."
+      ]
+    }
+  },
+  "execution_environment": {
+    "runner": "GitHub-hosted ubuntu-24.04",
+    "python": "CPython 3.13.14",
+    "llm_used": false,
+    "network_model_calls": 0,
+    "optional_external_physics_engines_used": [],
+    "dependency_note": "The repository lockfile was installed; the benchmark path is deterministic rules-based extraction/routing and does not require an LLM, PyChrono, or Rapier2D."
+  },
+  "baseline": {
+    "source_revision": "619c047e4080dd83580e94f86de185cb8a619691",
+    "workflow_run_id": 29096057873,
+    "measured_at_utc": "2026-07-10T13:27:18Z",
+    "duration_seconds": 4.497,
+    "metrics": {
+      "case_count": 320,
+      "status_accuracy": 0.809375,
+      "quantity_precision": 0.980826,
+      "quantity_recall": 0.915978,
+      "unit_normalization_accuracy": 0.933884,
+      "subject_binding_accuracy": 1,
+      "requested_output_accuracy": 0.634375,
+      "direction_accuracy": 0.941176,
+      "assumption_classification_accuracy": 0.835165,
+      "system_type_top1_accuracy": 0.8875,
+      "system_type_topk_recall": 0.890625,
+      "ambiguity_detection_recall": 0.666667,
+      "unsupported_precision": 0.521739,
+      "unsupported_recall": 0.6,
+      "false_solve_rate": 0.252632,
+      "unnecessary_clarification_rate": 0.12,
+      "missing_clarification_rate": 0.333333,
+      "silent_assumption_rate": null,
+      "contradictory_input_detection_rate": 0.75,
+      "canonical_consistency_accuracy": 0.692308,
+      "high_confidence_false_solves": 24,
+      "condition_classification_error_rate": 0.164835
+    },
+    "confidence_bins": {
+      "0.00-0.59": {
+        "count": 26,
+        "correct": 0,
+        "false_solves": 0,
+        "accuracy": 0
+      },
+      "0.60-0.79": {
+        "count": 89,
+        "correct": 54,
+        "false_solves": 0,
+        "accuracy": 0.606742
+      },
+      "0.80-1.00": {
+        "count": 205,
+        "correct": 193,
+        "false_solves": 24,
+        "accuracy": 0.941463
+      }
+    },
+    "known_failure_counts": {
+      "ambiguity": 10,
+      "assumption": 15,
+      "canonical_consistency": 12,
+      "contradiction": 5,
+      "direction": 1,
+      "false_solve": 24,
+      "missing_clarification": 25,
+      "quantity": 61,
+      "requested_outputs": 100,
+      "status": 61,
+      "system_type": 36,
+      "unit": 48
+    }
+  },
+  "final": {
+    "source_revision": "ca6c9a33c431e9204fa10eccc33d3c0f7abfea87",
+    "workflow_run_id": 29098760657,
+    "measured_at_utc": "2026-07-10T14:10:27.7214572Z",
+    "duration_seconds": 5.863,
+    "metrics": {
+      "case_count": 320,
+      "status_accuracy": 1,
+      "subtype_accuracy": 1,
+      "candidate_coverage_accuracy": 1,
+      "missing_info_accuracy": 1,
+      "conflict_symbol_accuracy": 1,
+      "quantity_precision": 1,
+      "quantity_recall": 1,
+      "unit_normalization_accuracy": 1,
+      "subject_binding_accuracy": 1,
+      "requested_output_accuracy": 1,
+      "direction_accuracy": 1,
+      "assumption_classification_accuracy": 1,
+      "system_type_top1_accuracy": 1,
+      "system_type_topk_recall": 1,
+      "ambiguity_detection_recall": 1,
+      "unsupported_precision": 1,
+      "unsupported_recall": 1,
+      "false_solve_rate": 0,
+      "unnecessary_clarification_rate": 0,
+      "missing_clarification_rate": 0,
+      "silent_assumption_rate": null,
+      "contradictory_input_detection_rate": 1,
+      "canonical_consistency_accuracy": 1,
+      "high_confidence_false_solves": 0,
+      "condition_classification_error_rate": 0
+    },
+    "confidence_bins": {
+      "0.00-0.59": {
+        "count": 0,
+        "correct": 0,
+        "false_solves": 0,
+        "accuracy": null
+      },
+      "0.60-0.79": {
+        "count": 55,
+        "correct": 55,
+        "false_solves": 0,
+        "accuracy": 1
+      },
+      "0.80-1.00": {
+        "count": 265,
+        "correct": 265,
+        "false_solves": 0,
+        "accuracy": 1
+      }
+    },
+    "gates": {
+      "thresholds": {
+        "case_count": 300,
+        "status_accuracy": 0.95,
+        "subtype_accuracy": 0.95,
+        "candidate_coverage_accuracy": 0.95,
+        "missing_info_accuracy": 1,
+        "conflict_symbol_accuracy": 1,
+        "quantity_precision": 0.98,
+        "quantity_recall": 0.98,
+        "unit_normalization_accuracy": 0.99,
+        "subject_binding_accuracy": 0.95,
+        "requested_output_accuracy": 0.97,
+        "direction_accuracy": 0.95,
+        "assumption_classification_accuracy": 0.95,
+        "system_type_top1_accuracy": 0.95,
+        "system_type_topk_recall": 0.98,
+        "ambiguity_detection_recall": 0.95,
+        "unsupported_precision": 1,
+        "unsupported_recall": 1,
+        "false_solve_rate": 0,
+        "unnecessary_clarification_rate": 0.02,
+        "missing_clarification_rate": 0.02,
+        "silent_assumption_rate": 0.05,
+        "contradictory_input_detection_rate": 1,
+        "canonical_consistency_accuracy": 0.98,
+        "high_confidence_false_solves": 0
+      },
+      "results": {
+        "case_count": true,
+        "status_accuracy": true,
+        "subtype_accuracy": true,
+        "candidate_coverage_accuracy": true,
+        "missing_info_accuracy": true,
+        "conflict_symbol_accuracy": true,
+        "quantity_precision": true,
+        "quantity_recall": true,
+        "unit_normalization_accuracy": true,
+        "subject_binding_accuracy": true,
+        "requested_output_accuracy": true,
+        "direction_accuracy": true,
+        "assumption_classification_accuracy": true,
+        "system_type_top1_accuracy": true,
+        "system_type_topk_recall": true,
+        "ambiguity_detection_recall": true,
+        "unsupported_precision": true,
+        "unsupported_recall": true,
+        "false_solve_rate": true,
+        "unnecessary_clarification_rate": true,
+        "missing_clarification_rate": true,
+        "silent_assumption_rate": true,
+        "contradictory_input_detection_rate": true,
+        "canonical_consistency_accuracy": true,
+        "high_confidence_false_solves": true
+      },
+      "passed": true
+    },
+    "known_failure_counts": {}
+  },
+  "comparison": {
+    "false_solve_rate_reduction": 0.252632,
+    "high_confidence_false_solves_reduction": 24,
+    "status_accuracy_gain": 0.190625,
+    "requested_output_accuracy_gain": 0.365625,
+    "system_type_top1_accuracy_gain": 0.1125,
+    "canonical_consistency_accuracy_gain": 0.307692,
+    "duration_seconds_change": 1.366,
+    "final_average_milliseconds_per_case": 18.322
+  },
+  "interpretation": {
+    "release_gate_result": "pass",
+    "known_new_failures": [],
+    "limitations": [
+      "The curated benchmark is deterministic and broad but is not a statistical sample of all Korean student language.",
+      "Confidence bins report empirical correctness on this fixture; Phase 46 owns margin and routing-policy changes.",
+      "Hosted-runner duration includes Python process and report generation overhead and should be treated as a reproducible baseline, not a hard latency SLO."
+    ],
+    "metric_semantics": {
+      "condition_classification_error_rate": "Errors against explicit condition-status oracles; this is the metric previously mislabeled silent_assumption_rate.",
+      "silent_assumption_rate": "N/A for the 320-case historical report because the fixed fixture lacks per-case allowed-assumption oracles. The updated evaluator only measures annotated solved cases and never treats denominator zero as success."
+    },
+    "benchmark_independence": "Curated regression results do not establish held-out generalization."
+  },
+  "validation": {
+    "environment": "GitHub-hosted ubuntu-24.04, CPython 3.13.14",
+    "suites": {
+      "phase44_contract": {
+        "command": "python -m pytest backend/tests/test_phase44_korean_nlp_robustness.py -q",
+        "status": "passed",
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 0,
+        "duration_seconds": 5.81
+      },
+      "phase44_benchmark": {
+        "command": "python backend/tools/run_phase44_nlp_benchmark.py",
+        "status": "passed",
+        "passed_cases": 320,
+        "failed_cases": 0,
+        "duration_seconds": 5.863
+      },
+      "backend_fast": {
+        "command": "bash scripts/check_backend_fast.sh",
+        "status": "passed",
+        "passed": 436,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 39,
+        "duration_seconds": 28.41
+      },
+      "backend_full_requested": {
+        "command": "python -m pytest backend/tests -q",
+        "status": "passed",
+        "passed": 436,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 39,
+        "duration_seconds": 27.32
+      },
+      "backend_unfiltered": {
+        "command": "python -m pytest backend/tests -q -o addopts=",
+        "status": "passed",
+        "passed": 475,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 0,
+        "duration_seconds": 46.22
+      },
+      "frontend_metadata": {
+        "command": "bash scripts/check_frontend_metadata.sh",
+        "status": "passed",
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "deselected": 0,
+        "duration_seconds": 0.036
+      },
+      "frontend_build": {
+        "status": "not_run",
+        "reason": "No frontend files or frontend configuration changed in Phase 44."
+      }
+    },
+    "final_repository_state": "clean working tree in validation checkout"
+  }
+}

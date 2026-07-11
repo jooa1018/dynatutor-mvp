@@ -1,7 +1,12 @@
 import math
 import re
 from engine.models import CanonicalProblem, Quantity
-from engine.extraction.normalizer import lower_for_match, normalize
+from engine.extraction.normalizer import (
+    is_irrelevant_background_sentence,
+    iter_sentence_spans,
+    normalize,
+    strip_irrelevant_background,
+)
 from engine.extraction.quantity import extract_quantities
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement, infer_direction_label
 from engine.physics_core.inertia import infer_body_shape
@@ -15,6 +20,8 @@ def _has_any(t: str, words: list[str]) -> bool:
 WORK_PATTERNS = [
     r"한\s*일",
     r"일을\s*구",
+    r"일(?:을|를)\s*계산",
+    r"일(?:은|는)?\s*얼마",
     r"일은\s*\?",
     r"일의\s*(크기|양)",
     r"(마찰력|중력|알짜힘|힘)이\s*한\s*일",
@@ -85,7 +92,7 @@ def _has_string_connection_phrase(t: str) -> bool:
     return (
         _has_any(t, [
             "도르래", "pulley", "장력", "tension",
-            "끈", "string", "rope",
+            "끈으로 연결", "끈이 연결", "끈과 연결", "끈에 연결", "string", "rope",
             "실로 연결", "실이 연결", "실과 연결", "실에 연결",
             "줄로 연결", "줄이 연결", "줄과 연결", "줄에 연결",
             "끈으로 연결", "끈이 연결", "끈과 연결", "끈에 연결",
@@ -100,6 +107,42 @@ def _has_hanging_mass_phrase(t: str) -> bool:
         "매달", "매달려", "매달린", "아래로 매달", "수직으로 매달",
         "hanging", "hangs", "suspended",
     ])
+
+
+def _has_charge_noun_context(t: str) -> bool:
+    charge_noun = re.search(
+        r"(?<![가-힣A-Za-z])(?:점|시험|양|음)?전하"
+        r"(?:량|가|는|를|의|에|로|와|과|은|이|\s|$)",
+        t,
+        re.IGNORECASE,
+    )
+    electric_context = re.search(
+        r"전자기|전기장|자기장|전기력|쿨롱|coulomb|electric\s+field|magnetic\s+field",
+        t,
+        re.IGNORECASE,
+    )
+    charge_unit = re.search(
+        r"(?:\d+(?:\.\d+)?\s*(?:C|쿨롱))(?![A-Za-z])",
+        t,
+    )
+    return bool(electric_context or charge_noun or (charge_unit and "전기" in t))
+
+
+def _unsupported_scope(t: str) -> str | None:
+    """Classify only explicit domains outside the declared 2-D rigid-body scope."""
+    patterns = [
+        ("three_dimensional", [r"3차원", r"\b3d\b", r"방위각", r"공간\s*운동"]),
+        ("deformable_body", [r"탄성\s*보", r"보의\s*변형", r"재료\s*변형", r"응력", r"변형률", r"유한요소", r"deformable", r"finite element"]),
+        ("fluid_dynamics", [r"유체역학", r"관\s*속\s*유체", r"점성", r"fluid dynamics", r"viscosity"]),
+        ("thermodynamics", [r"열역학", r"엔트로피", r"이상기체", r"thermodynamics", r"entropy"]),
+        ("electromagnetism", [r"회로의?\s*전압", r"electromagnet"]),
+    ]
+    for subtype, subtype_patterns in patterns:
+        if any(re.search(pattern, t, re.IGNORECASE) for pattern in subtype_patterns):
+            return subtype
+    if _has_charge_noun_context(t):
+        return "electromagnetism"
+    return None
 
 
 def _infer_requested_outputs(t: str) -> list[str]:
@@ -129,7 +172,7 @@ def _infer_requested_outputs(t: str) -> list[str]:
     ) or "걸리는시간" in compact:
         add("time")
 
-    if has_query(r"수평\s*거리", r"사거리", r"range\s*\?", r"find\s+range"):
+    if has_query(r"수평\s*거리", r"사거리", r"range\s*(?:는|은)?\s*\?", r"find\s+range"):
         add("range")
     elif has_query(
         r"(?:이동\s*거리|이동거리|변위|거리)\s*(?:을|를)\s*(?:구|계산|찾)",
@@ -144,22 +187,35 @@ def _infer_requested_outputs(t: str) -> list[str]:
 
     if has_query(r"최대\s*높이", r"최고점\s*높이", r"max\s+height", r"maximum\s+height"):
         add("max_height")
+    if has_query(r"최소\s*속도", r"minimum\s+speed"):
+        add("minimum_speed")
     if has_query(
-        r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)\s*(?:을|를)?\s*(?:구|계산|찾)",
-        r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)\s*(?:은|는)\s*\?",
+        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|마지막\s*속도|마지막\s*속력)\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|마지막\s*속도|마지막\s*속력)\s*(?:은|는)\s*\?",
         r"(?<![가각])속도\s*(?:은|는)\s*\?",
         r"final\s+(velocity|speed)",
+        r"(?:최종\s*속도|최종\s*속력|나중\s*속도|(?<!가)(?<!각)속도)\s*(?:가|는|은)?\s*얼마",
         r"(?:최종\s*속도|나중\s*속도|마지막\s*속도)[^\.\n?]{0,35}(?:와|과|및|그리고)[^\.\n?]{0,35}(?:이동\s*거리|이동거리|변위|거리)[^\.\n?]{0,30}(?:구|계산|\?)",
         r"(?:이동\s*거리|이동거리|변위|거리)[^\.\n?]{0,35}(?:와|과|및|그리고)[^\.\n?]{0,35}(?:최종\s*속도|나중\s*속도|마지막\s*속도)[^\.\n?]{0,30}(?:구|계산|\?)",
     ):
         add("final_velocity")
     if has_query(r"(?:초기\s*속도|처음\s*속도)\s*(?:을|를)?\s*(?:구|계산|찾)", r"(?:초기\s*속도|처음\s*속도)\s*(?:은|는)\s*\?", r"initial\s+(velocity|speed)"):
         add("initial_velocity")
-    if any(w in compact for w in ["가속도는", "가속도와", "가속도를구", "가속도구", "가속도?"]) and not any(w in compact for w in ["각가속도는", "각가속도와", "각가속도를구", "각가속도?", "각가속도구"]):
+    if has_query(
+        r"(?<!각)가속도\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"(?<!각)가속도\s*(?:은|는|가)?\s*(?:얼마|\?)",
+        r"(?<!각)가속도\s*(?:와|과|및)[^.\n?]{0,40}(?:구|계산|찾|\?)",
+        r"(?:find|calculate)\s+acceleration",
+        r"acceleration\s*(?:과|와|and)?[^.\n?]{0,30}(?:구|계산|찾|\?)",
+    ):
         add("acceleration")
-    elif "acceleration?" in t or "find acceleration" in t:
-        add("acceleration")
-    if any(w in compact for w in ["장력은", "장력을", "장력?", "장력구"]) or "tension?" in t or "find tension" in t:
+    if has_query(
+        r"장력\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"장력\s*(?:은|는|이)?\s*(?:얼마|\?)",
+        r"장력\s*(?:와|과|및)[^.\n?]{0,40}\?",
+        r"(?:find|calculate)\s+tension",
+        r"tension\s*(?:과|와|and)?[^.\n?]{0,30}(?:구|계산|찾|\?)",
+    ):
         add("tension")
     if any(w in t for w in ["필요한 힘", "필요한 알짜힘", "힘을 구", "force?"]) or any(w in compact for w in ["힘은?", "힘을구", "알짜힘은?", "합력은?"]):
         add("force")
@@ -173,12 +229,18 @@ def _infer_requested_outputs(t: str) -> list[str]:
         add("elastic_energy")
     if has_query(r"위치에너지", r"potential\s+energy"):
         add("potential_energy")
-    if has_query(r"한\s*일\s*(?:은|는|을|를)?\s*\?", r"한\s*일\s*(?:을|를)?\s*(?:구|계산|찾)", r"일을\s*(?:구|계산|찾)", r"일은\s*\?", r"일의\s*(크기|양)", r"work\s*\?", r"find\s+work", r"calculate\s+work"):
+    if has_query(r"한\s*일\s*(?:은|는|을|를)?\s*\?", r"한\s*일\s*(?:은|는)?\s*얼마", r"일\s*(?:은|는)\s*얼마", r"work\s*(?:을|를)?\s*(?:구|계산)", r"한\s*일\s*(?:을|를)?\s*(?:구|계산|찾)", r"일을\s*(?:구|계산|찾)", r"일은\s*\?", r"일의\s*(크기|양)", r"work\s*\?", r"find\s+work", r"calculate\s+work"):
         add("work")
-    if "충돌 후" in t and "속도" in t:
+    if re.search(r"(?:충돌\s*후|충돌한\s*뒤|충돌\s*뒤|부딪힌\s*뒤|붙어서\s*충돌한\s*뒤)", t) and "속도" in t:
         add("post_collision_velocity")
         add("v1_after")
         add("v2_after")
+    if has_query(r"고유진동수", r"각진동수", r"natural\s+(?:angular\s+)?frequency", r"angular\s+frequency"):
+        add("angular_frequency")
+    elif has_query(r"진동수", r"주파수", r"(?<![A-Za-z])f\s*(?:을|를)?\s*(?:구|계산|\?)", r"frequency"):
+        add("frequency")
+    if has_query(r"주기", r"period"):
+        add("period")
     if has_query(r"각속도\s*(?:을|를)?\s*(?:구|계산|찾)", r"각속도\s*(?:은|는)\s*\?", r"angular\s+velocity\s*\?"):
         add("angular_velocity")
     if has_query(r"각가속도\s*(?:을|를)?\s*(?:구|계산|찾)", r"각가속도\s*(?:은|는)\s*\?", r"angular\s+acceleration\s*\?"):
@@ -204,37 +266,81 @@ def _attach_raw_extraction_evidence(
     knowns: dict[str, Quantity],
     *,
     raw_text: str,
-    normalized_text: str,
+    analysis_text: str,
 ) -> None:
-    """Transfer evidence captured while matching raw text onto normalized values."""
+    """Re-anchor analysis quantities to retained raw sentences.
 
-    if normalized_text == raw_text:
-        return
-    raw_knowns = extract_quantities(raw_text)
-    for quantity in knowns.values():
-        # A span in normalized text is not a raw-text span.
+    Extraction runs on normalized/background-filtered text, so its offsets are
+    never assumed to be raw offsets. Re-extracting each retained raw sentence
+    preserves exact positions and avoids anchoring a repeated value to a removed
+    background sentence.
+    """
+
+    candidates: dict[str, list[Quantity]] = {}
+    for sentence_start, _, sentence in iter_sentence_spans(raw_text):
+        if is_irrelevant_background_sentence(sentence):
+            continue
+        sentence_knowns = extract_quantities(sentence)
+        for key, raw_quantity in sentence_knowns.items():
+            if raw_quantity.source_span is None or raw_quantity.value is None:
+                continue
+            local_start, local_end = raw_quantity.source_span
+            anchored = Quantity(
+                symbol=raw_quantity.symbol,
+                value=raw_quantity.value,
+                unit=raw_quantity.unit,
+                source_text=raw_quantity.source_text,
+                source_span=(sentence_start + local_start, sentence_start + local_end),
+                matched_text=raw_text[
+                    sentence_start + local_start:sentence_start + local_end
+                ],
+                provenance_hint=raw_quantity.provenance_hint,
+                subject_evidence=dict(raw_quantity.subject_evidence),
+                normalization_evidence=(
+                    dict(raw_quantity.normalization_evidence)
+                    if raw_quantity.normalization_evidence is not None
+                    else None
+                ),
+            )
+            candidates.setdefault(key, []).append(anchored)
+
+    for key, quantity in knowns.items():
+        # Any span produced from analysis_text is provisional until matched
+        # against the exact raw slice.
         quantity.source_span = None
         quantity.matched_text = None
-    for key, quantity in knowns.items():
-        raw_quantity = raw_knowns.get(key)
-        if (
-            raw_quantity is None
-            or raw_quantity.source_span is None
-            or raw_quantity.value is None
-            or quantity.value is None
-            or not math.isclose(
-                float(raw_quantity.value),
+        if quantity.value is None:
+            continue
+        matching = [
+            candidate
+            for candidate in candidates.get(key, [])
+            if candidate.value is not None
+            and math.isclose(
+                float(candidate.value),
                 float(quantity.value),
                 rel_tol=1e-12,
                 abs_tol=1e-12,
             )
-        ):
+        ]
+        resolved_entity = quantity.subject_evidence.get("resolved_entity")
+        if resolved_entity:
+            entity_matches = [
+                candidate
+                for candidate in matching
+                if candidate.subject_evidence.get("resolved_entity") == resolved_entity
+            ]
+            if entity_matches:
+                matching = entity_matches
+        if not matching:
             continue
+        raw_quantity = matching[0]
         quantity.source_text = raw_quantity.source_text
         quantity.source_span = raw_quantity.source_span
         quantity.matched_text = raw_quantity.matched_text
         quantity.provenance_hint = raw_quantity.provenance_hint
-        quantity.subject_evidence = dict(raw_quantity.subject_evidence)
+        merged_subject_evidence = dict(raw_quantity.subject_evidence)
+        merged_subject_evidence.update(quantity.subject_evidence)
+        quantity.subject_evidence = merged_subject_evidence
         quantity.normalization_evidence = (
             dict(raw_quantity.normalization_evidence)
             if raw_quantity.normalization_evidence is not None
@@ -244,13 +350,15 @@ def _attach_raw_extraction_evidence(
 
 def extract_problem(problem_text: str) -> CanonicalProblem:
     normalized = normalize(problem_text)
-    t = lower_for_match(problem_text)
-    knowns = extract_quantities(normalized)
+    analysis_text = strip_irrelevant_background(normalized)
+    t = analysis_text.lower()
+    knowns = extract_quantities(analysis_text)
     _attach_raw_extraction_evidence(
         knowns,
         raw_text=problem_text,
-        normalized_text=normalized,
+        analysis_text=analysis_text,
     )
+    unsupported_subtype = _unsupported_scope(t)
 
     flags = {
         "incline": _has_any(t, ["경사", "incline", "slope", "비탈", "빗면", "사면"]),
@@ -263,8 +371,8 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "vertical_circle": _has_any(t, ["수직 원운동", "vertical circle", "loop", "최고점", "최저점"]),
         "top": _has_any(t, ["최고점", "top"]),
         "bottom": _has_any(t, ["최저점", "bottom"]),
-        "collision": _has_any(t, ["충돌", "collision", "impact"]),
-        "perfectly_inelastic": _has_any(t, ["완전비탄성", "붙어서", "함께 움직", "한 덩어리", "stick together", "perfectly inelastic"]),
+        "collision": _has_any(t, ["충돌", "collision", "impact", "서로 붙", "붙은 뒤", "붙어서 움직"]),
+        "perfectly_inelastic": _has_any(t, ["완전비탄성", "완전 비탄성", "붙어서", "붙는 충돌", "서로 붙", "붙은 뒤", "함께 움직", "한 덩어리", "stick together", "perfectly inelastic"]),
         "elastic": _has_any(t, ["완전탄성", "elastic collision", "탄성충돌"]),
         "energy": _has_any(t, ["에너지", "energy", "높이", "height"]),
         "table": _has_table_surface_phrase(t),
@@ -276,7 +384,7 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "impulse": _has_any(t, ["충격량", "impulse"]),
         "rotation_fixed_axis": _has_any(t, ["고정축", "각가속도", "각속도", "토크", "관성모멘트", "fixed axis", "angular acceleration", "rad/s"]),
         "spring": _has_spring_phrase(t),
-        "vibration": _has_any(t, ["진동", "고유진동수", "주기", "frequency", "period", "vibration", "oscillation"]),
+        "vibration": _has_any(t, ["진동", "고유진동수", "진동수", "주파수", "주기", "frequency", "period", "vibration", "oscillation"]),
         "curve": _has_any(t, ["커브", "곡선", "원형 도로", "curve", "turn"]),
         "banked": _has_any(t, ["경사진 커브", "뱅크", "banked"]),
         "flat_curve": _has_any(t, ["평평한 커브", "flat curve", "수평 커브"]),
@@ -290,6 +398,7 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "relative_acceleration": _has_any(t, ["상대가속도", "상대 가속도", "relative acceleration", "a_rel", "arel"]),
         "massive_pulley": _has_any(t, ["질량 있는 도르래", "질량있는 도르래", "도르래 관성", "도르래의 관성", "pulley inertia", "massive pulley", "도르래 질량"]),
         "general_inertia": _has_any(t, ["관성모멘트", "moment of inertia", "I=", "I ="]),
+        "unsupported_scope": unsupported_subtype is not None,
     }
     # "완전탄성/완전비탄성"만 있어도 충돌 문제로 봅니다.
     if flags.get("perfectly_inelastic") or flags.get("elastic"):
@@ -298,6 +407,8 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     # 마찰 없음은 마찰 flag를 덮어쓴다.
     if flags["no_friction"]:
         flags["friction"] = False
+    elif any(key in knowns for key in ("mu", "mu_k", "mu_s")):
+        flags["friction"] = True
 
     # Multi-object collision symbols are authoritative. A generic initial-speed
     # match over the same sentence must not create a phantom body-level v0.
@@ -355,13 +466,20 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
 
     pulley_topology = _infer_pulley_topology(t, knowns, flags)
     friction_type = _infer_friction_type(t, flags)
-    body_shape = infer_body_shape(problem_text)
-    force_dir = infer_direction_label(problem_text)
+    body_shape = infer_body_shape(analysis_text)
+    force_dir = infer_direction_label(analysis_text)
+    force_angle = infer_angle_between_force_and_displacement(analysis_text)
+    if flags["work"] and force_angle is not None and "theta" not in knowns:
+        knowns["theta"] = Quantity("theta", force_angle, "deg", "명시적 힘-변위 방향 관계")
     surface_type = "incline" if flags["incline"] else "table" if flags["table"] else None
     launch_height = _infer_launch_height(knowns, t)
     landing_height = _infer_landing_height(knowns, t)
     coordinate_data = _infer_coordinate_data(knowns, t)
     requested_outputs = _infer_requested_outputs(t)
+    if flags["collision"] and "velocity" in unknowns:
+        for item in ("post_collision_velocity", "v1_after", "v2_after"):
+            if item not in requested_outputs:
+                requested_outputs.append(item)
     launch_angle_deg, launch_angle_source = _infer_launch_angle(knowns, t)
     if launch_angle_deg is not None and "theta" not in knowns:
         knowns["theta"] = Quantity(
@@ -413,7 +531,10 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
             ),
         )
 
-    if pulley_topology == "incline_hanging_candidate":
+    if unsupported_subtype is not None:
+        c.system_type = "unsupported"
+        c.subtype = unsupported_subtype
+    elif pulley_topology == "incline_hanging_candidate":
         c.system_type = "incline_hanging_candidate"
     elif pulley_topology == "ambiguous_pulley":
         c.system_type = "ambiguous_pulley"
@@ -467,7 +588,10 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         c.subtype = "top" if flags["top"] else "bottom" if flags["bottom"] else None
     elif flags["projectile"]:
         c.system_type = "projectile_motion"
-        c.subtype = "same_level" if _has_any(t, ["같은 높이", "same level"]) else "general"
+        c.subtype = "same_level" if _has_any(
+            t,
+            ["같은 높이", "동일한 높이", "출발 높이로 돌아", "처음 높이로 돌아", "지면에 돌아", "same level", "same height"],
+        ) else "general"
     elif (flags["work"] or ("F" in knowns and "s" in knowns)) and _has_any(t, ["속도", "speed", "velocity"]) and "m" in knowns and ("W" in knowns or ("F" in knowns and "s" in knowns)):
         c.system_type = "work_energy_speed"
     elif flags["collision"]:
@@ -521,7 +645,7 @@ def _infer_pulley_topology(t: str, knowns: dict, flags: dict) -> str | None:
         return None
     if flags.get("massive_pulley") or ("I" in knowns and ("R" in knowns or "Rp" in knowns) and ("m1" in knowns and "m2" in knowns)):
         return "massive_pulley_atwood"
-    if _has_any(t, ["양쪽", "두 물체가 양쪽에 매달", "m1과m2가양쪽", "m1과 m2가 양쪽", "양쪽에 매달려", "both hanging", "atwood"]):
+    if _has_any(t, ["양쪽", "양편", "두 매달린 물체", "두 물체가 양쪽에 매달", "m1과m2가양쪽", "m1과 m2가 양쪽", "양쪽에 매달려", "both hanging", "atwood"]):
         return "atwood"
     if flags.get("incline") and flags.get("hanging"):
         return "incline_hanging"

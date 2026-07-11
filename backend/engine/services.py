@@ -13,6 +13,7 @@ from app.schemas.solution import (
     VerificationReport as VerificationReportSchema,
 )
 from engine.extraction.extractor import extract_problem
+from engine.models import SolverResult, VerificationReport
 from engine.legacy_hints.rules import make_legacy_hints
 from engine.model_builder import build_physical_model, physical_model_step_cards
 from engine.solvers.registry import SolverRegistry
@@ -206,11 +207,22 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         response.equation_sheet = build_equation_sheet(response)
         return response
 
-    result = solver.solve(canonical)
-    # Phase 30: 물리 검증 스위트 (차원 · 타당성 · 역대입 잔차).
-    # 검증 error는 '조용한 오답'이므로 ok=False로 강등한다.
-    suite_report = verify_result(canonical, result)
-    result.verification = merge_reports(result.verification, suite_report)
+    conflicts = list(canonical.canonical_v2.conflicts) if canonical.canonical_v2 is not None else []
+    if conflicts:
+        result = SolverResult(
+            ok=False,
+            verification=VerificationReport(
+                passed=False,
+                errors=["contradictory explicit inputs: " + "; ".join(conflicts)],
+            ),
+            unsupported_reason="서로 다른 값으로 적힌 조건을 먼저 확인해 주세요.",
+        )
+    else:
+        result = solver.solve(canonical)
+        # Phase 30: 물리 검증 스위트 (차원 · 타당성 · 역대입 잔차).
+        # 검증 error는 '조용한 오답'이므로 ok=False로 강등한다.
+        suite_report = verify_result(canonical, result)
+        result.verification = merge_reports(result.verification, suite_report)
     # 강등은 아래 apply_result_gate 한 곳에서만 수행한다 (Phase 33 통합).
     physical_model = build_physical_model(canonical)
     model_cards = physical_model_step_cards(physical_model)
