@@ -826,10 +826,13 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
         if "I" not in c.knowns and not c.body_shape:
             missing.append("물체 종류 또는 관성모멘트 I")
     elif c.system_type == "vertical_circle":
+        requested = set(c.requested_outputs or c.unknowns or [])
         if "R" not in c.knowns:
             missing.append("반지름 R")
-        if "v" not in c.knowns and "minimum_speed" not in c.unknowns:
+        if "v" not in c.knowns and "minimum_speed" not in requested:
             missing.append("해당 지점의 속도 v 또는 최소속도 조건")
+        if "minimum_speed" not in requested and "m" not in c.knowns:
+            missing.append("장력/수직항력 계산에 필요한 질량 m")
         if c.subtype is None:
             missing.append("최고점/최저점 위치")
     elif c.system_type == "collision_1d":
@@ -898,6 +901,29 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("질량 m")
         if "W" not in c.knowns and not ("F" in c.knowns and "s" in c.knowns):
             missing.append("일 W 또는 힘 F와 거리 s")
+        if (
+            "W" not in c.knowns
+            and "F" in c.knowns
+            and "s" in c.knowns
+            and "theta" not in c.knowns
+            and c.force_direction is None
+        ):
+            missing.append("힘과 변위 사이 방향 또는 각도 θ")
+        starts_from_rest = any(
+            phrase in (c.raw_text or "").lower()
+            for phrase in (
+                "정지 상태에서",
+                "정지 상태로부터",
+                "정지에서",
+                "처음에는 정지",
+                "초기에는 정지",
+                "가만히 있다가",
+                "starts from rest",
+                "initially at rest",
+            )
+        )
+        if "v0" not in c.knowns and "v" not in c.knowns and not starts_from_rest:
+            missing.append("초기속도 v_i 또는 정지 출발 조건")
     elif c.system_type == "relative_acceleration_translation":
         if "aA" not in c.knowns:
             missing.append("기준점 A의 가속도 aA")
