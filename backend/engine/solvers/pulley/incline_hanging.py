@@ -53,11 +53,46 @@ class InclineHangingPulleySolver(BaseSolver):
         if not pre.passed:
             return SolverResult(ok=False, verification=pre, unsupported_reason="경사면-매달림 도르래에는 m1, m2, 경사각 θ가 필요합니다.")
 
-        if c.friction_type == "static":
-            m1 = magnitude_si(c.knowns["m1"], "kg")
-            m2 = magnitude_si(c.knowns["m2"], "kg")
-            g = magnitude_si(c.knowns["g"], "m/s^2")
-            theta = math.radians(magnitude_si(c.knowns["theta"], "deg"))
+        friction_type = c.friction_type
+        if friction_type is None:
+            if "mu_s" in c.knowns:
+                friction_type = "static"
+            elif "mu_k" in c.knowns or "mu" in c.knowns:
+                friction_type = "kinetic"
+            elif (c.flags or {}).get("no_friction"):
+                friction_type = "none"
+            else:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["경사면의 마찰 유무 또는 마찰계수가 필요합니다."],
+                    ),
+                    unsupported_reason="경사면이 무마찰인지, 정지/운동마찰이 있는지 알려 주세요.",
+                )
+        requested = set(c.requested_outputs or c.unknowns or [])
+        m1 = magnitude_si(c.knowns["m1"], "kg")
+        m2 = magnitude_si(c.knowns["m2"], "kg")
+        g = magnitude_si(c.knowns["g"], "m/s^2") if "g" in c.knowns else 9.81
+        theta = math.radians(magnitude_si(c.knowns["theta"], "deg"))
+        if m1 <= 0 or m2 <= 0 or g <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["m1, m2, g는 모두 0보다 커야 합니다."],
+                ),
+            )
+        if not 0 <= theta < math.pi / 2:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["기본 경사면 각도 θ는 0도 이상 90도 미만이어야 합니다."],
+                ),
+            )
+
+        if friction_type == "static":
             mu_s_q = c.knowns.get("mu_s") or c.knowns.get("mu")
             if mu_s_q is None or mu_s_q.value is None:
                 return SolverResult(
@@ -106,16 +141,12 @@ class InclineHangingPulleySolver(BaseSolver):
                     coordinate_guide=["정지 상태에서는 운동 방향을 가정하지 않고 힘 평형을 봅니다."],
                 )
 
-        m1 = magnitude_si(c.knowns["m1"], "kg")
-        m2 = magnitude_si(c.knowns["m2"], "kg")
-        g = magnitude_si(c.knowns["g"], "m/s^2")
-        theta = math.radians(magnitude_si(c.knowns["theta"], "deg"))
         mu_q = (
             c.knowns.get("mu_k")
-            if c.friction_type == "static"
+            if friction_type == "static"
             else c.knowns.get("mu_k") or c.knowns.get("mu")
         )
-        if c.friction_type in {"static", "kinetic", "unspecified"} and (
+        if friction_type in {"static", "kinetic", "unspecified"} and (
             mu_q is None or mu_q.value is None
         ):
             return SolverResult(
@@ -137,7 +168,7 @@ class InclineHangingPulleySolver(BaseSolver):
             )
         direction_hint = _motion_direction(c)
 
-        if c.friction_type in {"kinetic", "unspecified"} and mu > 0 and direction_hint is None:
+        if friction_type in {"kinetic", "unspecified"} and mu > 0 and direction_hint is None:
             cand_down = _solve_candidate(m1, m2, theta, mu, g, "m2_down")
             cand_up = _solve_candidate(m1, m2, theta, mu, g, "m1_down")
             verification = VerificationReport(
@@ -161,7 +192,7 @@ class InclineHangingPulleySolver(BaseSolver):
                 coordinate_guide=["m2 하강 또는 m1 경사면 하강 중 실제 운동 방향을 문제에 추가하세요."],
             )
 
-        if c.friction_type == "static":
+        if friction_type == "static":
             # If static friction cannot hold, do not silently switch to a kinetic
             # answer unless the problem also gives motion direction and kinetic μ.
             if direction_hint is None:
@@ -215,7 +246,11 @@ class InclineHangingPulleySolver(BaseSolver):
                             "component",
                         )
                     ]
-                    if c.friction_type in {"static", "kinetic", "unspecified"}
+                    if friction_type in {"static", "kinetic", "unspecified"}
+                    else [
+                        AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component")
+                    ]
+                    if "friction_force" in requested
                     else []
                 ),
                 steps=steps,
@@ -225,7 +260,7 @@ class InclineHangingPulleySolver(BaseSolver):
                 coordinate_guide=[f"+ 방향: {direction_label}"],
             )
 
-        if (c.friction_type in {None, "none"} or mu == 0) and direction_hint is None:
+        if (friction_type in {None, "none"} or mu == 0) and direction_hint is None:
             # Frictionless case: the sign of a itself determines the actual direction,
             # so no external motion-direction statement is required.
             a_signed = (m2 * g - m1 * g * math.sin(theta)) / (m1 + m2)
@@ -251,7 +286,11 @@ class InclineHangingPulleySolver(BaseSolver):
                 answers=[
                     AnswerItem("가속도", "a", round(abs(a_signed), 6), "m/s²", f"가속도 a = {abs(a_signed):.3f} m/s²", "primary"),
                     AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
-                ],
+                ] + (
+                    [AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component")]
+                    if "friction_force" in requested
+                    else []
+                ),
                 steps=steps,
                 verification=merge_reports(pre, verification),
                 used_equations=["T - m1g sinθ = m1a", "m2g - T = m2a"],
@@ -298,7 +337,11 @@ class InclineHangingPulleySolver(BaseSolver):
                         "component",
                     )
                 ]
-                if c.friction_type in {"static", "kinetic", "unspecified"}
+                if friction_type in {"static", "kinetic", "unspecified"}
+                else [
+                    AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component")
+                ]
+                if "friction_force" in requested
                 else []
             ),
             steps=steps,
