@@ -207,15 +207,24 @@ def is_irrelevant_background_sentence(sentence: str) -> bool:
 
 
 def iter_sentence_spans(text: str):
-    """Yield exact sentence spans while retaining raw offsets and newlines."""
-    for match in re.finditer(r"[^.!?\r\n]+(?:[.!?]+|(?=[\r\n]|$))", text):
-        chunk = match.group(0)
+    """Yield exact sentence spans without splitting decimal points."""
+    cursor = 0
+    for separator in re.finditer(r"(?<=[.!?])\s+|[\r\n]+", text):
+        chunk = text[cursor:separator.start()]
         leading = len(chunk) - len(chunk.lstrip())
         trailing = len(chunk.rstrip())
-        start = match.start() + leading
-        end = match.start() + trailing
+        start = cursor + leading
+        end = cursor + trailing
         if start < end:
             yield start, end, text[start:end]
+        cursor = separator.end()
+    chunk = text[cursor:]
+    leading = len(chunk) - len(chunk.lstrip())
+    trailing = len(chunk.rstrip())
+    start = cursor + leading
+    end = cursor + trailing
+    if start < end:
+        yield start, end, text[start:end]
 
 
 def strip_irrelevant_background(text: str) -> str:
