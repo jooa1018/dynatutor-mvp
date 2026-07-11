@@ -808,8 +808,8 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
     elif c.system_type in {"pulley_table_hanging", "pulley_atwood", "pulley_incline_hanging"}:
         if "m1" not in c.knowns or "m2" not in c.knowns:
             missing.append("두 물체의 질량 m1, m2")
-        if c.system_type == "pulley_table_hanging" and c.friction_type is None and not (c.flags.get("no_friction") or "mu" in c.knowns or "mu_k" in c.knowns or "mu_s" in c.knowns):
-            missing.append("수평면 마찰 유무")
+        if c.system_type in {"pulley_table_hanging", "pulley_incline_hanging"} and c.friction_type is None and not (c.flags.get("no_friction") or "mu" in c.knowns or "mu_k" in c.knowns or "mu_s" in c.knowns):
+            missing.append("접촉면 마찰 유무")
         if c.system_type == "pulley_incline_hanging" and "theta" not in c.knowns:
             missing.append("경사면 각도 θ")
         if c.friction_type == "static" and not any(key in c.knowns for key in ("mu_s", "mu")):
