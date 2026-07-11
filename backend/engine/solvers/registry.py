@@ -210,6 +210,59 @@ class SolverRegistry:
                     "a is fixed",
                 )
             ),
+            "explicit rest condition": self._starts_from_rest(c),
+            "force-displacement direction": (
+                bool(c.force_direction) or "theta" in c.knowns
+            ),
+            "rBA vector": (
+                ("rBAx" in coordinate_data and "rBAy" in coordinate_data)
+                or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+            ),
+            "vA vector": (
+                ("vAx" in coordinate_data and "vAy" in coordinate_data)
+                or ("vAx" in c.knowns and "vAy" in c.knowns)
+            ),
+            "aA vector": (
+                ("aAx" in coordinate_data and "aAy" in coordinate_data)
+                or ("aAx" in c.knowns and "aAy" in c.knowns)
+            ),
+            "zero vA": (
+                "vA" in c.knowns
+                and c.knowns["vA"].value is not None
+                and abs(float(c.knowns["vA"].value)) <= 1e-12
+            ),
+            "zero aA": (
+                "aA" in c.knowns
+                and c.knowns["aA"].value is not None
+                and abs(float(c.knowns["aA"].value)) <= 1e-12
+            ),
+            "fixed A plus scalar radius": (
+                ("r" in c.knowns or "R" in c.knowns)
+                and (
+                    any(
+                        phrase in raw
+                        for phrase in (
+                            "고정점",
+                            "a점이 고정",
+                            "a점은 고정",
+                            "a점 고정",
+                            "a is fixed",
+                        )
+                    )
+                    or (
+                        c.system_type == "plane_rigid_body_velocity"
+                        and "vA" in c.knowns
+                        and c.knowns["vA"].value is not None
+                        and abs(float(c.knowns["vA"].value)) <= 1e-12
+                    )
+                    or (
+                        c.system_type == "plane_rigid_body_acceleration"
+                        and "aA" in c.knowns
+                        and c.knowns["aA"].value is not None
+                        and abs(float(c.knowns["aA"].value)) <= 1e-12
+                    )
+                )
+            ),
         }
         if expression in special:
             return bool(special[expression])
