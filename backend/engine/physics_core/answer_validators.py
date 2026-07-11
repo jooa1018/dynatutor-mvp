@@ -23,7 +23,7 @@ REQUESTED_OUTPUT_SYMBOLS: dict[str, set[str]] = {
     "final_velocity": {"vf", "v_f", "v", "vB", "v_B", "v_min", "v_max", "v_r", "v_θ"},
     "acceleration": {"a", "aB", "a_B", "aC", "a_C", "a_r", "a_θ"},
     "tension": {"T", "T1", "T2"},
-    "force": {"F", "F_net"},
+    "force": {"F", "F_net", "T", "N"},
     "friction_force": {"f", "f_k", "f_s", "F_f"},
     "normal_force": {"N", "N1", "N2"},
     "mass": {"m"},
