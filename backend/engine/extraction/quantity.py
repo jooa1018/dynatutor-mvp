@@ -1,5 +1,10 @@
 import re
 from engine.models import Quantity
+from engine.extraction.units import (
+    MOMENT_OF_INERTIA_UNIT_PATTERN,
+    TORQUE_UNIT_PATTERN,
+    normalize_labeled_value,
+)
 
 _NUM = r"(-?\d+(?:,\d{3})*(?:\.\d+)?)"
 
@@ -157,6 +162,106 @@ def _unit_value(pattern: str, text: str) -> tuple[float, str, str] | None:
 
 def _has(text: str, patterns: list[str]) -> bool:
     return any(re.search(p, text, re.IGNORECASE) for p in patterns)
+
+
+_SPEED_UNIT_PATTERN = r"(?:m/s|mps|km/h|km\s*/\s*h|kmph|km/hr)"
+_INITIAL_SPEED_LABEL_PATTERN = re.compile(
+    rf"(?:v_?0|초\s*속도|초속도|초기\s*속도|초기속도|처음\s*속도|처음속도)"
+    rf"\s*(?:=|:|은|는|이|가)?\s*(?P<num>-?\d+(?:,\d{{3}})*(?:\.\d+)?)"
+    rf"\s*(?P<unit>{_SPEED_UNIT_PATTERN})",
+    re.IGNORECASE,
+)
+_NON_ENTITY_SUBJECTS = {
+    "설명", "설명에", "문장", "문장에", "내용", "내용에", "문제", "문제에",
+}
+
+
+def _subject_before(sentence: str, position: int) -> str | None:
+    prefix = sentence[:position].rstrip()
+    match = re.search(r"(?P<subject>[가-힣A-Za-z][가-힣A-Za-z0-9_]{0,30})(?:의|은|는|이|가)\s*$", prefix)
+    if not match:
+        return None
+    subject = match.group("subject")
+    if subject in _NON_ENTITY_SUBJECTS or subject.endswith("에"):
+        return None
+    return subject
+
+
+def _requested_velocity_subject(text: str) -> str | None:
+    for sentence_match in reversed(list(re.finditer(r"[^.!?\r\n]+", text))):
+        sentence = sentence_match.group(0)
+        query = re.search(r"(?:최종\s*속도|최종속도|나중\s*속도|마지막\s*속도)", sentence)
+        if not query:
+            continue
+        return _subject_before(sentence, query.start())
+    return None
+
+
+def _initial_speed_occurrences(text: str) -> list[dict]:
+    occurrences: list[dict] = []
+    for sentence_match in re.finditer(r"[^.!?\r\n]+", text):
+        sentence = sentence_match.group(0)
+        for match in _INITIAL_SPEED_LABEL_PATTERN.finditer(sentence):
+            start = sentence_match.start() + match.start()
+            end = sentence_match.start() + match.end()
+            value, unit = normalize_labeled_value(
+                _float(match.group("num")),
+                match.group("unit"),
+            )
+            occurrences.append(
+                {
+                    "value": value,
+                    "unit": unit or "m/s",
+                    "subject": _subject_before(sentence, match.start()),
+                    "source": _MatchedText(text[start:end], start, end),
+                }
+            )
+    return occurrences
+
+
+def _select_subject_scoped_initial_speed(
+    knowns: dict[str, Quantity],
+    text: str,
+) -> None:
+    occurrences = _initial_speed_occurrences(text)
+    if not occurrences:
+        return
+    target = _requested_velocity_subject(text)
+    relevant: list[dict]
+    if target:
+        relevant = [item for item in occurrences if item["subject"] == target]
+        if not relevant:
+            relevant = [item for item in occurrences if item["subject"] is None]
+    else:
+        subjects = {item["subject"] for item in occurrences if item["subject"]}
+        if len(subjects) > 1:
+            # With several named bodies and no requested body, selecting the first
+            # or last occurrence would be a high-confidence guess.
+            knowns.pop("v0", None)
+            return
+        only_subject = next(iter(subjects), None)
+        relevant = [
+            item
+            for item in occurrences
+            if item["subject"] in {None, only_subject}
+        ]
+    if not relevant:
+        return
+    selected = relevant[0]
+    _set_si_velocity(
+        knowns,
+        "v0",
+        float(selected["value"]),
+        selected["unit"],
+        selected["source"],
+        replace=True,
+    )
+    knowns["v0"].subject_evidence.update(
+        {
+            "method": "requested_subject_initial_speed",
+            "resolved_entity": target or selected["subject"],
+        }
+    )
 
 
 def _label_value(label: str, text: str, unit_pattern: str | None = None) -> tuple[float, str] | None:
@@ -376,6 +481,7 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
             positional_v0[1].replace(" ", ""),
             positional_v0[2],
         )
+    _select_subject_scoped_initial_speed(knowns, text)
     if vf:
         _set_si_velocity(knowns, "vf", vf[0], vf[1].replace(" ", ""), vf[2])
     if v and "v0" not in knowns and "vf" not in knowns:
@@ -479,11 +585,21 @@ def extract_quantities(text: str) -> dict[str, Quantity]:
     if force:
         _set(knowns, "F", force[0], "N", force[1])
 
-    torque = first_number(r"(?:토크|모멘트|torque|tau\s*=)[^\d-]{0,12}" + _NUM + r"\s*(?:N\s*\*?\s*m|Nm)", text)
+    torque = first_number(
+        r"(?:토크|모멘트|torque|tau\s*=)[^\d-]{0,12}"
+        + _NUM
+        + rf"\s*(?:{TORQUE_UNIT_PATTERN})",
+        text,
+    )
     if torque:
         _set(knowns, "tau", torque[0], "N*m", torque[1])
 
-    inertia = first_number(r"(?:관성모멘트|moment\s*of\s*inertia|I\s*=)[^\d-]{0,12}" + _NUM + r"\s*(?:kg\s*\*?\s*m\^?2|kgm\^?2)", text)
+    inertia = first_number(
+        r"(?:관성모멘트|moment\s*of\s*inertia|I\s*=)[^\d-]{0,12}"
+        + _NUM
+        + rf"\s*(?:{MOMENT_OF_INERTIA_UNIT_PATTERN})",
+        text,
+    )
     if inertia:
         _set(knowns, "I", inertia[0], "kg*m^2", inertia[1])
 
