@@ -393,7 +393,7 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "slot_pin": _has_any(t, ["슬롯", " slot", "핀", " pin ", "홈", "relative motion in slot"]),
         "relative_motion": _has_any(t, ["상대운동", "상대 운동", "relative motion", "상대속도", "relative velocity"]),
         "plane_rigid_body": _has_any(t, ["평면강체", "평면 강체", "plane rigid body", "general plane motion", "강체 평면운동", "강체의 평면운동", "점 b의 속도", "v_b", "vB", "점 b의 가속도", "a_b", "aB"]),
-        "plane_acceleration": _has_any(t, ["평면강체 가속도", "강체 가속도", "점 b의 가속도", "a_b", "aB", "normal acceleration", "tangential acceleration"]),
+        "plane_acceleration": _has_any(t, ["평면강체 가속도", "강체 가속도", "점 b의 가속도", "b점 가속도", "b점의 가속도", "각가속도", "a_b", "aB", "normal acceleration", "tangential acceleration"]),
         "coriolis": _has_any(t, ["코리올리", "coriolis", "회전좌표계", "rotating frame", "회전 기준계", "relative motion rotating"]),
         "relative_acceleration": _has_any(t, ["상대가속도", "상대 가속도", "relative acceleration", "a_rel", "arel"]),
         "massive_pulley": _has_any(t, ["질량 있는 도르래", "질량있는 도르래", "도르래 관성", "도르래의 관성", "pulley inertia", "massive pulley", "도르래 질량"]),
