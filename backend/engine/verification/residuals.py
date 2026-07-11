@@ -122,6 +122,34 @@ def _table_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     m1, m2, g = _k(cp, "m1", "kg"), _k(cp, "m2", "kg"), _k(cp, "g", "m/s^2")
     if None in (a, T, m1, m2, g):
         return []
+    if abs(a) < 1e-9:
+        checks = [
+            ResidualCheck(
+                "정지 매달린 물체: T = m2g",
+                T - m2 * g,
+                max(abs(T), m2 * g, 1.0),
+            )
+        ]
+        f_s = pool.get("f_s")
+        if f_s is not None:
+            checks.append(
+                ResidualCheck(
+                    "정지 테이블 물체: |f_s| = |T|",
+                    abs(f_s) - abs(T),
+                    max(abs(T), 1.0),
+                )
+            )
+        mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""))
+        if mu_s is not None:
+            max_static = mu_s * m1 * g
+            checks.append(
+                ResidualCheck(
+                    "정지마찰 한계: |T| ≤ μ_s m1g",
+                    max(0.0, abs(T) - max_static),
+                    max(max_static, 1.0),
+                )
+            )
+        return checks
     mu = _mu(cp)
     return [
         ResidualCheck("매달린 물체: m2·g - T - m2·a", m2 * g - T - m2 * a, m2 * g),
@@ -140,9 +168,30 @@ def _incline_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     # 를 만족하면 타당. 잔차는 위반량.
     if abs(a) < 1e-9:
         mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""), mu)
-        net = abs(m2 * g - m1 * g * math.sin(th))
+        required_static = abs(m2 * g - m1 * g * math.sin(th))
         max_static = mu_s * m1 * g * math.cos(th)
-        return [ResidualCheck("정지 조건 |m2g - m1g·sinθ| ≤ μs·m1g·cosθ (a=0)", max(0.0, net - max_static), max_static + 1.0)]
+        checks = [
+            ResidualCheck(
+                "정지 매달린 물체: T = m2g",
+                T - m2 * g,
+                max(abs(T), m2 * g, 1.0),
+            ),
+            ResidualCheck(
+                "정지 조건 |m2g - m1g·sinθ| ≤ μs·m1g·cosθ (a=0)",
+                max(0.0, required_static - max_static),
+                max_static + 1.0,
+            ),
+        ]
+        f_s = pool.get("f_s")
+        if f_s is not None:
+            checks.append(
+                ResidualCheck(
+                    "정지 경사면 물체: |f_s| = |m2g-m1g sinθ|",
+                    abs(f_s) - required_static,
+                    max(required_static, 1.0),
+                )
+            )
+        return checks
     # 방향 관례가 solver와 다를 수 있으므로 두 부호 중 잔차가 작은 쪽을 채택하되,
     # 채택 후에도 두 방정식이 '동시에' 맞아야 통과한다.
     # 방향 관례가 solver와 다를 수 있다: 가속도 부호와 마찰 부호(운동 방향에 반대)를
