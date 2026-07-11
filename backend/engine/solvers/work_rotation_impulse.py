@@ -119,8 +119,8 @@ class FixedAxisRotationSolver(BaseSolver):
             ]
             return SolverResult(
                 ok=True,
-                answer=Answer(symbolic="v = ωr", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s"),
-                answers=[AnswerItem(label="점의 속력", symbol="v", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s", role="primary")],
+                answer=Answer(symbolic="v_t = ωr", numeric=round(v, 5), unit="m/s", display=f"v_t = {v:.3f} m/s"),
+                answers=[AnswerItem(label="점의 접선 속력", symbol="v_t", numeric=round(v, 5), unit="m/s", display=f"v_t = {v:.3f} m/s", role="primary")],
                 steps=steps,
                 verification=VerificationReport(passed=True, checks=["단위: rad/s × m = m/s (rad는 무차원).", "축(r=0)에서는 속력이 0입니다."]),
                 used_equations=["v = ωr"],
