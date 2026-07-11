@@ -46,6 +46,23 @@ def _raw_q(c: CanonicalProblem, key: str) -> float | None:
     return float(c.knowns[key].value)
 
 
+def _explicitly_starts_from_rest(c: CanonicalProblem) -> bool:
+    raw = (c.raw_text or "").lower()
+    return any(
+        phrase in raw
+        for phrase in (
+            "정지 상태에서",
+            "정지 상태로부터",
+            "정지에서",
+            "처음에는 정지",
+            "초기에는 정지",
+            "가만히 있다가",
+            "starts from rest",
+            "initially at rest",
+        )
+    )
+
+
 def build_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | None = None) -> GeneratedEquationSystem:
     st = c.system_type
     equations: list[GeneratedEquation] = []
@@ -156,8 +173,6 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             F = _q(c, "F", "N")
             s = _q(c, "s", "m")
             angle = infer_angle_between_force_and_displacement(c.raw_text)
-            if angle is None and ("force" in c.raw_text.lower() and "distance" in c.raw_text.lower()):
-                angle = 0.0
             if angle is None and "theta" in c.knowns and c.knowns["theta"].value is not None:
                 # 추출기('힘 방향으로 이동'→θ=0) 또는 clarification(set_known theta)이 채운 각도
                 angle = float(c.knowns["theta"].value)
@@ -170,14 +185,30 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             m = _q(c, "m", "kg")
             W = _q(c, "W", "J") if "W" in c.knowns else None
             if W is None and "F" in c.knowns and "s" in c.knowns:
-                angle = _q(c, "theta", "deg") if "theta" in c.knowns else 0.0
+                angle = infer_angle_between_force_and_displacement(c.raw_text)
+                if angle is None and "theta" in c.knowns and c.knowns["theta"].value is not None:
+                    angle = _q(c, "theta", "deg")
+                if angle is None:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["힘 F로 일을 계산하려면 힘과 변위 사이 방향 또는 각도 θ가 필요합니다."],
+                    )
                 W = _q(c, "F", "N") * _q(c, "s", "m") * math.cos(math.radians(angle))
-            v0 = _q(c, "v0", "m/s") if "v0" in c.knowns else _q(c, "v", "m/s") if "v" in c.knowns else 0.0
+            v0 = _q(c, "v0", "m/s") if "v0" in c.knowns else _q(c, "v", "m/s") if "v" in c.knowns else None
+            if v0 is None and _explicitly_starts_from_rest(c):
+                v0 = 0.0
             if m is None or W is None:
-                return EnergyMomentumSolve(False, {}, system, ["질량 m과 일 W 또는 F,s가 필요합니다."])
+                return EnergyMomentumSolve(False, {}, system, ["질량 m과 일 W 또는 방향이 명시된 F,s가 필요합니다."])
+            if m <= 0:
+                return EnergyMomentumSolve(False, {}, system, ["질량 m은 0보다 커야 합니다."])
+            if v0 is None:
+                return EnergyMomentumSolve(False, {}, system, ["초기속도 v_i 또는 정지 상태에서 출발한다는 조건이 필요합니다."])
             vf2 = v0 * v0 + 2 * W / m
-            if vf2 < 0:
-                return EnergyMomentumSolve(False, {}, system, ["v_f^2가 음수입니다."])
+            if vf2 < -1e-10:
+                return EnergyMomentumSolve(False, {}, system, ["주어진 일로는 v_f²가 음수가 되어 해당 최종 상태에 도달할 수 없습니다."])
+            vf2 = max(0.0, vf2)
             vf = math.sqrt(vf2)
             return EnergyMomentumSolve(True, {"v_f": vf, "W": W, "v_i": v0}, system, [])
 
