@@ -6,7 +6,7 @@ import re
 # conflict scanning. Keep separators optional so Korean textbook/ASCII variants are
 # semantically identical without normalizing the source text first.
 TORQUE_UNIT_PATTERN = r"N\s*(?:[·*]\s*)?m"
-MOMENT_OF_INERTIA_UNIT_PATTERN = r"kg\s*(?:[·*]\s*)?m\s*(?:\^\s*)?(?:2|²)"
+MOMENT_OF_INERTIA_UNIT_PATTERN = r"kg\s*(?:[·*]\s*)?m\s*(?:\^\s*)?(?:2|²)(?!\s*(?:=|:))"
 
 LABELED_UNIT_PATTERN = (
     rf"(?:{MOMENT_OF_INERTIA_UNIT_PATTERN}|"
