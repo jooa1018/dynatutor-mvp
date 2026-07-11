@@ -1,5 +1,5 @@
 import math
-from engine.physics_core.initial_conditions import explicitly_starts_from_rest
+from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest
 from engine.physics_core.units import magnitude_si
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
@@ -96,7 +96,7 @@ class FixedAxisRotationSolver(BaseSolver):
         alphaq, tq = knowns.get("alpha"), knowns.get("t")
         if alphaq and tq and asks_omega:
             omega0q = knowns.get("omega0") or knowns.get("omega")
-            if omega0q is None and not explicitly_starts_from_rest(c):
+            if omega0q is None and not explicitly_starts_from_angular_rest(c):
                 return SolverResult(
                     ok=False,
                     verification=VerificationReport(
