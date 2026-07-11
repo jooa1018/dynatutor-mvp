@@ -152,9 +152,21 @@ class ImpulseMomentumSolver(BaseSolver):
                 StepCard("운동량 변화", "충격량은 선운동량 변화량과 같습니다.", "J=m(v_f-v_i)"),
                 StepCard("계산", f"v_f = v_i + J/m = {v0q.value:g}+{J:.5g}/{mq.value:g} = {vf:.5g} m/s"),
             ]
-            return SolverResult(ok=True, answer=Answer(symbolic="vf = vi + Ft/m", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s"), steps=steps, verification=VerificationReport(passed=True, checks=["힘의 방향을 +로 두었을 때의 결과입니다. 반대방향 힘이면 부호를 음수로 넣어야 합니다."]))
+            return SolverResult(
+                ok=True,
+                answer=Answer(symbolic="vf = vi + Ft/m", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s"),
+                answers=[AnswerItem("최종속도", "v_f", round(vf, 5), "m/s", f"v_f = {vf:.3f} m/s", "primary")],
+                steps=steps,
+                verification=VerificationReport(passed=True, checks=["힘의 방향을 +로 두었을 때의 결과입니다. 반대방향 힘이면 부호를 음수로 넣어야 합니다."]),
+            )
         steps = [
             StepCard("충격량", "Energy/Momentum generator가 충격량 식 J=FΔt를 생성합니다. 일정한 힘이 일정 시간 작용하면 J=FΔt입니다.", r"J=F\Delta t"),
             StepCard("계산", f"J = {Fq.value:g} × {tq.value:g} = {J:.5g} N·s"),
         ]
-        return SolverResult(ok=True, answer=Answer(symbolic="J = FΔt", numeric=round(J, 5), unit="N·s", display=f"J = {J:.3f} N·s"), steps=steps, verification=VerificationReport(passed=True, checks=["단위 N·s는 kg·m/s와 같아서 운동량 단위와 일치합니다."]))
+        return SolverResult(
+            ok=True,
+            answer=Answer(symbolic="J = FΔt", numeric=round(J, 5), unit="N·s", display=f"J = {J:.3f} N·s"),
+            answers=[AnswerItem("충격량", "J", round(J, 5), "N·s", f"J = {J:.3f} N·s", "primary")],
+            steps=steps,
+            verification=VerificationReport(passed=True, checks=["단위 N·s는 kg·m/s와 같아서 운동량 단위와 일치합니다."]),
+        )
