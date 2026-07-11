@@ -74,6 +74,7 @@ class DiagnosisResponse(BaseModel):
     legacy_hints: LegacyHintModel
     selected_solver: str | None = None
     solver_reason: str | None = None
+    route_decision: RouteDecisionModel | None = None
     fbd: list[str] = Field(default_factory=list)
     coordinate_guide: list[str] = Field(default_factory=list)
     applicable_equations: list[str] = Field(default_factory=list)
@@ -142,6 +143,7 @@ class SolveResponse(BaseModel):
     verification: VerificationReport
     unsupported_reason: str | None = None
     clarification: ClarificationModel | None = None
+    route_decision: RouteDecisionModel | None = None
     physical_model: dict[str, Any] | None = None
 
 
