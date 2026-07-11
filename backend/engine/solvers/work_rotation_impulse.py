@@ -1,4 +1,5 @@
 import math
+from engine.physics_core.initial_conditions import explicitly_starts_from_rest
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
@@ -93,12 +94,30 @@ class FixedAxisRotationSolver(BaseSolver):
         asks_speed = any(w in c.raw_text for w in ["속력", "속도는", "speed"])
         alphaq, tq = knowns.get("alpha"), knowns.get("t")
         if alphaq and tq and asks_omega:
-            omega0 = knowns["omega0"].value if "omega0" in knowns else (knowns["omega"].value if "omega" in knowns else 0.0)
-            omega_f = omega0 + alphaq.value * tq.value
+            omega0q = knowns.get("omega0") or knowns.get("omega")
+            if omega0q is None and not explicitly_starts_from_rest(c):
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=[
+                            "각속도 계산에는 초기 각속도 ω₀ 또는 명시적인 회전 정지 조건이 필요합니다."
+                        ],
+                    ),
+                    unsupported_reason="초기 각속도 또는 정지 출발 조건을 알려 주세요.",
+                )
+            omega0 = (
+                magnitude_si(omega0q, "rad/s")
+                if omega0q is not None
+                else 0.0
+            )
+            alpha_value = magnitude_si(alphaq, "rad/s^2")
+            time_value = magnitude_si(tq, "s")
+            omega_f = omega0 + alpha_value * time_value
             steps = [
                 StepCard("문제 유형", "토크 없이 각가속도와 시간이 주어졌으므로 회전 kinematics(등각가속도)입니다. 직선운동의 v=v₀+at에 대응합니다."),
                 StepCard("공식", "각속도는 초기 각속도에 각가속도×시간을 더합니다.", r"\omega=\omega_0+\alpha t"),
-                StepCard("계산", f"ω = {omega0:g} + {alphaq.value:g}×{tq.value:g} = {omega_f:.5g} rad/s"),
+                StepCard("계산", f"ω = {omega0:g} + {alpha_value:g}×{time_value:g} = {omega_f:.5g} rad/s"),
             ]
             return SolverResult(
                 ok=True,
@@ -111,11 +130,21 @@ class FixedAxisRotationSolver(BaseSolver):
         omegaq = knowns.get("omega")
         rq = knowns.get("r") or knowns.get("R")
         if omegaq and rq and asks_speed and not alphaq:
-            v = omegaq.value * rq.value
+            omega_value = magnitude_si(omegaq, "rad/s")
+            radius = magnitude_si(rq, "m")
+            if radius < 0:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["회전 반지름 r은 0 이상이어야 합니다."],
+                    ),
+                )
+            v = abs(omega_value) * radius
             steps = [
                 StepCard("문제 유형", "고정축 회전체 위 한 점의 속력은 각속도와 회전 반지름의 곱입니다."),
                 StepCard("공식", "점의 선속도 크기.", r"v=\omega r"),
-                StepCard("계산", f"v = {omegaq.value:g} × {rq.value:g} = {v:.5g} m/s"),
+                StepCard("계산", f"v = |{omega_value:g}| × {radius:g} = {v:.5g} m/s"),
             ]
             return SolverResult(
                 ok=True,
