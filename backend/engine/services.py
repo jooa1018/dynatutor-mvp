@@ -144,6 +144,14 @@ def _route_decision_model(decision):
     )
 
 
+def _physical_model_payload(payload, decision):
+    out = dict(payload or {})
+    route_model = _route_decision_model(decision)
+    if route_model is not None:
+        out["route_decision"] = route_model.model_dump()
+    return out
+
+
 def _route_clarification_model(decision):
     if decision is None or decision.status != "clarify" or not decision.question:
         return None
@@ -228,14 +236,13 @@ def diagnose_problem(
         legacy_hints=_legacy_model(hints),
         selected_solver=legacy_selected_solver,
         solver_reason=legacy_solver_reason,
-        route_decision=_route_decision_model(route_decision),
         fbd=cards.fbd,
         coordinate_guide=cards.coordinate_guide,
         applicable_equations=cards.applicable_equations,
         not_applicable_equations=cards.not_applicable_equations,
         cautions=cards.cautions,
         next_questions=cards.next_questions,
-        physical_model=physical_model.to_dict(),
+        physical_model=_physical_model_payload(physical_model.to_dict(), route_decision),
     )
 
 
@@ -310,7 +317,6 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                 )
             ),
             clarification=clarification_model,
-            route_decision=_route_decision_model(route_decision),
             physical_model=diagnosis.physical_model,
         )
         response.teacher_summary = build_teacher_summary(response)
@@ -351,8 +357,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         steps=[StepCardSchema(**s.__dict__) for s in all_steps],
         verification=VerificationReportSchema(**result.verification.__dict__),
         unsupported_reason=result.unsupported_reason,
-        route_decision=_route_decision_model(route_decision),
-        physical_model=physical_model.to_dict(),
+        physical_model=_physical_model_payload(physical_model.to_dict(), route_decision),
     )
     # 실패 응답도 "완전히 못 풂" 대신 현재 가능한 것/필요한 조건을 보여준다.
     if not response.ok and not response.steps:
