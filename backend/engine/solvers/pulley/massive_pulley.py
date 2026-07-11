@@ -10,6 +10,7 @@ from engine.solvers.base import BaseSolver, SolverMatch
 from engine.verification.checks import merge_reports, require_no_missing
 from engine.equation_generators.particle_newton import solve_particle_newton_system
 from engine.model_builder import build_physical_model
+from engine.model_builder.model_types import PhysicalModel
 
 
 class MassivePulleyAtwoodSolver(BaseSolver):
@@ -20,13 +21,13 @@ class MassivePulleyAtwoodSolver(BaseSolver):
             return SolverMatch(self, 96, "질량/관성모멘트가 있는 도르래 Atwood 계")
         return None
 
-    def solve(self, c: CanonicalProblem) -> SolverResult:
+    def solve(self, c: CanonicalProblem, model: PhysicalModel | None = None) -> SolverResult:
         pre = require_no_missing(c)
         if not pre.passed:
             return SolverResult(ok=False, verification=pre, unsupported_reason="질량 있는 도르래에는 m1, m2, I, R이 필요합니다.")
         R = magnitude_si(c.knowns.get("Rp") or c.knowns["R"], "m")
         I = magnitude_si(c.knowns.get("Ip") or c.knowns["I"], "kg*m^2")
-        model = build_physical_model(c)
+        model = model or build_physical_model(c)
         generated = solve_particle_newton_system(c, model)
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors))
