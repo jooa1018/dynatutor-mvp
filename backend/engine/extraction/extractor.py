@@ -223,7 +223,12 @@ def _infer_requested_outputs(t: str) -> list[str]:
         add("mass")
     if has_query(r"운동에너지", r"kinetic\s+energy"):
         add("kinetic_energy")
-    if has_query(r"마찰력[은을이]?", r"friction\s+force"):
+    if has_query(
+        r"마찰력\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"마찰력\s*(?:은|는|이)?\s*(?:얼마|\?)",
+        r"(?:find|calculate)\s+(?:the\s+)?friction\s+force",
+        r"friction\s+force\s*\?",
+    ):
         add("friction_force")
     if has_query(r"(?:저장된|탄성)\s*(?:퍼텐셜\s*)?에너지", r"elastic\s+(?:potential\s+)?energy", r"stored\s+energy"):
         add("elastic_energy")
