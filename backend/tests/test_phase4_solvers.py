@@ -34,7 +34,7 @@ def test_slot_pin_relative_motion():
 
 
 def test_plane_rigid_body_velocity_basic():
-    out = solve_problem("평면강체에서 A점 속도 vA=3 m/s, 각속도 omega=4 rad/s, 거리 r=0.5 m 이다. B점 속도를 구하라.")
+    out = solve_problem("평면강체에서 A점은 오른쪽으로 vA=3 m/s이고 B점은 A에서 오른쪽으로 r=0.5 m 떨어져 있다. 강체가 반시계방향 omega=4 rad/s로 회전할 때 B점 속도를 구하라.")
     assert out.ok
     assert out.diagnosis.selected_solver == "plane_rigid_body_velocity"
     assert abs(out.answer.numeric - math.hypot(3, 2)) < 1e-6
