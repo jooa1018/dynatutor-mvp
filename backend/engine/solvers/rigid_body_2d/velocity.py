@@ -61,7 +61,12 @@ class PlaneRigidBodyVelocitySolver(BaseSolver):
         pre = require_no_missing(c)
         vA = _get_vA(c)
         rBA = _get_r_vector(c)
-        if pre.passed and vA is not None and rBA is None and _has_fixed_A(c):
+        if (
+            pre.passed
+            and vA is not None
+            and vA.magnitude() <= 1e-12
+            and rBA is None
+        ):
             r_scalar = _scalar_radius(c)
             if r_scalar is not None and "omega" in c.knowns:
                 omega_abs = abs(magnitude_si(c.knowns["omega"], "rad/s"))
