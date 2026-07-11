@@ -392,7 +392,10 @@ def test_incline_solve_reuses_prebuilt_typed_model_and_equations(monkeypatch):
     result = InclineWithFrictionSolver().solve(canonical, model)
 
     assert result.ok is True
-    assert result.answer.numeric == pytest.approx(3.20167, abs=1e-5)
+    assert result.answer.numeric == pytest.approx(
+        9.81 * (math.sin(math.radians(30)) - 0.2 * math.cos(math.radians(30))),
+        abs=1e-5,
+    )
 
 
 def test_user_facing_incline_request_builds_typed_model_and_equations_once(
@@ -469,7 +472,10 @@ def test_phase45_friction_incline_supports_mu_k_locally():
     result = InclineWithFrictionSolver().solve(canonical)
 
     assert result.ok is True
-    assert result.answer.numeric == pytest.approx(3.20167, abs=1e-5)
+    assert result.answer.numeric == pytest.approx(
+        9.81 * (math.sin(math.radians(30)) - 0.2 * math.cos(math.radians(30))),
+        abs=1e-5,
+    )
 
 
 def test_out_of_scope_pulley_mu_k_only_keeps_main_no_solution_contract():
