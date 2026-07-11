@@ -218,18 +218,50 @@ def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
 
 
 def _const_acc(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    g = None  # unused
-    v0, a, t_k = _k(cp, "v0", "m/s"), _k(cp, "a", "m/s^2"), _k(cp, "t", "s")
-    vf, s, t = _first_not_none(pool.get("vf"), pool.get("v_f")), pool.get("s"), pool.get("t")
+    v0 = _first_not_none(_k(cp, "v0", "m/s"), pool.get("v0"))
+    vf = _first_not_none(pool.get("vf"), pool.get("v_f"), _k(cp, "vf", "m/s"))
+    a = _first_not_none(pool.get("a"), _k(cp, "a", "m/s^2"))
+    t = _first_not_none(pool.get("t"), _k(cp, "t", "s"))
+    s = _first_not_none(pool.get("s"), _k(cp, "s", "m"))
     checks: list[ResidualCheck] = []
-    if vf is not None and None not in (v0, a, t_k):
-        checks.append(ResidualCheck("v = v0 + a·t", vf - (v0 + a * t_k), max(abs(vf), 1.0)))
-    if s is not None and None not in (v0, a, t_k):
-        checks.append(ResidualCheck("s = v0t + ½at²", s - (v0 * t_k + 0.5 * a * t_k * t_k), max(abs(s), 1.0)))
-    if t is not None and None not in (v0, a) and pool.get("vf") is None:
-        vf_k = _k(cp, "vf", "m/s")
-        if vf_k is not None and abs(a) > 1e-12:
-            checks.append(ResidualCheck("t = (v - v0)/a", t - (vf_k - v0) / a, max(abs(t), 1.0)))
+
+    if None not in (vf, v0, a, t):
+        expected = v0 + a * t
+        checks.append(
+            ResidualCheck(
+                "v_f = v0 + a·t",
+                vf - expected,
+                max(abs(vf), abs(expected), 1.0),
+            )
+        )
+    if None not in (s, v0, a, t):
+        expected = v0 * t + 0.5 * a * t * t
+        checks.append(
+            ResidualCheck(
+                "s = v0t + ½at²",
+                s - expected,
+                max(abs(s), abs(expected), 1.0),
+            )
+        )
+    if None not in (vf, v0, a, s):
+        left = vf * vf
+        right = v0 * v0 + 2 * a * s
+        checks.append(
+            ResidualCheck(
+                "v_f² = v0² + 2as",
+                left - right,
+                max(abs(left), abs(right), 1.0),
+            )
+        )
+    if None not in (s, v0, vf, t):
+        expected = 0.5 * (v0 + vf) * t
+        checks.append(
+            ResidualCheck(
+                "s = ½(v0+vf)t",
+                s - expected,
+                max(abs(s), abs(expected), 1.0),
+            )
+        )
     return checks
 
 
