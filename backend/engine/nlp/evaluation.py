@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from engine.extraction.extractor import extract_problem
+from engine.extraction.normalizer import NORMALIZATION_SURFACE_FORMS
 from engine.services import solve_problem
 
 
@@ -40,10 +41,16 @@ GATES = {
     "false_solve_rate": 0.0,
     "unnecessary_clarification_rate": 0.02,
     "missing_clarification_rate": 0.02,
-    "silent_assumption_rate": 0.05,
+    "condition_classification_error_rate": 0.05,
     "contradictory_input_detection_rate": 1.0,
     "canonical_consistency_accuracy": 0.98,
     "high_confidence_false_solves": 0,
+}
+
+TOP_K = 3
+MIN_SAMPLES = {
+    key: (300 if key == "case_count" else 1)
+    for key in GATES
 }
 
 
@@ -51,8 +58,8 @@ def load_fixture(path: Path = DEFAULT_FIXTURE) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _ratio(numerator: int, denominator: int, *, empty: float = 1.0) -> float:
-    return round(numerator / denominator, 6) if denominator else empty
+def _ratio(numerator: int, denominator: int) -> float | None:
+    return round(numerator / denominator, 6) if denominator else None
 
 
 def _close(actual: Any, expected: Any) -> bool:
@@ -71,6 +78,25 @@ def _candidate_types(canonical) -> set[str]:
         for parse_candidate in v2.parse_candidates:
             candidates.update(item.system_type for item in parse_candidate.system_type_candidates)
     return candidates
+
+
+def _topk_candidate_types(canonical, k: int = TOP_K) -> list[str]:
+    ranked: list[tuple[float, int, str]] = [(1.0, -1, canonical.system_type)]
+    v2 = canonical.canonical_v2
+    if v2 is not None:
+        order = 0
+        for parse_candidate in v2.parse_candidates:
+            for item in parse_candidate.system_type_candidates:
+                ranked.append((float(item.score), order, item.system_type))
+                order += 1
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    unique: list[str] = []
+    for _, _, system_type in ranked:
+        if system_type not in unique:
+            unique.append(system_type)
+        if len(unique) == k:
+            break
+    return unique
 
 
 def _candidate_interpretations(canonical) -> set[tuple[str, str | None]]:
@@ -141,6 +167,54 @@ def _semantic_signature(canonical, expected_knowns: dict[str, Any]) -> tuple[Any
     )
 
 
+def _numeric_stimulus_signature(text: str) -> str:
+    return re.sub(
+        r"-?\d+(?:,\d{3})*(?:\.\d+)?",
+        "<num>",
+        " ".join(text.lower().split()),
+    )
+
+
+def benchmark_reliability(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    exact_texts = {case["text"] for case in cases}
+    stimuli = {_numeric_stimulus_signature(case["text"]) for case in cases}
+    category_stats: dict[str, dict[str, int]] = {}
+    for category in sorted({case["category"] for case in cases}):
+        category_cases = [case for case in cases if case["category"] == category]
+        category_stats[category] = {
+            "case_count": len(category_cases),
+            "exact_unique_count": len({case["text"] for case in category_cases}),
+            "unique_stimulus_count": len(
+                {_numeric_stimulus_signature(case["text"]) for case in category_cases}
+            ),
+        }
+    corpus = "\n".join(case["text"].lower() for case in cases)
+    overlapping_forms = sorted(
+        {
+            form
+            for form in NORMALIZATION_SURFACE_FORMS
+            if form.lower() in corpus
+        }
+    )
+    return {
+        "suite_kind": "curated_regression_suite",
+        "identical_sentence_count": len(cases) - len(exact_texts),
+        "exact_unique_sentence_count": len(exact_texts),
+        "numeric_only_duplicate_count": len(exact_texts) - len(stimuli),
+        "unique_sentence_stimulus_count": len(stimuli),
+        "category_unique_sentence_counts": category_stats,
+        "parser_dictionary_surface_overlap_count": len(overlapping_forms),
+        "parser_dictionary_surface_overlaps": overlapping_forms,
+        "limitations": [
+            "The 320 cases are a curated regression suite.",
+            "They do not demonstrate generalization to the distribution of real student inputs.",
+            "A score of 1.0 applies only to the current fixed fixtures.",
+            "Benchmark independence is limited by repeated templates and parser-dictionary overlap.",
+            "An external held-out validation set is follow-up work.",
+        ],
+    }
+
+
 def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     counters: Counter[str] = Counter()
     failures: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -159,7 +233,7 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         expected_status = expected["status"]
         expected_system = expected["system_type"]
         top1_ok = canonical.system_type == expected_system
-        topk_ok = expected_system in _candidate_types(canonical)
+        topk_ok = expected_system in _topk_candidate_types(canonical)
         status_ok = status == expected_status
         subtype_expected = "subtype" in expected
         subtype_ok = (not subtype_expected) or canonical.subtype == expected.get("subtype")
@@ -231,12 +305,26 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
                     }
                 )
 
-        for forbidden in expected.get("forbidden_knowns", []):
-            if forbidden in canonical.knowns:
-                counters["quantity_fp"] += 1
-                failures["quantity"].append(
-                    {"id": case["id"], "forbidden_symbol": forbidden}
-                )
+        expected_symbols = set(expected.get("knowns", {}))
+        allowed_extra = set(expected.get("allowed_extra_knowns", [])) | {"g"}
+        forbidden_symbols = set(expected.get("forbidden_knowns", []))
+        unexpected_symbols = (
+            set(canonical.knowns)
+            - expected_symbols
+            - allowed_extra
+        ) | (set(canonical.knowns) & forbidden_symbols)
+        for unexpected in sorted(unexpected_symbols):
+            counters["quantity_fp"] += 1
+            failures["quantity"].append(
+                {
+                    "id": case["id"],
+                    "unexpected_symbol": unexpected,
+                    "actual": {
+                        "value": canonical.knowns[unexpected].value,
+                        "unit": canonical.knowns[unexpected].unit,
+                    },
+                }
+            )
 
         facts_by_key = {
             fact.compatibility_key: fact
@@ -315,13 +403,40 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
             ok = fact is not None and fact.status == condition["status"]
             counters["condition_correct"] += int(ok)
             if not ok:
-                counters["silent_assumptions"] += 1
+                counters["condition_classification_errors"] += 1
                 failures["assumption"].append(
                     {
                         "id": case["id"],
                         "symbol": condition["symbol"],
                         "expected": condition["status"],
                         "actual": None if fact is None else fact.status,
+                    }
+                )
+
+        # A genuine silent-assumption audit needs an oracle describing which
+        # solver defaults are allowed for that case. Cases without that annotation
+        # are not silently treated as successes.
+        if response.ok and "allowed_assumption_kinds" in expected:
+            counters["silent_assumption_expected"] += 1
+            allowed_assumptions = set(expected["allowed_assumption_kinds"])
+            unexpected_assumptions = sorted(
+                {
+                    assumption.kind
+                    for assumption in (
+                        canonical.canonical_v2.assumptions
+                        if canonical.canonical_v2 is not None
+                        else []
+                    )
+                    if assumption.source == "solver_default"
+                    and assumption.kind not in allowed_assumptions
+                }
+            )
+            if unexpected_assumptions:
+                counters["silent_assumption_cases"] += 1
+                failures["silent_assumption"].append(
+                    {
+                        "id": case["id"],
+                        "unexpected_assumption_kinds": unexpected_assumptions,
                     }
                 )
 
@@ -414,62 +529,147 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
                 {"group": group, "case_ids": [item[0] for item in signatures]}
             )
 
-    quantity_precision = _ratio(
-        counters["quantity_tp"],
-        counters["quantity_tp"] + counters["quantity_fp"],
-    )
-    quantity_recall = _ratio(
-        counters["quantity_tp"],
-        counters["quantity_tp"] + counters["quantity_fn"],
-    )
-    unsupported_precision = _ratio(
-        counters["unsupported_tp"],
-        counters["unsupported_tp"] + counters["unsupported_fp"],
-    )
-    unsupported_recall = _ratio(
-        counters["unsupported_tp"],
-        counters["unsupported_tp"] + counters["unsupported_fn"],
-    )
-
+    sample_specs: dict[str, tuple[int, int]] = {
+        "case_count": (counters["cases"], counters["cases"]),
+        "status_accuracy": (counters["status_correct"], counters["cases"]),
+        "subtype_accuracy": (counters["subtype_correct"], counters["subtype_expected"]),
+        "candidate_coverage_accuracy": (
+            counters["candidate_coverage_correct"],
+            counters["candidate_coverage_expected"],
+        ),
+        "missing_info_accuracy": (
+            counters["missing_info_correct"],
+            counters["missing_info_expected"],
+        ),
+        "conflict_symbol_accuracy": (
+            counters["conflict_symbol_correct"],
+            counters["conflict_symbol_expected"],
+        ),
+        "quantity_precision": (
+            counters["quantity_tp"],
+            counters["quantity_tp"] + counters["quantity_fp"],
+        ),
+        "quantity_recall": (
+            counters["quantity_tp"],
+            counters["quantity_tp"] + counters["quantity_fn"],
+        ),
+        "unit_normalization_accuracy": (
+            counters["unit_correct"],
+            counters["unit_expected"],
+        ),
+        "subject_binding_accuracy": (
+            counters["subject_correct"],
+            counters["subject_expected"],
+        ),
+        "requested_output_accuracy": (
+            counters["requested_correct"],
+            counters["requested_expected"],
+        ),
+        "direction_accuracy": (
+            counters["direction_correct"],
+            counters["direction_expected"],
+        ),
+        "assumption_classification_accuracy": (
+            counters["condition_correct"],
+            counters["condition_expected"],
+        ),
+        "condition_classification_error_rate": (
+            counters["condition_classification_errors"],
+            counters["condition_expected"],
+        ),
+        "system_type_top1_accuracy": (
+            counters["top1_correct"],
+            counters["cases"],
+        ),
+        "system_type_topk_recall": (
+            counters["topk_correct"],
+            counters["cases"],
+        ),
+        "ambiguity_detection_recall": (
+            counters["ambiguous_detected"],
+            counters["ambiguous_expected"],
+        ),
+        "unsupported_precision": (
+            counters["unsupported_tp"],
+            counters["unsupported_tp"] + counters["unsupported_fp"],
+        ),
+        "unsupported_recall": (
+            counters["unsupported_tp"],
+            counters["unsupported_tp"] + counters["unsupported_fn"],
+        ),
+        "false_solve_rate": (
+            counters["false_solves"],
+            counters["should_not_solve"],
+        ),
+        "unnecessary_clarification_rate": (
+            counters["unnecessary_clarifications"],
+            counters["should_solve"],
+        ),
+        "missing_clarification_rate": (
+            counters["missing_clarifications"],
+            counters["clarification_expected"],
+        ),
+        "silent_assumption_rate": (
+            counters["silent_assumption_cases"],
+            counters["silent_assumption_expected"],
+        ),
+        "contradictory_input_detection_rate": (
+            counters["contradiction_detected"],
+            counters["contradiction_expected"],
+        ),
+        "canonical_consistency_accuracy": (
+            consistent_groups,
+            evaluated_groups,
+        ),
+        "high_confidence_false_solves": (
+            counters["high_confidence_false_solves"],
+            counters["should_not_solve"],
+        ),
+    }
     metrics = {
-        "case_count": counters["cases"],
-        "status_accuracy": _ratio(counters["status_correct"], counters["cases"]),
-        "subtype_accuracy": _ratio(counters["subtype_correct"], counters["subtype_expected"]),
-        "candidate_coverage_accuracy": _ratio(counters["candidate_coverage_correct"], counters["candidate_coverage_expected"]),
-        "missing_info_accuracy": _ratio(counters["missing_info_correct"], counters["missing_info_expected"]),
-        "conflict_symbol_accuracy": _ratio(counters["conflict_symbol_correct"], counters["conflict_symbol_expected"]),
-        "quantity_precision": quantity_precision,
-        "quantity_recall": quantity_recall,
-        "unit_normalization_accuracy": _ratio(counters["unit_correct"], counters["unit_expected"]),
-        "subject_binding_accuracy": _ratio(counters["subject_correct"], counters["subject_expected"]),
-        "requested_output_accuracy": _ratio(counters["requested_correct"], counters["requested_expected"]),
-        "direction_accuracy": _ratio(counters["direction_correct"], counters["direction_expected"]),
-        "assumption_classification_accuracy": _ratio(counters["condition_correct"], counters["condition_expected"]),
-        "system_type_top1_accuracy": _ratio(counters["top1_correct"], counters["cases"]),
-        "system_type_topk_recall": _ratio(counters["topk_correct"], counters["cases"]),
-        "ambiguity_detection_recall": _ratio(counters["ambiguous_detected"], counters["ambiguous_expected"]),
-        "unsupported_precision": unsupported_precision,
-        "unsupported_recall": unsupported_recall,
-        "false_solve_rate": _ratio(counters["false_solves"], counters["should_not_solve"], empty=0.0),
-        "unnecessary_clarification_rate": _ratio(counters["unnecessary_clarifications"], counters["should_solve"], empty=0.0),
-        "missing_clarification_rate": _ratio(counters["missing_clarifications"], counters["clarification_expected"], empty=0.0),
-        "silent_assumption_rate": _ratio(counters["silent_assumptions"], counters["condition_expected"], empty=0.0),
-        "contradictory_input_detection_rate": _ratio(counters["contradiction_detected"], counters["contradiction_expected"]),
-        "canonical_consistency_accuracy": _ratio(consistent_groups, evaluated_groups),
-        "high_confidence_false_solves": counters["high_confidence_false_solves"],
+        key: (
+            numerator
+            if key in {"case_count", "high_confidence_false_solves"}
+            else _ratio(numerator, denominator)
+        )
+        for key, (numerator, denominator) in sample_specs.items()
+    }
+    metric_samples = {
+        key: {
+            "numerator": numerator,
+            "denominator": denominator,
+            "minimum_samples": MIN_SAMPLES.get(key),
+            "sufficient_samples": (
+                denominator >= MIN_SAMPLES[key]
+                if key in MIN_SAMPLES
+                else denominator > 0
+            ),
+        }
+        for key, (numerator, denominator) in sample_specs.items()
     }
 
     gate_results: dict[str, bool] = {}
+    gate_details: dict[str, str] = {}
     lower_is_better = {
         "false_solve_rate",
         "unnecessary_clarification_rate",
         "missing_clarification_rate",
-        "silent_assumption_rate",
+        "condition_classification_error_rate",
         "high_confidence_false_solves",
     }
     for key, threshold in GATES.items():
         value = metrics[key]
-        gate_results[key] = value <= threshold if key in lower_is_better else value >= threshold
+        samples = metric_samples[key]
+        if value is None or not samples["sufficient_samples"]:
+            gate_results[key] = False
+            gate_details[key] = "insufficient_samples"
+        else:
+            gate_results[key] = (
+                value <= threshold
+                if key in lower_is_better
+                else value >= threshold
+            )
+            gate_details[key] = "passed" if gate_results[key] else "failed"
 
     for values in confidence_bins.values():
         values["accuracy"] = _ratio(values["correct"], values["count"])
@@ -480,10 +680,19 @@ def evaluate_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "source": "rule_based_extractor",
         "llm_used": False,
         "case_count": counters["cases"],
+        "top_k": TOP_K,
         "metrics": metrics,
+        "metric_samples": metric_samples,
+        "benchmark_reliability": benchmark_reliability(cases),
         "confidence_bins": confidence_bins,
         "counts": dict(sorted(counters.items())),
-        "gates": {"thresholds": GATES, "results": gate_results, "passed": all(gate_results.values())},
+        "gates": {
+            "thresholds": GATES,
+            "minimum_samples": MIN_SAMPLES,
+            "results": gate_results,
+            "details": gate_details,
+            "passed": all(gate_results.values()),
+        },
         "failures": {key: value[:100] for key, value in sorted(failures.items())},
     }
 
@@ -493,28 +702,61 @@ def evaluate_fixture(path: Path = DEFAULT_FIXTURE) -> dict[str, Any]:
 
 
 def report_markdown(report: dict[str, Any]) -> str:
+    reliability = report["benchmark_reliability"]
     lines = [
         "# Phase 44 Korean NLP Metrics",
         "",
         f"- Cases: {report['case_count']}",
+        f"- Top-k: k={report['top_k']}",
         f"- LLM used: {str(report['llm_used']).lower()}",
         f"- Gates passed: {str(report['gates']['passed']).lower()}",
         "",
-        "| Metric | Value | Threshold | Passed |",
-        "|---|---:|---:|:---:|",
+        "| Metric | Value | Numerator | Denominator | Threshold | Gate |",
+        "|---|---:|---:|---:|---:|:---:|",
     ]
     for key, value in report["metrics"].items():
         threshold = report["gates"]["thresholds"].get(key, "report-only")
-        passed = report["gates"]["results"].get(key)
+        gate = report["gates"]["details"].get(key, "n/a")
+        samples = report["metric_samples"][key]
+        rendered_value = "N/A" if value is None else value
         lines.append(
-            f"| {key} | {value} | {threshold} | "
-            + ("yes" if passed is True else "no" if passed is False else "n/a")
-            + " |"
+            f"| {key} | {rendered_value} | {samples['numerator']} | "
+            f"{samples['denominator']} | {threshold} | {gate} |"
         )
     lines.extend(["", "## Confidence calibration", ""])
     for name, values in report["confidence_bins"].items():
+        accuracy = "N/A" if values["accuracy"] is None else values["accuracy"]
         lines.append(
-            f"- {name}: count={values['count']}, accuracy={values['accuracy']}, "
+            f"- {name}: count={values['count']}, accuracy={accuracy}, "
             f"false_solves={values['false_solves']}"
         )
+    lines.extend(
+        [
+            "",
+            "## Benchmark reliability",
+            "",
+            f"- Completely identical sentences beyond the first copy: {reliability['identical_sentence_count']}",
+            f"- Exact unique sentences: {reliability['exact_unique_sentence_count']}",
+            f"- Numeric-only/template duplicates beyond one representative: {reliability['numeric_only_duplicate_count']}",
+            f"- Unique sentence stimuli after numeric-template collapse: {reliability['unique_sentence_stimulus_count']}",
+            f"- Parser-dictionary overlapping surface forms: {reliability['parser_dictionary_surface_overlap_count']}",
+            "",
+            "| Category | Cases | Exact unique | Unique stimuli |",
+            "|---|---:|---:|---:|",
+        ]
+    )
+    for category, values in reliability["category_unique_sentence_counts"].items():
+        lines.append(
+            f"| {category} | {values['case_count']} | "
+            f"{values['exact_unique_count']} | {values['unique_stimulus_count']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "The 320 cases are a curated regression suite. They do not prove "
+            "generalization to the real student-input distribution. A 1.0 metric "
+            "describes only the current fixed fixtures. Benchmark independence is "
+            "limited, and an external held-out validation set remains follow-up work.",
+        ]
+    )
     return "\n".join(lines) + "\n"
