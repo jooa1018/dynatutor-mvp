@@ -1134,7 +1134,7 @@
     {
       "id": "rigid_body_acceleration",
       "domain": "plane_rigid_body",
-      "problem_text": "평면강체 가속도 문제에서 A점 가속도 aA=0m/s^2이고 B는 A에서 오른쪽으로 r=0.5m 떨어져 있다. 각속도 omega=2rad/s, 각가속도 alpha=1rad/s^2이다. B점 가속도는?",
+      "problem_text": "평면강체 가속도 문제에서 A점 가속도 aA=0m/s^2이고 B는 A에서 오른쪽으로 r=0.5m 떨어져 있다. 각속도는 반시계방향 omega=2rad/s, 각가속도는 반시계방향 alpha=1rad/s^2이다. B점 가속도는?",
       "expected_canonical_facts": {
         "system_type": "plane_rigid_body_acceleration",
         "subtype": null,
