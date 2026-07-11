@@ -140,6 +140,7 @@ def validate_answer_consistency(*, ok: bool, answer: Any | None, answers: list[A
     if ok:
         for req in requested_outputs:
             if req not in REQUESTED_OUTPUT_SYMBOLS:
+                errors.append(f"requested_outputs에 미등록 출력 \u0060{req}\u0060가 있습니다.")
                 continue
             if not _has_requested_answer(req, symbols, labels):
                 expected = sorted(REQUESTED_OUTPUT_SYMBOLS.get(req, set()))
