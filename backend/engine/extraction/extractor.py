@@ -694,9 +694,24 @@ def _infer_friction_type(t: str, flags: dict) -> str | None:
     return None
 
 
+def _projectile_target_height(t: str) -> float | None:
+    patterns = (
+        r"(\d+(?:\.\d+)?)\s*m\s*(?:높이|높은\s*지점)(?:에|를)?[^.]{0,24}(?:도달|지나|올라)",
+        r"(?:높이|고도)\s*(\d+(?:\.\d+)?)\s*m(?:에|를)?[^.]{0,24}(?:도달|지나)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, t)
+        if match:
+            return float(match.group(1))
+    return None
+
+
 def _infer_launch_height(knowns: dict, t: str) -> float | None:
     if "h0" in knowns:
         return knowns["h0"].value
+    # "처음으로 10 m 높이에 도달"의 10 m는 발사 높이가 아니라 목표 높이다.
+    if _projectile_target_height(t) is not None:
+        return 0.0 if _has_any(t, ["지면에서", "바닥에서", "ground level"]) else None
     if _has_any(t, ["절벽", "높이"]) and "h" in knowns:
         return knowns["h"].value
     # "X m 아래(지점)에 떨어졌다" — 추출기가 h=X로 기록 (Δy=-h → 발사 높이 h)
@@ -708,6 +723,9 @@ def _infer_launch_height(knowns: dict, t: str) -> float | None:
 def _infer_landing_height(knowns: dict, t: str) -> float | None:
     if "yf" in knowns:
         return knowns["yf"].value
+    target = _projectile_target_height(t)
+    if target is not None:
+        return target
     if _has_any(t, ["지면", "바닥", "ground"]):
         return 0.0
     if _has_any(t, ["같은 높이", "same level"]):
