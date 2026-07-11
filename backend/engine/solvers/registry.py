@@ -376,6 +376,12 @@ class SolverRegistry:
             ):
                 missing.append("force-displacement direction or theta")
         if solver_id in {"pulley_table_hanging", "pulley_incline_hanging"}:
+            if (
+                c.friction_type is None
+                and not (c.flags or {}).get("no_friction")
+                and not any(key in c.knowns for key in ("mu", "mu_k", "mu_s"))
+            ):
+                missing.append("explicit friction state")
             if c.friction_type == "static" and not any(
                 key in c.knowns for key in ("mu_s", "mu")
             ):
