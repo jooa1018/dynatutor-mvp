@@ -943,6 +943,10 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
     elif c.system_type == "plane_rigid_body_acceleration":
         raw = c.raw_text or ""
         fixed_A = any(phrase in raw for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"])
+        relative_to_A = any(
+            phrase in raw.replace(" ", "")
+            for phrase in ["A에대한", "A기준", "A에대해"]
+        )
         zero_aA = (
             "aA" in c.knowns
             and c.knowns["aA"].value is not None
@@ -957,14 +961,19 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             or ("rBAx" in c.knowns and "rBAy" in c.knowns)
         )
         has_scalar_r = "R" in c.knowns or "r" in c.knowns
-        if not has_r_vector and not ((fixed_A or zero_aA) and has_scalar_r):
-            missing.append("r_B/A 벡터 성분(고정 A에서 크기만 구할 때는 거리 r)")
-        if not has_aA_vector and not fixed_A and not zero_aA:
-            missing.append("A점 가속도 벡터 또는 A점 고정 조건")
+        if not has_r_vector and not ((fixed_A or zero_aA or relative_to_A) and has_scalar_r):
+            missing.append("r_B/A 벡터 성분(고정 A 또는 상대 크기만 구할 때는 거리 r)")
+        if not has_aA_vector and not fixed_A and not zero_aA and not relative_to_A:
+            missing.append("A점 가속도 벡터, A점 고정 조건, 또는 A에 대한 상대가속도 요청")
         if "omega" not in c.knowns:
             missing.append("강체 각속도 ω")
         if "alpha" not in c.knowns:
             missing.append("강체 각가속도 α")
+        if has_r_vector:
+            if "omega_sign" not in c.coordinate_data and "angular_sign" not in c.coordinate_data:
+                missing.append("가속도 성분 계산을 위한 각속도 회전 방향")
+            if "alpha_sign" not in c.coordinate_data and "angular_sign" not in c.coordinate_data:
+                missing.append("가속도 성분 계산을 위한 각가속도 회전 방향")
     elif c.system_type == "massive_pulley_atwood":
         if "m1" not in c.knowns or "m2" not in c.knowns:
             missing.append("두 물체의 질량 m1, m2")
@@ -1021,6 +1030,8 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("r_B/A 벡터 성분(고정 A에서 속력만 구할 때는 거리 r)")
         if "omega" not in c.knowns:
             missing.append("강체 각속도 ω")
+        if has_r_vector and "omega_sign" not in c.coordinate_data and "angular_sign" not in c.coordinate_data:
+            missing.append("속도 성분 계산을 위한 각속도 회전 방향")
         if not has_vA_vector and not fixed_A and not zero_vA:
             missing.append("A점 속도 벡터 또는 A점 고정 조건")
     elif c.system_type == "unknown":
