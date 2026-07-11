@@ -129,7 +129,11 @@ class SolverRegistry:
             add(c.system_type, c.subtype, 1.0, "canonical compatibility interpretation")
 
         evidence = rank_type_evidence(c)
-        if len(evidence) > 1 and not (c.flags or {}).get("_clarify_model_chosen"):
+        if (
+            c.system_type == "unknown"
+            and len(evidence) > 1
+            and not (c.flags or {}).get("_clarify_model_chosen")
+        ):
             for item in evidence:
                 score = min(
                     ROUTING_CONFIG.evidence_candidate_ceiling,
@@ -155,6 +159,10 @@ class SolverRegistry:
 
         special = {
             "theta": "theta" in c.knowns or c.launch_angle_deg is not None,
+            "v0": (
+                ("v0" in c.knowns and c.knowns["v0"].value is not None)
+                or self._starts_from_rest(c)
+            ),
             "launch_angle_deg": c.launch_angle_deg is not None,
             "launch_height": c.launch_height is not None or "h" in c.knowns,
             "body_shape": bool(c.body_shape),
@@ -405,7 +413,7 @@ class SolverRegistry:
     ) -> list[str]:
         requested = [
             item
-            for item in (c.requested_outputs or c.unknowns or [])
+            for item in (c.requested_outputs or [])
             if item != "auto"
         ]
         if not requested or not supported:
@@ -447,6 +455,8 @@ class SolverRegistry:
     def _clarification_question(self, candidates: list[RouteCandidate]) -> str:
         missing = [m for cand in candidates[:2] for m in cand.missing_requirements]
         joined = ", ".join(dict.fromkeys(missing))
+        if candidates and candidates[0].solver_id == "single_particle_newton":
+            return "여러 힘의 방향 또는 각 힘의 합력(알짜힘), 그리고 질량을 알려 주세요."
         if any("mu" in item or "friction_type" in item for item in missing):
             return "정지마찰계수와 운동마찰계수 중 어떤 값인지, 그리고 실제 운동 방향/경향이 무엇인지 알려 주세요."
         if any(item in {"I", "R"} or "I" in item or "R" in item for item in missing):
@@ -591,8 +601,15 @@ class SolverRegistry:
         c: CanonicalProblem,
         decision: RouteDecision | None = None,
     ) -> BaseSolver | None:
+        if (
+            decision is None
+            and self.last_route_decision is not None
+            and getattr(self, "_last_route_problem_identity", None) == id(c)
+        ):
+            decision = self.last_route_decision
         decision = decision or self.route(c)
         self.last_route_decision = decision
+        self._last_route_problem_identity = id(c)
         if decision.status != "select" or decision.selected_solver_id is None:
             return None
         chosen = next(
