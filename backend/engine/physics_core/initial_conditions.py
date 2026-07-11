@@ -27,3 +27,30 @@ def explicitly_starts_from_rest(problem_or_text: Any) -> bool:
     )
     normalized = (text or "").lower()
     return any(phrase in normalized for phrase in REST_PHRASES)
+
+
+ANGULAR_REST_PHRASES = (
+    "처음에는 회전하지",
+    "초기에는 회전하지",
+    "처음에는 돌지 않",
+    "초기에는 돌지 않",
+    "회전 정지 상태",
+    "starts from angular rest",
+    "initially not rotating",
+)
+
+
+def explicitly_starts_from_angular_rest(problem_or_text: Any) -> bool:
+    text = (
+        getattr(problem_or_text, "raw_text", "")
+        if not isinstance(problem_or_text, str)
+        else problem_or_text
+    )
+    normalized = (text or "").lower()
+    if any(phrase in normalized for phrase in ANGULAR_REST_PHRASES):
+        return True
+    has_rotation_context = any(
+        token in normalized
+        for token in ("회전", "각속도", "각가속도", "omega", "alpha", "ω", "α")
+    )
+    return has_rotation_context and explicitly_starts_from_rest(normalized)
