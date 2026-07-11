@@ -18,6 +18,7 @@ from typing import Callable
 
 from engine.models import CanonicalProblem
 from engine.physics_core.units import magnitude_si
+from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
 
 REL_TOL = 1e-4  # solver numeric은 ~6유효숫자 반올림 → 1e-6은 무고 오탐. 1e-4는 반올림은 통과, 실수(≥0.1%)는 검출.
 ABS_TOL = 1e-8
@@ -48,6 +49,30 @@ def _k(cp: CanonicalProblem, key: str, unit: str) -> float | None:
         return None
 
 
+def _first_not_none(*values):
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _explicitly_starts_from_rest(cp: CanonicalProblem) -> bool:
+    raw = (cp.raw_text or "").lower()
+    return any(
+        phrase in raw
+        for phrase in (
+            "정지 상태에서",
+            "정지 상태로부터",
+            "정지에서",
+            "처음에는 정지",
+            "초기에는 정지",
+            "가만히 있다가",
+            "starts from rest",
+            "initially at rest",
+        )
+    )
+
+
 def _theta_rad(cp: CanonicalProblem) -> float | None:
     if cp.launch_angle_deg is not None:
         return math.radians(float(cp.launch_angle_deg))
@@ -72,7 +97,7 @@ def _incline(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     # 정지마찰이 버티는 경우 a=0: 미끄러짐 방정식 a=g(sinθ-μcosθ)는 적용되지 않는다
     # (정지마찰은 필요한 만큼 조정됨). 이때는 정지 조건 μ_s ≥ tanθ 를 검사한다.
     if abs(a) < 1e-9:
-        mu_s = _k(cp, "mu_s", "") or _k(cp, "mu", "") or mu
+        mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""), mu)
         # tanθ ≤ μ_s 이면 정지가 물리적으로 타당 → 통과. 잔차는 위반량(초과분).
         violation = max(0.0, math.tan(th) - mu_s)
         return [ResidualCheck("정지 조건 tanθ ≤ μ_s (a=0)", violation, 1.0)]
@@ -114,7 +139,7 @@ def _incline_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     # 매달린 물체 정지조건 T=m2·g, 경사면 물체는 정지마찰이 |m2g - m1g·sinθ| ≤ μs·m1g·cosθ
     # 를 만족하면 타당. 잔차는 위반량.
     if abs(a) < 1e-9:
-        mu_s = _k(cp, "mu_s", "") or _k(cp, "mu", "") or mu
+        mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""), mu)
         net = abs(m2 * g - m1 * g * math.sin(th))
         max_static = mu_s * m1 * g * math.cos(th)
         return [ResidualCheck("정지 조건 |m2g - m1g·sinθ| ≤ μs·m1g·cosθ (a=0)", max(0.0, net - max_static), max_static + 1.0)]
@@ -141,11 +166,11 @@ def _incline_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
 
 def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     g = _k(cp, "g", "m/s^2")
-    v0 = _k(cp, "v0", "m/s") or _k(cp, "v", "m/s")
+    v0 = _first_not_none(_k(cp, "v0", "m/s"), _k(cp, "v", "m/s"))
     th = _theta_rad(cp)
     if g is None or v0 is None or th is None:
         return []
-    y0 = cp.launch_height if cp.launch_height is not None else (_k(cp, "h", "m") or 0.0)
+    y0 = cp.launch_height if cp.launch_height is not None else _first_not_none(_k(cp, "h", "m"), 0.0)
     y_final = cp.landing_height
     if y_final is None:
         raw = (cp.raw_text or "").lower()
@@ -163,7 +188,7 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         ))
     if t is not None and R is not None:
         checks.append(ResidualCheck("포물선 R - vₓ·t", R - vx * t, max(abs(R), 1.0)))
-    hmax = pool.get("H") or pool.get("h_max")
+    hmax = _first_not_none(pool.get("H"), pool.get("h_max"))
     if hmax is not None:
         checks.append(ResidualCheck("최대높이 H - vy²/2g - y0", hmax - (y0 + vy * vy / (2 * g)), max(abs(hmax), 1.0)))
     return checks
@@ -174,11 +199,11 @@ def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     v1, v2 = _k(cp, "v1", "m/s"), _k(cp, "v2", "m/s")
     if None in (m1, m2, v1):
         return []
-    v2 = v2 or 0.0
+    v2 = _first_not_none(v2, 0.0)
     p_before = m1 * v1 + m2 * v2
-    vf = pool.get("v_f") or pool.get("vf")
-    v1p = pool.get("v1'") or pool.get("v1p")
-    v2p = pool.get("v2'") or pool.get("v2p")
+    vf = _first_not_none(pool.get("v_f"), pool.get("vf"))
+    v1p = _first_not_none(pool.get("v1'"), pool.get("v1p"))
+    v2p = _first_not_none(pool.get("v2'"), pool.get("v2p"))
     checks: list[ResidualCheck] = []
     if vf is not None:  # 완전비탄성
         checks.append(ResidualCheck("운동량 보존(완전비탄성)", p_before - (m1 + m2) * vf, abs(p_before) + 1.0))
@@ -195,7 +220,7 @@ def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
 def _const_acc(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     g = None  # unused
     v0, a, t_k = _k(cp, "v0", "m/s"), _k(cp, "a", "m/s^2"), _k(cp, "t", "s")
-    vf, s, t = pool.get("vf") or pool.get("v_f"), pool.get("s"), pool.get("t")
+    vf, s, t = _first_not_none(pool.get("vf"), pool.get("v_f")), pool.get("s"), pool.get("t")
     checks: list[ResidualCheck] = []
     if vf is not None and None not in (v0, a, t_k):
         checks.append(ResidualCheck("v = v0 + a·t", vf - (v0 + a * t_k), max(abs(vf), 1.0)))
@@ -212,22 +237,33 @@ def _work_energy(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     m, W = _k(cp, "m", "kg"), _k(cp, "W", "J")
     if W is None:
         F, s = _k(cp, "F", "N"), _k(cp, "s", "m")
-        W = F * s if None not in (F, s) else None
-    v = pool.get("v_f") or pool.get("vf") or pool.get("v")
+        angle = infer_angle_between_force_and_displacement(cp.raw_text)
+        if angle is None:
+            angle = _k(cp, "theta", "deg")
+        W = (
+            F * s * math.cos(math.radians(angle))
+            if None not in (F, s, angle)
+            else None
+        )
+    v = _first_not_none(pool.get("v_f"), pool.get("vf"), pool.get("v"))
     if None in (m, W) or v is None:
         return []
-    v0 = _k(cp, "v0", "m/s") or 0.0
+    v0 = _first_not_none(_k(cp, "v0", "m/s"), _k(cp, "v", "m/s"))
+    if v0 is None and _explicitly_starts_from_rest(cp):
+        v0 = 0.0
+    if v0 is None:
+        return []
     return [ResidualCheck("일-에너지: W - ½m(v² - v0²)", W - 0.5 * m * (v * v - v0 * v0), abs(W) + 1.0)]
 
 
 def _spring_energy(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     E = pool.get("E")
-    k_e, x_e = _k(cp, "k", "N/m"), _k(cp, "x", "m") or _k(cp, "A", "m")
+    k_e, x_e = _k(cp, "k", "N/m"), _first_not_none(_k(cp, "x", "m"), _k(cp, "A", "m"))
     if E is not None and None not in (k_e, x_e):
         expected = 0.5 * k_e * x_e * x_e
         return [ResidualCheck("탄성 에너지: E - ½kx²", E - expected, max(expected, 1.0))]
-    k, m, x = _k(cp, "k", "N/m"), _k(cp, "m", "kg"), _k(cp, "x", "m") or _k(cp, "A", "m")
-    v = pool.get("v") or pool.get("v_f") or pool.get("vf")
+    k, m, x = _k(cp, "k", "N/m"), _k(cp, "m", "kg"), _first_not_none(_k(cp, "x", "m"), _k(cp, "A", "m"))
+    v = _first_not_none(pool.get("v"), pool.get("v_f"), pool.get("vf"))
     if None in (k, m, x) or v is None:
         return []
     return [ResidualCheck("에너지: ½kx² - ½mv²", 0.5 * k * x * x - 0.5 * m * v * v, 0.5 * k * x * x + 1.0)]
@@ -252,7 +288,12 @@ def _const_force_work(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     W = pool.get("W")
     if None in (F, s) or W is None:
         return []
-    th = _theta_rad(cp) or 0.0
+    th = _theta_rad(cp)
+    if th is None:
+        angle = infer_angle_between_force_and_displacement(cp.raw_text)
+        th = math.radians(angle) if angle is not None else None
+    if th is None:
+        return []
     magnitude = abs(F * s * math.cos(th))
     # 부호 관례가 solver마다 다르다(마찰/저항일은 음수로 인코딩, θ로 인코딩, 또는 둘 다).
     # 따라서 크기만 항등식으로 검사하고, 부호 타당성은 별도로 본다.
@@ -270,7 +311,7 @@ def _impulse(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     checks: list[ResidualCheck] = []
     if J is not None and None not in (F, t):
         checks.append(ResidualCheck("J - F·Δt", J - F * t, abs(F * t) + 1.0))
-    vf = pool.get("v_f") or pool.get("vf")
+    vf = _first_not_none(pool.get("v_f"), pool.get("vf"))
     m, v0 = _k(cp, "m", "kg"), _k(cp, "v0", "m/s") or 0.0
     if vf is not None and None not in (F, t, m):
         checks.append(ResidualCheck("충격량-운동량: F·Δt - m(v - v0)", F * t - m * (vf - v0), abs(F * t) + 1.0))
@@ -287,11 +328,11 @@ def _fixed_axis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     omega_f = pool.get("omega_f")
     a_k, t_k = _k(cp, "alpha", "rad/s^2"), _k(cp, "t", "s")
     if omega_f is not None and None not in (a_k, t_k):
-        omega0 = _k(cp, "omega0", "rad/s") or _k(cp, "omega", "rad/s") or 0.0
+        omega0 = _first_not_none(_k(cp, "omega0", "rad/s"), _k(cp, "omega", "rad/s"), 0.0)
         expected = omega0 + a_k * t_k
         checks.append(ResidualCheck("회전 kinematics: ω - (ω₀+αt)", omega_f - expected, max(abs(expected), 1.0)))
     v = pool.get("v")
-    om, r = _k(cp, "omega", "rad/s"), _k(cp, "r", "m") or _k(cp, "R", "m")
+    om, r = _k(cp, "omega", "rad/s"), _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
     if v is not None and None not in (om, r) and a_k is None:
         expected = om * r
         checks.append(ResidualCheck("회전점 속력: v - ωr", v - expected, max(abs(expected), 1.0)))
@@ -315,36 +356,36 @@ def _horizontal_friction(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck
 
 
 def _rolling(cp: CanonicalProblem, pool: dict, beta: float | None) -> list[ResidualCheck]:
-    g, h = _k(cp, "g", "m/s^2"), _k(cp, "h", "m") or (cp.launch_height if cp.launch_height else None)
-    v = pool.get("v") or pool.get("v_f") or pool.get("vf")
+    g, h = _k(cp, "g", "m/s^2"), _first_not_none(_k(cp, "h", "m"), cp.launch_height)
+    v = _first_not_none(pool.get("v"), pool.get("v_f"), pool.get("vf"))
     if None in (g, h) or v is None or beta is None:
         return []
     return [ResidualCheck("구름 에너지: ½v²(1+β) - gh", 0.5 * v * v * (1 + beta) - g * h, g * h + 1.0)]
 
 
 def _curve_flat(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    g, r = _k(cp, "g", "m/s^2"), _k(cp, "r", "m") or _k(cp, "R", "m")
+    g, r = _k(cp, "g", "m/s^2"), _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
     mu = _mu(cp)
-    v = pool.get("v_max") or pool.get("v")
+    v = _first_not_none(pool.get("v_max"), pool.get("v"))
     if None in (g, r) or v is None or mu == 0.0:
         return []
     return [ResidualCheck("평면 커브: v² - μgr", v * v - mu * g * r, mu * g * r + 1.0)]
 
 
 def _curve_banked(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    g, r, th = _k(cp, "g", "m/s^2"), _k(cp, "r", "m") or _k(cp, "R", "m"), _theta_rad(cp)
-    v = pool.get("v") or pool.get("v_max")
+    g, r, th = _k(cp, "g", "m/s^2"), _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m")), _theta_rad(cp)
+    v = _first_not_none(pool.get("v"), pool.get("v_max"))
     if None in (g, r) or th is None or v is None:
         return []
     return [ResidualCheck("뱅크 커브: v² - gr·tanθ", v * v - g * r * math.tan(th), g * r * math.tan(th) + 1.0)]
 
 
 def _polar(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    r = _k(cp, "r", "m") or _k(cp, "R", "m")
-    thetadot = _k(cp, "thetadot", "rad/s") or _k(cp, "omega", "rad/s")
+    r = _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
+    thetadot = _first_not_none(_k(cp, "thetadot", "rad/s"), _k(cp, "omega", "rad/s"))
     if r is None or thetadot is None:
         return []
-    rdot = _k(cp, "rdot", "m/s") or 0.0
+    rdot = _first_not_none(_k(cp, "rdot", "m/s"), 0.0)
     checks: list[ResidualCheck] = []
     v_r, v_t, v = pool.get("v_r"), pool.get("v_theta"), pool.get("v")
     if v_r is not None:
@@ -355,8 +396,8 @@ def _polar(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         checks.append(ResidualCheck("극좌표 |v|² - (v_r²+v_θ²)", v * v - (v_r * v_r + v_t * v_t), v * v + 1.0))
     a_r, a_t, a = pool.get("a_r"), pool.get("a_theta"), pool.get("a")
     if a_r is not None or a_t is not None:
-        rddot = _k(cp, "rddot", "m/s^2") or 0.0
-        thetaddot = _k(cp, "thetaddot", "rad/s^2") or _k(cp, "alpha", "rad/s^2") or 0.0
+        rddot = _first_not_none(_k(cp, "rddot", "m/s^2"), 0.0)
+        thetaddot = _first_not_none(_k(cp, "thetaddot", "rad/s^2"), _k(cp, "alpha", "rad/s^2"), 0.0)
         if a_r is not None:
             expected = rddot - r * thetadot * thetadot
             checks.append(ResidualCheck("극좌표 a_r - (r̈ - rθ̇²)", a_r - expected, max(abs(expected), 1.0)))
@@ -369,8 +410,8 @@ def _polar(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
 
 
 def _coriolis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    omega = _k(cp, "omega", "rad/s") or _k(cp, "thetadot", "rad/s")
-    vrel = _k(cp, "vrel", "m/s") or _k(cp, "rdot", "m/s")
+    omega = _first_not_none(_k(cp, "omega", "rad/s"), _k(cp, "thetadot", "rad/s"))
+    vrel = _first_not_none(_k(cp, "vrel", "m/s"), _k(cp, "rdot", "m/s"))
     if omega is None or vrel is None:
         return []
     checks: list[ResidualCheck] = []
@@ -378,14 +419,14 @@ def _coriolis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     if a_c is not None:
         expected = 2 * omega * vrel
         checks.append(ResidualCheck("코리올리 a_C - 2ωv_rel", a_c - expected, max(abs(expected), 1.0)))
-    r = _k(cp, "r", "m") or _k(cp, "R", "m") or 0.0
+    r = _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"), 0.0)
     a_r, a_t, a = pool.get("a_r"), pool.get("a_theta"), pool.get("a")
     if r and a_r is not None:
-        a_rel = _k(cp, "arel", "m/s^2") or _k(cp, "rddot", "m/s^2") or 0.0
+        a_rel = _first_not_none(_k(cp, "arel", "m/s^2"), _k(cp, "rddot", "m/s^2"), 0.0)
         expected = a_rel - r * omega * omega
         checks.append(ResidualCheck("회전계 a_r - (a_rel - rω²)", a_r - expected, max(abs(expected), 1.0)))
     if r and a_t is not None and a_c is not None:
-        alpha = _k(cp, "alpha", "rad/s^2") or _k(cp, "thetaddot", "rad/s^2") or 0.0
+        alpha = _first_not_none(_k(cp, "alpha", "rad/s^2"), _k(cp, "thetaddot", "rad/s^2"), 0.0)
         expected = r * alpha + a_c
         checks.append(ResidualCheck("회전계 a_θ - (rα + a_C)", a_t - expected, max(abs(expected), 1.0)))
     if a is not None and a_r is not None and a_t is not None:
@@ -397,7 +438,7 @@ def _rigid_rBA(cp: CanonicalProblem):
     cd = getattr(cp, "coordinate_data", {}) or {}
     if "rBAx" in cd and "rBAy" in cd:
         return float(cd["rBAx"]), float(cd["rBAy"])
-    r = _k(cp, "r", "m") or _k(cp, "R", "m")
+    r = _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
     if r is not None:
         return r, 0.0
     return None
@@ -411,7 +452,7 @@ def _rigid_velocity(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     cd = getattr(cp, "coordinate_data", {}) or {}
     sign = float(cd.get("angular_sign", 1.0))
     w = sign * omega
-    vAx = float(cd.get("vAx", _k(cp, "vA", "m/s") or 0.0))
+    vAx = float(cd.get("vAx", _first_not_none(_k(cp, "vA", "m/s"), 0.0)))
     vAy = float(cd.get("vAy", 0.0))
     rx, ry = rba
     checks: list[ResidualCheck] = []
@@ -436,7 +477,7 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
     cd = getattr(cp, "coordinate_data", {}) or {}
     sign = float(cd.get("angular_sign", 1.0))
     w, al = sign * omega, sign * alpha
-    aAx = float(cd.get("aAx", _k(cp, "aA", "m/s^2") or 0.0))
+    aAx = float(cd.get("aAx", _first_not_none(_k(cp, "aA", "m/s^2"), 0.0)))
     aAy = float(cd.get("aAy", 0.0))
     rx, ry = rba
     rmag = math.hypot(rx, ry)
