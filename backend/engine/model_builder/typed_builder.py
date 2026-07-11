@@ -35,7 +35,7 @@ def _source_metadata(
             uncertainty = None
             if fact.confidence is not None:
                 uncertainty = max(0.0, min(1.0, 1.0 - float(fact.confidence)))
-            return fact.id, uncertainty
+            return fact.fact_id, uncertainty
     return None, None
 
 
