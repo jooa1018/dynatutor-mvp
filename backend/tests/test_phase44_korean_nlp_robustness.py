@@ -291,8 +291,8 @@ def test_audit_f4_requested_subject_selects_its_own_initial_speed(raw):
 
 
 def test_audit_f7_background_markers_do_not_delete_longer_physics_words():
-    cart = extract_problem("학생 수레가 2 m/s로 움직인다.")
-    clock = extract_problem("벽시계의 진자가 주기 2초로 진동한다.")
+    cart = extract_problem("학생 수레가 2 m/s로 움직인다. 3초 후 속도는?")
+    clock = extract_problem("벽시계의 진자가 주기 2초로 진동한다. 진동수는?")
 
     assert cart.knowns["v0"].value == pytest.approx(2.0)
     assert cart.system_type != "unsupported"
