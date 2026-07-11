@@ -43,3 +43,72 @@ def infer_direction_label(text: str) -> str | None:
     if abs(angle - 90.0) < 1e-9:
         return "perpendicular"
     return f"angle_{angle:g}_deg"
+
+
+
+def infer_force_motion_relation(text: str) -> str | None:
+    """Infer a 1-D force direction relative to the current motion."""
+
+    compact = re.sub(r"\s+", "", (text or "").lower())
+    if not any(token in compact for token in ("힘", "force")):
+        return None
+
+    opposite = (
+        "운동방향과반대" in compact
+        or "운동방향의반대" in compact
+        or "속도방향과반대" in compact
+        or "움직이는방향과반대" in compact
+        or "againstthemotion" in compact
+        or "oppositetothemotion" in compact
+    )
+    same = (
+        "운동방향과같은" in compact
+        or "운동방향과동일" in compact
+        or "속도방향과같은" in compact
+        or "움직이는방향과같은" in compact
+        or "alongthemotion" in compact
+        or "sameasthemotion" in compact
+    )
+    if opposite and not same:
+        return "opposite"
+    if same and not opposite:
+        return "same"
+
+    if any(
+        phrase in compact
+        for phrase in ("힘이왼쪽", "힘은왼쪽", "힘이-x", "forcetotheleft")
+    ):
+        return "negative"
+    if any(
+        phrase in compact
+        for phrase in ("힘이오른쪽", "힘은오른쪽", "힘이+x", "forcetotheright")
+    ):
+        return "positive"
+    return None
+
+
+def resolve_impulse_force_component(
+    force_value: float,
+    relation: str | None,
+    initial_velocity: float | None,
+    *,
+    magnitude_only: bool,
+) -> float | None:
+    """Resolve the signed 1-D force component used by impulse-momentum."""
+
+    force = float(force_value)
+    if force < 0:
+        return force
+    if relation == "positive":
+        return abs(force)
+    if relation == "negative":
+        return -abs(force)
+    if relation in {"same", "opposite"}:
+        if initial_velocity is None or abs(float(initial_velocity)) <= 1e-12:
+            return None
+        motion_sign = 1.0 if float(initial_velocity) > 0 else -1.0
+        relation_sign = 1.0 if relation == "same" else -1.0
+        return abs(force) * motion_sign * relation_sign
+    if magnitude_only:
+        return abs(force)
+    return None
