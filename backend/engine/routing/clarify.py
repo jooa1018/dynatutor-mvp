@@ -144,9 +144,6 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
         raise ClarifyPatchError(f"허용되지 않는 patch 키: {sorted(unknown_keys)}")
 
     target_system = patch.get("system_type", cp.system_type)
-    system_changed = (
-        "system_type" in patch and target_system != cp.system_type
-    )
     if "system_type" in patch and target_system not in ALLOWED_SYSTEM_TYPES:
         raise ClarifyPatchError(f"허용되지 않는 system_type: {target_system}")
 
@@ -251,7 +248,6 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     if st is not None:
         if st not in ALLOWED_SYSTEM_TYPES:
             raise ClarifyPatchError(f"허용되지 않는 system_type: {st}")
-        system_changed = st != cp.system_type
         cp.system_type = st
         if "subtype" not in patch:
             cp.subtype = None
