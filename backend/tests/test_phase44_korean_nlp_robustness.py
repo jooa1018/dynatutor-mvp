@@ -297,7 +297,8 @@ def test_audit_f7_background_markers_do_not_delete_longer_physics_words():
     assert cart.knowns["v0"].value == pytest.approx(2.0)
     assert cart.system_type != "unsupported"
     assert clock.flags["vibration"] is True
-    assert clock.requested_outputs == ["period"]
+    assert "period" in clock.requested_outputs
+    assert "frequency" in clock.requested_outputs
 
 
 def _metric_case(*, include_time_oracle=True, allowed_assumptions=None):
