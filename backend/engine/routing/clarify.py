@@ -154,7 +154,7 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
         patch["subtype"]
         if "subtype" in patch
         else None
-        if system_changed
+        if "system_type" in patch
         else cp.subtype
     )
     if "subtype" in patch and target_subtype not in ALLOWED_SUBTYPES:
@@ -253,7 +253,7 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
             raise ClarifyPatchError(f"허용되지 않는 system_type: {st}")
         system_changed = st != cp.system_type
         cp.system_type = st
-        if system_changed and "subtype" not in patch:
+        if "subtype" not in patch:
             cp.subtype = None
         cp.flags["_clarify_model_chosen"] = True
     sub = patch.get("subtype", "__unset__")
