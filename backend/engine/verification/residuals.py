@@ -470,66 +470,103 @@ def _rigid_rBA(cp: CanonicalProblem):
     cd = getattr(cp, "coordinate_data", {}) or {}
     if "rBAx" in cd and "rBAy" in cd:
         return float(cd["rBAx"]), float(cd["rBAy"])
-    r = _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
-    if r is not None:
-        return r, 0.0
+    rx, ry = _k(cp, "rBAx", "m"), _k(cp, "rBAy", "m")
+    if rx is not None and ry is not None:
+        return rx, ry
+    return None
+
+
+def _rigid_radius(cp: CanonicalProblem) -> float | None:
+    rba = _rigid_rBA(cp)
+    if rba is not None:
+        return math.hypot(*rba)
+    return _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
+
+
+def _rigid_reference_vector(cp: CanonicalProblem, prefix: str, unit: str):
+    cd = getattr(cp, "coordinate_data", {}) or {}
+    x_key, y_key = f"{prefix}Ax", f"{prefix}Ay"
+    if x_key in cd and y_key in cd:
+        return float(cd[x_key]), float(cd[y_key])
+    x_value, y_value = _k(cp, x_key, unit), _k(cp, y_key, unit)
+    if x_value is not None and y_value is not None:
+        return x_value, y_value
+    scalar = _k(cp, f"{prefix}A", unit)
+    raw = cp.raw_text or ""
+    fixed = any(
+        phrase in raw
+        for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
+    )
+    if fixed or (scalar is not None and abs(scalar) <= 1e-12):
+        return 0.0, 0.0
     return None
 
 
 def _rigid_velocity(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    rba = _rigid_rBA(cp)
     omega = _k(cp, "omega", "rad/s")
-    if rba is None or omega is None:
+    radius = _rigid_radius(cp)
+    if omega is None or radius is None:
         return []
     cd = getattr(cp, "coordinate_data", {}) or {}
     sign = float(cd.get("angular_sign", 1.0))
     w = sign * omega
-    vAx = float(cd.get("vAx", _first_not_none(_k(cp, "vA", "m/s"), 0.0)))
-    vAy = float(cd.get("vAy", 0.0))
-    rx, ry = rba
-    checks: list[ResidualCheck] = []
+    rba = _rigid_rBA(cp)
+    reference = _rigid_reference_vector(cp, "v", "m/s")
     vBx, vBy, vB = pool.get("v_Bx"), pool.get("v_By"), pool.get("v_B")
-    if vBx is not None:
-        expected = vAx - w * ry
-        checks.append(ResidualCheck("강체 v_Bx - (v_Ax - ω·r_y)", vBx - expected, max(abs(expected), abs(w * rx), 1.0)))
-    if vBy is not None:
-        expected = vAy + w * rx
-        checks.append(ResidualCheck("강체 v_By - (v_Ay + ω·r_x)", vBy - expected, max(abs(expected), 1.0)))
+    checks: list[ResidualCheck] = []
+
+    if rba is not None and reference is not None:
+        vAx, vAy = reference
+        rx, ry = rba
+        if vBx is not None:
+            expected = vAx - w * ry
+            checks.append(ResidualCheck("강체 v_Bx - (v_Ax - ω·r_y)", vBx - expected, max(abs(expected), abs(w * rx), 1.0)))
+        if vBy is not None:
+            expected = vAy + w * rx
+            checks.append(ResidualCheck("강체 v_By - (v_Ay + ω·r_x)", vBy - expected, max(abs(expected), 1.0)))
     if vB is not None and vBx is not None and vBy is not None:
         checks.append(ResidualCheck("강체 |v_B|² - (v_Bx²+v_By²)", vB * vB - (vBx * vBx + vBy * vBy), vB * vB + 1.0))
+    elif vB is not None and reference == (0.0, 0.0):
+        expected = abs(omega) * radius
+        checks.append(ResidualCheck("고정 A 강체 속력: |v_B| - |ω|r", vB - expected, max(abs(expected), 1.0)))
     return checks
 
 
 def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    rba = _rigid_rBA(cp)
     omega = _k(cp, "omega", "rad/s")
     alpha = _k(cp, "alpha", "rad/s^2")
-    if rba is None or omega is None or alpha is None:
+    radius = _rigid_radius(cp)
+    if omega is None or alpha is None or radius is None:
         return []
     cd = getattr(cp, "coordinate_data", {}) or {}
     sign = float(cd.get("angular_sign", 1.0))
     w, al = sign * omega, sign * alpha
-    aAx = float(cd.get("aAx", _first_not_none(_k(cp, "aA", "m/s^2"), 0.0)))
-    aAy = float(cd.get("aAy", 0.0))
-    rx, ry = rba
-    rmag = math.hypot(rx, ry)
     checks: list[ResidualCheck] = []
     a_t, a_n = pool.get("a_t"), pool.get("a_n")
     if a_t is not None:
-        expected = abs(al) * rmag
+        expected = abs(al) * radius
         checks.append(ResidualCheck("강체 a_t - |α|·r", a_t - expected, max(abs(expected), 1.0)))
     if a_n is not None:
-        expected = omega * omega * rmag
+        expected = omega * omega * radius
         checks.append(ResidualCheck("강체 a_n - ω²·r", a_n - expected, max(abs(expected), 1.0)))
+
+    rba = _rigid_rBA(cp)
+    reference = _rigid_reference_vector(cp, "a", "m/s^2")
     aBx, aBy, aB = pool.get("a_Bx"), pool.get("a_By"), pool.get("a_B")
-    if aBx is not None:
-        expected = aAx - al * ry - w * w * rx
-        checks.append(ResidualCheck("강체 a_Bx - (a_Ax - α·r_y - ω²r_x)", aBx - expected, max(abs(expected), 1.0)))
-    if aBy is not None:
-        expected = aAy + al * rx - w * w * ry
-        checks.append(ResidualCheck("강체 a_By - (a_Ay + α·r_x - ω²r_y)", aBy - expected, max(abs(expected), 1.0)))
+    if rba is not None and reference is not None:
+        aAx, aAy = reference
+        rx, ry = rba
+        if aBx is not None:
+            expected = aAx - al * ry - w * w * rx
+            checks.append(ResidualCheck("강체 a_Bx - (a_Ax - α·r_y - ω²r_x)", aBx - expected, max(abs(expected), 1.0)))
+        if aBy is not None:
+            expected = aAy + al * rx - w * w * ry
+            checks.append(ResidualCheck("강체 a_By - (a_Ay + α·r_x - ω²r_y)", aBy - expected, max(abs(expected), 1.0)))
     if aB is not None and aBx is not None and aBy is not None:
         checks.append(ResidualCheck("강체 |a_B|² - (a_Bx²+a_By²)", aB * aB - (aBx * aBx + aBy * aBy), aB * aB + 1.0))
+    elif aB is not None and reference == (0.0, 0.0):
+        expected_squared = (alpha * radius) ** 2 + (omega * omega * radius) ** 2
+        checks.append(ResidualCheck("고정 A 강체 가속도 크기", aB * aB - expected_squared, max(expected_squared, 1.0)))
     return checks
 
 
@@ -594,8 +631,8 @@ RELEVANT_KNOWNS: dict[str, set[str]] = {
     "polar_kinematics": {"r", "R", "rdot", "rddot", "omega", "thetadot", "alpha", "thetaddot"},
     "slot_pin_relative_motion": {"r", "R", "rdot", "rddot", "omega", "alpha"},
     "coriolis_relative_motion": {"omega", "thetadot", "vrel", "rdot", "r", "R", "alpha", "thetaddot", "arel", "rddot"},
-    "plane_rigid_body_velocity": {"omega", "r", "R", "vA"},
-    "plane_rigid_body_acceleration": {"omega", "alpha", "r", "R", "aA"},
+    "plane_rigid_body_velocity": {"omega", "r", "R", "vA", "vAx", "vAy", "rBAx", "rBAy"},
+    "plane_rigid_body_acceleration": {"omega", "alpha", "r", "R", "aA", "aAx", "aAy", "rBAx", "rBAy"},
     "relative_acceleration_translation": {"aA", "arel"},
 }
 
