@@ -52,6 +52,8 @@ def _explicitly_starts_from_rest(c: CanonicalProblem) -> bool:
         phrase in raw
         for phrase in (
             "정지 상태에서",
+            "정지 상태의",
+            "정지 상태인",
             "처음에 정지한",
             "정지한 물체",
             "정지 상태로부터",
