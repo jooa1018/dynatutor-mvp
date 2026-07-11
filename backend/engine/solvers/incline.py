@@ -5,12 +5,30 @@ from engine.models import Answer, CanonicalProblem, SolverResult, StepCard, Veri
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.verification.checks import require_no_missing, merge_reports
 from engine.equation_generators.particle_newton import solve_particle_newton_system
+from engine.model_builder import build_physical_model
+from engine.model_builder.model_types import PhysicalModel
 from engine.physics_core import symbols as S
 from engine.physics_core.friction import decide_incline_static
 from engine.physics_core.units import magnitude_si
 
 
+
+def _invalid_mass_result(c: CanonicalProblem) -> SolverResult | None:
+    mass = c.knowns.get("m")
+    if mass is not None and mass.value is not None and float(mass.value) <= 0:
+        return SolverResult(
+            ok=False,
+            verification=VerificationReport(
+                passed=False,
+                errors=["잘못된 물리 입력: 질량 m은 0보다 커야 합니다."],
+            ),
+            unsupported_reason="질량 m은 양수여야 합니다.",
+        )
+    return None
+
+
 class InclineNoFrictionSolver(BaseSolver):
+    uses_prebuilt_physical_model = True
     name = "incline_no_friction"
 
     def match(self, c: CanonicalProblem) -> SolverMatch | None:
@@ -18,12 +36,16 @@ class InclineNoFrictionSolver(BaseSolver):
             return SolverMatch(self, 100, "경사면 + 마찰 없음 + 가속도 문제")
         return None
 
-    def solve(self, c: CanonicalProblem) -> SolverResult:
+    def solve(self, c: CanonicalProblem, model: PhysicalModel | None = None) -> SolverResult:
         pre = require_no_missing(c)
         if not pre.passed:
             return SolverResult(ok=False, verification=pre, unsupported_reason="필수 조건이 부족합니다.")
+        invalid_mass = _invalid_mass_result(c)
+        if invalid_mass is not None:
+            return invalid_mass
 
-        generated = solve_particle_newton_system(c)
+        model = model or build_physical_model(c)
+        generated = solve_particle_newton_system(c, model)
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
         a_val = float(generated.solution[S.a])
@@ -56,6 +78,7 @@ class InclineNoFrictionSolver(BaseSolver):
 
 
 class InclineWithFrictionSolver(BaseSolver):
+    uses_prebuilt_physical_model = True
     name = "incline_with_friction"
 
     def match(self, c: CanonicalProblem) -> SolverMatch | None:
@@ -63,10 +86,13 @@ class InclineWithFrictionSolver(BaseSolver):
             return SolverMatch(self, 95, "경사면 + 마찰계수 + 미끄럼 가속도 문제")
         return None
 
-    def solve(self, c: CanonicalProblem) -> SolverResult:
+    def solve(self, c: CanonicalProblem, model: PhysicalModel | None = None) -> SolverResult:
         pre = require_no_missing(c)
         if not pre.passed:
             return SolverResult(ok=False, verification=pre, unsupported_reason="필수 조건이 부족합니다.")
+        invalid_mass = _invalid_mass_result(c)
+        if invalid_mass is not None:
+            return invalid_mass
         if c.friction_type == "static":
             theta = math.radians(magnitude_si(c.knowns["theta"], "deg"))
             g_val = magnitude_si(c.knowns["g"], "m/s^2")
@@ -96,7 +122,8 @@ class InclineWithFrictionSolver(BaseSolver):
                     coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
                 )
 
-        generated = solve_particle_newton_system(c)
+        model = model or build_physical_model(c)
+        generated = solve_particle_newton_system(c, model)
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
         a_val = float(generated.solution[S.a])

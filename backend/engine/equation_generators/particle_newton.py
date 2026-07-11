@@ -72,26 +72,59 @@ def _common_subs(c: CanonicalProblem) -> dict:
     return subs
 
 
+def _model_subs(c: CanonicalProblem, typed) -> dict:
+    """Keep Phase 45-only aliases out of the shared legacy substitution contract."""
+
+    subs = _common_subs(c)
+    if (
+        typed is not None
+        and c.system_type == "particle_on_incline"
+        and "mu" not in c.knowns
+        and "mu_k" in c.knowns
+        and c.knowns["mu_k"].value is not None
+    ):
+        subs[S.mu] = float(c.knowns["mu_k"].value)
+    return subs
+
+
 def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | None = None) -> GeneratedEquationSystem:
     st = c.system_type
     equations: list[GeneratedEquation] = []
     unknowns: list[Any] = []
     warnings: list[str] = []
     errors: list[str] = []
+    typed = getattr(model, "typed_model", None) if model is not None else None
 
     # Phase 15 supports translational Newton systems. Energy/momentum/rigid-body
     # generators remain separate later phases.
     if st == "particle_on_incline":
         if c.subtype == "no_friction":
             eq_y = sp.Eq(S.T - S.m * S.g * sp.cos(S.theta), 0)  # informational N balance
-            eq_x = sp.Eq(S.g * sp.sin(S.theta), S.a)
+            eq_x = (
+                sp.Eq(
+                    sp.expand(typed.sum_forces("body", "incline").x / S.m),
+                    S.a,
+                )
+                if typed is not None
+                else sp.Eq(S.g * sp.sin(S.theta), S.a)
+            )
             equations.append(_ge("normal_balance", "body", "y", "N - m*g*cos(theta) = 0", None, source_forces=["N", "mg cosθ"], unknowns=["N"], notes=["설명/검산용 법선방향 평형식입니다."]))
             equations.append(_ge("newton_second_law", "body", "x", "g*sin(theta) = a", eq_x, source_forces=["mg sinθ"], unknowns=["a"], notes=["질량 m이 약분된 가속도식만 solve 대상으로 사용합니다."]))
             unknowns = [S.a]
         elif c.subtype == "with_friction":
             eq_y = sp.Eq(S.T - S.m * S.g * sp.cos(S.theta), 0)  # informational N balance
             eq_f = sp.Eq(S.F, S.mu * S.T)  # informational friction law
-            eq_x = sp.Eq(S.g * sp.sin(S.theta) - S.mu * S.g * sp.cos(S.theta), S.a)
+            eq_x = (
+                sp.Eq(
+                    sp.expand(typed.sum_forces("body", "incline").x / S.m),
+                    S.a,
+                )
+                if typed is not None
+                else sp.Eq(
+                    S.g * sp.sin(S.theta) - S.mu * S.g * sp.cos(S.theta),
+                    S.a,
+                )
+            )
             equations.append(_ge("normal_balance", "body", "y", "N - m*g*cos(theta) = 0", None, source_forces=["N", "mg cosθ"], unknowns=["N"], notes=["설명/검산용 법선방향 평형식입니다."]))
             equations.append(_ge("friction_law", "body", "x", "f = mu*N", None, source_forces=["f", "N"], unknowns=["f"], notes=["설명/검산용 마찰 구성식입니다."]))
             equations.append(_ge("newton_second_law", "body", "x", "g*sin(theta) - mu*g*cos(theta) = a", eq_x, source_forces=["mg sinθ", "f"], unknowns=["a"], notes=["N=mg cosθ, f=μN을 대입하고 m을 약분한 식입니다."]))
@@ -163,9 +196,27 @@ def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
         equations.append(_ge("newton_second_law", "body_1", "x", x_text, eq_x1, source_forces=source, unknowns=["T", "a"], notes=[motion_note]))
         equations.append(_ge("newton_second_law", "body_2", "y", "m2*g - T = m2*a", eq_y2, source_forces=["m2g", "T"], unknowns=["T", "a"]))
     elif st == "massive_pulley_atwood":
-        eq1 = sp.Eq(S.T1 - S.m1 * S.g, S.m1 * S.a)
-        eq2 = sp.Eq(S.m2 * S.g - S.T2, S.m2 * S.a)
-        eq3 = sp.Eq((S.T2 - S.T1) * S.R, S.I * (S.a / S.R))
+        if typed is not None:
+            eq1 = sp.Eq(
+                typed.sum_forces("body_1", "body_1_up").x,
+                S.m1 * S.a,
+            )
+            eq2 = sp.Eq(
+                typed.sum_forces("body_2", "body_2_down").x,
+                S.m2 * S.a,
+            )
+            eq3 = sp.Eq(
+                typed.moment_about(
+                    "pulley",
+                    typed.bodies["pulley"].center_of_mass,
+                    frame_id="pulley",
+                ),
+                S.I * (S.a / S.R),
+            )
+        else:
+            eq1 = sp.Eq(S.T1 - S.m1 * S.g, S.m1 * S.a)
+            eq2 = sp.Eq(S.m2 * S.g - S.T2, S.m2 * S.a)
+            eq3 = sp.Eq((S.T2 - S.T1) * S.R, S.I * (S.a / S.R))
         equations.extend([
             _ge("newton_second_law", "body_1", "y", "T1 - m1*g = m1*a", eq1, source_forces=["T1", "m1g"], unknowns=["T1", "a"]),
             _ge("newton_second_law", "body_2", "y", "m2*g - T2 = m2*a", eq2, source_forces=["m2g", "T2"], unknowns=["T2", "a"]),
@@ -180,7 +231,7 @@ def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
         generator="particle_newton",
         equations=equations,
         unknowns=[str(u) for u in unknowns],
-        substitutions={str(k): float(v) for k, v in _common_subs(c).items()},
+        substitutions={str(k): float(v) for k, v in _model_subs(c, typed).items()},
         equations_ready=ready,
         warnings=warnings,
         errors=errors,
@@ -214,7 +265,11 @@ def _subs_from_system(system: GeneratedEquationSystem) -> dict:
 
 
 def solve_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | None = None) -> GeneratedSolve:
-    system = build_particle_newton_system(c, model)
+    system = (
+        model.generated_equation_system
+        if model is not None and model.generated_equation_system is not None
+        else build_particle_newton_system(c, model)
+    )
     if not system.equations_ready:
         return GeneratedSolve(False, {}, system, system.errors or ["방정식 생성 실패"])
     eqs = _sympy_equations(system)
