@@ -50,6 +50,7 @@ _UNIT_ALIASES = {
     "kg·m²": "kilogram*meter**2",
     "kg*m²": "kilogram*meter**2",
     "deg": "degree",
+    "rad": "radian",
 }
 
 _EXPECTED_DIMS = {
@@ -118,3 +119,20 @@ def magnitude_si(quantity: Quantity | Any, target_unit: str) -> float:
 def make_quantity(value: float, unit: str, symbol: str = "") -> Quantity:
     q = Q_(value, _unit(unit)).to(_unit(unit))
     return Quantity(symbol=symbol, value=float(q.magnitude), unit=unit, source_text=f"{value} {unit}")
+
+
+def angle_to_radians(quantity: Quantity | Any) -> float:
+    """Convert an explicitly-unitized dimensionless angle to radians."""
+
+    q = to_pint(quantity)
+    assert_dimension(q, "dimensionless")
+    try:
+        return float(q.to("radian").magnitude)
+    except (DimensionalityError, ValueError) as exc:
+        raise ValueError(f"각도를 radian으로 변환할 수 없습니다: {q}") from exc
+
+
+def radians_to_degrees(value: float) -> float:
+    """Explicit display conversion; internal angular calculations use radians."""
+
+    return float(Q_(value, "radian").to("degree").magnitude)
