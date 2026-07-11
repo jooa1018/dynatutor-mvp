@@ -5,6 +5,7 @@ from engine.models import Answer, CanonicalProblem, SolverResult, StepCard, Veri
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.verification.checks import require_no_missing, merge_reports
 from engine.equation_generators.particle_newton import solve_particle_newton_system
+from engine.model_builder import build_physical_model
 from engine.physics_core import symbols as S
 from engine.physics_core.friction import decide_incline_static
 from engine.physics_core.units import magnitude_si
@@ -23,7 +24,8 @@ class InclineNoFrictionSolver(BaseSolver):
         if not pre.passed:
             return SolverResult(ok=False, verification=pre, unsupported_reason="필수 조건이 부족합니다.")
 
-        generated = solve_particle_newton_system(c)
+        model = build_physical_model(c)
+        generated = solve_particle_newton_system(c, model)
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
         a_val = float(generated.solution[S.a])
@@ -96,7 +98,8 @@ class InclineWithFrictionSolver(BaseSolver):
                     coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
                 )
 
-        generated = solve_particle_newton_system(c)
+        model = build_physical_model(c)
+        generated = solve_particle_newton_system(c, model)
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
         a_val = float(generated.solution[S.a])
