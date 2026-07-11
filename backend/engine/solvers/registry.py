@@ -54,6 +54,8 @@ class RouteDecision:
 
 
 class SolverRegistry:
+    _CAPABILITIES_CACHE: dict[str, dict[str, Any]] | None = None
+
     def __init__(self) -> None:
         self.solvers: list[BaseSolver] = [
             SingleParticleNewtonSolver(),
@@ -192,13 +194,18 @@ class SolverRegistry:
         return {entry["analytic_solver"]: entry for entry in entries}
 
     def _load_capabilities(self) -> dict[str, dict[str, Any]]:
+        cached = type(self)._CAPABILITIES_CACHE
+        if cached is not None:
+            return cached
         path = (
             Path(__file__).resolve().parents[1]
             / "capabilities"
             / "dynamics_capabilities.json"
         )
         data = json.loads(path.read_text(encoding="utf-8"))
-        return self._validate_capability_data(data, source=str(path))
+        validated = self._validate_capability_data(data, source=str(path))
+        type(self)._CAPABILITIES_CACHE = validated
+        return validated
 
     def _family(self, solver_id: str) -> str:
         solver_family = {
