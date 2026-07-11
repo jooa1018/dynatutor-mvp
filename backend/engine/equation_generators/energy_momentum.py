@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import sympy as sp
 from dataclasses import dataclass
 from typing import Any
 
@@ -200,6 +201,65 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             v2 = _q(c, "v2", "m/s")
             if None in {m1, m2, v1, v2}:
                 return EnergyMomentumSolve(False, {}, system, ["m1, m2, v1, v2가 필요합니다."])
+
+            typed = getattr(model, "typed_model", None) if model is not None else None
+            if typed is not None:
+                residuals = [
+                    constraint.expression
+                    for constraint in typed.constraints
+                    if isinstance(constraint.expression, sp.Expr)
+                    and constraint.kind in {
+                        "linear_momentum",
+                        "restitution",
+                        "common_final_velocity",
+                    }
+                ]
+                if len(residuals) < 2:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["완전비탄성/완전탄성/반발계수 e 중 하나가 필요합니다."],
+                    )
+                symbol_by_name = {
+                    str(symbol): symbol
+                    for expression in residuals
+                    for symbol in expression.free_symbols
+                }
+                substitutions = {
+                    symbol_by_name["m1"]: m1,
+                    symbol_by_name["m2"]: m2,
+                    symbol_by_name["v1"]: v1,
+                    symbol_by_name["v2"]: v2,
+                }
+                e = 1.0 if c.flags.get("elastic") else _raw_q(c, "e")
+                if "e" in symbol_by_name and e is not None:
+                    substitutions[symbol_by_name["e"]] = e
+                unknowns = [symbol_by_name["v1f"], symbol_by_name["v2f"]]
+                solved = sp.solve(
+                    [sp.Eq(expression.subs(substitutions), 0) for expression in residuals],
+                    unknowns,
+                    dict=True,
+                )
+                if not solved:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["typed 충돌 constraint에서 물리 해를 찾지 못했습니다."],
+                    )
+                v1p = float(solved[0][unknowns[0]])
+                v2p = float(solved[0][unknowns[1]])
+                if c.flags.get("perfectly_inelastic"):
+                    return EnergyMomentumSolve(True, {"v_f": v1p}, system, [])
+                return EnergyMomentumSolve(
+                    True,
+                    {"v1f": v1p, "v2f": v2p, "e": e},
+                    system,
+                    [],
+                )
+
+            # Compatibility fallback for direct legacy generator callers.
             if c.flags.get("perfectly_inelastic"):
                 vf = (m1 * v1 + m2 * v2) / (m1 + m2)
                 return EnergyMomentumSolve(True, {"v_f": vf}, system, [])
