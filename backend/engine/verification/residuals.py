@@ -19,7 +19,7 @@ from typing import Callable
 from engine.models import CanonicalProblem
 from engine.physics_core.units import magnitude_si
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
-from engine.physics_core.initial_conditions import explicitly_starts_from_rest
+from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest, explicitly_starts_from_rest
 
 REL_TOL = 1e-4  # solver numeric은 ~6유효숫자 반올림 → 1e-6은 무고 오탐. 1e-4는 반올림은 통과, 실수(≥0.1%)는 검출.
 ABS_TOL = 1e-8
@@ -444,7 +444,7 @@ def _fixed_axis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
             _k(cp, "omega0", "rad/s"),
             _k(cp, "omega", "rad/s"),
         )
-        if omega0 is None and explicitly_starts_from_rest(cp):
+        if omega0 is None and explicitly_starts_from_angular_rest(cp):
             omega0 = 0.0
         if omega0 is not None:
             expected = omega0 + a_k * t_k
