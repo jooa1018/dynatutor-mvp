@@ -17,7 +17,84 @@
       "contradiction": 20,
       "unsupported": 20
     },
-    "oracle_policy": "Independent wording, SI conversion, physical law, and intentional omission/conflict/scope review; expected values were not copied from engine output."
+    "oracle_policy": "Independent wording, SI conversion, physical law, and intentional omission/conflict/scope review; expected values were not copied from engine output.",
+    "benchmark_reliability": {
+      "suite_kind": "curated_regression_suite",
+      "identical_sentence_count": 81,
+      "exact_unique_sentence_count": 239,
+      "numeric_only_duplicate_count": 60,
+      "unique_sentence_stimulus_count": 179,
+      "category_unique_sentence_counts": {
+        "paraphrase": {
+          "case_count": 80,
+          "exact_unique_count": 80,
+          "unique_stimulus_count": 80
+        },
+        "subject_context": {
+          "case_count": 30,
+          "exact_unique_count": 6,
+          "unique_stimulus_count": 6
+        },
+        "unit_symbol": {
+          "case_count": 40,
+          "exact_unique_count": 40,
+          "unique_stimulus_count": 39
+        },
+        "typo_colloquial": {
+          "case_count": 20,
+          "exact_unique_count": 10,
+          "unique_stimulus_count": 10
+        },
+        "irrelevant_background": {
+          "case_count": 25,
+          "exact_unique_count": 25,
+          "unique_stimulus_count": 25
+        },
+        "multi_object": {
+          "case_count": 30,
+          "exact_unique_count": 2,
+          "unique_stimulus_count": 2
+        },
+        "ambiguity": {
+          "case_count": 30,
+          "exact_unique_count": 22,
+          "unique_stimulus_count": 3
+        },
+        "missing_information": {
+          "case_count": 25,
+          "exact_unique_count": 17,
+          "unique_stimulus_count": 5
+        },
+        "contradiction": {
+          "case_count": 20,
+          "exact_unique_count": 20,
+          "unique_stimulus_count": 4
+        },
+        "unsupported": {
+          "case_count": 20,
+          "exact_unique_count": 17,
+          "unique_stimulus_count": 5
+        }
+      },
+      "parser_dictionary_surface_overlap_count": 8,
+      "parser_dictionary_surface_overlaps": [
+        "나중 속도",
+        "도르레",
+        "마찰 업는",
+        "매끄런",
+        "미터퍼세컨드제곱",
+        "최종 속도",
+        "최종 속력",
+        "쵸속도"
+      ],
+      "limitations": [
+        "The 320 cases are a curated regression suite.",
+        "They do not demonstrate generalization to the distribution of real student inputs.",
+        "A score of 1.0 applies only to the current fixed fixtures.",
+        "Benchmark independence is limited by repeated templates and parser-dictionary overlap.",
+        "An external held-out validation set is follow-up work."
+      ]
+    }
   },
   "execution_environment": {
     "runner": "GitHub-hosted ubuntu-24.04",
@@ -50,10 +127,11 @@
       "false_solve_rate": 0.252632,
       "unnecessary_clarification_rate": 0.12,
       "missing_clarification_rate": 0.333333,
-      "silent_assumption_rate": 0.164835,
+      "silent_assumption_rate": null,
       "contradictory_input_detection_rate": 0.75,
       "canonical_consistency_accuracy": 0.692308,
-      "high_confidence_false_solves": 24
+      "high_confidence_false_solves": 24,
+      "condition_classification_error_rate": 0.164835
     },
     "confidence_bins": {
       "0.00-0.59": {
@@ -117,17 +195,18 @@
       "false_solve_rate": 0,
       "unnecessary_clarification_rate": 0,
       "missing_clarification_rate": 0,
-      "silent_assumption_rate": 0,
+      "silent_assumption_rate": null,
       "contradictory_input_detection_rate": 1,
       "canonical_consistency_accuracy": 1,
-      "high_confidence_false_solves": 0
+      "high_confidence_false_solves": 0,
+      "condition_classification_error_rate": 0
     },
     "confidence_bins": {
       "0.00-0.59": {
         "count": 0,
         "correct": 0,
         "false_solves": 0,
-        "accuracy": 1
+        "accuracy": null
       },
       "0.60-0.79": {
         "count": 55,
@@ -218,7 +297,12 @@
       "The curated benchmark is deterministic and broad but is not a statistical sample of all Korean student language.",
       "Confidence bins report empirical correctness on this fixture; Phase 46 owns margin and routing-policy changes.",
       "Hosted-runner duration includes Python process and report generation overhead and should be treated as a reproducible baseline, not a hard latency SLO."
-    ]
+    ],
+    "metric_semantics": {
+      "condition_classification_error_rate": "Errors against explicit condition-status oracles; this is the metric previously mislabeled silent_assumption_rate.",
+      "silent_assumption_rate": "N/A for the 320-case historical report because the fixed fixture lacks per-case allowed-assumption oracles. The updated evaluator only measures annotated solved cases and never treats denominator zero as success."
+    },
+    "benchmark_independence": "Curated regression results do not establish held-out generalization."
   },
   "validation": {
     "environment": "GitHub-hosted ubuntu-24.04, CPython 3.13.14",
