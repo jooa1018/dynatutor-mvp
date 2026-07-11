@@ -244,6 +244,13 @@ class SolverRegistry:
                 and c.knowns["aA"].value is not None
                 and abs(float(c.knowns["aA"].value)) <= 1e-12
             ),
+            "relative-to-A request": (
+                c.system_type == "plane_rigid_body_acceleration"
+                and any(
+                    phrase in raw.replace(" ", "")
+                    for phrase in ("A에대한", "A기준", "A에대해")
+                )
+            ),
             "fixed A plus scalar radius": (
                 ("r" in c.knowns or "R" in c.knowns)
                 and (
@@ -268,6 +275,13 @@ class SolverRegistry:
                         and "aA" in c.knowns
                         and c.knowns["aA"].value is not None
                         and abs(float(c.knowns["aA"].value)) <= 1e-12
+                    )
+                    or (
+                        c.system_type == "plane_rigid_body_acceleration"
+                        and any(
+                            phrase in raw.replace(" ", "")
+                            for phrase in ("A에대한", "A기준", "A에대해")
+                        )
                     )
                 )
             ),
