@@ -42,7 +42,6 @@ class ConstantAcceleration1DSolver(BaseSolver):
         ]
         substitutions = {sym_map[k]: float(v) for k, v in known.items() if k in sym_map}
         unknown_candidates = [k for k in ["vf", "s", "t", "a", "v0"] if k not in known]
-        requested_keys = _requested_keys(c, unknown_candidates)
 
         if not unknown_candidates:
             return SolverResult(
@@ -53,6 +52,8 @@ class ConstantAcceleration1DSolver(BaseSolver):
                 ),
                 unsupported_reason="구하려는 값을 하나 이상 미지수로 남겨 주세요.",
             )
+        requested_keys = _requested_keys(c, unknown_candidates)
+
         if "t" in known and float(known["t"]) < -1e-9:
             return SolverResult(
                 ok=False,
