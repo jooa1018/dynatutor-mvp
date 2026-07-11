@@ -404,10 +404,10 @@ def _apply_conflicts(
         source = item["source"]
         initial_speed_items.append(
             {
-                "value": float(item["value"]),
-                "unit": item["unit"],
-                "normalized_value": float(item["value"]),
-                "normalized_unit": item["unit"],
+                "value": float(item["raw_value"]),
+                "unit": compact_unit(item["raw_unit"]),
+                "normalized_value": float(item["normalized_value"]),
+                "normalized_unit": item["normalized_unit"],
                 "source_text": str(source),
                 "source_span": [source.source_span[0], source.source_span[1]],
                 "relation": "explicit_occurrence",
