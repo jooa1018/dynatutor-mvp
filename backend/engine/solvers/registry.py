@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 from pathlib import Path
 import re
@@ -20,6 +20,8 @@ from engine.solvers.curves import FlatCurveFrictionSolver, BankedCurveNoFriction
 from engine.solvers.advanced_motion import PolarKinematicsSolver, InstantCenterVelocitySolver, SlotPinRelativeMotionSolver
 from engine.solvers.advanced_dynamics import CoriolisRelativeMotionSolver
 from engine.solvers.rigid_body_2d import PlaneRigidBodyVelocitySolver, PlaneRigidBodyAccelerationSolver, RelativeAccelerationTranslationSolver
+from engine.routing.config import ROUTING_CONFIG
+from engine.routing.evidence import TYPE_TO_FAMILY, rank_type_evidence
 
 
 @dataclass
@@ -33,6 +35,9 @@ class RouteCandidate:
     contradictions: list[str] = field(default_factory=list)
     supported_outputs: list[str] = field(default_factory=list)
     risk_flags: list[str] = field(default_factory=list)
+    source_system_type: str | None = None
+    source_subtype: str | None = None
+    interpretation_score: float = 1.0
     solver: BaseSolver | None = field(default=None, repr=False, compare=False)
 
 
@@ -44,10 +49,6 @@ class RouteDecision:
     question: str | None = None
     reason: str | None = None
     warnings: list[str] = field(default_factory=list)
-
-
-_ROUTING_MARGIN = 0.08
-_STRICT_CAPABILITY_SOLVERS = {"massive_pulley_atwood", "projectile_motion", "incline_with_friction"}
 
 
 class SolverRegistry:
@@ -92,15 +93,59 @@ class SolverRegistry:
         return {entry["analytic_solver"]: entry for entry in data.get("capabilities", [])}
 
     def _family(self, solver_id: str) -> str:
-        if solver_id.startswith("pulley_") or solver_id == "massive_pulley_atwood":
-            return "pulley"
-        if "incline" in solver_id:
-            return "incline"
-        if "friction" in solver_id:
-            return "friction"
-        if solver_id.startswith("projectile"):
-            return "projectile"
-        return solver_id.split("_", 1)[0]
+        solver_family = {
+            "incline_no_friction": "incline",
+            "incline_with_friction": "incline",
+            "horizontal_friction_force": "friction",
+        }.get(solver_id)
+        if solver_family:
+            return solver_family
+        return TYPE_TO_FAMILY.get(solver_id, solver_id.split("_", 1)[0])
+
+    def _variant_specs(self, c: CanonicalProblem) -> list[tuple[str, str | None, float, list[str]]]:
+        specs: dict[tuple[str, str | None], tuple[float, list[str]]] = {}
+
+        def add(system_type: str, subtype: str | None, score: float, reason: str) -> None:
+            key = (system_type, subtype)
+            score = max(0.0, min(1.0, float(score)))
+            if key not in specs:
+                specs[key] = (score, [reason])
+                return
+            previous_score, reasons = specs[key]
+            if reason not in reasons:
+                reasons.append(reason)
+            specs[key] = (max(previous_score, score), reasons)
+
+        if c.canonical_v2 is not None:
+            for parse_candidate in c.canonical_v2.parse_candidates:
+                for type_candidate in parse_candidate.system_type_candidates:
+                    add(
+                        type_candidate.system_type,
+                        type_candidate.subtype,
+                        min(float(parse_candidate.score), float(type_candidate.score)),
+                        type_candidate.reason,
+                    )
+        if (c.system_type, c.subtype) not in specs:
+            add(c.system_type, c.subtype, 1.0, "canonical compatibility interpretation")
+
+        evidence = rank_type_evidence(c)
+        if len(evidence) > 1 and not (c.flags or {}).get("_clarify_model_chosen"):
+            for item in evidence:
+                score = min(
+                    ROUTING_CONFIG.evidence_candidate_ceiling,
+                    ROUTING_CONFIG.evidence_candidate_base
+                    + ROUTING_CONFIG.evidence_candidate_step * item.score,
+                )
+                add(
+                    item.rep_type,
+                    c.subtype if item.rep_type == c.system_type else None,
+                    score,
+                    f"{item.label} evidence: {', '.join(item.reasons)}",
+                )
+        return [
+            (system_type, subtype, score, reasons)
+            for (system_type, subtype), (score, reasons) in specs.items()
+        ]
 
     def _has_symbol(self, c: CanonicalProblem, symbol: str) -> bool:
         if " and " in symbol:
