@@ -29,6 +29,12 @@ from engine.verification.checks import merge_reports
 
 
 
+_TYPED_VERTICAL_SLICES = {
+    "particle_on_incline",
+    "collision_1d",
+    "massive_pulley_atwood",
+}
+
 
 def _partial_guidance_steps(c):
     """실패/되묻기 응답에서도 '현재 알 수 있는 것'과 '추가 조건'을 분리해 보여준다."""
@@ -124,14 +130,19 @@ def _legacy_model(h):
     )
 
 
-def diagnose_problem(problem_text: str, student_solution: str | None = None, canonical: "CanonicalProblem | None" = None) -> DiagnosisResponse:
+def diagnose_problem(
+    problem_text: str,
+    student_solution: str | None = None,
+    canonical: "CanonicalProblem | None" = None,
+    physical_model=None,
+) -> DiagnosisResponse:
     """canonical을 직접 주면 그 기준으로 진단한다 (clarify patch 이후 재진단용)."""
     if canonical is None:
         canonical = extract_problem(problem_text)
     hints = make_legacy_hints(canonical)
     solver = SolverRegistry().select(canonical)
     cards = build_diagnosis_cards(canonical, hints, solver)
-    physical_model = build_physical_model(canonical)
+    physical_model = physical_model or build_physical_model(canonical)
 
     return DiagnosisResponse(
         ok=True,
@@ -161,7 +172,15 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
     # Phase 35: diagnosis는 반드시 patch가 반영된 canonical 기준으로 만든다.
     # (이전에는 patch 전 원문으로 진단해 selected_solver/physical_model이
     #  사용자가 선택한 해석과 어긋난 채 화면에 남았다.)
-    diagnosis = diagnose_problem(problem_text, student_solution, canonical=canonical)
+    # Phase 45 vertical slices share one typed/legacy model across diagnosis,
+    # solving, StepCards, and response serialization.
+    physical_model = build_physical_model(canonical)
+    diagnosis = diagnose_problem(
+        problem_text,
+        student_solution,
+        canonical=canonical,
+        physical_model=physical_model,
+    )
     solver = SolverRegistry().select(canonical)
 
     if not solver:
@@ -218,13 +237,16 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
             unsupported_reason="서로 다른 값으로 적힌 조건을 먼저 확인해 주세요.",
         )
     else:
-        result = solver.solve(canonical)
+        result = (
+            solver.solve(canonical, physical_model)
+            if canonical.system_type in _TYPED_VERTICAL_SLICES
+            else solver.solve(canonical)
+        )
         # Phase 30: 물리 검증 스위트 (차원 · 타당성 · 역대입 잔차).
         # 검증 error는 '조용한 오답'이므로 ok=False로 강등한다.
         suite_report = verify_result(canonical, result)
         result.verification = merge_reports(result.verification, suite_report)
     # 강등은 아래 apply_result_gate 한 곳에서만 수행한다 (Phase 33 통합).
-    physical_model = build_physical_model(canonical)
     model_cards = physical_model_step_cards(physical_model)
     all_steps = model_cards + result.steps
     response = SolveResponse(
