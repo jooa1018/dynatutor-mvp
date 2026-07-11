@@ -1376,7 +1376,8 @@
             "one_of": [
               "aA vector",
               "zero aA",
-              "A fixed statement"
+              "A fixed statement",
+              "relative-to-A request"
             ]
           }
         ]
