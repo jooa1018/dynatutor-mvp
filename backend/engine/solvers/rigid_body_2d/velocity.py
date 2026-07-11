@@ -11,12 +11,11 @@ def _get_r_vector(c: CanonicalProblem) -> Vec2 | None:
     cd = c.coordinate_data
     if "rBAx" in cd and "rBAy" in cd:
         return Vec2(float(cd["rBAx"]), float(cd["rBAy"]))
-    if ("R" in c.knowns or "r" in c.knowns):
-        r = magnitude_si(c.knowns.get("r") or c.knowns.get("R"), "m")
-        # Backward-compatible educational default: if vA is provided and no direction,
-        # use perpendicular r for the old scalar MVP. We attach a warning.
-        if "vA" in c.knowns or "vAx" in cd or "vAy" in cd:
-            return Vec2(r, 0.0)
+    if "rBAx" in c.knowns and "rBAy" in c.knowns:
+        return Vec2(
+            magnitude_si(c.knowns["rBAx"], "m"),
+            magnitude_si(c.knowns["rBAy"], "m"),
+        )
     return None
 
 
@@ -33,11 +32,18 @@ def _scalar_radius(c: CanonicalProblem) -> float | None:
 
 def _get_vA(c: CanonicalProblem) -> Vec2 | None:
     cd = c.coordinate_data
-    if "vAx" in cd or "vAy" in cd:
-        return Vec2(float(cd.get("vAx", 0.0)), float(cd.get("vAy", 0.0)))
-    if "vA" in c.knowns:
-        return Vec2(magnitude_si(c.knowns["vA"], "m/s"), 0.0)
-    # If no A-point velocity is given, pure rotation about A can use vA=0 only if text says fixed A.
+    if "vAx" in cd and "vAy" in cd:
+        return Vec2(float(cd["vAx"]), float(cd["vAy"]))
+    if "vAx" in c.knowns and "vAy" in c.knowns:
+        return Vec2(
+            magnitude_si(c.knowns["vAx"], "m/s"),
+            magnitude_si(c.knowns["vAy"], "m/s"),
+        )
+    # A zero scalar has no direction ambiguity and is a valid fixed-point vector.
+    if "vA" in c.knowns and c.knowns["vA"].value is not None:
+        vA = magnitude_si(c.knowns["vA"], "m/s")
+        if abs(vA) <= 1e-12:
+            return Vec2(0.0, 0.0)
     if _has_fixed_A(c):
         return Vec2(0.0, 0.0)
     return None
@@ -91,8 +97,6 @@ class PlaneRigidBodyVelocitySolver(BaseSolver):
         omega = sign * magnitude_si(c.knowns["omega"], "rad/s")
         vB = rigid_body_velocity(vA, omega, rBA)
         warning = []
-        if not ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data):
-            warning.append("r_B/A 방향 성분이 없어 교육용 기본 좌표계 rBA=(r,0)을 사용했습니다.")
         if c.coordinate_data.get("parse_notes"):
             warning.extend(c.coordinate_data.get("parse_notes", []))
         steps = [
