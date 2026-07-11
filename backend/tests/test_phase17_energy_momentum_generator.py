@@ -19,7 +19,7 @@ def test_phase17_constant_force_work_generator():
 
 
 def test_phase17_work_energy_speed_generator_drives_solver():
-    out = solve_problem("질량 2kg 물체에 알짜일 16J이 작용했다. 최종속도는?")
+    out = solve_problem("정지 상태에서 질량 2kg 물체에 알짜일 16J이 작용했다. 최종속도는?")
     assert out.ok
     assert out.diagnosis.selected_solver == "work_energy_speed"
     assert math.isclose(out.answer.numeric, 4.0, rel_tol=1e-9)
