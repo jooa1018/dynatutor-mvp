@@ -7,7 +7,11 @@ from typing import Any
 
 from engine.models import CanonicalProblem, StepCard
 from engine.model_builder.model_types import GeneratedEquation, GeneratedEquationSystem, PhysicalModel
-from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
+from engine.physics_core.direction_parser import (
+    infer_angle_between_force_and_displacement,
+    infer_force_motion_relation,
+    resolve_impulse_force_component,
+)
 from engine.physics_core.inertia import beta_for_shape
 from engine.physics_core.units import magnitude_si
 
@@ -260,17 +264,66 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             return EnergyMomentumSolve(True, {"v": v, "beta": beta, "mode": "shape"}, system, [])
 
         if st == "impulse_momentum":
-            F = _q(c, "F", "N")
+            force = _q(c, "F", "N")
             dt = _q(c, "t", "s")
-            if F is None or dt is None:
-                return EnergyMomentumSolve(False, {}, system, ["힘 F와 시간 Δt가 필요합니다."])
-            J = F * dt
-            solution = {"J": J}
-            m = _q(c, "m", "kg")
-            vi = _q(c, "v0", "m/s") if "v0" in c.knowns else _q(c, "v", "m/s") if "v" in c.knowns else None
-            if m is not None and vi is not None:
-                solution["v_f"] = vi + J / m
-                solution["v_i"] = vi
+            if force is None or dt is None:
+                return EnergyMomentumSolve(
+                    False,
+                    {},
+                    system,
+                    ["힘 F와 시간 Δt가 필요합니다."],
+                )
+            requested = set(c.requested_outputs or c.unknowns or [])
+            asks_final_velocity = "final_velocity" in requested
+            mass = _q(c, "m", "kg")
+            initial_velocity = (
+                _q(c, "v0", "m/s")
+                if "v0" in c.knowns
+                else _q(c, "v", "m/s")
+                if "v" in c.knowns
+                else None
+            )
+            relation = (
+                c.force_direction
+                or infer_force_motion_relation(c.raw_text or "")
+            )
+            force_component = resolve_impulse_force_component(
+                force,
+                relation,
+                initial_velocity,
+                magnitude_only=not asks_final_velocity,
+            )
+            if force_component is None:
+                return EnergyMomentumSolve(
+                    False,
+                    {},
+                    system,
+                    [
+                        "최종속도를 구하려면 힘이 초기 운동과 같은 방향인지 반대 방향인지 필요합니다."
+                    ],
+                )
+            impulse = force_component * dt
+            solution = {
+                "J": impulse,
+                "force_component": force_component,
+            }
+            if asks_final_velocity:
+                if mass is None or initial_velocity is None:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["최종속도에는 질량 m과 초기속도 v_i가 필요합니다."],
+                    )
+                if mass <= 0:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["질량 m은 0보다 커야 합니다."],
+                    )
+                solution["v_f"] = initial_velocity + impulse / mass
+                solution["v_i"] = initial_velocity
             return EnergyMomentumSolve(True, solution, system, [])
 
         if st == "collision_1d":
