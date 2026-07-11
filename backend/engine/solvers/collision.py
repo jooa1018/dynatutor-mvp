@@ -1,6 +1,7 @@
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
+from engine.model_builder import build_physical_model
 
 
 class Collision1DSolver(BaseSolver):
@@ -23,7 +24,8 @@ class Collision1DSolver(BaseSolver):
                 unsupported_reason="충돌 solver는 명시적 m1, m2, v1, v2 형식을 권장합니다.",
             )
         M1, M2, v1, v2 = m1.value, m2.value, v1q.value, v2q.value
-        generated = solve_energy_momentum_system(c)
+        model = build_physical_model(c)
+        generated = solve_energy_momentum_system(c, model)
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, warnings=generated.errors, checks=["충돌 문제는 운동량 보존식 하나만으로는 보통 미지수가 2개라 부족합니다."]), unsupported_reason="완전비탄성 조건을 포함하거나 e 값을 입력하세요.")
         if c.flags.get("perfectly_inelastic"):
