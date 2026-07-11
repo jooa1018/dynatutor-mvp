@@ -167,36 +167,142 @@ class ImpulseMomentumSolver(BaseSolver):
         return None
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
-        Fq, tq, mq = c.knowns.get("F"), c.knowns.get("t"), c.knowns.get("m")
+        Fq, tq, mq = (
+            c.knowns.get("F"),
+            c.knowns.get("t"),
+            c.knowns.get("m"),
+        )
         v0q = c.knowns.get("v0") or c.knowns.get("v")
+        requested = set(c.requested_outputs or c.unknowns or [])
+        asks_final_velocity = "final_velocity" in requested
         if not Fq or not tq:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["충격량 계산에는 힘 F와 작용시간 t가 필요합니다."]))
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["충격량 계산에는 힘 F와 작용시간 t가 필요합니다."],
+                ),
+            )
+        if asks_final_velocity and (mq is None or v0q is None):
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["최종속도에는 질량 m과 초기속도 v_i가 필요합니다."],
+                ),
+            )
+
         generated = solve_energy_momentum_system(c)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 충격량-운동량 방정식 생성/풀이에 실패했습니다.")
-        J = float(generated.solution["J"])
-        if mq and v0q and ("최종" in c.raw_text or "나중" in c.raw_text or "속도" in c.raw_text):
-            vf = float(generated.solution["v_f"])
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=generated.errors,
+                ),
+                unsupported_reason="힘 방향과 충격량-운동량 입력을 확인해 주세요.",
+            )
+        impulse = float(generated.solution["J"])
+        force_component = float(generated.solution["force_component"])
+        duration = magnitude_si(tq, "s")
+
+        if asks_final_velocity:
+            final_velocity = float(generated.solution["v_f"])
+            initial_velocity = float(generated.solution["v_i"])
+            answers = [
+                AnswerItem(
+                    "최종속도",
+                    "v_f",
+                    round(final_velocity, 5),
+                    "m/s",
+                    f"v_f = {final_velocity:.3f} m/s",
+                    "primary",
+                )
+            ]
+            if "impulse" in requested:
+                answers.append(
+                    AnswerItem(
+                        "충격량",
+                        "J",
+                        round(impulse, 5),
+                        "N·s",
+                        f"J = {impulse:.3f} N·s",
+                        "component",
+                    )
+                )
             steps = [
-                StepCard("충격량", "Energy/Momentum generator가 J=FΔt와 J=Δp를 생성합니다. 일정한 힘이면 J=Ft입니다.", r"J=F\Delta t"),
-                StepCard("운동량 변화", "충격량은 선운동량 변화량과 같습니다.", "J=m(v_f-v_i)"),
-                StepCard("계산", f"v_f = v_i + J/m = {v0q.value:g}+{J:.5g}/{mq.value:g} = {vf:.5g} m/s"),
+                StepCard(
+                    "부호 있는 충격량",
+                    "초기 운동의 양의 방향을 기준으로 힘 성분의 부호를 정합니다.",
+                    r"J=F_{\parallel}\Delta t",
+                ),
+                StepCard(
+                    "운동량 변화",
+                    "충격량은 선운동량 변화량과 같습니다.",
+                    r"J=m(v_f-v_i)",
+                ),
+                StepCard(
+                    "계산",
+                    f"F_parallel={force_component:g} N, Δt={duration:g} s, "
+                    f"v_i={initial_velocity:g} m/s → v_f={final_velocity:.5g} m/s",
+                ),
             ]
             return SolverResult(
                 ok=True,
-                answer=Answer(symbolic="vf = vi + Ft/m", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s"),
-                answers=[AnswerItem("최종속도", "v_f", round(vf, 5), "m/s", f"v_f = {vf:.3f} m/s", "primary")],
+                answer=Answer(
+                    symbolic="v_f = v_i + J/m",
+                    numeric=round(final_velocity, 5),
+                    unit="m/s",
+                    display=f"v_f = {final_velocity:.3f} m/s",
+                ),
+                answers=answers,
                 steps=steps,
-                verification=VerificationReport(passed=True, checks=["힘의 방향을 +로 두었을 때의 결과입니다. 반대방향 힘이면 부호를 음수로 넣어야 합니다."]),
+                verification=VerificationReport(
+                    passed=True,
+                    checks=[
+                        "힘이 운동 반대방향이면 충격량은 음수가 되어 속도를 감소시킬 수 있습니다."
+                    ],
+                ),
+                used_equations=["J = F_parallel Δt", "J = m(v_f-v_i)"],
             )
+
+        force_magnitude = abs(magnitude_si(Fq, "N"))
+        impulse_label = "충격량 크기" if impulse >= 0 else "부호 있는 충격량"
         steps = [
-            StepCard("충격량", "Energy/Momentum generator가 충격량 식 J=FΔt를 생성합니다. 일정한 힘이 일정 시간 작용하면 J=FΔt입니다.", r"J=F\Delta t"),
-            StepCard("계산", f"J = {Fq.value:g} × {tq.value:g} = {J:.5g} N·s"),
+            StepCard(
+                "충격량",
+                "방향을 묻지 않은 충격량 단독 문제에서는 크기 |J|=|F|Δt를 계산합니다.",
+                r"|J|=|F|\Delta t",
+            ),
+            StepCard(
+                "계산",
+                f"|J| = {force_magnitude:g} × {duration:g} = {abs(impulse):.5g} N·s",
+            ),
         ]
+        displayed_impulse = abs(impulse)
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="J = FΔt", numeric=round(J, 5), unit="N·s", display=f"J = {J:.3f} N·s"),
-            answers=[AnswerItem("충격량", "J", round(J, 5), "N·s", f"J = {J:.3f} N·s", "primary")],
+            answer=Answer(
+                symbolic="|J| = |F|Δt",
+                numeric=round(displayed_impulse, 5),
+                unit="N·s",
+                display=f"|J| = {displayed_impulse:.3f} N·s",
+            ),
+            answers=[
+                AnswerItem(
+                    impulse_label,
+                    "J",
+                    round(displayed_impulse, 5),
+                    "N·s",
+                    f"|J| = {displayed_impulse:.3f} N·s",
+                    "primary",
+                )
+            ],
             steps=steps,
-            verification=VerificationReport(passed=True, checks=["단위 N·s는 kg·m/s와 같아서 운동량 단위와 일치합니다."]),
+            verification=VerificationReport(
+                passed=True,
+                checks=["단위 N·s는 kg·m/s와 같아 운동량 단위와 일치합니다."],
+            ),
+            used_equations=["|J| = |F|Δt"],
         )
+
