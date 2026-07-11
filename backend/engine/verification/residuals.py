@@ -115,10 +115,10 @@ def _atwood(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     m1, m2, g = _k(cp, "m1", "kg"), _k(cp, "m2", "kg"), _k(cp, "g", "m/s^2")
     if None in (a, T, m1, m2, g):
         return []
-    heavy, light = max(m1, m2), min(m1, m2)
+    # 좌표 계약: m2 아래/m1 위가 +a. 음수 a는 실제 방향이 반대임을 뜻한다.
     return [
-        ResidualCheck("무거운 쪽: m·g - T - m·a", heavy * g - T - heavy * a, heavy * g),
-        ResidualCheck("가벼운 쪽: T - m·g - m·a", T - light * g - light * a, light * g + abs(T)),
+        ResidualCheck("m1: T - m1g - m1a", T - m1 * g - m1 * a, max(abs(T), m1 * g, 1.0)),
+        ResidualCheck("m2: m2g - T - m2a", m2 * g - T - m2 * a, max(abs(T), m2 * g, 1.0)),
     ]
 
 
@@ -285,8 +285,11 @@ def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         checks.append(ResidualCheck("운동량 보존(완전비탄성)", p_before - (m1 + m2) * vf, abs(p_before) + 1.0))
     elif v1p is not None and v2p is not None:
         checks.append(ResidualCheck("운동량 보존", p_before - (m1 * v1p + m2 * v2p), abs(p_before) + 1.0))
-        raw = cp.raw_text or ""
-        if "완전탄성" in raw or "탄성" in raw:
+        restitution = _k(cp, "e", "")
+        elastic_mode = bool((cp.flags or {}).get("elastic")) and (
+            restitution is None or math.isclose(restitution, 1.0, abs_tol=1e-12)
+        )
+        if elastic_mode:
             ke_b = 0.5 * m1 * v1 * v1 + 0.5 * m2 * v2 * v2
             ke_a = 0.5 * m1 * v1p * v1p + 0.5 * m2 * v2p * v2p
             checks.append(ResidualCheck("운동에너지 보존(탄성)", ke_b - ke_a, ke_b + 1.0))
@@ -424,8 +427,11 @@ def _impulse(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     if J is not None and None not in (F, t):
         checks.append(ResidualCheck("J - F·Δt", J - F * t, abs(F * t) + 1.0))
     vf = _first_not_none(pool.get("v_f"), pool.get("vf"))
-    m, v0 = _k(cp, "m", "kg"), _k(cp, "v0", "m/s") or 0.0
-    if vf is not None and None not in (F, t, m):
+    m = _k(cp, "m", "kg")
+    v0 = _first_not_none(_k(cp, "v0", "m/s"), _k(cp, "v", "m/s"))
+    if v0 is None and explicitly_starts_from_rest(cp):
+        v0 = 0.0
+    if vf is not None and None not in (F, t, m, v0):
         checks.append(ResidualCheck("충격량-운동량: F·Δt - m(v - v0)", F * t - m * (vf - v0), abs(F * t) + 1.0))
     return checks
 
@@ -664,6 +670,57 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
     return checks
 
 
+def _single_particle(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+    m = _first_not_none(_k(cp, "m", "kg"), pool.get("m"))
+    force = _first_not_none(_k(cp, "F", "N"), pool.get("F"))
+    acceleration = _first_not_none(_k(cp, "a", "m/s^2"), pool.get("a"))
+    if None in (m, force, acceleration):
+        return []
+    return [ResidualCheck("단일 질점: F - ma", force - m * acceleration, max(abs(force), abs(m * acceleration), 1.0))]
+
+
+def _massive_pulley(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+    m1, m2 = _k(cp, "m1", "kg"), _k(cp, "m2", "kg")
+    inertia = _first_not_none(_k(cp, "I", "kg*m^2"), _k(cp, "Ip", "kg*m^2"))
+    radius = _first_not_none(_k(cp, "R", "m"), _k(cp, "Rp", "m"))
+    gravity, acceleration = _k(cp, "g", "m/s^2"), pool.get("a")
+    if None in (m1, m2, inertia, radius, gravity, acceleration) or radius == 0:
+        return []
+    effective_mass = m1 + m2 + inertia / (radius * radius)
+    drive = (m2 - m1) * gravity
+    return [ResidualCheck("질량 도르래: (m2-m1)g - (m1+m2+I/R²)a", drive - effective_mass * acceleration, max(abs(drive), 1.0))]
+
+
+def _vertical_circle(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+    radius, gravity = _k(cp, "R", "m"), _k(cp, "g", "m/s^2")
+    if radius is None or gravity is None:
+        return []
+    minimum_speed = pool.get("v_min")
+    if minimum_speed is not None:
+        expected = gravity * radius
+        return [ResidualCheck("수직원 최고점 최소속도: v² - gR", minimum_speed * minimum_speed - expected, max(expected, 1.0))]
+    tension, mass, speed = pool.get("T"), _k(cp, "m", "kg"), _k(cp, "v", "m/s")
+    if None in (tension, mass, speed):
+        return []
+    if cp.subtype == "top":
+        residual = tension + mass * gravity - mass * speed * speed / radius
+        name = "수직원 최고점: T + mg - mv²/R"
+    else:
+        residual = tension - mass * gravity - mass * speed * speed / radius
+        name = "수직원 최저점: T - mg - mv²/R"
+    return [ResidualCheck(name, residual, max(abs(tension), mass * gravity, mass * speed * speed / radius, 1.0))]
+
+
+def _instant_center(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+    radius = _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
+    omega = _first_not_none(_k(cp, "omega", "rad/s"), pool.get("omega"))
+    speed = _first_not_none(pool.get("v"), pool.get("v_B"))
+    if None in (radius, omega, speed):
+        return []
+    expected = abs(omega) * radius
+    return [ResidualCheck("순간중심 속력: v - |ω|r", speed - expected, max(abs(expected), 1.0))]
+
+
 def _relative_translation(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     aA = _k(cp, "aA", "m/s^2")
     arel = _k(cp, "arel", "m/s^2")
@@ -675,10 +732,12 @@ def _relative_translation(cp: CanonicalProblem, pool: dict) -> list[ResidualChec
 
 
 CHECKERS: dict[str, Callable[[CanonicalProblem, dict], list[ResidualCheck]]] = {
+    "single_particle_newton": _single_particle,
     "particle_on_incline": _incline,
     "pulley_atwood": _atwood,
     "pulley_table_hanging": _table_hanging,
     "pulley_incline_hanging": _incline_hanging,
+    "massive_pulley_atwood": _massive_pulley,
     "projectile_motion": _projectile,
     "collision_1d": _collision,
     "constant_acceleration_1d": _const_acc,
@@ -688,6 +747,8 @@ CHECKERS: dict[str, Callable[[CanonicalProblem, dict], list[ResidualCheck]]] = {
     "constant_force_work": _const_force_work,
     "impulse_momentum": _impulse,
     "fixed_axis_rotation": _fixed_axis,
+    "vertical_circle": _vertical_circle,
+    "instant_center_velocity": _instant_center,
     "horizontal_friction_force": _horizontal_friction,
     "flat_curve_friction": _curve_flat,
     "banked_curve_no_friction": _curve_banked,
@@ -704,10 +765,12 @@ CHECKERS: dict[str, Callable[[CanonicalProblem, dict], list[ResidualCheck]]] = {
 # provenance 정책에 사용: 배경 문장에서 주입된 값이 이 집합에 있으면 답 보류(error),
 # 없으면 답 유지 + 주의(warning).
 RELEVANT_KNOWNS: dict[str, set[str]] = {
+    "single_particle_newton": {"m", "F", "a"},
     "particle_on_incline": {"g", "theta", "mu", "mu_k", "mu_s"},
     "pulley_atwood": {"g", "m1", "m2"},
     "pulley_table_hanging": {"g", "m1", "m2", "mu", "mu_k", "mu_s"},
     "pulley_incline_hanging": {"g", "m1", "m2", "theta", "mu", "mu_k", "mu_s"},
+    "massive_pulley_atwood": {"g", "m1", "m2", "I", "Ip", "R", "Rp"},
     "projectile_motion": {"g", "v0", "v", "theta", "h"},
     "collision_1d": {"m1", "m2", "v1", "v2", "e"},
     "constant_acceleration_1d": {"v0", "vf", "a", "t", "s"},
@@ -717,6 +780,8 @@ RELEVANT_KNOWNS: dict[str, set[str]] = {
     "constant_force_work": {"F", "s", "theta"},
     "impulse_momentum": {"F", "t", "m", "v0"},
     "fixed_axis_rotation": {"tau", "I", "omega", "omega0", "alpha", "t"},
+    "vertical_circle": {"m", "R", "v", "g"},
+    "instant_center_velocity": {"r", "R", "omega", "v", "vB"},
     "horizontal_friction_force": {"mu", "mu_k", "m", "m1", "g"},
     "pure_rolling_energy": {"g", "h"},
     "rolling_energy_general": {"g", "h", "I", "R", "m"},
