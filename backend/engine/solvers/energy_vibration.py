@@ -60,6 +60,7 @@ class SpringMassVibrationSolver(BaseSolver):
                 unit=answer_specs[target][0].unit,
                 display=answer_specs[target][0].display or "",
                 role="primary",
+                output_key=target,
             )
             for target in targets
         ]
