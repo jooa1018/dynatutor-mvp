@@ -16,7 +16,7 @@ def rolling_sphere_cases() -> list[ValidationCase]:
         cases.append(ValidationCase(
             case_id=f"rolling_sphere_{i:03d}",
             topic="rolling_sphere",
-            problem=f"속이 찬 구가 미끄러지지 않고 높이 {h}m 굴러 내려온다. 속도는?",
+            problem=f"정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 {h}m 굴러 내려온다. 속도는?",
             expected_solver="pure_rolling_energy",
             reference_fn=lambda h=h: math.sqrt(2 * G * h / (1 + 2/5)),
             tolerance=2e-3,
@@ -31,7 +31,7 @@ def rolling_disk_cases() -> list[ValidationCase]:
         cases.append(ValidationCase(
             case_id=f"rolling_disk_{i:03d}",
             topic="rolling_disk",
-            problem=f"원판이 미끄러지지 않고 높이 {h}m 굴러 내려온다. 속도는?",
+            problem=f"정지 상태에서 원판이 미끄러지지 않고 높이 {h}m 굴러 내려온다. 속도는?",
             expected_solver="pure_rolling_energy",
             reference_fn=lambda h=h: math.sqrt(2 * G * h / (1 + 1/2)),
             tolerance=2e-3,
