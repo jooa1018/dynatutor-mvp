@@ -23,13 +23,24 @@ def _is_net_force_text(text: str) -> bool:
 
 
 def _requested(c: CanonicalProblem) -> str:
+    requested_map = {
+        "acceleration": "a",
+        "force": "F",
+        "mass": "m",
+    }
+    for requested in (c.requested_outputs or c.unknowns or []):
+        if requested in requested_map:
+            return requested_map[requested]
+
     compact = re.sub(r"\s+", "", c.raw_text.lower())
-    if any(w in compact for w in ["가속도는", "가속도를", "acceleration"]):
-        return "a"
-    if any(w in compact for w in ["필요한알짜힘", "필요한힘", "힘은", "힘을구", "force"]):
+    # 질문 의도를 먼저 본다. 본문에 "가속도는 2"가 있어도
+    # "필요한 힘"을 묻는 문제라면 F가 미지수다.
+    if any(w in compact for w in ["필요한알짜힘", "필요한힘", "힘은?", "힘을구", "force"]):
         return "F"
-    if any(w in compact for w in ["질량은", "질량을", "mass"]):
+    if any(w in compact for w in ["질량은?", "질량을구", "mass"]):
         return "m"
+    if any(w in compact for w in ["가속도는?", "가속도를구", "acceleration"]):
+        return "a"
     # Missing variable fallback.
     if "a" not in c.knowns:
         return "a"
@@ -119,6 +130,8 @@ class SingleParticleNewtonSolver(BaseSolver):
                 if a == 0:
                     raise ValueError("가속도가 0이면 F/a로 질량을 구할 수 없습니다.")
                 m = F / a
+                if m <= 0:
+                    raise ValueError("계산된 질량은 0보다 커야 합니다. 힘과 가속도의 방향 부호를 확인해 주세요.")
                 steps.append(StepCard("정리", "질량은 알짜힘을 가속도로 나눈 값입니다.", "m=F/a"))
                 return SolverResult(
                     ok=True,

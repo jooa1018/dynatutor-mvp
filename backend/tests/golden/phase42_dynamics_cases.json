@@ -933,7 +933,7 @@
     {
       "id": "rolling_solid_sphere",
       "domain": "rolling",
-      "problem_text": "속이 찬 구가 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
+      "problem_text": "정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
       "expected_canonical_facts": {
         "system_type": "pure_rolling_energy",
         "subtype": "rolling_on_incline",
@@ -966,7 +966,7 @@
     {
       "id": "rolling_disk",
       "domain": "rolling",
-      "problem_text": "원판이 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
+      "problem_text": "정지 상태에서 원판이 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
       "expected_canonical_facts": {
         "system_type": "pure_rolling_energy",
         "subtype": "rolling_on_incline",
@@ -999,7 +999,7 @@
     {
       "id": "rolling_ring",
       "domain": "rolling",
-      "problem_text": "고리가 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
+      "problem_text": "정지 상태에서 고리가 미끄러지지 않고 높이 h=1m인 경사면을 굴러 내려간다. 바닥에서 최종속도를 구하라.",
       "expected_canonical_facts": {
         "system_type": "pure_rolling_energy",
         "subtype": "rolling_on_incline",
@@ -1134,7 +1134,7 @@
     {
       "id": "rigid_body_acceleration",
       "domain": "plane_rigid_body",
-      "problem_text": "평면강체 가속도 문제에서 A점 가속도 aA=0m/s^2이고 B는 A에서 오른쪽으로 r=0.5m 떨어져 있다. 각속도 omega=2rad/s, 각가속도 alpha=1rad/s^2이다. B점 가속도는?",
+      "problem_text": "평면강체 가속도 문제에서 A점 가속도 aA=0m/s^2이고 B는 A에서 오른쪽으로 r=0.5m 떨어져 있다. 각속도는 반시계방향 omega=2rad/s, 각가속도는 반시계방향 alpha=1rad/s^2이다. B점 가속도는?",
       "expected_canonical_facts": {
         "system_type": "plane_rigid_body_acceleration",
         "subtype": null,
@@ -1242,7 +1242,7 @@
     {
       "id": "relative_translation",
       "domain": "relative_motion",
-      "problem_text": "A점 가속도 aA=1.2m/s^2이고 A에 대한 B의 상대가속도 a_rel=0.8m/s^2이다. B점 가속도를 구하라.",
+      "problem_text": "A점 가속도 aA=1.2m/s^2이고 A에 대한 B의 상대가속도 a_rel=0.8m/s^2도 같은 방향이다. B점 가속도를 구하라.",
       "expected_canonical_facts": {
         "system_type": "relative_acceleration_translation",
         "subtype": null,

@@ -15,21 +15,23 @@ Q_ = ureg.Quantity
 # 심볼 → 기대 단위 예시(차원 비교 기준). 값이 ""이면 무차원.
 EXPECTED_UNIT_BY_SYMBOL: dict[str, str] = {
     "t": "s",
-    "R": "m", "h": "m", "s": "m", "x": "m", "d": "m", "r": "m",
-    "v": "m/s", "vf": "m/s", "v_f": "m/s", "v0": "m/s",
+    "R": "m", "H": "m", "h": "m", "s": "m", "x": "m", "d": "m", "r": "m",
+    "v": "m/s", "vf": "m/s", "v_f": "m/s", "v0": "m/s", "v_i": "m/s", "v_t": "m/s", "v_min": "m/s", "v_G": "m/s",
     "v1": "m/s", "v2": "m/s", "v1'": "m/s", "v2'": "m/s",
     "vB": "m/s", "v_B": "m/s", "v_max": "m/s",
-    "a": "m/s^2", "aB": "m/s^2", "a_B": "m/s^2",
+    "a": "m/s^2", "aB": "m/s^2", "a_B": "m/s^2", "a_c": "m/s^2",
     "T": "N",  # 이 코드베이스에서 T는 (대개) 장력. 문맥별 예외는 아래 참조.
-    "F": "N", "N": "N", "f": "N",
-    "W": "J", "E": "J", "KE": "J", "PE": "J",
+    "T1": "N", "T2": "N", "N1": "N", "N2": "N",
+    "F": "N", "F_net": "N", "N": "N", "f": "N", "f_k": "N", "f_s": "N", "f_s,max": "N", "F_f": "N",
+    "W": "J", "E": "J", "K": "J", "U": "J", "KE": "J", "PE": "J", "E_k": "J", "E_p": "J", "U_s": "J", "E_s": "J",
     "J": "N*s",
     "tau": "N*m",
     "alpha": "rad/s^2",
-    "omega": "rad/s",
-    "I": "kg*m^2",
+    "omega": "rad/s", "omega_n": "rad/s", "ω": "rad/s", "ω_n": "rad/s",
+    "m": "kg", "m1": "kg", "m2": "kg",
+    "I": "kg*m^2", "Ip": "kg*m^2",
     "k": "N/m",
-    "mu": "", "beta": "", "e": "",
+    "mu": "", "mu_k": "", "mu_s": "", "beta": "", "e": "",
     "theta": "deg",
     "v_r": "m/s", "v_theta": "m/s", "v_Bx": "m/s", "v_By": "m/s",
     "a_r": "m/s^2", "a_theta": "m/s^2", "a_t": "m/s^2", "a_n": "m/s^2",
@@ -88,7 +90,7 @@ def check_answer_dimension(symbol: str | None, unit: str | None, label: str = ""
 
     expected_unit = _expected_unit()
     if expected_unit is None:
-        return None, f"차원: {name} 단위 '{unit}' 해석 가능 ✓ (기대 차원 미등록 심볼)"
+        return DimensionIssue("error", f"차원 계약 미등록: {name} (단위 '{unit}')"), None
     try:
         expected = _dims_of(expected_unit) if expected_unit else Q_(1, "").dimensionality
     except Exception:

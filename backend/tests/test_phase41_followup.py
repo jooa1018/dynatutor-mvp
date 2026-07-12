@@ -36,7 +36,7 @@ def test_flight_time_without_v0():
 @pytest.mark.regression
 def test_range_without_v0_asks_for_v0():
     cp, r = _solve("높이 10m에서 물체를 수평으로 던졌다. 사거리는?")
-    assert r is not None and not r.ok
+    assert r is None  # v0 확인 전에는 projectile solver를 실행하지 않는다.
     assert "초속도 v0" in cp.missing_info
 
 
@@ -140,7 +140,9 @@ def test_backend_benchmark_wrapper_returns_after_real_pytest_summary():
         env=env,
     )
     output = proc.stdout + proc.stderr
-    assert proc.returncode == 0, output[-1000:]
+    if proc.returncode != 0:
+        print(output)  # CI에서 실패한 benchmark case를 잘리지 않게 남긴다.
+    assert proc.returncode == 0, output
     assert " passed" in output
     assert "[run_with_timeout] command exited with code 0" in output
 

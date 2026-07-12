@@ -142,6 +142,10 @@ export default function HomeClient() {
 
   async function save() {
     if (!data) return;
+    if (!data.ok || !data.verification?.passed) {
+      setToast('검증을 통과한 풀이만 오답노트에 저장할 수 있습니다.');
+      return;
+    }
     const payload = {
       problem_text: text,
       student_solution: student || null,

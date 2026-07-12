@@ -8,6 +8,45 @@ from engine.physics_core.units import magnitude_si
 from engine.solvers.base import BaseSolver, SolverMatch
 
 
+
+def can_solve_flight_time_without_speed(c: CanonicalProblem) -> bool:
+    requested = {
+        item
+        for item in (c.requested_outputs or c.unknowns or [])
+        if item != "auto"
+    }
+    if not requested or not requested <= {"time"}:
+        return False
+    try:
+        theta = (
+            float(c.launch_angle_deg)
+            if c.launch_angle_deg is not None
+            else magnitude_si(c.knowns["theta"], "deg")
+            if "theta" in c.knowns
+            else None
+        )
+        launch = (
+            float(c.launch_height)
+            if c.launch_height is not None
+            else magnitude_si(c.knowns["h"], "m")
+            if "h" in c.knowns
+            else None
+        )
+        landing = (
+            float(c.landing_height)
+            if c.landing_height is not None
+            else 0.0
+        )
+    except (TypeError, ValueError):
+        return False
+    return (
+        theta is not None
+        and math.isclose(theta, 0.0, abs_tol=1e-12)
+        and launch is not None
+        and launch - landing > 0
+    )
+
+
 class ProjectileMotionSolver(BaseSolver):
     name = "projectile_motion"
 
@@ -23,20 +62,33 @@ class ProjectileMotionSolver(BaseSolver):
         수평거리(range)까지 요구되면 None을 반환해 기존 "v0 필요" 경로로 —
         그 경우 missing_info("초속도 v0")가 안내한다.
         """
-        req = c.requested_outputs or []
-        if "time" not in req or "range" in req or "distance" in req:
+        if not can_solve_flight_time_without_speed(c):
             return None
-        theta = c.launch_angle_deg if c.launch_angle_deg is not None else (c.knowns["theta"].value if "theta" in c.knowns else None)
-        if theta not in (0, 0.0):
-            return None
-        launch = c.launch_height if c.launch_height is not None else (c.knowns["h"].value if "h" in c.knowns else None)
-        landing = c.landing_height if c.landing_height is not None else 0.0
-        if launch is None:
-            return None
+        launch = (
+            float(c.launch_height)
+            if c.launch_height is not None
+            else magnitude_si(c.knowns["h"], "m")
+        )
+        landing = (
+            float(c.landing_height)
+            if c.landing_height is not None
+            else 0.0
+        )
         dh = launch - landing
-        if dh <= 0:
-            return None
-        g = c.knowns["g"].value if "g" in c.knowns else 9.81
+        g = (
+            magnitude_si(c.knowns["g"], "m/s^2")
+            if "g" in c.knowns
+            else 9.81
+        )
+        if g <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["중력가속도 g는 0보다 커야 합니다."],
+                ),
+                unsupported_reason="중력가속도의 값과 단위를 확인해 주세요.",
+            )
         t = math.sqrt(2 * dh / g)
         steps = [
             StepCard("문제 유형", "수평으로 던진 물체의 연직 운동은 자유낙하와 같습니다. 비행시간은 수평 속도와 무관합니다."),
@@ -74,6 +126,15 @@ class ProjectileMotionSolver(BaseSolver):
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["발사각 θ 또는 발사 방향이 필요합니다."]))
         theta = math.radians(theta_deg)
         g = magnitude_si(c.knowns["g"], "m/s^2")
+        if g <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["중력가속도 g는 0보다 커야 합니다."],
+                ),
+                unsupported_reason="중력가속도의 값과 단위를 확인해 주세요.",
+            )
         y0 = c.launch_height if c.launch_height is not None else 0.0
         y_final = c.landing_height
         raw = c.raw_text.lower()
@@ -115,12 +176,27 @@ class ProjectileMotionSolver(BaseSolver):
         if y_final is not None:
             times = positive_times_for_height(y_final)
             if times:
-                t_f = max(times)
+                asks_first = any(word in raw for word in ("처음", "최초", "first"))
+                asks_later = any(word in raw for word in ("다시", "두 번째", "두번째", "나중", "착지", "떨어졌", "도착", "later", "second time", "landing"))
+                if len(times) > 1 and not (asks_first or asks_later):
+                    alternatives = ", ".join(f"{value:.3f} s" for value in times)
+                    return SolverResult(
+                        ok=False,
+                        verification=VerificationReport(
+                            passed=False,
+                            errors=[f"목표 높이에 도달하는 양수 시간이 여러 개입니다: {alternatives}"],
+                        ),
+                        unsupported_reason="올라가며 처음 도달하는 때인지, 내려오며 다시 도달하는 때인지 알려 주세요.",
+                    )
+                t_f = min(times) if asks_first else max(times)
                 range_x = vx * t_f
+                range_magnitude = abs(range_x)
+                horizontal_direction = "왼쪽" if range_x < -1e-12 else "오른쪽" if range_x > 1e-12 else "수평 변위 0"
                 computed["time"] = AnswerItem("시간", "t", round(t_f, 6), "s", f"시간 t = {t_f:.3f} s", "primary")
-                computed["range"] = AnswerItem("수평거리", "R", round(range_x, 6), "m", f"수평거리 R = {range_x:.3f} m", "primary")
+                computed["range"] = AnswerItem("수평 사거리", "R", round(range_magnitude, 6), "m", f"수평 사거리 R = {range_magnitude:.3f} m ({horizontal_direction}, Δx={range_x:.3f} m)", "primary")
                 computed["distance"] = computed["range"]
-                steps.append(StepCard("착지/목표 높이 조건", f"y_final={y_final:g} m를 대입해 양수 시간 해를 고릅니다.", r"y_0+v_0\sin\theta\,t-\frac12gt^2=y_f"))
+                event_note = "첫 도달" if len(times) > 1 and asks_first else "다시 도달" if len(times) > 1 else "유일한 양수 사건"
+                steps.append(StepCard("착지/목표 높이 조건", f"y_final={y_final:g} m에서 {event_note} 시간 해를 사용합니다.", r"y_0+v_0\sin\theta\,t-\frac12gt^2=y_f"))
                 steps.append(StepCard("수평 운동", "수평방향 가속도는 0이므로 x=vx t입니다.", r"x=v_0\cos\theta\,t"))
         hmax = y0 + vy**2 / (2 * g)
         computed["max_height"] = AnswerItem("최대높이", "H", round(hmax, 6), "m", f"최대높이 H = {hmax:.3f} m", "primary")

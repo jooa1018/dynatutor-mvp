@@ -137,12 +137,12 @@ def test_suite_catches_wrong_unit_as_error():
 
 
 @pytest.mark.regression
-def test_suite_reports_uncovered_type_honestly():
-    # polar 등은 Phase 33에서 커버됨 — 아직 미커버인 유형으로 정직 보고를 검증.
+def test_suite_reports_instant_center_residual_coverage_honestly():
     cp, result = _solve("순간중심에서 1 m 떨어진 점이 있고 각속도 ω=4 rad/s이다. 그 점의 속도는?")
     report = verify_result(cp, result)
     assert not report.errors
-    assert any("미지원" in c for c in report.checks) or any("생략" in c for c in report.checks)
+    assert any("순간중심 속력" in check for check in report.checks)
+    assert not any("미지원" in check or "생략" in check for check in report.checks)
 
 
 @pytest.mark.regression
@@ -168,8 +168,8 @@ def test_service_demotes_ok_on_verification_failure(monkeypatch):
                     a.numeric = a.numeric * 1.1
             return result
 
-    def fake_select(self, canonical):
-        inner = real_select(self, canonical)
+    def fake_select(self, canonical, decision=None):
+        inner = real_select(self, canonical, decision=decision)
         return _CorruptingSolver(inner) if inner else None
 
     monkeypatch.setattr(SolverRegistry, "select", fake_select)

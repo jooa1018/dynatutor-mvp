@@ -36,7 +36,7 @@ def test_perpendicular_work_zero():
 
 
 def test_solid_sphere_rolling_not_disk():
-    out = solve_problem("속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
+    out = solve_problem("정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
     assert out.ok
     assert out.diagnosis.selected_solver in {"pure_rolling_energy", "rolling_energy_general"}
     expected = math.sqrt(2 * 9.81 * 1 / (1 + 2/5))
@@ -50,3 +50,16 @@ def test_projectile_from_cliff():
     # 20 + 5t - 4.905t^2 = 0
     expected = (5 + math.sqrt(25 + 4 * 4.905 * 20)) / (2 * 4.905)
     assert math.isclose(out.answer.numeric, expected, rel_tol=1e-3)
+
+
+
+def test_vertical_circle_bottom_speed_is_current_state():
+    out = solve_problem(
+        "질량 1kg 물체가 수직 원운동 최저점에서 반지름 2m, "
+        "속도 8m/s로 움직일 때 줄의 장력을 구하라."
+    )
+    assert out.ok
+    assert out.diagnosis.selected_solver == "vertical_circle"
+    assert "v" in out.diagnosis.canonical.knowns
+    assert "v0" not in out.diagnosis.canonical.knowns
+    assert math.isclose(out.answer.numeric, 41.81, rel_tol=1e-5)

@@ -35,11 +35,12 @@ class PureRollingEnergySolver(BaseSolver):
             return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors), unsupported_reason="모델 기반 구름 에너지 방정식 생성/풀이에 실패했습니다.")
         v = float(generated.solution["v"])
         beta = float(generated.solution["beta"])
+        initial_speed = float(generated.solution.get("v0", 0.0))
         steps = [
             StepCard("형상 확인", f"물체 종류를 {c.body_shape}로 해석했고 β=I/(mR²)={beta:g}를 사용합니다."),
-            StepCard("에너지식", "Energy/Momentum generator가 순수 구름 에너지식을 생성합니다. 병진+회전 운동에너지를 모두 넣습니다.", r"mgh=\frac12mv^2+\frac12I\omega^2"),
+            StepCard("에너지식", "초기 병진·회전 운동에너지를 보존하고 위치에너지 감소를 더합니다.", r"K_f=K_i+mgh,\quad K=\frac12mv^2+\frac12I\omega^2"),
             StepCard("관성모멘트 모델", "I=βmR², v=ωR을 대입합니다.", r"I=\beta mR^2,\quad v=\omega R"),
-            StepCard("정리", "질량과 반지름이 약분되어 v=sqrt(2gh/(1+β))가 됩니다.", r"v=\sqrt{\frac{2gh}{1+\beta}}"),
+            StepCard("정리", f"초기속도 v0={initial_speed:g} m/s를 포함합니다.", r"v=\sqrt{v_0^2+\frac{2gh}{1+\beta}}"),
         ]
         verification = VerificationReport(
             passed=True,
@@ -52,7 +53,7 @@ class PureRollingEnergySolver(BaseSolver):
         )
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="v = sqrt(2gh/(1+β))", numeric=round(v, 6), unit="m/s", display=f"v = {v:.3f} m/s (β={beta:g})"),
+            answer=Answer(symbolic="v = sqrt(v0²+2gh/(1+β))", numeric=round(v, 6), unit="m/s", display=f"v = {v:.3f} m/s (β={beta:g})"),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=["mgh = 1/2mv² + 1/2Iω²", "v=ωR", "I=βmR²"],

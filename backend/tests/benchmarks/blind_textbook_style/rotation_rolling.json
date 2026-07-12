@@ -4,12 +4,12 @@
     "topic": "rotation_rolling",
     "problem_ko": "고정축을 중심으로 회전하는 강체의 관성모멘트는 I=2kgm^2이고, 축에 대한 알짜토크는 10Nm이다. 각가속도는?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "fixed_axis_rotation",
     "expected": {
-      "numeric": 5.0
+      "numeric": 5
     }
   },
   {
@@ -17,12 +17,12 @@
     "topic": "rotation_rolling",
     "problem_ko": "고정축을 중심으로 회전하는 강체의 관성모멘트는 I=3kgm^2이고, 축에 대한 알짜토크는 12Nm이다. 각가속도는?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "fixed_axis_rotation",
     "expected": {
-      "numeric": 4.0
+      "numeric": 4
     }
   },
   {
@@ -30,12 +30,12 @@
     "topic": "rotation_rolling",
     "problem_ko": "고정축을 중심으로 회전하는 강체의 관성모멘트는 I=5kgm^2이고, 축에 대한 알짜토크는 15Nm이다. 각가속도는?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "fixed_axis_rotation",
     "expected": {
-      "numeric": 3.0
+      "numeric": 3
     }
   },
   {
@@ -43,20 +43,20 @@
     "topic": "rotation_rolling",
     "problem_ko": "고정축을 중심으로 회전하는 강체의 관성모멘트는 I=4kgm^2이고, 축에 대한 알짜토크는 20Nm이다. 각가속도는?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "fixed_axis_rotation",
     "expected": {
-      "numeric": 5.0
+      "numeric": 5
     }
   },
   {
     "id": "blind_rolling_001",
     "topic": "rotation_rolling",
-    "problem_ko": "속이 찬 구가 미끄러지지 않고 높이 1m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
+    "problem_ko": "정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "pure_rolling_energy",
@@ -67,9 +67,9 @@
   {
     "id": "blind_rolling_002",
     "topic": "rotation_rolling",
-    "problem_ko": "속이 찬 구가 미끄러지지 않고 높이 2m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
+    "problem_ko": "정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 2m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "pure_rolling_energy",
@@ -80,9 +80,9 @@
   {
     "id": "blind_rolling_003",
     "topic": "rotation_rolling",
-    "problem_ko": "원판가 미끄러지지 않고 높이 1m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
+    "problem_ko": "정지 상태에서 원판가 미끄러지지 않고 높이 1m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "pure_rolling_energy",
@@ -93,9 +93,9 @@
   {
     "id": "blind_rolling_004",
     "topic": "rotation_rolling",
-    "problem_ko": "원판가 미끄러지지 않고 높이 2m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
+    "problem_ko": "정지 상태에서 원판가 미끄러지지 않고 높이 2m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "pure_rolling_energy",
@@ -106,9 +106,9 @@
   {
     "id": "blind_rolling_005",
     "topic": "rotation_rolling",
-    "problem_ko": "고리가 미끄러지지 않고 높이 1m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
+    "problem_ko": "정지 상태에서 고리가 미끄러지지 않고 높이 1m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "pure_rolling_energy",
@@ -119,9 +119,9 @@
   {
     "id": "blind_rolling_006",
     "topic": "rotation_rolling",
-    "problem_ko": "고리가 미끄러지지 않고 높이 2m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
+    "problem_ko": "정지 상태에서 고리가 미끄러지지 않고 높이 2m인 경사면을 굴러 내려간다. 바닥에 도달할 때의 속력은?",
     "should_solve": true,
-    "tolerance": 1e-05,
+    "tolerance": 0.00001,
     "note": "Blind textbook-style DynaTutor-created case.",
     "must_not_use_llm_for_answer": true,
     "expected_solver": "pure_rolling_energy",

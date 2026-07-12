@@ -79,6 +79,6 @@ def test_phase36_korean_desk_hanging_with_friction_routes_and_solves():
 def test_phase36_table_hanging_without_friction_condition_asks_clarification():
     out = solve_problem("수평 테이블 위 m1=2kg와 매달린 m2=3kg가 실로 연결되어 있다. 가속도는?")
     assert not out.ok
-    assert out.diagnosis.selected_solver == "pulley_table_hanging"
+    assert out.diagnosis.selected_solver is None
     assert out.clarification is not None
     assert out.clarification.rule == "table_hanging_friction_unknown"

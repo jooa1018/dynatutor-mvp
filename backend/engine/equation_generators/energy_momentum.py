@@ -7,7 +7,11 @@ from typing import Any
 
 from engine.models import CanonicalProblem, StepCard
 from engine.model_builder.model_types import GeneratedEquation, GeneratedEquationSystem, PhysicalModel
-from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
+from engine.physics_core.direction_parser import (
+    infer_angle_between_force_and_displacement,
+    infer_force_motion_relation,
+    resolve_impulse_force_component,
+)
 from engine.physics_core.inertia import beta_for_shape
 from engine.physics_core.units import magnitude_si
 
@@ -46,6 +50,27 @@ def _raw_q(c: CanonicalProblem, key: str) -> float | None:
     return float(c.knowns[key].value)
 
 
+def _explicitly_starts_from_rest(c: CanonicalProblem) -> bool:
+    raw = (c.raw_text or "").lower()
+    return any(
+        phrase in raw
+        for phrase in (
+            "정지 상태에서",
+            "정지 상태의",
+            "정지 상태인",
+            "처음에 정지한",
+            "정지한 물체",
+            "정지 상태로부터",
+            "정지에서",
+            "처음에는 정지",
+            "초기에는 정지",
+            "가만히 있다가",
+            "starts from rest",
+            "initially at rest",
+        )
+    )
+
+
 def build_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | None = None) -> GeneratedEquationSystem:
     st = c.system_type
     equations: list[GeneratedEquation] = []
@@ -68,10 +93,10 @@ def build_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
         unknowns = ["omega_n", "T", "f"]
     elif st in {"spring_energy", "spring_energy_speed"}:
         equations.append(_eq("spring_energy", "1/2*k*x^2 = 1/2*m*v^2", unknowns=["v"], body_id="body", source_forces=["spring_force"]))
-        equations.append(_eq("spring_speed", "v = x*sqrt(k/m)", unknowns=["v"], body_id="body"))
+        equations.append(_eq("spring_speed", "|v| = |x|*sqrt(k/m)", unknowns=["v"], body_id="body"))
         unknowns = ["v"]
     elif st in {"pure_rolling_energy", "rolling_energy_general"}:
-        equations.append(_eq("rolling_energy", "m*g*h = 1/2*m*v^2 + 1/2*I*omega^2", unknowns=["v"], body_id="body", source_forces=["mg"]))
+        equations.append(_eq("rolling_energy", "K_f = K_i + m*g*h, with K=1/2*m*v^2+1/2*I*omega^2", unknowns=["v"], body_id="body", source_forces=["mg"]))
         equations.append(_eq("rolling_constraint", "v = omega*R", unknowns=["omega"], body_id="body"))
         if "I" in c.knowns:
             equations.append(_eq("general_inertia", "v = sqrt(2*m*g*h/(m + I/R^2))", unknowns=["v"], body_id="body"))
@@ -156,8 +181,6 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             F = _q(c, "F", "N")
             s = _q(c, "s", "m")
             angle = infer_angle_between_force_and_displacement(c.raw_text)
-            if angle is None and ("force" in c.raw_text.lower() and "distance" in c.raw_text.lower()):
-                angle = 0.0
             if angle is None and "theta" in c.knowns and c.knowns["theta"].value is not None:
                 # 추출기('힘 방향으로 이동'→θ=0) 또는 clarification(set_known theta)이 채운 각도
                 angle = float(c.knowns["theta"].value)
@@ -170,14 +193,30 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             m = _q(c, "m", "kg")
             W = _q(c, "W", "J") if "W" in c.knowns else None
             if W is None and "F" in c.knowns and "s" in c.knowns:
-                angle = _q(c, "theta", "deg") if "theta" in c.knowns else 0.0
+                angle = infer_angle_between_force_and_displacement(c.raw_text)
+                if angle is None and "theta" in c.knowns and c.knowns["theta"].value is not None:
+                    angle = _q(c, "theta", "deg")
+                if angle is None:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["힘 F로 일을 계산하려면 힘과 변위 사이 방향 또는 각도 θ가 필요합니다."],
+                    )
                 W = _q(c, "F", "N") * _q(c, "s", "m") * math.cos(math.radians(angle))
-            v0 = _q(c, "v0", "m/s") if "v0" in c.knowns else _q(c, "v", "m/s") if "v" in c.knowns else 0.0
+            v0 = _q(c, "v0", "m/s") if "v0" in c.knowns else _q(c, "v", "m/s") if "v" in c.knowns else None
+            if v0 is None and _explicitly_starts_from_rest(c):
+                v0 = 0.0
             if m is None or W is None:
-                return EnergyMomentumSolve(False, {}, system, ["질량 m과 일 W 또는 F,s가 필요합니다."])
+                return EnergyMomentumSolve(False, {}, system, ["질량 m과 일 W 또는 방향이 명시된 F,s가 필요합니다."])
+            if m <= 0:
+                return EnergyMomentumSolve(False, {}, system, ["질량 m은 0보다 커야 합니다."])
+            if v0 is None:
+                return EnergyMomentumSolve(False, {}, system, ["초기속도 v_i 또는 정지 상태에서 출발한다는 조건이 필요합니다."])
             vf2 = v0 * v0 + 2 * W / m
-            if vf2 < 0:
-                return EnergyMomentumSolve(False, {}, system, ["v_f^2가 음수입니다."])
+            if vf2 < -1e-10:
+                return EnergyMomentumSolve(False, {}, system, ["주어진 일로는 v_f²가 음수가 되어 해당 최종 상태에 도달할 수 없습니다."])
+            vf2 = max(0.0, vf2)
             vf = math.sqrt(vf2)
             return EnergyMomentumSolve(True, {"v_f": vf, "W": W, "v_i": v0}, system, [])
 
@@ -197,40 +236,118 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
             x = _q(c, "x", "m") if "x" in c.knowns else _q(c, "A", "m") if "A" in c.knowns else None
             if k is None or m is None or x is None:
                 return EnergyMomentumSolve(False, {}, system, ["k, x, m이 필요합니다."])
-            v = x * math.sqrt(k / m)
-            return EnergyMomentumSolve(True, {"v": v, "x": x, "k": k, "m": m}, system, [])
+            speed = abs(x) * math.sqrt(k / m)
+            return EnergyMomentumSolve(
+                True,
+                {"v": speed, "x": x, "k": k, "m": m},
+                system,
+                [],
+            )
 
         if st in {"pure_rolling_energy", "rolling_energy_general"}:
             h = _q(c, "h", "m") if "h" in c.knowns else float(c.launch_height or 0.0)
-            g = _q(c, "g", "m/s^2") or 9.81
+            gravity_input = _q(c, "g", "m/s^2") if "g" in c.knowns else None
+            g = 9.81 if gravity_input is None else gravity_input
+            if g <= 0 or h < 0:
+                return EnergyMomentumSolve(
+                    False,
+                    {},
+                    system,
+                    ["중력가속도 g는 0보다 크고 내려온 높이 h는 0 이상이어야 합니다."],
+                )
+            initial_speed = (
+                _q(c, "v0", "m/s")
+                if "v0" in c.knowns
+                else _q(c, "v", "m/s")
+                if "v" in c.knowns
+                else 0.0
+                if _explicitly_starts_from_rest(c)
+                else None
+            )
+            if initial_speed is None:
+                return EnergyMomentumSolve(
+                    False,
+                    {},
+                    system,
+                    ["초기속도 v0 또는 정지 상태에서 출발한다는 조건이 필요합니다."],
+                )
             if "I" in c.knowns:
                 m = _q(c, "m", "kg")
                 R = _q(c, "R", "m")
                 I = _q(c, "I", "kg*m^2")
                 if m is None or R is None or I is None:
                     return EnergyMomentumSolve(False, {}, system, ["I 기반 구름운동에는 m, I, R이 필요합니다."])
-                v = math.sqrt(2 * m * g * h / (m + I / R**2))
+                v = math.sqrt(initial_speed * initial_speed + 2 * m * g * h / (m + I / R**2))
                 omega = v / R
                 beta = I / (m * R**2)
-                return EnergyMomentumSolve(True, {"v": v, "omega": omega, "beta": beta, "mode": "I"}, system, [])
+                return EnergyMomentumSolve(True, {"v": v, "v0": initial_speed, "omega": omega, "beta": beta, "mode": "I"}, system, [])
             beta = beta_for_shape(c.body_shape)
             if beta is None:
                 return EnergyMomentumSolve(False, {}, system, ["물체 종류 또는 관성모멘트 I가 필요합니다."])
-            v = math.sqrt(2 * g * h / (1 + beta))
-            return EnergyMomentumSolve(True, {"v": v, "beta": beta, "mode": "shape"}, system, [])
+            v = math.sqrt(initial_speed * initial_speed + 2 * g * h / (1 + beta))
+            return EnergyMomentumSolve(True, {"v": v, "v0": initial_speed, "beta": beta, "mode": "shape"}, system, [])
 
         if st == "impulse_momentum":
-            F = _q(c, "F", "N")
+            force = _q(c, "F", "N")
             dt = _q(c, "t", "s")
-            if F is None or dt is None:
-                return EnergyMomentumSolve(False, {}, system, ["힘 F와 시간 Δt가 필요합니다."])
-            J = F * dt
-            solution = {"J": J}
-            m = _q(c, "m", "kg")
-            vi = _q(c, "v0", "m/s") if "v0" in c.knowns else _q(c, "v", "m/s") if "v" in c.knowns else None
-            if m is not None and vi is not None:
-                solution["v_f"] = vi + J / m
-                solution["v_i"] = vi
+            if force is None or dt is None:
+                return EnergyMomentumSolve(
+                    False,
+                    {},
+                    system,
+                    ["힘 F와 시간 Δt가 필요합니다."],
+                )
+            requested = set(c.requested_outputs or c.unknowns or [])
+            asks_final_velocity = "final_velocity" in requested
+            mass = _q(c, "m", "kg")
+            initial_velocity = (
+                _q(c, "v0", "m/s")
+                if "v0" in c.knowns
+                else _q(c, "v", "m/s")
+                if "v" in c.knowns
+                else None
+            )
+            relation = (
+                c.force_direction
+                or infer_force_motion_relation(c.raw_text or "")
+            )
+            force_component = resolve_impulse_force_component(
+                force,
+                relation,
+                initial_velocity,
+                magnitude_only=not asks_final_velocity,
+            )
+            if force_component is None:
+                return EnergyMomentumSolve(
+                    False,
+                    {},
+                    system,
+                    [
+                        "최종속도를 구하려면 힘이 초기 운동과 같은 방향인지 반대 방향인지 필요합니다."
+                    ],
+                )
+            impulse = force_component * dt
+            solution = {
+                "J": impulse,
+                "force_component": force_component,
+            }
+            if asks_final_velocity:
+                if mass is None or initial_velocity is None:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["최종속도에는 질량 m과 초기속도 v_i가 필요합니다."],
+                    )
+                if mass <= 0:
+                    return EnergyMomentumSolve(
+                        False,
+                        {},
+                        system,
+                        ["질량 m은 0보다 커야 합니다."],
+                    )
+                solution["v_f"] = initial_velocity + impulse / mass
+                solution["v_i"] = initial_velocity
             return EnergyMomentumSolve(True, solution, system, [])
 
         if st == "collision_1d":

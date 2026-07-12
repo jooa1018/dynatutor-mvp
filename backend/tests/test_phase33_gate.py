@@ -71,7 +71,7 @@ def test_arel_extraction_window_bug_fixed():
     from engine.extraction.extractor import extract_problem
     from engine.solvers.registry import SolverRegistry
 
-    cp = extract_problem("상대가속도 문제에서 A점 가속도 aA=1m/s2, 상대가속도 a_rel=2m/s2이다. B점 가속도는?")
+    cp = extract_problem("상대가속도 문제에서 A점 가속도 aA=1m/s2는 오른쪽, 상대가속도 a_rel=2m/s2도 오른쪽이다. B점 가속도는?")
     assert cp.knowns["arel"].value == 2.0
     r = SolverRegistry().select(cp).solve(cp)
     assert abs(r.answer.numeric - 3.0) < 1e-9
@@ -89,7 +89,7 @@ def test_advanced_types_have_answers_and_residual_coverage():
         "극좌표에서 r=2m, rdot=0.5m/s, 각속도 omega=3rad/s일 때 속도는?",
         "회전좌표계에서 r=0.5 m, 상대속도 v_rel=0.4 m/s, 각속도 omega=6 rad/s일 때 코리올리 가속도는?",
         "평면강체에서 A점은 고정되어 있고 B는 A에서 오른쪽으로 0.5m 떨어져 있다. 각속도는 반시계방향 4rad/s이다. B점 속도는?",
-        "상대가속도 문제에서 A점 가속도 aA=1m/s2, 상대가속도 a_rel=2m/s2이다. B점 가속도는?",
+        "상대가속도 문제에서 A점 가속도 aA=1m/s2는 오른쪽, 상대가속도 a_rel=2m/s2도 오른쪽이다. B점 가속도는?",
     ]
     reg = SolverRegistry()
     for prob in probs:

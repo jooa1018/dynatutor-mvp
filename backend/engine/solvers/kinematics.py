@@ -1,6 +1,10 @@
+import math
+from itertools import combinations
+
 import sympy as sp
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
+from engine.physics_core.units import magnitude_si
 from engine.verification.checks import require_no_missing, merge_reports
 
 
@@ -13,11 +17,65 @@ class ConstantAcceleration1DSolver(BaseSolver):
         return None
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
-        # 정지에서 출발 표현을 v0=0으로 보완
         raw = c.raw_text.replace(" ", "")
-        known = {k: q.value for k, q in c.knowns.items() if q.value is not None}
-        if "정지" in raw or "rest" in raw.lower():
+        unit_by_key = {
+            "v0": "m/s",
+            "vf": "m/s",
+            "v": "m/s",
+            "a": "m/s^2",
+            "t": "s",
+            "s": "m",
+        }
+        known = {}
+        try:
+            for key, quantity in c.knowns.items():
+                if quantity.value is None:
+                    continue
+                known[key] = (
+                    magnitude_si(quantity, unit_by_key[key])
+                    if key in unit_by_key
+                    else float(quantity.value)
+                )
+        except Exception as exc:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=[f"등가속도 입력 단위를 변환하지 못했습니다: {exc}"],
+                ),
+            )
+
+        compact_lower = raw.lower()
+        starts_from_rest = any(
+            phrase in compact_lower
+            for phrase in (
+                "정지상태에서",
+                "정지상태로부터",
+                "정지에서",
+                "처음에는정지",
+                "초기에는정지",
+                "처음에정지한",
+                "정지한물체",
+                "startsfromrest",
+                "initiallyatrest",
+            )
+        )
+        ends_at_rest = any(
+            phrase in compact_lower
+            for phrase in (
+                "정지할때",
+                "정지할때까지",
+                "마지막에정지",
+                "최종적으로정지",
+                "멈출때",
+                "comestorest",
+                "stopsafter",
+            )
+        )
+        if starts_from_rest:
             known.setdefault("v0", 0.0)
+        if ends_at_rest:
+            known.setdefault("vf", 0.0)
         if "v" in known and "v0" not in known and ("초속도" in raw or "처음" in raw):
             known["v0"] = known["v"]
         pre = require_no_missing(c)
@@ -39,16 +97,106 @@ class ConstantAcceleration1DSolver(BaseSolver):
         ]
         substitutions = {sym_map[k]: float(v) for k, v in known.items() if k in sym_map}
         unknown_candidates = [k for k in ["vf", "s", "t", "a", "v0"] if k not in known]
+
+        if not unknown_candidates:
+            inconsistent = [
+                str(eq)
+                for eq in equations
+                if not _residual_is_zero((eq.lhs - eq.rhs).subs(substitutions))
+            ]
+            if inconsistent:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=[
+                            "주어진 v0, vf, a, t, s가 모든 등가속도 운동식을 동시에 만족하지 않습니다."
+                        ],
+                    ),
+                    unsupported_reason="서로 모순되는 등가속도 조건을 확인해 주세요.",
+                )
+            return SolverResult(
+                ok=True,
+                answer=Answer(
+                    symbolic="all constant-acceleration residuals = 0",
+                    numeric=None,
+                    unit="",
+                    display="주어진 등가속도 조건은 서로 일치합니다.",
+                ),
+                steps=[
+                    StepCard(
+                        "조건 일관성 검사",
+                        "다섯 변수가 모두 주어져 네 개의 독립 등가속도 운동식에 전부 대입했습니다.",
+                    )
+                ],
+                verification=VerificationReport(
+                    passed=True,
+                    checks=["네 등가속도 운동식의 잔차가 모두 0입니다."],
+                ),
+                used_equations=["vf=v0+at", "s=v0t+1/2at²", "vf²=v0²+2as", "s=(v0+vf)t/2"],
+            )
         requested_keys = _requested_keys(c, unknown_candidates)
+
+        if "t" in known and float(known["t"]) < -1e-9:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["시간 t는 0 이상이어야 합니다."],
+                ),
+            )
+
+        states, state_error = _consistent_states(
+            equations,
+            substitutions,
+            sym_map,
+            unknown_candidates,
+        )
+        if not states:
+            underdetermined = bool(state_error and "유일" in state_error)
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=[state_error or "주어진 값들이 네 등가속도 운동식과 동시에 양립하지 않습니다."],
+                ),
+                unsupported_reason=(
+                    "미지수를 유일하게 정하려면 독립적인 운동 조건을 하나 더 알려 주세요."
+                    if underdetermined
+                    else "입력한 v0, vf, a, t, s 중 서로 모순되는 값을 확인해 주세요."
+                ),
+            )
 
         solved: list[tuple[str, float]] = []
         for requested in requested_keys:
-            value = _solve_target(requested, equations, substitutions, sym_map, unknown_candidates)
-            if value is not None:
-                solved.append((requested, value))
+            values = _unique_values(float(state[sym_map[requested]]) for state in states)
+            event_value = _select_event_value(c, requested, values)
+            if event_value is not None:
+                values = [event_value]
+            if len(values) > 1:
+                formatted = ", ".join(f"{value:.6g}" for value in values)
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        warnings=[
+                            f"{_label_for(requested)}에 물리적으로 가능한 해가 여러 개입니다: {formatted} {_unit_for(requested)}"
+                        ],
+                        errors=[],
+                    ),
+                    unsupported_reason="운동의 시간 구간이나 진행 방향을 더 지정해 어떤 해인지 선택해 주세요.",
+                )
+            if values:
+                solved.append((requested, values[0]))
 
         if not solved:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["현재 입력 조합으로는 등가속도 식을 안정적으로 풀지 못했습니다."]))
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["요청한 미지수를 일관된 등가속도 상태에서 계산하지 못했습니다."],
+                ),
+            )
 
         answers: list[AnswerItem] = []
         for key, value in solved:
@@ -95,7 +243,7 @@ def _requested_keys(c: CanonicalProblem, candidates: list[str]) -> list[str]:
         "initial_velocity": "v0",
     }
     keys: list[str] = []
-    for req in c.requested_outputs or []:
+    for req in (c.requested_outputs or c.unknowns or []):
         target = requested_map.get(req)
         if target in candidates and target not in keys:
             keys.append(target)
@@ -104,35 +252,143 @@ def _requested_keys(c: CanonicalProblem, candidates: list[str]) -> list[str]:
     return [_requested_key(c, candidates)]
 
 
-def _solve_target(requested: str, equations, substitutions, sym_map, unknown_candidates: list[str]) -> float | None:
-    target = sym_map[requested]
-    reduced = [eq.subs(substitutions) for eq in equations]
-    solutions: list[float] = []
-    for eq in reduced:
+def _select_event_value(c: CanonicalProblem, key: str, values: list[float]) -> float | None:
+    """Select a root only when the problem states which event is intended."""
+
+    if key != "t" or len(values) <= 1:
+        return values[0] if len(values) == 1 else None
+    raw = (c.raw_text or "").lower().replace(" ", "")
+    positive = [value for value in values if value > 1e-9]
+
+    later_tokens = (
+        "다시",
+        "재차",
+        "돌아오",
+        "되돌아오",
+        "두번째",
+        "두번째",
+        "꼭대기이후",
+        "내려오",
+        "하강하며",
+    )
+    if any(token in raw for token in later_tokens):
+        return max(positive or values)
+
+    first_tokens = (
+        "처음으로",
+        "최초",
+        "첫번째",
+        "첫번째",
+        "올라가며",
+        "상승하며",
+    )
+    if any(token in raw for token in first_tokens):
+        return min(positive or values)
+
+    if any(token in raw for token in ("t>0", "t＞0", "0보다큰시간", "출발후")):
+        return positive[0] if len(positive) == 1 else None
+    return None
+
+
+def _consistent_states(equations, substitutions, sym_map, unknown_candidates: list[str]):
+    unknown_symbols = [sym_map[key] for key in unknown_candidates]
+    residuals = [(eq.lhs - eq.rhs).subs(substitutions) for eq in equations]
+
+    for residual in residuals:
+        if not residual.free_symbols and not _residual_is_zero(residual):
+            return [], "주어진 값들만 대입해도 등가속도 운동식 사이에 모순이 생깁니다."
+
+    active = [
+        residual
+        for residual in residuals
+        if any(symbol in residual.free_symbols for symbol in unknown_symbols)
+    ]
+    raw_solutions: list[dict] = []
+    solve_sets = [active]
+    if len(active) >= len(unknown_symbols):
+        solve_sets.extend(
+            list(group)
+            for group in combinations(active, len(unknown_symbols))
+        )
+
+    for equation_set in solve_sets:
         try:
-            sols = sp.solve(eq, target)
-            for sol in sols:
-                if sol.is_real is False:
-                    continue
-                val = float(sol)
-                if requested == "t" and val < -1e-9:
-                    continue
-                solutions.append(val)
+            raw_solutions.extend(
+                sp.solve(equation_set, unknown_symbols, dict=True)
+            )
         except Exception:
-            pass
-    if not solutions:
-        # 연립방정식으로 재시도. 목표 변수가 포함되도록 미지수 순서를 구성합니다.
-        try:
-            ordered_unknowns = [requested] + [x for x in unknown_candidates if x != requested]
-            eqs = [eq.subs(substitutions) for eq in equations[:2]]
-            sols = sp.solve(eqs, [sym_map[x] for x in ordered_unknowns[:2]], dict=True)
-            if sols and target in sols[0]:
-                solutions.append(float(sols[0][target]))
-        except Exception:
-            pass
-    if not solutions:
-        return None
-    return _choose_solution(solutions, requested)
+            continue
+
+    states: list[dict] = []
+    underdetermined = False
+    for solution in raw_solutions:
+        if any(symbol not in solution for symbol in unknown_symbols):
+            underdetermined = True
+            continue
+        state: dict = {}
+        valid = True
+        for symbol in unknown_symbols:
+            value = sp.N(solution[symbol])
+            if value.free_symbols:
+                valid = False
+                break
+            complex_value = complex(value)
+            if abs(complex_value.imag) > 1e-9 or not math.isfinite(complex_value.real):
+                valid = False
+                break
+            state[symbol] = float(complex_value.real)
+        if not valid:
+            continue
+        t_symbol = sym_map.get("t")
+        if t_symbol is not None:
+            time_value = state.get(t_symbol, substitutions.get(t_symbol))
+            if time_value is not None and float(time_value) < -1e-9:
+                continue
+        if not all(_equation_is_satisfied(eq, substitutions, state) for eq in equations):
+            continue
+        if not any(_same_state(state, existing, unknown_symbols) for existing in states):
+            states.append(state)
+
+    if not states and underdetermined:
+        return [], "주어진 조건만으로는 미지수가 유일하게 결정되지 않습니다."
+    return states, None
+
+
+def _residual_is_zero(residual) -> bool:
+    try:
+        value = complex(sp.N(residual))
+    except Exception:
+        return False
+    if abs(value.imag) > 1e-9:
+        return False
+    return abs(value.real) <= 1e-7
+
+
+def _equation_is_satisfied(eq, substitutions, state) -> bool:
+    try:
+        lhs = complex(sp.N(eq.lhs.subs(substitutions).subs(state)))
+        rhs = complex(sp.N(eq.rhs.subs(substitutions).subs(state)))
+    except Exception:
+        return False
+    if abs(lhs.imag) > 1e-9 or abs(rhs.imag) > 1e-9:
+        return False
+    scale = max(abs(lhs.real), abs(rhs.real), 1.0)
+    return abs(lhs.real - rhs.real) <= 1e-7 * scale
+
+
+def _same_state(left: dict, right: dict, symbols: list) -> bool:
+    return all(
+        math.isclose(float(left[symbol]), float(right[symbol]), rel_tol=1e-8, abs_tol=1e-9)
+        for symbol in symbols
+    )
+
+
+def _unique_values(values) -> list[float]:
+    unique: list[float] = []
+    for value in values:
+        if not any(math.isclose(value, seen, rel_tol=1e-8, abs_tol=1e-9) for seen in unique):
+            unique.append(value)
+    return sorted(unique)
 
 
 def _requested_key(c: CanonicalProblem, candidates: list[str]) -> str:
@@ -169,14 +425,6 @@ def _requested_key(c: CanonicalProblem, candidates: list[str]) -> str:
     if "가속도" in raw:
         return "a" if "a" in candidates else candidates[0]
     return candidates[0]
-
-
-def _choose_solution(values: list[float], requested: str) -> float:
-    # 시간은 양수 해를 우선, 나머지는 절댓값이 작은 해를 우선한다.
-    if requested == "t":
-        positives = [v for v in values if v >= -1e-9]
-        return min(positives) if positives else values[0]
-    return min(values, key=lambda x: abs(x))
 
 
 def _unit_for(key: str) -> str:

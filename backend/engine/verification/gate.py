@@ -41,6 +41,10 @@ def apply_result_gate(response) -> None:
     was_ok = bool(response.ok)
     response.ok = False
     response.verification.passed = False
+    # 검증에 실패한 숫자는 일반 응답 계약에서 제거한다. 디버깅 후보값을
+    # 사용자용 answer 필드에 남기면 UI나 다른 소비자가 오답을 재사용할 수 있다.
+    response.answer = None
+    response.answers = []
     # 성공 주장을 끌어내리는 경우에만 사유를 게이트가 결정한다.
     # solver 가 이미 실패 사유를 제시했다면 보존.
     if was_ok or not response.unsupported_reason:

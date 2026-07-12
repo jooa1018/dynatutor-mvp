@@ -478,11 +478,15 @@ def test_phase45_friction_incline_supports_mu_k_locally():
     )
 
 
-def test_out_of_scope_pulley_mu_k_only_keeps_main_no_solution_contract():
+def test_pulley_mu_k_alias_matches_legacy_mu_solution():
     result = solve_particle_newton_system(_pulley_incline("mu_k"))
+    expected = solve_particle_newton_system(_pulley_incline("mu"))
 
-    assert result.ok is False
-    assert result.solution == {}
+    assert result.ok is True
+    assert expected.ok is True
+    assert set(result.solution) == set(expected.solution)
+    for symbol, value in expected.solution.items():
+        assert float(result.solution[symbol]) == pytest.approx(float(value))
 
 
 def test_out_of_scope_pulley_existing_mu_still_solves():

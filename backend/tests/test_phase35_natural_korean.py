@@ -73,7 +73,7 @@ def test_work_direction_clarify_and_opposite_resolve():
     from engine.solvers.registry import SolverRegistry
 
     cp, r = _solve("힘 10N이 물체에 작용해 5m 이동했다. 힘이 한 일은?")
-    assert r is not None and not r.ok
+    assert r is None  # 방향이 확정되기 전에는 solver를 선택하지 않는다.
     clar = build_clarification(cp)
     assert clar is not None and clar.rule == "work_direction_unknown"
     assert {o.id for o in clar.options} == {"dir_same", "dir_opposite", "dir_perp", "dir_angle"}

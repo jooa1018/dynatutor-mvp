@@ -29,18 +29,31 @@ def _compact(text: str) -> str:
     return re.sub(r"\s+", "", text.lower())
 
 
-def signed_angular_direction(text: str) -> int:
-    """Return +1 for CCW, -1 for clockwise, +1 default.
-
-    Korean warning: "반시계방향" contains "시계방향", so check CCW first.
-    """
-    t = text.lower()
-    c = _compact(text)
-    if any(w in c for w in ["반시계방향", "반시계", "counterclockwise", "ccw", "ccw방향"]):
+def explicit_angular_direction(text: str) -> int | None:
+    """Return an explicitly stated angular sign, or None when unstated."""
+    compact = _compact(text)
+    # "반시계방향" contains "시계방향", so CCW must be checked first.
+    if any(w in compact for w in ["반시계방향", "반시계", "counterclockwise", "ccw", "ccw방향"]):
         return +1
-    if any(w in c for w in ["시계방향", "clockwise", "cw", "cw방향"]):
+    if any(w in compact for w in ["시계방향", "clockwise", "cw", "cw방향"]):
         return -1
-    return +1
+    return None
+
+
+def signed_angular_direction(text: str) -> int:
+    """Backward-compatible scalar helper; use explicit_angular_direction for routing."""
+    explicit = explicit_angular_direction(text)
+    return explicit if explicit is not None else +1
+
+
+def _quantity_angular_sign(text: str, aliases: tuple[str, ...]) -> int | None:
+    for alias in aliases:
+        for match in re.finditer(alias, text, re.IGNORECASE):
+            window = text[max(0, match.start() - 35): min(len(text), match.end() + 35)]
+            sign = explicit_angular_direction(window)
+            if sign is not None:
+                return sign
+    return None
 
 
 def direction_to_angle_deg(direction_text: str) -> float | None:
@@ -154,7 +167,7 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
                         break
 
     # Directional vA / aA. These override scalar-only vA/aA.
-    vA = _directional_quantity([r"A\s*점\s*속도", r"점\s*A\s*속도", r"vA|v_A"], text, r"(?:m/s|mps)")
+    vA = _directional_quantity([r"A\s*점\s*속도", r"점\s*A\s*속도", r"A\s*점\s*(?:은|는)", r"점\s*A\s*(?:은|는)", r"vA|v_A"], text, r"(?:m/s|mps)")
     if vA:
         mag, direction, src = vA
         vec = vector_from_direction(mag, direction)
@@ -162,7 +175,7 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
             values["vAx"], values["vAy"] = vec.x, vec.y
             notes.append(f"v_A direction parsed: {src}")
 
-    aA = _directional_quantity([r"A\s*점\s*가속도", r"점\s*A\s*가속도", r"aA|a_A"], text, r"(?:m/s\^?2|m/s2|mps2)")
+    aA = _directional_quantity([r"A\s*점\s*가속도", r"점\s*A\s*가속도", r"A\s*점\s*(?:은|는)", r"점\s*A\s*(?:은|는)", r"aA|a_A"], text, r"(?:m/s\^?2|m/s2|mps2)")
     if aA:
         mag, direction, src = aA
         vec = vector_from_direction(mag, direction)
@@ -170,12 +183,26 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
             values["aAx"], values["aAy"] = vec.x, vec.y
             notes.append(f"a_A direction parsed: {src}")
 
-    # Angular sign.
-    sign = signed_angular_direction(text)
-    values["angular_sign"] = float(sign)
-    if sign < 0:
-        notes.append("clockwise angular direction parsed as negative")
-    elif any(w in _compact(text) for w in ["반시계", "counterclockwise", "ccw"]):
-        notes.append("counterclockwise angular direction parsed as positive")
+    # Angular signs are optional and kept separately for ω and α.
+    omega_sign = _quantity_angular_sign(text, (r"omega", r"ω", r"각속도"))
+    alpha_sign = _quantity_angular_sign(text, (r"alpha", r"α", r"각가속도"))
+    global_sign = explicit_angular_direction(text)
+    if omega_sign is not None:
+        values["omega_sign"] = float(omega_sign)
+        notes.append("angular velocity direction parsed explicitly")
+    if alpha_sign is not None:
+        values["alpha_sign"] = float(alpha_sign)
+        notes.append("angular acceleration direction parsed explicitly")
+    if global_sign is not None:
+        values["angular_sign"] = float(global_sign)
+        if omega_sign is None:
+            values["omega_sign"] = float(global_sign)
+        if alpha_sign is None:
+            values["alpha_sign"] = float(global_sign)
+        notes.append(
+            "clockwise angular direction parsed as negative"
+            if global_sign < 0
+            else "counterclockwise angular direction parsed as positive"
+        )
 
     return ParsedCoordinateData(values=values, notes=notes)

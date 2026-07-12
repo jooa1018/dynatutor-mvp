@@ -9,6 +9,7 @@ from engine.extraction.normalizer import (
 )
 from engine.extraction.quantity import extract_quantities
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement, infer_direction_label
+from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest, explicitly_starts_from_rest
 from engine.physics_core.inertia import infer_body_shape
 from engine.physics_core.coordinate_parser import parse_coordinate_data_from_text
 
@@ -223,7 +224,12 @@ def _infer_requested_outputs(t: str) -> list[str]:
         add("mass")
     if has_query(r"운동에너지", r"kinetic\s+energy"):
         add("kinetic_energy")
-    if has_query(r"마찰력[은을이]?", r"friction\s+force"):
+    if has_query(
+        r"마찰력\s*(?:을|를)?\s*(?:구|계산|찾)",
+        r"마찰력\s*(?:은|는|이)?\s*(?:얼마|\?)",
+        r"(?:find|calculate)\s+(?:the\s+)?friction\s+force",
+        r"friction\s+force\s*\?",
+    ):
         add("friction_force")
     if has_query(r"(?:저장된|탄성)\s*(?:퍼텐셜\s*)?에너지", r"elastic\s+(?:potential\s+)?energy", r"stored\s+energy"):
         add("elastic_energy")
@@ -353,6 +359,17 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     analysis_text = strip_irrelevant_background(normalized)
     t = analysis_text.lower()
     knowns = extract_quantities(analysis_text)
+    if (
+        "omega0" not in knowns
+        and explicitly_starts_from_angular_rest(analysis_text)
+    ):
+        knowns["omega0"] = Quantity(
+            "omega0",
+            0.0,
+            "rad/s",
+            "명시적인 회전 정지 출발 조건 → omega0=0",
+            provenance_hint="domain_rule",
+        )
     _attach_raw_extraction_evidence(
         knowns,
         raw_text=problem_text,
@@ -393,7 +410,7 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         "slot_pin": _has_any(t, ["슬롯", " slot", "핀", " pin ", "홈", "relative motion in slot"]),
         "relative_motion": _has_any(t, ["상대운동", "상대 운동", "relative motion", "상대속도", "relative velocity"]),
         "plane_rigid_body": _has_any(t, ["평면강체", "평면 강체", "plane rigid body", "general plane motion", "강체 평면운동", "강체의 평면운동", "점 b의 속도", "v_b", "vB", "점 b의 가속도", "a_b", "aB"]),
-        "plane_acceleration": _has_any(t, ["평면강체 가속도", "강체 가속도", "점 b의 가속도", "a_b", "aB", "normal acceleration", "tangential acceleration"]),
+        "plane_acceleration": _has_any(t, ["평면강체 가속도", "강체 가속도", "점 b의 가속도", "b점 가속도", "b점의 가속도", "각가속도", "a_b", "aB", "normal acceleration", "tangential acceleration"]),
         "coriolis": _has_any(t, ["코리올리", "coriolis", "회전좌표계", "rotating frame", "회전 기준계", "relative motion rotating"]),
         "relative_acceleration": _has_any(t, ["상대가속도", "상대 가속도", "relative acceleration", "a_rel", "arel"]),
         "massive_pulley": _has_any(t, ["질량 있는 도르래", "질량있는 도르래", "도르래 관성", "도르래의 관성", "pulley inertia", "massive pulley", "도르래 질량"]),
@@ -567,8 +584,15 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     elif flags["spring"] and ("x" in knowns or "A" in knowns) and "k" in knowns and _has_any(t, ["저장된 에너지", "탄성 에너지", "탄성에너지", "탄성 퍼텐셜", "elastic"]):
         # E = ½kx² 직접 질문 — 질량 불필요 (Phase 39)
         c.system_type = "spring_energy"
-    elif (flags["friction"] or "mu" in knowns) and not flags["incline"] and not flags["pulley"] and "mu" in knowns and ("m" in knowns or ("m1" in knowns and "m2" not in knowns)) and _has_any(t, ["마찰력은", "마찰력을", "마찰력이 얼마", "friction force"]):
-        # 수평면 운동마찰력 f = μmg 직접 질문 (Phase 39)
+    elif (
+        (flags["friction"] or any(key in knowns for key in ("mu", "mu_s", "mu_k")))
+        and not flags["incline"]
+        and not flags["pulley"]
+        and any(key in knowns for key in ("mu", "mu_s", "mu_k"))
+        and ("m" in knowns or ("m1" in knowns and "m2" not in knowns))
+        and _has_any(t, ["마찰력은", "마찰력을", "마찰력이 얼마", "friction force"])
+    ):
+        # 수평면의 실제 정지마찰력/최대값/운동마찰력을 상태에 따라 구분한다.
         c.system_type = "horizontal_friction_force"
     elif flags["curve"] and flags["banked"] and flags["no_friction"]:
         c.system_type = "banked_curve_no_friction"
@@ -610,6 +634,13 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
         c.system_type = "rolling"
     else:
         c.system_type = "unknown"
+
+    # 원운동 문맥의 '속도 8 m/s'는 발사 초기속도(v0)가 아니라
+    # 해당 원 궤도 지점의 현재 속도(v)다.
+    if c.system_type == "vertical_circle" and "v" not in c.knowns and "v0" in c.knowns:
+        speed = c.knowns.pop("v0")
+        speed.symbol = "v"
+        c.knowns["v"] = speed
 
     c.objects = _objects_from_knowns(c)
     c.assumptions = _default_assumptions(c)
@@ -670,9 +701,24 @@ def _infer_friction_type(t: str, flags: dict) -> str | None:
     return None
 
 
+def _projectile_target_height(t: str) -> float | None:
+    patterns = (
+        r"(\d+(?:\.\d+)?)\s*m\s*(?:높이|높은\s*지점)(?:에|를)?[^.]{0,24}(?:도달|지나|올라)",
+        r"(?:높이|고도)\s*(\d+(?:\.\d+)?)\s*m(?:에|를)?[^.]{0,24}(?:도달|지나)",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, t)
+        if match:
+            return float(match.group(1))
+    return None
+
+
 def _infer_launch_height(knowns: dict, t: str) -> float | None:
     if "h0" in knowns:
         return knowns["h0"].value
+    # "처음으로 10 m 높이에 도달"의 10 m는 발사 높이가 아니라 목표 높이다.
+    if _projectile_target_height(t) is not None:
+        return 0.0 if _has_any(t, ["지면에서", "바닥에서", "ground level"]) else None
     if _has_any(t, ["절벽", "높이"]) and "h" in knowns:
         return knowns["h"].value
     # "X m 아래(지점)에 떨어졌다" — 추출기가 h=X로 기록 (Δy=-h → 발사 높이 h)
@@ -684,6 +730,9 @@ def _infer_launch_height(knowns: dict, t: str) -> float | None:
 def _infer_landing_height(knowns: dict, t: str) -> float | None:
     if "yf" in knowns:
         return knowns["yf"].value
+    target = _projectile_target_height(t)
+    if target is not None:
+        return target
     if _has_any(t, ["지면", "바닥", "ground"]):
         return 0.0
     if _has_any(t, ["같은 높이", "same level"]):
@@ -775,7 +824,7 @@ def _default_assumptions(c: CanonicalProblem) -> list[str]:
     if c.system_type in {"flat_curve_friction", "banked_curve_no_friction"}:
         a.append("등속 원운동으로 모델링")
     if c.system_type == "relative_acceleration_translation":
-        a.extend(["A에 대한 B의 상대가속도를 병진 기준계에서 더함", "방향각이 없으면 기본형은 같은 직선상 성분으로 계산"])
+        a.extend(["A에 대한 B의 상대가속도를 병진 기준계에서 더함", "방향 또는 공통 부호축이 명시된 성분만 계산"])
     if c.system_type == "coriolis_relative_motion":
         a.extend(["회전 기준계에서 관찰한 상대운동", "Coriolis 항 2ωv_rel은 상대속도와 회전에 의해 생김"])
     if c.system_type == "plane_rigid_body_acceleration":
@@ -808,10 +857,14 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
     elif c.system_type in {"pulley_table_hanging", "pulley_atwood", "pulley_incline_hanging"}:
         if "m1" not in c.knowns or "m2" not in c.knowns:
             missing.append("두 물체의 질량 m1, m2")
-        if c.system_type == "pulley_table_hanging" and c.friction_type is None and not (c.flags.get("no_friction") or "mu" in c.knowns or "mu_k" in c.knowns or "mu_s" in c.knowns):
-            missing.append("수평면 마찰 유무")
+        if c.system_type in {"pulley_table_hanging", "pulley_incline_hanging"} and c.friction_type is None and not (c.flags.get("no_friction") or "mu" in c.knowns or "mu_k" in c.knowns or "mu_s" in c.knowns):
+            missing.append("접촉면 마찰 유무")
         if c.system_type == "pulley_incline_hanging" and "theta" not in c.knowns:
             missing.append("경사면 각도 θ")
+        if c.friction_type == "static" and not any(key in c.knowns for key in ("mu_s", "mu")):
+            missing.append("정지마찰계수 μ_s")
+        if c.friction_type in {"kinetic", "unspecified"} and not any(key in c.knowns for key in ("mu_k", "mu")):
+            missing.append("운동마찰계수 μ_k")
     elif c.system_type == "ambiguous_pulley":
         missing.append("도르래 구조: 양쪽 매달림/수평면-매달림/경사면-매달림 중 하나")
     elif c.system_type == "incline_hanging_candidate":
@@ -825,11 +878,20 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("높이 변화 h")
         if "I" not in c.knowns and not c.body_shape:
             missing.append("물체 종류 또는 관성모멘트 I")
+        if (
+            "v0" not in c.knowns
+            and "v" not in c.knowns
+            and not explicitly_starts_from_rest(c)
+        ):
+            missing.append("초기속도 v0 또는 정지 출발 조건")
     elif c.system_type == "vertical_circle":
+        requested = set(c.requested_outputs or c.unknowns or [])
         if "R" not in c.knowns:
             missing.append("반지름 R")
-        if "v" not in c.knowns and "minimum_speed" not in c.unknowns:
+        if "v" not in c.knowns and "minimum_speed" not in requested:
             missing.append("해당 지점의 속도 v 또는 최소속도 조건")
+        if "minimum_speed" not in requested and "m" not in c.knowns:
+            missing.append("장력/수직항력 계산에 필요한 질량 m")
         if c.subtype is None:
             missing.append("최고점/최저점 위치")
     elif c.system_type == "collision_1d":
@@ -863,9 +925,27 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("힘과 변위 사이 방향 또는 각도")
     elif c.system_type == "fixed_axis_rotation":
         # Phase 40: 회전 kinematics(ω=ω₀+αt, v=ωr)로 풀리는 조합이면 τ·I는 필요 없다.
-        kin_omega = ("alpha" in c.knowns and "t" in c.knowns and "angular_velocity" in (c.requested_outputs or []))
-        kin_speed = ("omega" in c.knowns and ("r" in c.knowns or "R" in c.knowns) and "alpha" not in c.knowns)
-        if not (kin_omega or kin_speed):
+        angular_kinematics_requested = (
+            "alpha" in c.knowns
+            and "t" in c.knowns
+            and "angular_velocity" in (c.requested_outputs or [])
+        )
+        has_initial_angular_state = (
+            "omega0" in c.knowns
+            or "omega" in c.knowns
+            or explicitly_starts_from_angular_rest(c)
+        )
+        kin_omega = (
+            angular_kinematics_requested and has_initial_angular_state
+        )
+        kin_speed = (
+            "omega" in c.knowns
+            and ("r" in c.knowns or "R" in c.knowns)
+            and "alpha" not in c.knowns
+        )
+        if angular_kinematics_requested and not has_initial_angular_state:
+            missing.append("초기 각속도 ω₀ 또는 회전 정지 출발 조건")
+        elif not (kin_omega or kin_speed):
             if "tau" not in c.knowns:
                 missing.append("토크 τ")
             if "I" not in c.knowns:
@@ -898,23 +978,122 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("질량 m")
         if "W" not in c.knowns and not ("F" in c.knowns and "s" in c.knowns):
             missing.append("일 W 또는 힘 F와 거리 s")
+        if (
+            "W" not in c.knowns
+            and "F" in c.knowns
+            and "s" in c.knowns
+            and "theta" not in c.knowns
+            and c.force_direction is None
+        ):
+            missing.append("힘과 변위 사이 방향 또는 각도 θ")
+        starts_from_rest = any(
+            phrase in (c.raw_text or "").lower()
+            for phrase in (
+                "정지 상태에서",
+            "정지 상태의",
+            "정지 상태인",
+            "처음에 정지한",
+            "정지한 물체",
+                "정지 상태로부터",
+                "정지에서",
+                "처음에는 정지",
+                "초기에는 정지",
+                "가만히 있다가",
+                "starts from rest",
+                "initially at rest",
+            )
+        )
+        if "v0" not in c.knowns and "v" not in c.knowns and not starts_from_rest:
+            missing.append("초기속도 v_i 또는 정지 출발 조건")
     elif c.system_type == "relative_acceleration_translation":
         if "aA" not in c.knowns:
             missing.append("기준점 A의 가속도 aA")
         if "arel" not in c.knowns:
             missing.append("A에 대한 B의 상대가속도 a_rel")
+        compact = (c.raw_text or "").lower().replace(" ", "")
+        has_direction = (
+            "같은방향" in compact
+            or "반대방향" in compact
+            or "opposite" in compact
+            or any(
+                compact.count(word) >= 2
+                for word in (
+                    "오른쪽",
+                    "왼쪽",
+                    "위쪽",
+                    "아래쪽",
+                    "right",
+                    "left",
+                    "upward",
+                    "downward",
+                )
+            )
+            or any(
+                phrase in compact
+                for phrase in (
+                    "오른쪽을+",
+                    "왼쪽을+",
+                    "위쪽을+",
+                    "아래쪽을+",
+                    "+x",
+                    "+y",
+                    "부호있는성분",
+                    "signedcomponent",
+                )
+            )
+        )
+        if not has_direction:
+            missing.append("aA와 a_rel의 방향 또는 공통 부호축")
     elif c.system_type == "coriolis_relative_motion":
         if "omega" not in c.knowns:
             missing.append("회전 기준계 각속도 ω")
         if "vrel" not in c.knowns and "rdot" not in c.knowns:
             missing.append("상대속도 v_rel 또는 r_dot")
+        compact = (c.raw_text or "").lower().replace(" ", "")
+        coriolis_only = (
+            "코리올리" in compact
+            and not any(
+                word in compact
+                for word in ("전체가속도", "절대가속도", "가속도성분")
+            )
+        )
+        if not coriolis_only:
+            if "r" not in c.knowns and "R" not in c.knowns:
+                missing.append("회전계 위치 반지름 r")
+            if "alpha" not in c.knowns and "thetaddot" not in c.knowns:
+                missing.append("회전계 각가속도 α")
+            if "arel" not in c.knowns and "rddot" not in c.knowns:
+                missing.append("상대가속도 a_rel")
     elif c.system_type == "plane_rigid_body_acceleration":
-        if "R" not in c.knowns and "r" not in c.knowns and not ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data):
-            missing.append("두 점 사이 거리 r_B/A")
+        raw = c.raw_text or ""
+        fixed_A = any(phrase in raw for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"])
+        zero_aA = (
+            "aA" in c.knowns
+            and c.knowns["aA"].value is not None
+            and abs(float(c.knowns["aA"].value)) <= 1e-12
+        )
+        has_aA_vector = (
+            ("aAx" in c.coordinate_data and "aAy" in c.coordinate_data)
+            or ("aAx" in c.knowns and "aAy" in c.knowns)
+        )
+        has_r_vector = (
+            ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data)
+            or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+        )
+        has_scalar_r = "R" in c.knowns or "r" in c.knowns
+        if not has_r_vector and not ((fixed_A or zero_aA) and has_scalar_r):
+            missing.append("r_B/A 벡터 성분(고정 A 또는 aA=0일 때만 거리 r 허용)")
+        if not has_aA_vector and not fixed_A and not zero_aA:
+            missing.append("A점 가속도 벡터 또는 A점 고정 조건")
         if "omega" not in c.knowns:
             missing.append("강체 각속도 ω")
         if "alpha" not in c.knowns:
             missing.append("강체 각가속도 α")
+        if has_r_vector:
+            if "omega_sign" not in c.coordinate_data and "angular_sign" not in c.coordinate_data:
+                missing.append("가속도 성분 계산을 위한 각속도 회전 방향")
+            if "alpha_sign" not in c.coordinate_data and "angular_sign" not in c.coordinate_data:
+                missing.append("가속도 성분 계산을 위한 각가속도 회전 방향")
     elif c.system_type == "massive_pulley_atwood":
         if "m1" not in c.knowns or "m2" not in c.knowns:
             missing.append("두 물체의 질량 m1, m2")
@@ -932,12 +1111,55 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
                 missing.append("구름 반지름 R")
         elif not c.body_shape:
             missing.append("물체 종류 또는 관성모멘트 I")
+        if (
+            "v0" not in c.knowns
+            and "v" not in c.knowns
+            and not explicitly_starts_from_rest(c)
+        ):
+            missing.append("초기속도 v0 또는 정지 출발 조건")
     elif c.system_type == "polar_kinematics":
         if "R" not in c.knowns and "r" not in c.knowns:
             missing.append("극좌표 반지름 r")
         if "omega" not in c.knowns and "thetadot" not in c.knowns:
             missing.append("각속도 θ_dot 또는 ω")
-        # rdot, rddot, alpha는 없으면 0으로 둘 수 있게 solver에서 보완합니다.
+        compact = (c.raw_text or "").lower().replace(" ", "")
+        constant_radius = any(
+            phrase in compact
+            for phrase in (
+                "반지름일정",
+                "반지름은일정",
+                "반지름과각속도가일정",
+                "r이일정",
+                "r=constant",
+                "constantradius",
+                "등속원운동",
+            )
+        )
+        constant_omega = any(
+            phrase in compact
+            for phrase in (
+                "각속도일정",
+                "반지름과각속도가일정",
+                "등각속도",
+                "constantangularspeed",
+                "등속원운동",
+            )
+        )
+        wants_acceleration = (
+            "acceleration" in (c.requested_outputs or c.unknowns or [])
+            or "가속도" in compact
+        )
+        if "rdot" not in c.knowns and not constant_radius:
+            missing.append("반지름 변화율 r_dot 또는 반지름 일정 조건")
+        if wants_acceleration and "rddot" not in c.knowns and not constant_radius:
+            missing.append("반지름 가속도 r_ddot 또는 반지름 일정 조건")
+        if (
+            wants_acceleration
+            and "alpha" not in c.knowns
+            and "thetaddot" not in c.knowns
+            and not constant_omega
+        ):
+            missing.append("각가속도 α 또는 각속도 일정 조건")
     elif c.system_type == "instant_center_velocity":
         if "R" not in c.knowns and "r" not in c.knowns:
             missing.append("순간중심에서 점까지 거리 r")
@@ -951,11 +1173,29 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
         if "rdot" not in c.knowns:
             missing.append("슬롯을 따라 미끄러지는 상대속도 r_dot")
     elif c.system_type == "plane_rigid_body_velocity":
-        if "R" not in c.knowns and "r" not in c.knowns and not ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data):
-            missing.append("두 점 사이 거리 r_B/A")
+        raw = c.raw_text or ""
+        fixed_A = any(phrase in raw for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"])
+        zero_vA = (
+            "vA" in c.knowns
+            and c.knowns["vA"].value is not None
+            and abs(float(c.knowns["vA"].value)) <= 1e-12
+        )
+        has_vA_vector = (
+            ("vAx" in c.coordinate_data and "vAy" in c.coordinate_data)
+            or ("vAx" in c.knowns and "vAy" in c.knowns)
+        )
+        has_r_vector = (
+            ("rBAx" in c.coordinate_data and "rBAy" in c.coordinate_data)
+            or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+        )
+        has_scalar_r = "R" in c.knowns or "r" in c.knowns
+        if not has_r_vector and not ((fixed_A or zero_vA) and has_scalar_r):
+            missing.append("r_B/A 벡터 성분(고정 A에서 속력만 구할 때는 거리 r)")
         if "omega" not in c.knowns:
             missing.append("강체 각속도 ω")
-        if "vA" not in c.knowns and "vAx" not in c.knowns and "vAy" not in c.knowns and "vAx" not in c.coordinate_data and "vAy" not in c.coordinate_data and not any(phrase in c.raw_text for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"]):
+        if has_r_vector and "omega_sign" not in c.coordinate_data and "angular_sign" not in c.coordinate_data:
+            missing.append("속도 성분 계산을 위한 각속도 회전 방향")
+        if not has_vA_vector and not fixed_A and not zero_vA:
             missing.append("A점 속도 벡터 또는 A점 고정 조건")
     elif c.system_type == "unknown":
         missing.append("문제 유형을 판별할 핵심 단서")

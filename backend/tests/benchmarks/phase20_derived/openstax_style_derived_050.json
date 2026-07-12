@@ -270,7 +270,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 10,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_002",
@@ -283,7 +283,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 32,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_003",
@@ -296,7 +296,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 30,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_004",
@@ -309,7 +309,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 60,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_005",
@@ -322,7 +322,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 90,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_006",
@@ -335,7 +335,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 40,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_007",
@@ -348,7 +348,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 100,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_008",
@@ -360,8 +360,8 @@
     "expected_solver": "constant_force_work",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 45.0,
-    "tolerance": 1e-05
+    "expected_numeric": 45,
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_001",
@@ -374,7 +374,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 8,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_002",
@@ -387,7 +387,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 18,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_003",
@@ -400,7 +400,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 20,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_004",
@@ -412,8 +412,8 @@
     "expected_solver": "impulse_momentum",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 18.0,
-    "tolerance": 1e-05
+    "expected_numeric": 18,
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_005",
@@ -426,7 +426,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 60,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_006",
@@ -438,8 +438,8 @@
     "expected_solver": "impulse_momentum",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 10.0,
-    "tolerance": 1e-05
+    "expected_numeric": 10,
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_007",
@@ -452,7 +452,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 50,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_impulse_008",
@@ -465,7 +465,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 90,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_energy_001",
@@ -473,12 +473,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "work_energy_speed",
-    "problem_ko": "질량 2kg 물체에 알짜일 16J이 작용했다. 최종속도는?",
+    "problem_ko": "정지 상태에서 질량 2kg 물체에 알짜일 16J이 작용했다. 최종속도는?",
     "expected_solver": "work_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 4.0,
-    "tolerance": 1e-05
+    "expected_numeric": 4,
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_energy_002",
@@ -486,12 +486,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "work_energy_speed",
-    "problem_ko": "질량 4kg 물체에 알짜일 32J이 작용했다. 최종속도는?",
+    "problem_ko": "정지 상태에서 질량 4kg 물체에 알짜일 32J이 작용했다. 최종속도는?",
     "expected_solver": "work_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 4.0,
-    "tolerance": 1e-05
+    "expected_numeric": 4,
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_energy_003",
@@ -499,12 +499,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "work_energy_speed",
-    "problem_ko": "질량 5kg 물체에 알짜일 45J이 작용했다. 최종속도는?",
+    "problem_ko": "정지 상태에서 질량 5kg 물체에 알짜일 45J이 작용했다. 최종속도는?",
     "expected_solver": "work_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.242641,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_energy_004",
@@ -512,12 +512,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "work_energy_speed",
-    "problem_ko": "질량 3kg 물체에 알짜일 24J이 작용했다. 최종속도는?",
+    "problem_ko": "정지 상태에서 질량 3kg 물체에 알짜일 24J이 작용했다. 최종속도는?",
     "expected_solver": "work_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 4.0,
-    "tolerance": 1e-05
+    "expected_numeric": 4,
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_energy_005",
@@ -525,12 +525,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "work_energy_speed",
-    "problem_ko": "질량 6kg 물체에 알짜일 54J이 작용했다. 최종속도는?",
+    "problem_ko": "정지 상태에서 질량 6kg 물체에 알짜일 54J이 작용했다. 최종속도는?",
     "expected_solver": "work_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.242641,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_energy_006",
@@ -538,12 +538,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "work_energy_speed",
-    "problem_ko": "질량 8kg 물체에 알짜일 64J이 작용했다. 최종속도는?",
+    "problem_ko": "정지 상태에서 질량 8kg 물체에 알짜일 64J이 작용했다. 최종속도는?",
     "expected_solver": "work_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 4.0,
-    "tolerance": 1e-05
+    "expected_numeric": 4,
+    "tolerance": 0.00001
   },
   {
     "id": "os_work_energy_007",
@@ -551,12 +551,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "work_energy_speed",
-    "problem_ko": "질량 10kg 물체에 알짜일 125J이 작용했다. 최종속도는?",
+    "problem_ko": "정지 상태에서 질량 10kg 물체에 알짜일 125J이 작용했다. 최종속도는?",
     "expected_solver": "work_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 5.0,
-    "tolerance": 1e-05
+    "expected_numeric": 5,
+    "tolerance": 0.00001
   },
   {
     "id": "os_collision_inelastic_001",
@@ -569,7 +569,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.6,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_collision_inelastic_002",
@@ -581,8 +581,8 @@
     "expected_solver": "collision_1d",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 2.0,
-    "tolerance": 1e-05
+    "expected_numeric": 2,
+    "tolerance": 0.00001
   },
   {
     "id": "os_collision_inelastic_003",
@@ -595,7 +595,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.375,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_collision_inelastic_004",
@@ -607,8 +607,8 @@
     "expected_solver": "collision_1d",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 2.0,
-    "tolerance": 1e-05
+    "expected_numeric": 2,
+    "tolerance": 0.00001
   },
   {
     "id": "os_collision_inelastic_005",
@@ -620,8 +620,8 @@
     "expected_solver": "collision_1d",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 2.0,
-    "tolerance": 1e-05
+    "expected_numeric": 2,
+    "tolerance": 0.00001
   },
   {
     "id": "os_spring_energy_001",
@@ -634,7 +634,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.414214,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_spring_energy_002",
@@ -646,8 +646,8 @@
     "expected_solver": "spring_energy_speed",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 1.0,
-    "tolerance": 1e-05
+    "expected_numeric": 1,
+    "tolerance": 0.00001
   },
   {
     "id": "os_spring_energy_003",
@@ -660,7 +660,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.5,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_spring_energy_004",
@@ -673,7 +673,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.369306,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "os_spring_energy_005",
@@ -686,6 +686,6 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.341641,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   }
 ]

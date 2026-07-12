@@ -14,6 +14,16 @@ def _val(c: CanonicalProblem, *keys: str, default: float | None = None) -> float
     return default
 
 
+def _constant_radius_is_explicit(c: CanonicalProblem) -> bool:
+    raw = (c.raw_text or "").lower().replace(" ", "")
+    return any(phrase in raw for phrase in ("반지름일정", "반지름은일정", "반지름과각속도가일정", "r이일정", "r=constant", "constantradius", "등속원운동"))
+
+
+def _constant_angular_speed_is_explicit(c: CanonicalProblem) -> bool:
+    raw = (c.raw_text or "").lower().replace(" ", "")
+    return any(phrase in raw for phrase in ("각속도일정", "반지름과각속도가일정", "등각속도", "constantangularspeed", "등속원운동"))
+
+
 class PolarKinematicsSolver(BaseSolver):
     name = "polar_kinematics"
 
@@ -27,16 +37,40 @@ class PolarKinematicsSolver(BaseSolver):
         omega = _val(c, "omega", "thetadot")
         if r is None or omega is None:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["극좌표 계산에는 r과 θ_dot(또는 ω)이 필요합니다."]))
-        rdot = _val(c, "rdot", default=0.0) or 0.0
-        rddot = _val(c, "rddot", default=0.0) or 0.0
-        alpha = _val(c, "alpha", "thetaddot", default=0.0) or 0.0
+        want_acc = "acceleration" in c.unknowns or "radial_acceleration" in c.unknowns or "transverse_acceleration" in c.unknowns or "acceleration" in c.requested_outputs or "auto" in c.unknowns
+        constant_radius = _constant_radius_is_explicit(c)
+        constant_omega = _constant_angular_speed_is_explicit(c)
+        rdot = _val(c, "rdot")
+        rddot = _val(c, "rddot")
+        alpha = _val(c, "alpha", "thetaddot")
+        if rdot is None and constant_radius:
+            rdot = 0.0
+        if rddot is None and constant_radius:
+            rddot = 0.0
+        if alpha is None and constant_omega:
+            alpha = 0.0
+        missing = []
+        if rdot is None:
+            missing.append("반지름 변화율 r_dot 또는 반지름 일정 조건")
+        if want_acc and rddot is None:
+            missing.append("반지름 가속도 r_ddot 또는 반지름 일정 조건")
+        if want_acc and alpha is None:
+            missing.append("각가속도 theta_ddot/alpha 또는 각속도 일정 조건")
+        if missing:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(passed=False, errors=missing),
+                unsupported_reason="극좌표의 빠진 미분항을 0으로 가정하지 않습니다. 필요한 항 또는 일정 조건을 알려 주세요.",
+            )
+        rddot = 0.0 if rddot is None else rddot
+        alpha = 0.0 if alpha is None else alpha
         v_r = rdot
         v_theta = r * omega
         v_mag = math.hypot(v_r, v_theta)
-        a_r = rddot - r * omega**2
-        a_theta = r * alpha + 2 * rdot * omega
+        has_acceleration_terms = alpha is not None and rddot is not None
+        a_r = rddot - r * omega**2 if has_acceleration_terms else None
+        a_theta = r * alpha + 2 * rdot * omega if has_acceleration_terms else None
         a_mag = math.hypot(a_r, a_theta)
-        want_acc = "acceleration" in c.unknowns or "radial_acceleration" in c.unknowns or "transverse_acceleration" in c.unknowns or "auto" in c.unknowns
         if want_acc:
             display = f"a_r = {a_r:.3f} m/s², a_θ = {a_theta:.3f} m/s², |a| = {a_mag:.3f} m/s²"
             ans = Answer(symbolic="a_r = r¨ - rθ˙², a_θ = rθ¨ + 2r˙θ˙", numeric=round(a_mag, 6), unit="m/s²", display=display)
@@ -114,12 +148,13 @@ class SlotPinRelativeMotionSolver(BaseSolver):
         rdot = _val(c, "rdot")
         if r is None or omega is None or rdot is None:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["슬롯-핀 상대운동 속도 계산에는 r, r_dot, ω가 필요합니다."]))
-        alpha = _val(c, "alpha", default=0.0) or 0.0
-        rddot = _val(c, "rddot", default=0.0) or 0.0
+        alpha = _val(c, "alpha")
+        rddot = _val(c, "rddot")
         v_theta = r * omega
         v_mag = math.hypot(rdot, v_theta)
-        a_r = rddot - r * omega**2
-        a_theta = r * alpha + 2 * rdot * omega
+        has_acceleration_terms = alpha is not None and rddot is not None
+        a_r = rddot - r * omega**2 if has_acceleration_terms else None
+        a_theta = r * alpha + 2 * rdot * omega if has_acceleration_terms else None
         steps = [
             StepCard("상대운동 모델", "핀은 슬롯을 따라 r 방향으로 미끄러지고, 슬롯은 θ 방향으로 회전합니다."),
             StepCard("속도", "절대속도는 슬롯 방향 상대속도 r_dot과 회전에 의한 접선속도 rω의 벡터합입니다.", r"\vec v=\dot r\,\mathbf e_r+r\omega\,\mathbf e_\theta"),
@@ -128,7 +163,9 @@ class SlotPinRelativeMotionSolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, checks=["r_dot=0이면 보통 막대 위 고정점의 원운동 속도 v=rω가 됩니다.", "ω=0이면 슬롯을 따라 미끄러지는 속도만 남습니다."])
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        display = f"|v| = {v_mag:.3f} m/s; a_r = {a_r:.3f} m/s², a_θ = {a_theta:.3f} m/s²"
+        display = f"|v| = {v_mag:.3f} m/s"
+        if has_acceleration_terms:
+            display += f"; a_r = {a_r:.3f} m/s², a_θ = {a_theta:.3f} m/s²"
         return SolverResult(ok=True, answer=Answer(symbolic="v = √(r_dot² + (rω)²)", numeric=round(v_mag, 6), unit="m/s", display=display), steps=steps, verification=verification, used_equations=["v_r=r_dot", "v_θ=rω", "a_r=r_ddot-rω²", "a_θ=rα+2r_dotω"])
 
 

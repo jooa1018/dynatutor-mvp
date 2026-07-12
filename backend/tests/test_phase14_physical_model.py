@@ -29,7 +29,7 @@ def test_rolling_model_requires_shape_or_inertia():
 
 
 def test_diagnosis_response_exposes_physical_model():
-    d = diagnose_problem('속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?')
+    d = diagnose_problem('정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?')
     assert d.physical_model is not None
     assert d.physical_model['bodies'][0]['shape'] == 'solid_sphere'
     assert d.physical_model['equations_ready'] is True

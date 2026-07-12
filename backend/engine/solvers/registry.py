@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 from pathlib import Path
 import re
@@ -13,13 +13,17 @@ from engine.solvers.rolling import PureRollingEnergySolver, RollingEnergyGeneral
 from engine.solvers.vertical_circle import VerticalCircleSolver
 from engine.solvers.collision import Collision1DSolver
 from engine.solvers.kinematics import ConstantAcceleration1DSolver
-from engine.solvers.projectile import ProjectileMotionSolver
+from engine.solvers.projectile import ProjectileMotionSolver, can_solve_flight_time_without_speed
 from engine.solvers.work_rotation_impulse import ConstantForceWorkSolver, FixedAxisRotationSolver, ImpulseMomentumSolver
 from engine.solvers.energy_vibration import SpringMassVibrationSolver, SpringEnergySpeedSolver, WorkEnergySpeedSolver, HorizontalFrictionForceSolver
 from engine.solvers.curves import FlatCurveFrictionSolver, BankedCurveNoFrictionSolver
 from engine.solvers.advanced_motion import PolarKinematicsSolver, InstantCenterVelocitySolver, SlotPinRelativeMotionSolver
 from engine.solvers.advanced_dynamics import CoriolisRelativeMotionSolver
 from engine.solvers.rigid_body_2d import PlaneRigidBodyVelocitySolver, PlaneRigidBodyAccelerationSolver, RelativeAccelerationTranslationSolver
+from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
+from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest, explicitly_starts_from_rest
+from engine.routing.config import ROUTING_CONFIG
+from engine.routing.evidence import TYPE_TO_FAMILY, rank_type_evidence
 
 
 @dataclass
@@ -33,6 +37,9 @@ class RouteCandidate:
     contradictions: list[str] = field(default_factory=list)
     supported_outputs: list[str] = field(default_factory=list)
     risk_flags: list[str] = field(default_factory=list)
+    source_system_type: str | None = None
+    source_subtype: str | None = None
+    interpretation_score: float = 1.0
     solver: BaseSolver | None = field(default=None, repr=False, compare=False)
 
 
@@ -46,11 +53,9 @@ class RouteDecision:
     warnings: list[str] = field(default_factory=list)
 
 
-_ROUTING_MARGIN = 0.08
-_STRICT_CAPABILITY_SOLVERS = {"massive_pulley_atwood", "projectile_motion", "incline_with_friction"}
-
-
 class SolverRegistry:
+    _CAPABILITIES_CACHE: dict[str, dict[str, Any]] | None = None
+
     def __init__(self) -> None:
         self.solvers: list[BaseSolver] = [
             SingleParticleNewtonSolver(),
@@ -86,48 +91,352 @@ class SolverRegistry:
         self.last_route_decision: RouteDecision | None = None
         self._capabilities = self._load_capabilities()
 
+    def _validate_capability_data(
+        self, data: Any, *, source: str
+    ) -> dict[str, dict[str, Any]]:
+        if (
+            not isinstance(data, dict)
+            or data.get("schema_version") != 1
+            or not isinstance(data.get("capabilities"), list)
+        ):
+            raise ValueError(
+                f"Invalid capability configuration at {source}: "
+                "schema_version=1 and a capabilities list are required"
+            )
+        entries = data["capabilities"]
+        expected = [solver.name for solver in self.solvers]
+        if len(expected) != len(set(expected)):
+            raise ValueError("Solver registry contains duplicate solver names")
+
+        actual: list[str] = []
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    f"Invalid capability entry {index} at {source}: expected object"
+                )
+            name = entry.get("analytic_solver")
+            if not isinstance(name, str) or not name:
+                raise ValueError(
+                    f"Invalid capability entry {index} at {source}: "
+                    "analytic_solver is required"
+                )
+            actual.append(name)
+            required = entry.get("required_inputs")
+            required_keys = {"all_of", "any_of", "conditional"}
+            if not isinstance(required, dict) or set(required) != required_keys:
+                raise ValueError(
+                    f"Invalid required_inputs for {name}: "
+                    f"expected exactly {sorted(required_keys)}"
+                )
+            for key in ("all_of", "any_of"):
+                values = required[key]
+                if not isinstance(values, list) or not all(
+                    isinstance(value, str) and value for value in values
+                ):
+                    raise ValueError(
+                        f"Invalid required_inputs.{key} for {name}: "
+                        "expected symbol strings"
+                    )
+            conditions = required["conditional"]
+            if not isinstance(conditions, list):
+                raise ValueError(
+                    f"Invalid required_inputs.conditional for {name}: "
+                    "expected a list"
+                )
+            for rule_index, condition in enumerate(conditions):
+                if not isinstance(condition, dict):
+                    raise ValueError(
+                        f"Invalid conditional rule {rule_index} for {name}: "
+                        "expected object"
+                    )
+                keys = set(condition)
+                if keys in ({"one_of"}, {"all_of"}):
+                    values = condition[next(iter(keys))]
+                    valid = (
+                        isinstance(values, list)
+                        and bool(values)
+                        and all(isinstance(value, str) and value for value in values)
+                    )
+                elif keys == {"minimum_present", "symbols"}:
+                    values = condition["symbols"]
+                    minimum = condition["minimum_present"]
+                    valid = (
+                        isinstance(values, list)
+                        and bool(values)
+                        and all(isinstance(value, str) and value for value in values)
+                        and isinstance(minimum, int)
+                        and not isinstance(minimum, bool)
+                        and 1 <= minimum <= len(values)
+                    )
+                else:
+                    raise ValueError(
+                        f"Unsupported conditional rule keys for {name}: "
+                        f"{sorted(keys)}"
+                    )
+                if not valid:
+                    raise ValueError(
+                        f"Invalid conditional rule {rule_index} for {name}"
+                    )
+
+        duplicates = sorted(
+            {name for name in actual if actual.count(name) > 1}
+        )
+        if duplicates:
+            raise ValueError(f"Duplicate capability entries: {duplicates}")
+        missing = sorted(set(expected) - set(actual))
+        extra = sorted(set(actual) - set(expected))
+        if missing or extra:
+            raise ValueError(
+                f"Capability/registry mismatch: missing={missing}, extra={extra}"
+            )
+        if actual != expected:
+            raise ValueError("Capability entries must follow SolverRegistry order")
+        return {entry["analytic_solver"]: entry for entry in entries}
+
     def _load_capabilities(self) -> dict[str, dict[str, Any]]:
-        path = Path(__file__).resolve().parents[1] / "capabilities" / "dynamics_capabilities.json"
+        cached = type(self)._CAPABILITIES_CACHE
+        if cached is not None:
+            return cached
+        path = (
+            Path(__file__).resolve().parents[1]
+            / "capabilities"
+            / "dynamics_capabilities.json"
+        )
         data = json.loads(path.read_text(encoding="utf-8"))
-        return {entry["analytic_solver"]: entry for entry in data.get("capabilities", [])}
+        validated = self._validate_capability_data(data, source=str(path))
+        type(self)._CAPABILITIES_CACHE = validated
+        return validated
 
     def _family(self, solver_id: str) -> str:
-        if solver_id.startswith("pulley_") or solver_id == "massive_pulley_atwood":
-            return "pulley"
-        if "incline" in solver_id:
-            return "incline"
-        if "friction" in solver_id:
-            return "friction"
-        if solver_id.startswith("projectile"):
-            return "projectile"
-        return solver_id.split("_", 1)[0]
+        solver_family = {
+            "incline_no_friction": "incline",
+            "incline_with_friction": "incline",
+            "horizontal_friction_force": "friction",
+        }.get(solver_id)
+        if solver_family:
+            return solver_family
+        return TYPE_TO_FAMILY.get(solver_id, solver_id.split("_", 1)[0])
+
+    def _variant_specs(self, c: CanonicalProblem) -> list[tuple[str, str | None, float, list[str]]]:
+        specs: dict[tuple[str, str | None], tuple[float, list[str]]] = {}
+
+        def add(system_type: str, subtype: str | None, score: float, reason: str) -> None:
+            key = (system_type, subtype)
+            score = max(0.0, min(1.0, float(score)))
+            if key not in specs:
+                specs[key] = (score, [reason])
+                return
+            previous_score, reasons = specs[key]
+            if reason not in reasons:
+                reasons.append(reason)
+            specs[key] = (max(previous_score, score), reasons)
+
+        if c.canonical_v2 is not None:
+            for parse_candidate in c.canonical_v2.parse_candidates:
+                for type_candidate in parse_candidate.system_type_candidates:
+                    add(
+                        type_candidate.system_type,
+                        type_candidate.subtype,
+                        min(float(parse_candidate.score), float(type_candidate.score)),
+                        type_candidate.reason,
+                    )
+        if (c.system_type, c.subtype) not in specs:
+            add(c.system_type, c.subtype, 1.0, "canonical compatibility interpretation")
+
+        evidence = rank_type_evidence(c)
+        if (
+            c.system_type == "unknown"
+            and len(evidence) > 1
+            and not (c.flags or {}).get("_clarify_model_chosen")
+        ):
+            for item in evidence:
+                score = min(
+                    ROUTING_CONFIG.evidence_candidate_ceiling,
+                    ROUTING_CONFIG.evidence_candidate_base
+                    + ROUTING_CONFIG.evidence_candidate_step * item.score,
+                )
+                add(
+                    item.rep_type,
+                    c.subtype if item.rep_type == c.system_type else None,
+                    score,
+                    f"{item.label} evidence: {', '.join(item.reasons)}",
+                )
+        return [
+            (system_type, subtype, score, reasons)
+            for (system_type, subtype), (score, reasons) in specs.items()
+        ]
 
     def _has_symbol(self, c: CanonicalProblem, symbol: str) -> bool:
-        if " and " in symbol:
-            return all(self._has_symbol(c, part.strip()) for part in symbol.split(" and "))
-        if " or " in symbol:
-            return any(self._has_symbol(c, part.strip()) for part in symbol.split(" or "))
-        if symbol in {"theta", "launch_angle_deg"}:
-            return "theta" in c.knowns or c.launch_angle_deg is not None
-        if symbol == "friction_type":
-            return bool(c.friction_type)
-        if symbol == "minimum_speed request":
-            return "minimum_speed" in set(c.requested_outputs or c.unknowns or [])
-        if symbol == "top subtype":
-            return c.subtype == "top"
-        if symbol == "bottom subtype":
-            return c.subtype == "bottom"
-        if symbol == "explicit no_friction":
-            return c.friction_type in {"none", "no_friction"} or c.subtype == "no_friction"
-        if c.flags.get(symbol):
-            return True
-        requested_aliases = {"vf": "final_velocity", "v0": "initial_velocity", "s": "distance"}
+        expression = symbol.strip()
         requested = set(c.requested_outputs or c.unknowns or [])
-        if requested_aliases.get(symbol, symbol) in requested:
-            return True
-        return symbol in c.knowns and c.knowns[symbol].value is not None
+        raw = (c.raw_text or "").lower()
+        coordinate_data = c.coordinate_data or {}
 
-    def _missing_requirements(self, c: CanonicalProblem, capability: dict[str, Any]) -> list[str]:
+        special = {
+            "theta": "theta" in c.knowns or c.launch_angle_deg is not None,
+            "v0": (
+                ("v0" in c.knowns and c.knowns["v0"].value is not None)
+                or self._starts_from_rest(c)
+            ),
+            "launch_angle_deg": c.launch_angle_deg is not None,
+            "launch_height": c.launch_height is not None or "h" in c.knowns,
+            "body_shape": bool(c.body_shape),
+            "friction_type": bool(c.friction_type),
+            "force_direction": (
+                bool(c.force_direction)
+                or "theta" in c.knowns
+                or infer_angle_between_force_and_displacement(c.raw_text or "")
+                is not None
+            ),
+            "vA": (
+                "vA" in c.knowns
+                and c.knowns["vA"].value is not None
+                and abs(float(c.knowns["vA"].value)) <= 1e-12
+            ),
+            "minimum_speed request": "minimum_speed" in requested,
+            "top subtype": c.subtype == "top",
+            "bottom subtype": c.subtype == "bottom",
+            "explicit no_friction": (
+                c.friction_type in {"none", "no_friction"}
+                or c.subtype == "no_friction"
+                or bool((c.flags or {}).get("no_friction"))
+            ),
+            "I plus m and R": all(key in c.knowns for key in ("I", "m", "R")),
+            "alpha and t with initial angular state": (
+                "alpha" in c.knowns
+                and "t" in c.knowns
+                and "angular_velocity" in requested
+                and (
+                    "omega0" in c.knowns
+                    or "omega" in c.knowns
+                    or explicitly_starts_from_angular_rest(c)
+                )
+            ),
+            "omega and r/R for tangential speed": (
+                "omega" in c.knowns
+                and ("r" in c.knowns or "R" in c.knowns)
+                and (
+                    bool(
+                        requested
+                        & {"tangential_velocity", "final_velocity"}
+                    )
+                    or any(
+                        word in raw
+                        for word in ("속력", "속도는", "speed")
+                    )
+                )
+            ),
+            "m1 when m2 absent": "m1" in c.knowns and "m2" not in c.knowns,
+            "impulse request": "impulse" in requested,
+            "m plus v0/v for final velocity": (
+                "m" in c.knowns
+                and ("v0" in c.knowns or "v" in c.knowns)
+                and "final_velocity" in requested
+            ),
+            "m for speed": "m" in c.knowns,
+            "elastic_energy request": "elastic_energy" in requested,
+            "r/R": "r" in c.knowns or "R" in c.knowns,
+            "v0/v": "v0" in c.knowns or "v" in c.knowns,
+            "coordinate_data rBA vector": (
+                "rBAx" in coordinate_data and "rBAy" in coordinate_data
+            ),
+            "coordinate_data vA vector": (
+                "vAx" in coordinate_data and "vAy" in coordinate_data
+            ),
+            "A fixed statement": any(
+                phrase in raw
+                for phrase in (
+                    "고정점",
+                    "a점이 고정",
+                    "a점은 고정",
+                    "a점 고정",
+                    "a is fixed",
+                )
+            ),
+            "explicit rest condition": self._starts_from_rest(c),
+            "force-displacement direction": (
+                bool(c.force_direction)
+                or "theta" in c.knowns
+                or infer_angle_between_force_and_displacement(c.raw_text or "")
+                is not None
+            ),
+            "rBA vector": (
+                ("rBAx" in coordinate_data and "rBAy" in coordinate_data)
+                or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+            ),
+            "vA vector": (
+                ("vAx" in coordinate_data and "vAy" in coordinate_data)
+                or ("vAx" in c.knowns and "vAy" in c.knowns)
+            ),
+            "aA vector": (
+                ("aAx" in coordinate_data and "aAy" in coordinate_data)
+                or ("aAx" in c.knowns and "aAy" in c.knowns)
+            ),
+            "zero vA": (
+                "vA" in c.knowns
+                and c.knowns["vA"].value is not None
+                and abs(float(c.knowns["vA"].value)) <= 1e-12
+            ),
+            "zero aA": (
+                "aA" in c.knowns
+                and c.knowns["aA"].value is not None
+                and abs(float(c.knowns["aA"].value)) <= 1e-12
+            ),
+            "fixed A plus scalar radius": (
+                ("r" in c.knowns or "R" in c.knowns)
+                and (
+                    any(
+                        phrase in raw
+                        for phrase in (
+                            "고정점",
+                            "a점이 고정",
+                            "a점은 고정",
+                            "a점 고정",
+                            "a is fixed",
+                        )
+                    )
+                    or (
+                        c.system_type == "plane_rigid_body_velocity"
+                        and "vA" in c.knowns
+                        and c.knowns["vA"].value is not None
+                        and abs(float(c.knowns["vA"].value)) <= 1e-12
+                    )
+                    or (
+                        c.system_type == "plane_rigid_body_acceleration"
+                        and "aA" in c.knowns
+                        and c.knowns["aA"].value is not None
+                        and abs(float(c.knowns["aA"].value)) <= 1e-12
+                    )
+                )
+            ),
+        }
+        if expression in special:
+            return bool(special[expression])
+        if " plus " in expression:
+            return all(self._has_symbol(c, part) for part in expression.split(" plus "))
+        if " and " in expression:
+            return all(self._has_symbol(c, part) for part in expression.split(" and "))
+        if " or " in expression:
+            return any(self._has_symbol(c, part) for part in expression.split(" or "))
+        if "/" in expression and " " not in expression:
+            return any(self._has_symbol(c, part) for part in expression.split("/"))
+        if (c.flags or {}).get(expression):
+            return True
+        return expression in c.knowns and c.knowns[expression].value is not None
+
+    def _projectile_time_without_speed(self, c: CanonicalProblem) -> bool:
+        return can_solve_flight_time_without_speed(c)
+
+    def _starts_from_rest(self, c: CanonicalProblem) -> bool:
+        return explicitly_starts_from_rest(c)
+
+
+    def _missing_requirements(
+        self,
+        c: CanonicalProblem,
+        capability: dict[str, Any],
+        solver_id: str,
+    ) -> list[str]:
         req = capability.get("required_inputs", {})
         missing: list[str] = []
         for symbol in req.get("all_of", []):
@@ -137,19 +446,266 @@ class SolverRegistry:
         if any_of and not any(self._has_symbol(c, symbol) for symbol in any_of):
             missing.append("one of: " + ", ".join(any_of))
         for condition in req.get("conditional", []):
-            if "one_of" in condition and not any(self._has_symbol(c, symbol) for symbol in condition["one_of"]):
-                missing.append("one of: " + ", ".join(condition["one_of"]))
+            if "one_of" in condition:
+                alternatives = condition["one_of"]
+                if (
+                    solver_id == "projectile_motion"
+                    and set(alternatives) == {"v0", "v"}
+                    and self._projectile_time_without_speed(c)
+                ):
+                    continue
+                if not any(self._has_symbol(c, symbol) for symbol in alternatives):
+                    missing.append("one of: " + ", ".join(alternatives))
+            if "all_of" in condition:
+                missing.extend(
+                    symbol
+                    for symbol in condition["all_of"]
+                    if not self._has_symbol(c, symbol)
+                )
             if "minimum_present" in condition:
                 symbols = condition.get("symbols", [])
                 if sum(1 for symbol in symbols if self._has_symbol(c, symbol)) < int(condition["minimum_present"]):
                     missing.append(f"{condition['minimum_present']} of: {', '.join(symbols)}")
-        return missing
 
-    def _requested_output_contradictions(self, c: CanonicalProblem, supported: list[str]) -> list[str]:
-        requested = [item for item in (c.requested_outputs or c.unknowns or []) if item != "auto"]
+        requested = set(c.requested_outputs or c.unknowns or [])
+        if (
+            solver_id == "vertical_circle"
+            and "minimum_speed" in requested
+            and c.subtype != "top"
+        ):
+            missing.append("top subtype for minimum_speed")
+        if (
+            solver_id == "vertical_circle"
+            and "minimum_speed" not in requested
+            and "m" not in c.knowns
+        ):
+            missing.append("m for force output")
+        if (
+            solver_id == "fixed_axis_rotation"
+            and "alpha" in c.knowns
+            and "t" in c.knowns
+            and "angular_velocity" in requested
+            and "omega0" not in c.knowns
+            and "omega" not in c.knowns
+            and not explicitly_starts_from_angular_rest(c)
+        ):
+            missing.append("initial angular velocity or explicit angular rest condition")
+        if solver_id == "work_energy_speed":
+            if "v0" not in c.knowns and "v" not in c.knowns and not self._starts_from_rest(c):
+                missing.append("initial velocity or explicit rest condition")
+            if (
+                "W" not in c.knowns
+                and "F" in c.knowns
+                and "s" in c.knowns
+                and not self._has_symbol(c, "force_direction")
+            ):
+                missing.append("force-displacement direction or theta")
+        if solver_id in {"pulley_table_hanging", "pulley_incline_hanging"}:
+            if (
+                c.friction_type is None
+                and not (c.flags or {}).get("no_friction")
+                and not any(key in c.knowns for key in ("mu", "mu_k", "mu_s"))
+            ):
+                missing.append("explicit friction state")
+            if c.friction_type == "static" and not any(
+                key in c.knowns for key in ("mu_s", "mu")
+            ):
+                missing.append("mu_s")
+            if c.friction_type in {"kinetic", "unspecified"} and not any(
+                key in c.knowns for key in ("mu_k", "mu")
+            ):
+                missing.append("mu_k")
+        compact_raw = (c.raw_text or "").lower().replace(" ", "")
+        if solver_id == "relative_acceleration_translation":
+            same_direction = (
+                "같은방향" in compact_raw
+                or any(
+                    compact_raw.count(word) >= 2
+                    for word in (
+                        "오른쪽",
+                        "왼쪽",
+                        "위쪽",
+                        "아래쪽",
+                        "right",
+                        "left",
+                        "upward",
+                        "downward",
+                    )
+                )
+            )
+            opposite_direction = (
+                "반대방향" in compact_raw or "opposite" in compact_raw
+            )
+            signed_axis = any(
+                phrase in compact_raw
+                for phrase in (
+                    "오른쪽을+",
+                    "왼쪽을+",
+                    "위쪽을+",
+                    "아래쪽을+",
+                    "+x",
+                    "+y",
+                    "부호있는성분",
+                    "signedcomponent",
+                )
+            )
+            if not (same_direction or opposite_direction or signed_axis):
+                missing.append("relative-acceleration direction or signed common axis")
+        if solver_id == "polar_kinematics":
+            constant_radius = any(
+                phrase in compact_raw
+                for phrase in (
+                    "반지름일정",
+                    "반지름은일정",
+                    "반지름과각속도가일정",
+                    "r이일정",
+                    "r=constant",
+                    "constantradius",
+                    "등속원운동",
+                )
+            )
+            constant_omega = any(
+                phrase in compact_raw
+                for phrase in (
+                    "각속도일정",
+                    "반지름과각속도가일정",
+                    "등각속도",
+                    "constantangularspeed",
+                    "등속원운동",
+                )
+            )
+            wants_acceleration = (
+                "acceleration" in requested
+                or "radial_acceleration" in requested
+                or "transverse_acceleration" in requested
+                or "가속도" in compact_raw
+            )
+            if "rdot" not in c.knowns and not constant_radius:
+                missing.append("rdot or explicit constant radius")
+            if wants_acceleration and "rddot" not in c.knowns and not constant_radius:
+                missing.append("rddot or explicit constant radius")
+            if (
+                wants_acceleration
+                and "alpha" not in c.knowns
+                and "thetaddot" not in c.knowns
+                and not constant_omega
+            ):
+                missing.append("alpha/thetaddot or explicit constant angular speed")
+        if solver_id == "coriolis_relative_motion":
+            coriolis_only = (
+                "코리올리" in compact_raw
+                and not any(
+                    word in compact_raw
+                    for word in ("전체가속도", "절대가속도", "가속도성분")
+                )
+            )
+            if not coriolis_only:
+                if "r" not in c.knowns and "R" not in c.knowns:
+                    missing.append("rotating-frame radius r")
+                if "alpha" not in c.knowns and "thetaddot" not in c.knowns:
+                    missing.append("rotating-frame angular acceleration")
+                if "arel" not in c.knowns and "rddot" not in c.knowns:
+                    missing.append("relative acceleration")
+        if solver_id in {"plane_rigid_body_velocity", "plane_rigid_body_acceleration"}:
+            raw = c.raw_text or ""
+            fixed_A = any(
+                phrase in raw
+                for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
+            )
+            ref_symbol = "vA" if solver_id == "plane_rigid_body_velocity" else "aA"
+            zero_reference = (
+                ref_symbol in c.knowns
+                and c.knowns[ref_symbol].value is not None
+                and abs(float(c.knowns[ref_symbol].value)) <= 1e-12
+            )
+            prefix = "v" if solver_id == "plane_rigid_body_velocity" else "a"
+            has_reference_vector = (
+                f"{prefix}Ax" in (c.coordinate_data or {})
+                and f"{prefix}Ay" in (c.coordinate_data or {})
+            ) or (
+                f"{prefix}Ax" in c.knowns and f"{prefix}Ay" in c.knowns
+            )
+            has_r_vector = (
+                "rBAx" in (c.coordinate_data or {})
+                and "rBAy" in (c.coordinate_data or {})
+            ) or ("rBAx" in c.knowns and "rBAy" in c.knowns)
+            has_scalar_r = "r" in c.knowns or "R" in c.knowns
+            if not has_reference_vector and not fixed_A and not zero_reference:
+                missing.append(f"{ref_symbol} vector, zero reference, or fixed A")
+            if not has_r_vector and not ((fixed_A or zero_reference) and has_scalar_r):
+                missing.append("rBA vector (scalar r only for a fixed/zero reference point)")
+            compact_raw = raw.replace(" ", "").lower()
+            explicit_cartesian_components = (
+                any(
+                    token in compact_raw
+                    for token in (
+                        "x성분",
+                        "y성분",
+                        "x-component",
+                        "y-component",
+                    )
+                )
+                or bool(
+                    requested
+                    & {
+                        "acceleration_x",
+                        "acceleration_y",
+                        "velocity_x",
+                        "velocity_y",
+                        "a_bx",
+                        "a_by",
+                        "v_bx",
+                        "v_by",
+                    }
+                )
+            )
+            if (
+                explicit_cartesian_components
+                and has_r_vector
+                and solver_id == "plane_rigid_body_velocity"
+                and "omega_sign" not in (c.coordinate_data or {})
+                and "angular_sign" not in (c.coordinate_data or {})
+            ):
+                missing.append("explicit omega direction for components")
+            if (
+                explicit_cartesian_components
+                and has_r_vector
+                and solver_id == "plane_rigid_body_acceleration"
+            ):
+                if (
+                    "omega_sign" not in (c.coordinate_data or {})
+                    and "angular_sign" not in (c.coordinate_data or {})
+                ):
+                    missing.append("explicit omega direction for components")
+                if (
+                    "alpha_sign" not in (c.coordinate_data or {})
+                    and "angular_sign" not in (c.coordinate_data or {})
+                ):
+                    missing.append("explicit alpha direction for components")
+        return list(dict.fromkeys(missing))
+
+    def _requested_output_contradictions(
+        self,
+        c: CanonicalProblem,
+        supported: list[str],
+    ) -> list[str]:
+        requested = [
+            item
+            for item in (c.requested_outputs or [])
+            if item != "auto"
+        ]
         if not requested or not supported:
             return []
-        aliases = {"distance": "range", "x": "range", "height": "max_height", "a": "acceleration", "alpha": "angular_acceleration", "velocity": "final_velocity", "v": "final_velocity", "vf": "final_velocity"}
+        aliases = {
+            "distance": "range",
+            "x": "range",
+            "height": "max_height",
+            "a": "acceleration",
+            "alpha": "angular_acceleration",
+            "velocity": "final_velocity",
+            "v": "final_velocity",
+            "vf": "final_velocity",
+        }
         supported_set = set(supported)
         bad: list[str] = []
         for out in requested:
@@ -175,6 +731,12 @@ class SolverRegistry:
     def _clarification_question(self, candidates: list[RouteCandidate]) -> str:
         missing = [m for cand in candidates[:2] for m in cand.missing_requirements]
         joined = ", ".join(dict.fromkeys(missing))
+        if candidates and candidates[0].solver_id == "single_particle_newton":
+            return "여러 힘의 방향 또는 각 힘의 합력(알짜힘), 그리고 질량을 알려 주세요."
+        if candidates and candidates[0].solver_id == "work_energy_speed":
+            return "초기속도 또는 정지 상태에서 출발한다는 조건을 알려 주세요."
+        if candidates and candidates[0].solver_id == "fixed_axis_rotation":
+            return "초기 각속도 ω₀ 또는 회전 정지 상태에서 출발한다는 조건을 알려 주세요."
         if any("mu" in item or "friction_type" in item for item in missing):
             return "정지마찰계수와 운동마찰계수 중 어떤 값인지, 그리고 실제 운동 방향/경향이 무엇인지 알려 주세요."
         if any(item in {"I", "R"} or "I" in item or "R" in item for item in missing):
@@ -187,60 +749,161 @@ class SolverRegistry:
 
     def route(self, c: CanonicalProblem) -> RouteDecision:
         unsupported = self._unsupported_reasons(c)
-        matches = [m for s in self.solvers if (m := s.match(c))]
-        candidates: list[RouteCandidate] = []
-        for match in matches:
-            solver_id = match.solver.name
-            capability = self._capabilities.get(solver_id, {})
-            strict = capability and solver_id in _STRICT_CAPABILITY_SOLVERS
-            missing = self._missing_requirements(c, capability) if strict else []
-            contradictions = self._requested_output_contradictions(c, capability.get("requested_outputs", [])) if strict else []
-            risk_flags: list[str] = []
-            if "generic" in match.reason.lower() or solver_id == "single_particle_newton":
-                risk_flags.append("generic_fallback")
-            penalty = 0.15 * len(missing) + 0.2 * len(contradictions)
-            normalized = max(0.0, min(1.0, match.score / 100.0 - penalty))
-            candidates.append(RouteCandidate(
-                solver_id=solver_id,
-                family=self._family(solver_id),
-                raw_score=match.score,
-                normalized_score=round(normalized, 4),
-                evidence=[match.reason],
-                missing_requirements=missing,
-                contradictions=contradictions,
-                supported_outputs=capability.get("requested_outputs", []),
-                risk_flags=risk_flags,
-                solver=match.solver,
-            ))
-        candidates.sort(key=lambda item: item.normalized_score, reverse=True)
+        by_solver: dict[str, RouteCandidate] = {}
+
+        for system_type, subtype, interpretation_score, interpretation_evidence in self._variant_specs(c):
+            variant = replace(c, system_type=system_type, subtype=subtype)
+            for solver in self.solvers:
+                match = solver.match(variant)
+                if match is None:
+                    continue
+                solver_id = match.solver.name
+                capability = self._capabilities.get(solver_id, {})
+                missing = self._missing_requirements(variant, capability, solver_id)
+                contradictions = self._requested_output_contradictions(
+                    variant,
+                    capability.get("requested_outputs", []),
+                )
+                risk_flags: list[str] = []
+                if "generic" in match.reason.lower() or solver_id == "single_particle_newton":
+                    risk_flags.append("generic_fallback")
+                if (system_type, subtype) != (c.system_type, c.subtype):
+                    risk_flags.append("interpretation_variant")
+                penalty = (
+                    ROUTING_CONFIG.missing_requirement_penalty * len(missing)
+                    + ROUTING_CONFIG.output_contradiction_penalty * len(contradictions)
+                )
+                normalized = max(
+                    0.0,
+                    min(1.0, match.score / 100.0 * interpretation_score - penalty),
+                )
+                evidence = [match.reason] + list(interpretation_evidence)
+                candidate = RouteCandidate(
+                    solver_id=solver_id,
+                    family=self._family(solver_id),
+                    raw_score=match.score,
+                    normalized_score=round(normalized, 4),
+                    evidence=list(dict.fromkeys(evidence)),
+                    missing_requirements=missing,
+                    contradictions=contradictions,
+                    supported_outputs=capability.get("requested_outputs", []),
+                    risk_flags=risk_flags,
+                    source_system_type=system_type,
+                    source_subtype=subtype,
+                    interpretation_score=round(interpretation_score, 4),
+                    solver=match.solver,
+                )
+                previous = by_solver.get(solver_id)
+                if previous is None or candidate.normalized_score > previous.normalized_score:
+                    by_solver[solver_id] = candidate
+                elif candidate.normalized_score == previous.normalized_score:
+                    previous.evidence = list(
+                        dict.fromkeys(previous.evidence + candidate.evidence)
+                    )
+
+        candidates = sorted(
+            by_solver.values(),
+            key=lambda item: item.normalized_score,
+            reverse=True,
+        )
         if unsupported:
-            return RouteDecision("unsupported", candidates, reason="; ".join(unsupported))
+            return RouteDecision(
+                "unsupported",
+                candidates,
+                reason="; ".join(unsupported),
+            )
         if not candidates:
-            return RouteDecision("unsupported", [], reason="No solver matched the canonical problem.")
-        viable = [cand for cand in candidates if not cand.missing_requirements and not cand.contradictions]
+            return RouteDecision(
+                "unsupported",
+                [],
+                reason="No solver matched any retained interpretation.",
+            )
+
+        viable = [
+            candidate
+            for candidate in candidates
+            if not candidate.missing_requirements and not candidate.contradictions
+        ]
         if not viable:
-            return RouteDecision("clarify", candidates, question=self._clarification_question(candidates), reason="Matched solvers lack required inputs or requested outputs.")
+            return RouteDecision(
+                "clarify",
+                candidates,
+                question=self._clarification_question(candidates),
+                reason="Matched solvers lack required inputs or requested outputs.",
+            )
+
         top = viable[0]
-        warnings = ["generic fallback selected"] if "generic_fallback" in top.risk_flags else []
+        warnings = (
+            ["generic fallback selected"]
+            if "generic_fallback" in top.risk_flags
+            else []
+        )
+        if (
+            (top.source_system_type, top.source_subtype)
+            != (c.system_type, c.subtype)
+            and not (c.flags or {}).get("_clarify_model_chosen")
+        ):
+            return RouteDecision(
+                "clarify",
+                candidates,
+                question=self._clarification_question(viable),
+                reason="The leading route is an unconfirmed alternative interpretation.",
+            )
         if len(viable) > 1:
             second = viable[1]
-            if top.normalized_score - second.normalized_score < _ROUTING_MARGIN:
-                return RouteDecision("clarify", candidates, question=self._clarification_question(viable), reason="Top route margin is too small.")
-            if top.family != second.family and top.normalized_score - second.normalized_score < (_ROUTING_MARGIN * 2):
-                return RouteDecision("clarify", candidates, question=self._clarification_question(viable), reason="Different solver families are competing.")
-        return RouteDecision("select", candidates, selected_solver_id=top.solver_id, warnings=warnings)
+            margin = top.normalized_score - second.normalized_score
+            if margin < ROUTING_CONFIG.selection_margin:
+                return RouteDecision(
+                    "clarify",
+                    candidates,
+                    question=self._clarification_question(viable),
+                    reason="Top route margin is too small.",
+                )
+            best_other_family = next(
+                (
+                    candidate
+                    for candidate in viable[1:]
+                    if candidate.family != top.family
+                ),
+                None,
+            )
+            if (
+                best_other_family is not None
+                and top.normalized_score
+                - best_other_family.normalized_score
+                < ROUTING_CONFIG.cross_family_margin
+            ):
+                return RouteDecision(
+                    "clarify",
+                    candidates,
+                    question=self._clarification_question(viable),
+                    reason="Different solver families are competing.",
+                )
+        return RouteDecision(
+            "select",
+            candidates,
+            selected_solver_id=top.solver_id,
+            warnings=warnings,
+        )
 
-    def select(self, c: CanonicalProblem) -> BaseSolver | None:
-        decision = self.route(c)
+    def select(
+        self,
+        c: CanonicalProblem,
+        decision: RouteDecision | None = None,
+    ) -> BaseSolver | None:
+        decision = decision or self.route(c)
         self.last_route_decision = decision
-        if decision.status == "unsupported":
+        if decision.status != "select" or decision.selected_solver_id is None:
             return None
-        selected_solver_id = decision.selected_solver_id
-        if selected_solver_id is None and decision.candidates:
-            selected_solver_id = decision.candidates[0].solver_id
-        if selected_solver_id is None:
+        chosen = next(
+            (
+                candidate
+                for candidate in decision.candidates
+                if candidate.solver_id == decision.selected_solver_id
+            ),
+            None,
+        )
+        if chosen is None or chosen.solver is None:
             return None
-        chosen = next(cand for cand in decision.candidates if cand.solver_id == selected_solver_id)
-        assert chosen.solver is not None
         chosen.solver.reason = "; ".join(chosen.evidence)
         return chosen.solver

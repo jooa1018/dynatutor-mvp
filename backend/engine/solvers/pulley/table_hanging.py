@@ -27,14 +27,74 @@ class TableHangingPulleySolver(BaseSolver):
 
         m1 = magnitude_si(c.knowns["m1"], "kg")
         m2 = magnitude_si(c.knowns["m2"], "kg")
-        g = magnitude_si(c.knowns["g"], "m/s^2")
+        g = magnitude_si(c.knowns["g"], "m/s^2") if "g" in c.knowns else 9.81
+        if m1 <= 0 or m2 <= 0 or g <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["m1, m2, g는 모두 0보다 커야 합니다."],
+                ),
+            )
         mu_q = c.knowns.get("mu_k") or c.knowns.get("mu")
         mu_val = float(mu_q.value) if mu_q and mu_q.value is not None else 0.0
-        friction_type = c.friction_type or ("none" if mu_val == 0 else "kinetic")
+        friction_type = c.friction_type
+        if friction_type is None:
+            if "mu_s" in c.knowns:
+                friction_type = "static"
+            elif mu_q is not None:
+                friction_type = "kinetic"
+            elif (c.flags or {}).get("no_friction") or c.subtype == "no_friction":
+                friction_type = "none"
+            else:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["수평면의 마찰 유무 또는 마찰계수가 필요합니다."],
+                    ),
+                    unsupported_reason="수평면이 무마찰인지, 정지/운동마찰이 있는지 알려 주세요.",
+                )
+        requested = set(c.requested_outputs or c.unknowns or [])
+        if mu_val < 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["마찰계수는 0 이상이어야 합니다."],
+                ),
+            )
+        if friction_type in {"kinetic", "unspecified"} and mu_q is None:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["운동마찰을 계산하려면 운동마찰계수 μ_k가 필요합니다."],
+                ),
+                unsupported_reason="운동마찰계수 μ_k를 알려 주세요.",
+            )
 
         if friction_type == "static":
             mu_s_q = c.knowns.get("mu_s") or c.knowns.get("mu")
-            decision = decide_table_hanging_static(m1, m2, float(mu_s_q.value), g)
+            if mu_s_q is None or mu_s_q.value is None:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["정지마찰 판정에는 정지마찰계수 μ_s가 필요합니다."],
+                    ),
+                    unsupported_reason="정지마찰계수 μ_s를 알려 주세요.",
+                )
+            mu_s = float(mu_s_q.value)
+            if mu_s < 0:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["정지마찰계수 μ_s는 0 이상이어야 합니다."],
+                    ),
+                )
+            decision = decide_table_hanging_static(m1, m2, mu_s, g)
             if decision.holds_static:
                 verification = VerificationReport(
                     passed=True,
@@ -49,6 +109,7 @@ class TableHangingPulleySolver(BaseSolver):
                     answer=Answer(symbolic="a=0, f_s=m2g", numeric=0.0, unit="m/s²", display=f"a = 0.000 m/s², f_s = {decision.friction_force:.3f} N"),
                     answers=[
                         AnswerItem("가속도", "a", 0.0, "m/s²", "가속도 a = 0.000 m/s²", "primary"),
+                        AnswerItem("장력", "T", round(m2 * g, 6), "N", f"장력 T = {m2 * g:.3f} N", "primary"),
                         AnswerItem("정지마찰력", "f_s", round(decision.friction_force, 6), "N", f"정지마찰력 f_s = {decision.friction_force:.3f} N", "primary"),
                     ],
                     steps=[
@@ -59,9 +120,26 @@ class TableHangingPulleySolver(BaseSolver):
                     used_equations=["m2g <= μ_s m1g → a=0"],
                 )
             friction_type = "kinetic"
-            # 운동 시작 후에는 μ_k가 있으면 μ_k, 없으면 주어진 μ를 fallback으로 사용합니다.
-            mu_motion_q = c.knowns.get("mu_k") or c.knowns.get("mu")
-            mu_val = float(mu_motion_q.value) if mu_motion_q and mu_motion_q.value is not None else 0.0
+            # 정지마찰 한계를 넘은 뒤의 운동은 별도의 μ_k가 있어야 계산할 수 있다.
+            mu_motion_q = c.knowns.get("mu_k")
+            if mu_motion_q is None or mu_motion_q.value is None:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["정지마찰이 버티지 못한 뒤의 운동에는 운동마찰계수 μ_k가 필요합니다."],
+                    ),
+                    unsupported_reason="정지마찰계수 μ_s와 별도로 운동마찰계수 μ_k를 알려 주세요.",
+                )
+            mu_val = float(mu_motion_q.value)
+            if mu_val < 0:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["운동마찰계수 μ_k는 0 이상이어야 합니다."],
+                    ),
+                )
 
         friction = kinetic_friction(mu_val, m1 * g) if friction_type in {"kinetic", "unspecified"} else 0.0
         generated = solve_particle_newton_system(c)
@@ -70,6 +148,7 @@ class TableHangingPulleySolver(BaseSolver):
         sol = generated.solution
         a_val = float(sol[S.a])
         T_val = float(sol[S.T])
+        f_val = float(sol[S.F]) if S.F in sol else friction
         steps = [
             StepCard("물체 분리", "수평면 위 m1과 매달린 m2를 따로 봅니다."),
             StepCard("m1 방정식", "PhysicalModel의 m1 힘 목록에서 Newton generator가 수평방향 식을 만들었습니다.", r"T-f=m_1a"),
@@ -87,10 +166,34 @@ class TableHangingPulleySolver(BaseSolver):
             answers=[
                 AnswerItem("가속도", "a", round(a_val, 6), "m/s²", f"가속도 a = {a_val:.3f} m/s²", "primary"),
                 AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
-            ],
+            ] + (
+                [
+                    AnswerItem(
+                        "운동마찰력",
+                        "f_k",
+                        round(f_val, 6),
+                        "N",
+                        f"운동마찰력 f_k = {f_val:.3f} N",
+                        "component",
+                    )
+                ]
+                if friction_type in {"kinetic", "unspecified"}
+                else [
+                    AnswerItem(
+                        "마찰력",
+                        "f",
+                        0.0,
+                        "N",
+                        "마찰력 f = 0.000 N",
+                        "component",
+                    )
+                ]
+                if "friction_force" in requested
+                else []
+            ),
             steps=steps,
             verification=merge_reports(pre, verification),
-            used_equations=["T - f = m1a", "m2g - T = m2a", "f=μ_k m1g" if friction else "f=0"],
+            used_equations=["T - f = m1a", "m2g - T = m2a", "f=μ_k m1g" if friction_type in {"kinetic", "unspecified"} else "f=0"],
             fbd=["m1: 장력 T, 수직항력 N, 중력 m1g, 마찰력 f", "m2: 장력 T, 중력 m2g"],
             coordinate_guide=["m1 오른쪽, m2 아래쪽을 +로 설정"],
         )

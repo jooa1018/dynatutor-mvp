@@ -31,6 +31,8 @@ _KOREAN_LABEL_TO_SYMBOL = {
     "시간": "t",
     "최대높이": "H",
     "주기": "T",
+    "가속도": "a",
+    "충격량": "J",
 }
 
 _GREEK = {"α": "alpha", "ω": "omega", "τ": "tau", "θ": "theta", "μ": "mu"}
@@ -40,7 +42,7 @@ def _rep_symbol(display: str | None) -> str | None:
     """대표 answer의 display('a = 1.703 m/s²', '수평거리 R = 6.552 m')에서 심볼 추출."""
     if not display:
         return None
-    head = display.split("=", 1)[0].strip()
+    head = display.split("=", 1)[0].strip().strip("|").strip()
     for g, name in _GREEK.items():
         head = head.replace(g, name)
     m = re.search(r"([A-Za-z][A-Za-z_']*)\s*$", head)
@@ -65,7 +67,10 @@ def build_answer_pool(result: SolverResult) -> tuple[dict[str, float], list[tupl
         sym = _rep_symbol(rep.display)
         if sym and sym not in pool:
             pool[sym] = float(rep.numeric)
-        units.append((sym, rep.unit, rep.display or ""))
+        # AnswerItem이 이미 단위 계약을 제공한다면, 심볼을 추출하지 못한
+        # 대표 display를 별도의 미등록 심볼로 중복 검증하지 않는다.
+        if sym is not None or not result.answers:
+            units.append((sym, rep.unit, rep.display or ""))
     return pool, units
 
 
@@ -95,7 +100,7 @@ def verify_result(cp: CanonicalProblem, result: SolverResult) -> VerificationRep
     for it in issues:
         (report.errors if it.kind == "error" else report.warnings).append(it.message)
     report.checks.extend(passed)
-    for it in check_knowns(cp.knowns):
+    for it in check_knowns(cp.knowns, system_type=cp.system_type):
         (report.errors if it.kind == "error" else report.warnings).append(it.message)
 
     # 3) 출처(provenance) — 배경 문장에서 주입된 known은 답 전체를 보류.

@@ -29,7 +29,7 @@ def test_phase38_distance_requested_only_when_asked():
 def test_phase38_table_hanging_missing_friction_clarifies():
     out = solve_problem("수평면 위 물체 m1=2kg와 매달린 물체 m2=3kg가 줄과 도르래로 연결된다. 가속도와 장력을 구하라.")
     assert not out.ok
-    assert out.diagnosis.selected_solver == "pulley_table_hanging"
+    assert out.diagnosis.selected_solver is None
     assert out.clarification is not None
     assert out.clarification.rule == "table_hanging_friction_unknown"
     assert out.clarification.why

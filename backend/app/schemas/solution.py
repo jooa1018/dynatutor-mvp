@@ -42,6 +42,30 @@ class LegacyHintModel(BaseModel):
     detected_cues: list[str] = Field(default_factory=list)
 
 
+class RouteCandidateModel(BaseModel):
+    solver_id: str
+    family: str
+    raw_score: int
+    normalized_score: float
+    evidence: list[str] = Field(default_factory=list)
+    missing_requirements: list[str] = Field(default_factory=list)
+    contradictions: list[str] = Field(default_factory=list)
+    supported_outputs: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
+    source_system_type: str | None = None
+    source_subtype: str | None = None
+    interpretation_score: float = 1.0
+
+
+class RouteDecisionModel(BaseModel):
+    status: str
+    candidates: list[RouteCandidateModel] = Field(default_factory=list)
+    selected_solver_id: str | None = None
+    question: str | None = None
+    reason: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class DiagnosisResponse(BaseModel):
     ok: bool
     fbd_diagram_svg: str | None = None
@@ -50,6 +74,7 @@ class DiagnosisResponse(BaseModel):
     legacy_hints: LegacyHintModel
     selected_solver: str | None = None
     solver_reason: str | None = None
+    route_decision: RouteDecisionModel | None = None
     fbd: list[str] = Field(default_factory=list)
     coordinate_guide: list[str] = Field(default_factory=list)
     applicable_equations: list[str] = Field(default_factory=list)
@@ -118,6 +143,7 @@ class SolveResponse(BaseModel):
     verification: VerificationReport
     unsupported_reason: str | None = None
     clarification: ClarificationModel | None = None
+    route_decision: RouteDecisionModel | None = None
     physical_model: dict[str, Any] | None = None
 
 

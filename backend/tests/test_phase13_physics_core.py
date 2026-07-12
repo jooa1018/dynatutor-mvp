@@ -44,8 +44,8 @@ def test_projectile_horizontal_from_cliff_range():
 
 
 def test_rolling_shapes_beta_order():
-    sphere = solve_problem("속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
-    disk = solve_problem("원판이 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
-    hoop = solve_problem("고리가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
+    sphere = solve_problem("정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
+    disk = solve_problem("정지 상태에서 원판이 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
+    hoop = solve_problem("정지 상태에서 고리가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
     assert sphere.ok and disk.ok and hoop.ok
     assert sphere.answer.numeric > disk.answer.numeric > hoop.answer.numeric

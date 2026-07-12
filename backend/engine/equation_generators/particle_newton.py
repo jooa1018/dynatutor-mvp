@@ -68,7 +68,11 @@ def _common_subs(c: CanonicalProblem) -> dict:
         else:
             subs[sym] = magnitude_si(q, unit)
     if S.g not in subs and "g" in c.knowns:
-        subs[S.g] = c.knowns["g"].value or 9.81
+        subs[S.g] = c.knowns["g"].value if c.knowns["g"].value is not None else 9.81
+    # Friction equations use the generic μ symbol. When the input explicitly
+    # supplies μ_k, bind that value to μ as well instead of leaving μ symbolic.
+    if S.mu not in subs and S.mu_k in subs:
+        subs[S.mu] = subs[S.mu_k]
     return subs
 
 
@@ -138,7 +142,7 @@ def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
         equations.append(_ge("newton_second_law", "body_2", "y", "m2*g - T = m2*a", eq2, source_forces=["m2g", "T"], unknowns=["T", "a"]))
         unknowns = [S.a, S.T]
     elif st == "pulley_table_hanging":
-        mu = c.knowns.get("mu")
+        mu = c.knowns.get("mu_k") or c.knowns.get("mu")
         friction_type = c.friction_type or ("none" if not mu else "kinetic")
         eq_y = sp.Eq(S.T1 - S.m1 * S.g, 0)  # T1 acts as normal N1 placeholder.
         equations.append(_ge("normal_balance", "body_1", "y", "N1 - m1*g = 0", eq_y, source_forces=["N1", "m1g"], unknowns=["N1"], notes=["T1 symbol is used as normal N1 placeholder"]))

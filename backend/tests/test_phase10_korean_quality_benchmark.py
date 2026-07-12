@@ -1,27 +1,50 @@
+import json
+
+import pytest
+
 from engine.qa.korean_benchmark import KOREAN_BENCHMARK_CASES
 from engine.services import solve_problem
 
 
-def test_phase10_korean_quality_benchmark_all_supported_cases_solve():
-    failures = []
-    for idx, (problem_text, expected_solver) in enumerate(KOREAN_BENCHMARK_CASES, start=1):
-        result = solve_problem(problem_text)
-        got_solver = result.diagnosis.selected_solver
-        missing = result.diagnosis.canonical.missing_info
-        if got_solver != expected_solver or not result.ok or missing or result.answer is None:
-            failures.append(
-                {
-                    "index": idx,
-                    "problem": problem_text,
-                    "expected_solver": expected_solver,
-                    "got_solver": got_solver,
-                    "ok": result.ok,
-                    "missing": missing,
-                    "answer": result.answer.display if result.answer else None,
-                    "system_type": result.diagnosis.canonical.system_type,
-                }
-            )
-    assert not failures, failures
+@pytest.mark.parametrize(
+    ("case_index", "problem_text", "expected_solver"),
+    [
+        (index, problem_text, expected_solver)
+        for index, (problem_text, expected_solver) in enumerate(
+            KOREAN_BENCHMARK_CASES, start=1
+        )
+    ],
+    ids=lambda value: str(value) if isinstance(value, int) else None,
+)
+def test_phase10_korean_quality_benchmark_all_supported_cases_solve(
+    case_index, problem_text, expected_solver
+):
+    result = solve_problem(problem_text)
+    canonical = result.diagnosis.canonical
+    if result.diagnosis.selected_solver != expected_solver:
+        print(json.dumps({
+            "index": case_index,
+            "problem": problem_text,
+            "expected_solver": expected_solver,
+            "got_solver": result.diagnosis.selected_solver,
+            "canonical_knowns": sorted(canonical.knowns),
+            "requested_outputs": canonical.requested_outputs,
+            "missing_info": canonical.missing_info,
+            "route": result.route_decision.model_dump() if result.route_decision else None,
+        }, ensure_ascii=False, indent=2))
+    assert result.diagnosis.selected_solver == expected_solver
+    assert result.ok, {
+        "index": case_index,
+        "problem": problem_text,
+        "unsupported_reason": result.unsupported_reason,
+        "verification_errors": result.verification.errors,
+    }
+    assert canonical.missing_info == [], {
+        "index": case_index,
+        "problem": problem_text,
+        "missing": canonical.missing_info,
+    }
+    assert result.answer is not None
 
 
 def test_phase10_benchmark_size_and_domain_coverage():

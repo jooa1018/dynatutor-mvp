@@ -77,14 +77,30 @@ class CoriolisRelativeMotionSolver(BaseSolver):
         v_rel = _val(c, "vrel", "rdot")
         if omega is None or v_rel is None:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["코리올리 항 계산에는 ω와 상대속도 v_rel이 필요합니다."]))
-        r = _val(c, "r", "R", default=0.0) or 0.0
-        alpha = _val(c, "alpha", "thetaddot", default=0.0) or 0.0
-        a_rel = _val(c, "arel", "rddot", default=0.0) or 0.0
+        raw = (c.raw_text or "").lower().replace(" ", "")
+        coriolis_only = "코리올리" in raw and not any(word in raw for word in ("전체가속도", "절대가속도", "가속도성분"))
+        r = _val(c, "r", "R")
+        alpha = _val(c, "alpha", "thetaddot")
+        a_rel = _val(c, "arel", "rddot")
         a_c = 2 * omega * v_rel
-        a_radial = a_rel - r * omega**2
-        a_transverse = r * alpha + a_c
-        a_mag = math.hypot(a_radial, a_transverse)
-        if r:
+        if not coriolis_only:
+            missing = []
+            if r is None:
+                missing.append("위치 반지름 r")
+            if alpha is None:
+                missing.append("각가속도 alpha")
+            if a_rel is None:
+                missing.append("상대가속도 a_rel")
+            if missing:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(passed=False, errors=missing),
+                    unsupported_reason="전체 회전계 가속도에서는 빠진 항을 0으로 가정하지 않습니다.",
+                )
+        if not coriolis_only:
+            a_radial = a_rel - r * omega**2
+            a_transverse = r * alpha + a_c
+            a_mag = math.hypot(a_radial, a_transverse)
             display = f"a_C = {a_c:.3f} m/s²; a_r = {a_radial:.3f} m/s², a_θ = {a_transverse:.3f} m/s², |a| = {a_mag:.3f} m/s²"
             numeric = a_mag
             symbolic = "a_r=a_rel-rω², a_θ=rα+2ωv_rel"
@@ -95,6 +111,9 @@ class CoriolisRelativeMotionSolver(BaseSolver):
                 AnswerItem(label="접선 성분", symbol="a_theta", numeric=round(a_transverse, 6), unit="m/s²", display=f"a_θ = {a_transverse:.3f} m/s²", role="component"),
             ]
         else:
+            r = 0.0 if r is None else r
+            alpha = 0.0 if alpha is None else alpha
+            a_rel = 0.0 if a_rel is None else a_rel
             display = f"Coriolis 가속도 a_C = 2ωv_rel = {a_c:.3f} m/s²"
             numeric = a_c
             symbolic = "a_C = 2ωv_rel"

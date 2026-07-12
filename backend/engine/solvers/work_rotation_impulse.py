@@ -1,4 +1,6 @@
 import math
+from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest
+from engine.physics_core.units import magnitude_si
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
@@ -67,6 +69,15 @@ class FixedAxisRotationSolver(BaseSolver):
             if kin is not None:
                 return kin
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["토크 τ와 관성모멘트 I가 필요합니다."]))
+        if Iq.value is None or Iq.value <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["질량 관성모멘트 I는 0보다 커야 합니다."],
+                ),
+                unsupported_reason="관성모멘트의 물리적 범위를 확인해 주세요.",
+            )
         alpha = tauq.value / Iq.value
         steps = [
             StepCard("문제 유형", "고정축 주위 회전에서는 병진운동의 F=ma에 대응해서 회전방정식 ΣM=Iα를 씁니다."),
@@ -85,7 +96,7 @@ class FixedAxisRotationSolver(BaseSolver):
     def _solve_rotational_kinematics(self, c: CanonicalProblem) -> SolverResult | None:
         """τ·I 없이도 답이 정해지는 회전 kinematics.
 
-        (a) α와 t가 주어지고 각속도를 물으면 ω = ω₀ + αt (ω₀ 기본 0).
+        (a) α와 t가 주어지고 각속도를 물으면 ω = ω₀ + αt.
         (b) ω와 반지름이 주어지고 점의 속력을 물으면 v = ωr.
         """
         knowns = c.knowns
@@ -93,12 +104,39 @@ class FixedAxisRotationSolver(BaseSolver):
         asks_speed = any(w in c.raw_text for w in ["속력", "속도는", "speed"])
         alphaq, tq = knowns.get("alpha"), knowns.get("t")
         if alphaq and tq and asks_omega:
-            omega0 = knowns["omega0"].value if "omega0" in knowns else (knowns["omega"].value if "omega" in knowns else 0.0)
-            omega_f = omega0 + alphaq.value * tq.value
+            omega0q = knowns.get("omega0") or knowns.get("omega")
+            if omega0q is None and not explicitly_starts_from_angular_rest(c):
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=[
+                            "각속도 계산에는 초기 각속도 ω₀ 또는 명시적인 회전 정지 조건이 필요합니다."
+                        ],
+                    ),
+                    unsupported_reason="초기 각속도 또는 정지 출발 조건을 알려 주세요.",
+                )
+            omega0 = (
+                magnitude_si(omega0q, "rad/s")
+                if omega0q is not None
+                else 0.0
+            )
+            alpha_value = magnitude_si(alphaq, "rad/s^2")
+            time_value = magnitude_si(tq, "s")
+            if time_value < 0:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["경과시간 t는 0 이상이어야 합니다."],
+                    ),
+                    unsupported_reason="작용시간의 물리적 범위를 확인해 주세요.",
+                )
+            omega_f = omega0 + alpha_value * time_value
             steps = [
                 StepCard("문제 유형", "토크 없이 각가속도와 시간이 주어졌으므로 회전 kinematics(등각가속도)입니다. 직선운동의 v=v₀+at에 대응합니다."),
                 StepCard("공식", "각속도는 초기 각속도에 각가속도×시간을 더합니다.", r"\omega=\omega_0+\alpha t"),
-                StepCard("계산", f"ω = {omega0:g} + {alphaq.value:g}×{tq.value:g} = {omega_f:.5g} rad/s"),
+                StepCard("계산", f"ω = {omega0:g} + {alpha_value:g}×{time_value:g} = {omega_f:.5g} rad/s"),
             ]
             return SolverResult(
                 ok=True,
@@ -111,16 +149,26 @@ class FixedAxisRotationSolver(BaseSolver):
         omegaq = knowns.get("omega")
         rq = knowns.get("r") or knowns.get("R")
         if omegaq and rq and asks_speed and not alphaq:
-            v = omegaq.value * rq.value
+            omega_value = magnitude_si(omegaq, "rad/s")
+            radius = magnitude_si(rq, "m")
+            if radius < 0:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["회전 반지름 r은 0 이상이어야 합니다."],
+                    ),
+                )
+            v = abs(omega_value) * radius
             steps = [
                 StepCard("문제 유형", "고정축 회전체 위 한 점의 속력은 각속도와 회전 반지름의 곱입니다."),
                 StepCard("공식", "점의 선속도 크기.", r"v=\omega r"),
-                StepCard("계산", f"v = {omegaq.value:g} × {rq.value:g} = {v:.5g} m/s"),
+                StepCard("계산", f"v = |{omega_value:g}| × {radius:g} = {v:.5g} m/s"),
             ]
             return SolverResult(
                 ok=True,
-                answer=Answer(symbolic="v = ωr", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s"),
-                answers=[AnswerItem(label="점의 속력", symbol="v", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s", role="primary")],
+                answer=Answer(symbolic="v_t = ωr", numeric=round(v, 5), unit="m/s", display=f"v_t = {v:.3f} m/s"),
+                answers=[AnswerItem(label="점의 접선 속력", symbol="v_t", numeric=round(v, 5), unit="m/s", display=f"v_t = {v:.3f} m/s", role="primary")],
                 steps=steps,
                 verification=VerificationReport(passed=True, checks=["단위: rad/s × m = m/s (rad는 무차원).", "축(r=0)에서는 속력이 0입니다."]),
                 used_equations=["v = ωr"],
@@ -137,24 +185,159 @@ class ImpulseMomentumSolver(BaseSolver):
         return None
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
-        Fq, tq, mq = c.knowns.get("F"), c.knowns.get("t"), c.knowns.get("m")
+        Fq, tq, mq = (
+            c.knowns.get("F"),
+            c.knowns.get("t"),
+            c.knowns.get("m"),
+        )
         v0q = c.knowns.get("v0") or c.knowns.get("v")
+        requested = set(c.requested_outputs or c.unknowns or [])
+        asks_final_velocity = "final_velocity" in requested
         if not Fq or not tq:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["충격량 계산에는 힘 F와 작용시간 t가 필요합니다."]))
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["충격량 계산에는 힘 F와 작용시간 t가 필요합니다."],
+                ),
+            )
+        duration = magnitude_si(tq, "s")
+        if duration < 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["작용시간 Δt는 0 이상이어야 합니다."],
+                ),
+                unsupported_reason="작용시간의 물리적 범위를 확인해 주세요.",
+            )
+        if asks_final_velocity and (mq is None or v0q is None):
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["최종속도에는 질량 m과 초기속도 v_i가 필요합니다."],
+                ),
+            )
+        if asks_final_velocity and magnitude_si(mq, "kg") <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["최종속도 계산의 질량 m은 0보다 커야 합니다."],
+                ),
+                unsupported_reason="질량의 물리적 범위를 확인해 주세요.",
+            )
+
         generated = solve_energy_momentum_system(c)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 충격량-운동량 방정식 생성/풀이에 실패했습니다.")
-        J = float(generated.solution["J"])
-        if mq and v0q and ("최종" in c.raw_text or "나중" in c.raw_text or "속도" in c.raw_text):
-            vf = float(generated.solution["v_f"])
-            steps = [
-                StepCard("충격량", "Energy/Momentum generator가 J=FΔt와 J=Δp를 생성합니다. 일정한 힘이면 J=Ft입니다.", r"J=F\Delta t"),
-                StepCard("운동량 변화", "충격량은 선운동량 변화량과 같습니다.", "J=m(v_f-v_i)"),
-                StepCard("계산", f"v_f = v_i + J/m = {v0q.value:g}+{J:.5g}/{mq.value:g} = {vf:.5g} m/s"),
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=generated.errors,
+                ),
+                unsupported_reason="힘 방향과 충격량-운동량 입력을 확인해 주세요.",
+            )
+        impulse = float(generated.solution["J"])
+        force_component = float(generated.solution["force_component"])
+
+        if asks_final_velocity:
+            final_velocity = float(generated.solution["v_f"])
+            initial_velocity = float(generated.solution["v_i"])
+            answers = [
+                AnswerItem(
+                    "최종속도",
+                    "v_f",
+                    round(final_velocity, 5),
+                    "m/s",
+                    f"v_f = {final_velocity:.3f} m/s",
+                    "primary",
+                )
             ]
-            return SolverResult(ok=True, answer=Answer(symbolic="vf = vi + Ft/m", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s"), steps=steps, verification=VerificationReport(passed=True, checks=["힘의 방향을 +로 두었을 때의 결과입니다. 반대방향 힘이면 부호를 음수로 넣어야 합니다."]))
+            if "impulse" in requested:
+                answers.append(
+                    AnswerItem(
+                        "충격량",
+                        "J",
+                        round(impulse, 5),
+                        "N·s",
+                        f"J = {impulse:.3f} N·s",
+                        "component",
+                    )
+                )
+            steps = [
+                StepCard(
+                    "부호 있는 충격량",
+                    "초기 운동의 양의 방향을 기준으로 힘 성분의 부호를 정합니다.",
+                    r"J=F_{\parallel}\Delta t",
+                ),
+                StepCard(
+                    "운동량 변화",
+                    "충격량은 선운동량 변화량과 같습니다.",
+                    r"J=m(v_f-v_i)",
+                ),
+                StepCard(
+                    "계산",
+                    f"F_parallel={force_component:g} N, Δt={duration:g} s, "
+                    f"v_i={initial_velocity:g} m/s → v_f={final_velocity:.5g} m/s",
+                ),
+            ]
+            return SolverResult(
+                ok=True,
+                answer=Answer(
+                    symbolic="v_f = v_i + J/m",
+                    numeric=round(final_velocity, 5),
+                    unit="m/s",
+                    display=f"v_f = {final_velocity:.3f} m/s",
+                ),
+                answers=answers,
+                steps=steps,
+                verification=VerificationReport(
+                    passed=True,
+                    checks=[
+                        "힘이 운동 반대방향이면 충격량은 음수가 되어 속도를 감소시킬 수 있습니다."
+                    ],
+                ),
+                used_equations=["J = F_parallel Δt", "J = m(v_f-v_i)"],
+            )
+
+        force_magnitude = abs(magnitude_si(Fq, "N"))
+        impulse_label = "충격량 크기" if impulse >= 0 else "부호 있는 충격량"
         steps = [
-            StepCard("충격량", "Energy/Momentum generator가 충격량 식 J=FΔt를 생성합니다. 일정한 힘이 일정 시간 작용하면 J=FΔt입니다.", r"J=F\Delta t"),
-            StepCard("계산", f"J = {Fq.value:g} × {tq.value:g} = {J:.5g} N·s"),
+            StepCard(
+                "충격량",
+                "방향을 묻지 않은 충격량 단독 문제에서는 크기 |J|=|F|Δt를 계산합니다.",
+                r"|J|=|F|\Delta t",
+            ),
+            StepCard(
+                "계산",
+                f"|J| = {force_magnitude:g} × {duration:g} = {abs(impulse):.5g} N·s",
+            ),
         ]
-        return SolverResult(ok=True, answer=Answer(symbolic="J = FΔt", numeric=round(J, 5), unit="N·s", display=f"J = {J:.3f} N·s"), steps=steps, verification=VerificationReport(passed=True, checks=["단위 N·s는 kg·m/s와 같아서 운동량 단위와 일치합니다."]))
+        displayed_impulse = abs(impulse)
+        return SolverResult(
+            ok=True,
+            answer=Answer(
+                symbolic="|J| = |F|Δt",
+                numeric=round(displayed_impulse, 5),
+                unit="N·s",
+                display=f"|J| = {displayed_impulse:.3f} N·s",
+            ),
+            answers=[
+                AnswerItem(
+                    impulse_label,
+                    "J",
+                    round(displayed_impulse, 5),
+                    "N·s",
+                    f"|J| = {displayed_impulse:.3f} N·s",
+                    "primary",
+                )
+            ],
+            steps=steps,
+            verification=VerificationReport(
+                passed=True,
+                checks=["단위 N·s는 kg·m/s와 같아 운동량 단위와 일치합니다."],
+            ),
+            used_equations=["|J| = |F|Δt"],
+        )
