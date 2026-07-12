@@ -128,7 +128,7 @@ class InclineHangingPulleySolver(BaseSolver):
                     answer=Answer(symbolic="a=0, |f_s|<=μ_sN", numeric=0.0, unit="m/s²", display=f"a = 0.000 m/s², T = {T_static:.3f} N, f_s = {decision.friction_force:.3f} N"),
                     answers=[
                         AnswerItem("가속도", "a", 0.0, "m/s²", "가속도 a = 0.000 m/s²", "primary"),
-                        AnswerItem("장력", "T", round(T_static, 6), "N", f"장력 T = {T_static:.3f} N", "primary"),
+                        AnswerItem("장력", "T", round(T_static, 6), "N", f"장력 T = {T_static:.3f} N", "primary", output_key="tension"),
                         AnswerItem("정지마찰력", "f_s", round(decision.friction_force, 6), "N", f"정지마찰력 f_s = {decision.friction_force:.3f} N", "primary"),
                     ],
                     steps=[
@@ -234,7 +234,7 @@ class InclineHangingPulleySolver(BaseSolver):
                 answer=Answer(symbolic=", ".join(eqs), numeric=round(a_val, 6), unit="m/s²", display=f"a = {a_val:.3f} m/s² ({direction_label}), T = {T_val:.3f} N"),
                 answers=[
                     AnswerItem("가속도", "a", round(a_val, 6), "m/s²", f"가속도 a = {a_val:.3f} m/s²", "primary"),
-                    AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
+                    AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary", output_key="tension"),
                 ] + (
                     [
                         AnswerItem(
@@ -248,7 +248,7 @@ class InclineHangingPulleySolver(BaseSolver):
                     ]
                     if friction_type in {"static", "kinetic", "unspecified"}
                     else [
-                        AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component")
+                        AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component", output_key="friction_force")
                     ]
                     if "friction_force" in requested
                     else []
@@ -285,9 +285,9 @@ class InclineHangingPulleySolver(BaseSolver):
                 answer=Answer(symbolic="T-m1g sinθ=m1a, m2g-T=m2a", numeric=round(abs(a_signed), 6), unit="m/s²", display=f"a = {abs(a_signed):.3f} m/s² ({direction_label}), T = {T_val:.3f} N"),
                 answers=[
                     AnswerItem("가속도", "a", round(abs(a_signed), 6), "m/s²", f"가속도 a = {abs(a_signed):.3f} m/s²", "primary"),
-                    AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
+                    AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary", output_key="tension"),
                 ] + (
-                    [AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component")]
+                    [AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component", output_key="friction_force")]
                     if "friction_force" in requested
                     else []
                 ),
@@ -325,7 +325,7 @@ class InclineHangingPulleySolver(BaseSolver):
             answer=Answer(symbolic="T-m1g sinθ=m1a, m2g-T=m2a", numeric=round(abs(a_val), 6), unit="m/s²", display=f"a = {abs(a_val):.3f} m/s² ({direction}), T = {T_val:.3f} N"),
             answers=[
                 AnswerItem("가속도", "a", round(abs(a_val), 6), "m/s²", f"가속도 a = {abs(a_val):.3f} m/s²", "primary"),
-                AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
+                AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary", output_key="tension"),
             ] + (
                 [
                     AnswerItem(
@@ -339,7 +339,7 @@ class InclineHangingPulleySolver(BaseSolver):
                 ]
                 if friction_type in {"static", "kinetic", "unspecified"}
                 else [
-                    AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component")
+                    AnswerItem("마찰력", "f", 0.0, "N", "마찰력 f = 0.000 N", "component", output_key="friction_force")
                 ]
                 if "friction_force" in requested
                 else []
