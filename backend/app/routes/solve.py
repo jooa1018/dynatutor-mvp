@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.schemas.problem import ProblemRequest
 from app.schemas.solution import SolveResponse
+from engine.errors import PhysicsUserInputError
 from engine.routing.clarify import ClarifyPatchError
 from engine.services import solve_problem
 
@@ -18,11 +19,10 @@ def solve(req: ProblemRequest) -> SolveResponse:
         return solve_problem(req.problem_text, req.student_solution, clarify_patch=req.clarify_patch, canonical_patch=req.canonical_patch)
     except ClarifyPatchError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except (ArithmeticError, ValueError, IndexError) as exc:
-        # 잘못된 정의역·수치 조건은 원시 traceback/500 대신 구조화된 422로 반환한다.
+    except PhysicsUserInputError as exc:
         raise HTTPException(
             status_code=422,
-            detail="입력값의 물리적 범위 또는 조건 조합을 확인해 주세요.",
+            detail=str(exc) or "입력값의 물리적 범위 또는 조건을 확인해 주세요.",
         ) from exc
     except Exception as exc:
         trace_id = uuid4().hex
