@@ -46,8 +46,18 @@ REQUESTED_OUTPUT_SYMBOLS: dict[str, set[str]] = {
 
 
 
-SEMANTIC_KEY_REQUIRED = {"period", "tension", "frequency", "friction_force"}
-AMBIGUOUS_OUTPUT_SYMBOLS = {"T", "f"}
+SEMANTIC_KEY_REQUIRED = {
+    "period",
+    "tension",
+    "frequency",
+    "friction_force",
+    "angular_frequency",
+    "angular_velocity",
+}
+# omega/ω can denote angular velocity or angular frequency. They follow the
+# same fail-closed rule as T/f; AnswerItem's legacy mapping still supplies the
+# correct semantic key for ordinary omega and the omega_n variants.
+AMBIGUOUS_OUTPUT_SYMBOLS = {"T", "f", "omega", "ω"}
 OUTPUT_KEY_COMPATIBILITY: dict[str, set[str]] = {
     "force": {"force", "tension", "friction_force", "normal_force"},
     "distance": {"distance", "range"},
