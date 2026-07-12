@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import sqlite3
+import math
 
 import pytest
 
@@ -190,3 +190,32 @@ def test_legacy_local_study_migration_backfills_only_verified_engine_records(
     assert by_problem["unverified legacy"]["verified"] is False
     assert by_problem["unknown legacy"]["source"] == "manual"
     assert by_problem["unknown legacy"]["verified"] is False
+
+
+def test_adjacent_direction_clauses_bind_to_omega_and_alpha():
+    parsed = _signs(
+        "omega=2rad/s이며 반시계방향이고 "
+        "alpha=3rad/s^2이며 시계방향"
+    )
+
+    assert parsed["omega_sign"] == 1.0
+    assert parsed["alpha_sign"] == -1.0
+
+
+def test_signed_initial_angular_velocity_passes_full_service_gate():
+    text = (
+        "고정축 회전에서 초기각속도 omega0=5rad/s이며 시계방향이고 "
+        "각가속도 alpha=2rad/s^2이며 반시계방향이다. "
+        "4s 후 최종 각속도를 구하라."
+    )
+
+    response = solve_problem(text)
+
+    assert response.ok is True, response.model_dump_json()
+    assert response.verification.passed is True, response.model_dump_json()
+    angular_velocity = next(
+        item
+        for item in response.answers
+        if item.output_key == "angular_velocity"
+    )
+    assert math.isclose(angular_velocity.numeric, 3.0)
