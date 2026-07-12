@@ -26,9 +26,18 @@ router = APIRouter()
 
 @router.post("", response_model=RecordItem)
 def create_record(req: RecordCreate) -> RecordItem:
-    raw = req.raw_result or {}
-    if raw and not (raw.get("ok") is True and (raw.get("verification") or {}).get("passed") is True):
-        raise HTTPException(status_code=422, detail="검증을 통과한 풀이만 숫자 답과 함께 저장할 수 있습니다.")
+    raw = req.raw_result
+    verified = bool(
+        raw
+        and raw.get("ok") is True
+        and (raw.get("verification") or {}).get("passed") is True
+    )
+    has_computed_answer = bool(req.answer_display or req.solver)
+    if (raw is not None or has_computed_answer) and not verified:
+        raise HTTPException(
+            status_code=422,
+            detail="검증을 통과한 풀이만 숫자 답과 함께 저장할 수 있습니다.",
+        )
     return RecordItem(**add_record(req.model_dump()))
 
 
