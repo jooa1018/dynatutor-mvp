@@ -878,6 +878,12 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("높이 변화 h")
         if "I" not in c.knowns and not c.body_shape:
             missing.append("물체 종류 또는 관성모멘트 I")
+        if (
+            "v0" not in c.knowns
+            and "v" not in c.knowns
+            and not explicitly_starts_from_rest(c)
+        ):
+            missing.append("초기속도 v0 또는 정지 출발 조건")
     elif c.system_type == "vertical_circle":
         requested = set(c.requested_outputs or c.unknowns or [])
         if "R" not in c.knowns:
@@ -1060,6 +1066,12 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
                 missing.append("구름 반지름 R")
         elif not c.body_shape:
             missing.append("물체 종류 또는 관성모멘트 I")
+        if (
+            "v0" not in c.knowns
+            and "v" not in c.knowns
+            and not explicitly_starts_from_rest(c)
+        ):
+            missing.append("초기속도 v0 또는 정지 출발 조건")
     elif c.system_type == "polar_kinematics":
         if "R" not in c.knowns and "r" not in c.knowns:
             missing.append("극좌표 반지름 r")
