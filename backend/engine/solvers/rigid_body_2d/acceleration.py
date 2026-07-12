@@ -27,10 +27,7 @@ def _get_aA(c: CanonicalProblem) -> Vec2 | None:
         aA = magnitude_si(c.knowns["aA"], "m/s^2")
         if abs(aA) <= 1e-12:
             return Vec2(0.0, 0.0)
-    if _has_fixed_A(c) or any(
-        phrase in (c.raw_text or "").replace(" ", "")
-        for phrase in ("A에대한", "A기준", "A에대해")
-    ):
+    if _has_fixed_A(c):
         return Vec2(0.0, 0.0)
     return None
 
