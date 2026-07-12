@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.schemas.problem import ProblemRequest
 from app.schemas.solution import DiagnosisResponse
+from engine.errors import PhysicsUserInputError
 from engine.services import diagnose_problem
 
 router = APIRouter()
@@ -15,10 +16,10 @@ logger = logging.getLogger(__name__)
 def diagnose(req: ProblemRequest) -> DiagnosisResponse:
     try:
         return diagnose_problem(req.problem_text, req.student_solution)
-    except (ArithmeticError, ValueError, IndexError) as exc:
+    except PhysicsUserInputError as exc:
         raise HTTPException(
             status_code=422,
-            detail="입력값의 물리적 범위 또는 조건 조합을 확인해 주세요.",
+            detail=str(exc) or "입력값의 물리적 범위 또는 조건을 확인해 주세요.",
         ) from exc
     except Exception as exc:
         trace_id = uuid4().hex
