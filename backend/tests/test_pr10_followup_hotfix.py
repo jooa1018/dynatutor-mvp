@@ -690,18 +690,21 @@ def test_traceback_is_not_exposed_to_client(monkeypatch):
 
 
 def test_ambiguous_clarify_patch_reroutes_to_user_choice():
-    text = (
-        "질량 2kg 블록이 30도 경사면 위에서 용수철 상수 100N/m인 "
-        "스프링을 0.1m 압축했다. 마찰은 없고 최종속도를 구하라."
-    )
+    text = "도르래에 연결된 m1=2kg, m2=3kg 두 물체의 가속도는?"
     initial = solve_problem(text)
-    assert initial.clarification is not None
 
-    response = solve_problem(text, clarify_patch={"system_type": "spring_energy"})
+    assert initial.clarification is not None
+    assert initial.route_decision is not None
+    assert initial.route_decision.status == "clarify"
+
+    response = solve_problem(
+        text,
+        clarify_patch={"system_type": "pulley_atwood"},
+    )
 
     assert response.route_decision is not None
-    assert response.route_decision.selected_solver_id == "spring_energy_speed"
-    assert response.diagnosis.selected_solver == "spring_energy_speed"
+    assert response.route_decision.selected_solver_id == "pulley_atwood"
+    assert response.diagnosis.selected_solver == "pulley_atwood"
     assert response.ok is True
     assert response.verification.passed is True
 
@@ -726,7 +729,7 @@ def test_rigid_vector_clarification_round_trip_solves():
 
     response = solve_problem(text, clarify_patch=patch)
 
-    assert response.ok is True
-    assert response.verification.passed is True
+    assert response.ok is True, response.model_dump()
+    assert response.verification.passed is True, response.model_dump()
     assert response.diagnosis.selected_solver == "plane_rigid_body_velocity"
     assert response.answers
