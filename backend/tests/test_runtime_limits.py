@@ -77,6 +77,22 @@ def test_body_limit_rejects_before_endpoint_execution():
     assert response.json()["code"] == "request_body_too_large"
 
 
+def test_body_limit_checks_received_bytes_not_only_declared_length():
+    client = _app_with_limits(body=32)
+
+    response = client.post(
+        "/solve",
+        content=b"x" * 33,
+        headers={
+            "content-length": "1",
+            "content-type": "application/octet-stream",
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json()["code"] == "request_body_too_large"
+
+
 def test_invalid_runtime_limit_configuration_fails_fast(monkeypatch):
     monkeypatch.setenv("DYNATUTOR_RATE_LIMIT_PER_MINUTE", "not-an-int")
 
