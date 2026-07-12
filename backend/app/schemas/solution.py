@@ -55,6 +55,8 @@ class RouteCandidateModel(BaseModel):
     source_system_type: str | None = None
     source_subtype: str | None = None
     interpretation_score: float = 1.0
+    interpretation_provenance: str = "legacy_primary"
+    selection_eligible: bool = True
 
 
 class RouteDecisionModel(BaseModel):
