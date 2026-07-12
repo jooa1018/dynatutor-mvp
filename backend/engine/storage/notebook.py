@@ -57,6 +57,7 @@ def _migrate(con: sqlite3.Connection) -> None:
         "last_reviewed_at": "TEXT",
         "mastery": "INTEGER NOT NULL DEFAULT 0",
         "source": "TEXT DEFAULT 'manual'",
+        "verified": "INTEGER NOT NULL DEFAULT 0",
         "updated_at": "TEXT",
     }
     for name, ddl in columns.items():
@@ -85,14 +86,25 @@ def add_record(payload: dict[str, Any]) -> dict[str, Any]:
     con = _connect()
     tags = _json_list(payload.get("tags"))
     review_due = payload.get("review_due") or _iso(_today() + timedelta(days=1))
+    source = payload.get("source")
+    if source not in {"engine", "manual", "import"}:
+        source = "manual"
+    raw_result = payload.get("raw_result")
+    verified = bool(
+        source == "engine"
+        and payload.get("verified") is True
+        and isinstance(raw_result, dict)
+        and raw_result.get("ok") is True
+        and (raw_result.get("verification") or {}).get("passed") is True
+    )
     cur = con.execute(
         """
         INSERT INTO records(
             problem_text, student_solution, solver, answer_display, problem_type,
             tags_json, note, raw_result_json, difficulty, favorite, review_due,
-            review_count, last_reviewed_at, mastery, source, updated_at
+            review_count, last_reviewed_at, mastery, source, verified, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         """,
         (
             payload.get("problem_text"),
@@ -102,14 +114,19 @@ def add_record(payload: dict[str, Any]) -> dict[str, Any]:
             payload.get("problem_type"),
             json.dumps(tags, ensure_ascii=False),
             payload.get("note"),
-            json.dumps(payload.get("raw_result"), ensure_ascii=False) if payload.get("raw_result") is not None else None,
+            (
+                json.dumps(raw_result, ensure_ascii=False)
+                if raw_result is not None
+                else None
+            ),
             payload.get("difficulty") or _difficulty_from_tags(tags),
             1 if payload.get("favorite") else 0,
             review_due,
             int(payload.get("review_count") or 0),
             payload.get("last_reviewed_at"),
             int(payload.get("mastery") or 0),
-            payload.get("source") or "manual",
+            source,
+            1 if verified else 0,
         ),
     )
     con.commit()
@@ -149,7 +166,7 @@ def get_record(record_id: int) -> dict[str, Any] | None:
 
 
 def update_record(record_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"note", "favorite", "review_due", "difficulty", "tags", "mastery", "source"}
+    allowed = {"note", "favorite", "review_due", "difficulty", "tags", "mastery"}
     sets: list[str] = []
     params: list[Any] = []
     for key, value in payload.items():
@@ -237,6 +254,7 @@ def _row_to_item(row: sqlite3.Row) -> dict[str, Any]:
         "last_reviewed_at": row["last_reviewed_at"],
         "mastery": int(row["mastery"] or 0),
         "source": row["source"] or "manual",
+        "verified": bool(row["verified"]),
     }
 
 
@@ -332,7 +350,8 @@ def import_records(payload: dict[str, Any]) -> dict[str, Any]:
             "review_count": item.get("review_count") or 0,
             "last_reviewed_at": item.get("last_reviewed_at"),
             "mastery": item.get("mastery") or 0,
-            "source": item.get("source") or "import",
+            "source": "import",
+            "verified": False,
         })
         imported += 1
     return {"ok": True, "imported": imported, "total_after_import": record_stats()["total"]}
