@@ -824,7 +824,7 @@ def _default_assumptions(c: CanonicalProblem) -> list[str]:
     if c.system_type in {"flat_curve_friction", "banked_curve_no_friction"}:
         a.append("등속 원운동으로 모델링")
     if c.system_type == "relative_acceleration_translation":
-        a.extend(["A에 대한 B의 상대가속도를 병진 기준계에서 더함", "방향각이 없으면 기본형은 같은 직선상 성분으로 계산"])
+        a.extend(["A에 대한 B의 상대가속도를 병진 기준계에서 더함", "방향 또는 공통 부호축이 명시된 성분만 계산"])
     if c.system_type == "coriolis_relative_motion":
         a.extend(["회전 기준계에서 관찰한 상대운동", "Coriolis 항 2ωv_rel은 상대속도와 회전에 의해 생김"])
     if c.system_type == "plane_rigid_body_acceleration":
@@ -1010,18 +1010,63 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("기준점 A의 가속도 aA")
         if "arel" not in c.knowns:
             missing.append("A에 대한 B의 상대가속도 a_rel")
+        compact = (c.raw_text or "").lower().replace(" ", "")
+        has_direction = (
+            "같은방향" in compact
+            or "반대방향" in compact
+            or "opposite" in compact
+            or any(
+                compact.count(word) >= 2
+                for word in (
+                    "오른쪽",
+                    "왼쪽",
+                    "위쪽",
+                    "아래쪽",
+                    "right",
+                    "left",
+                    "upward",
+                    "downward",
+                )
+            )
+            or any(
+                phrase in compact
+                for phrase in (
+                    "오른쪽을+",
+                    "왼쪽을+",
+                    "위쪽을+",
+                    "아래쪽을+",
+                    "+x",
+                    "+y",
+                    "부호있는성분",
+                    "signedcomponent",
+                )
+            )
+        )
+        if not has_direction:
+            missing.append("aA와 a_rel의 방향 또는 공통 부호축")
     elif c.system_type == "coriolis_relative_motion":
         if "omega" not in c.knowns:
             missing.append("회전 기준계 각속도 ω")
         if "vrel" not in c.knowns and "rdot" not in c.knowns:
             missing.append("상대속도 v_rel 또는 r_dot")
+        compact = (c.raw_text or "").lower().replace(" ", "")
+        coriolis_only = (
+            "코리올리" in compact
+            and not any(
+                word in compact
+                for word in ("전체가속도", "절대가속도", "가속도성분")
+            )
+        )
+        if not coriolis_only:
+            if "r" not in c.knowns and "R" not in c.knowns:
+                missing.append("회전계 위치 반지름 r")
+            if "alpha" not in c.knowns and "thetaddot" not in c.knowns:
+                missing.append("회전계 각가속도 α")
+            if "arel" not in c.knowns and "rddot" not in c.knowns:
+                missing.append("상대가속도 a_rel")
     elif c.system_type == "plane_rigid_body_acceleration":
         raw = c.raw_text or ""
         fixed_A = any(phrase in raw for phrase in ["고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed"])
-        relative_to_A = any(
-            phrase in raw.replace(" ", "")
-            for phrase in ["A에대한", "A기준", "A에대해"]
-        )
         zero_aA = (
             "aA" in c.knowns
             and c.knowns["aA"].value is not None
@@ -1036,10 +1081,10 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             or ("rBAx" in c.knowns and "rBAy" in c.knowns)
         )
         has_scalar_r = "R" in c.knowns or "r" in c.knowns
-        if not has_r_vector and not ((fixed_A or zero_aA or relative_to_A) and has_scalar_r):
-            missing.append("r_B/A 벡터 성분(고정 A 또는 상대 크기만 구할 때는 거리 r)")
-        if not has_aA_vector and not fixed_A and not zero_aA and not relative_to_A:
-            missing.append("A점 가속도 벡터, A점 고정 조건, 또는 A에 대한 상대가속도 요청")
+        if not has_r_vector and not ((fixed_A or zero_aA) and has_scalar_r):
+            missing.append("r_B/A 벡터 성분(고정 A 또는 aA=0일 때만 거리 r 허용)")
+        if not has_aA_vector and not fixed_A and not zero_aA:
+            missing.append("A점 가속도 벡터 또는 A점 고정 조건")
         if "omega" not in c.knowns:
             missing.append("강체 각속도 ω")
         if "alpha" not in c.knowns:
@@ -1077,7 +1122,44 @@ def _missing_info(c: CanonicalProblem) -> list[str]:
             missing.append("극좌표 반지름 r")
         if "omega" not in c.knowns and "thetadot" not in c.knowns:
             missing.append("각속도 θ_dot 또는 ω")
-        # rdot, rddot, alpha는 없으면 0으로 둘 수 있게 solver에서 보완합니다.
+        compact = (c.raw_text or "").lower().replace(" ", "")
+        constant_radius = any(
+            phrase in compact
+            for phrase in (
+                "반지름일정",
+                "반지름은일정",
+                "반지름과각속도가일정",
+                "r이일정",
+                "r=constant",
+                "constantradius",
+                "등속원운동",
+            )
+        )
+        constant_omega = any(
+            phrase in compact
+            for phrase in (
+                "각속도일정",
+                "반지름과각속도가일정",
+                "등각속도",
+                "constantangularspeed",
+                "등속원운동",
+            )
+        )
+        wants_acceleration = (
+            "acceleration" in (c.requested_outputs or c.unknowns or [])
+            or "가속도" in compact
+        )
+        if "rdot" not in c.knowns and not constant_radius:
+            missing.append("반지름 변화율 r_dot 또는 반지름 일정 조건")
+        if wants_acceleration and "rddot" not in c.knowns and not constant_radius:
+            missing.append("반지름 가속도 r_ddot 또는 반지름 일정 조건")
+        if (
+            wants_acceleration
+            and "alpha" not in c.knowns
+            and "thetaddot" not in c.knowns
+            and not constant_omega
+        ):
+            missing.append("각가속도 α 또는 각속도 일정 조건")
     elif c.system_type == "instant_center_velocity":
         if "R" not in c.knowns and "r" not in c.knowns:
             missing.append("순간중심에서 점까지 거리 r")
