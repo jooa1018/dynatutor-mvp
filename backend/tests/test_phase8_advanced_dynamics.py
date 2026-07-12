@@ -43,7 +43,7 @@ def test_massive_pulley_atwood_solver():
 
 
 def test_general_rolling_energy_solver():
-    out = solve_problem("질량 3 kg, 반지름 R=0.4 m, 관성모멘트 I=0.18 kgm^2 인 강체가 미끄러지지 않고 경사면을 높이 h=1.2 m만큼 굴러 내려간다. 속도를 구하라.")
+    out = solve_problem("정지 상태에서 질량 3 kg, 반지름 R=0.4 m, 관성모멘트 I=0.18 kgm^2 인 강체가 미끄러지지 않고 경사면을 높이 h=1.2 m만큼 굴러 내려간다. 속도를 구하라.")
     assert out.ok
     assert out.diagnosis.selected_solver == "rolling_energy_general"
     expected = math.sqrt(2 * 3 * 9.81 * 1.2 / (3 + 0.18 / 0.4**2))
