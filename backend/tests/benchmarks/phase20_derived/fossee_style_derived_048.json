@@ -10,7 +10,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.703489,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_002",
@@ -23,7 +23,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.539015,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_003",
@@ -36,7 +36,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.355218,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_004",
@@ -49,7 +49,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.145885,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_005",
@@ -62,7 +62,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.905,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_006",
@@ -75,7 +75,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 5.626785,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_007",
@@ -88,7 +88,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.305746,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_008",
@@ -101,7 +101,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.936718,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_009",
@@ -114,7 +114,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 7.514896,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_no_friction_010",
@@ -127,7 +127,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 8.035882,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_001",
@@ -140,7 +140,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.433379,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_002",
@@ -153,7 +153,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.07898,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_003",
@@ -166,7 +166,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.055429,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_004",
@@ -179,7 +179,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.421403,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_005",
@@ -192,7 +192,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.802767,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_006",
@@ -205,7 +205,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.243046,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_007",
@@ -218,7 +218,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.569034,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_incline_friction_008",
@@ -231,7 +231,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.910525,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_001",
@@ -244,7 +244,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.27,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_002",
@@ -257,7 +257,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.962,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_003",
@@ -270,7 +270,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.4525,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_004",
@@ -283,7 +283,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.962,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_005",
@@ -296,7 +296,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.263846,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_006",
@@ -309,7 +309,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.204286,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_007",
@@ -322,7 +322,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.924,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_atwood_008",
@@ -335,7 +335,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.4525,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_001",
@@ -348,7 +348,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.3354,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_002",
@@ -361,7 +361,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.289,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_003",
@@ -374,7 +374,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.065625,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_004",
@@ -387,7 +387,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.7468,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_005",
@@ -400,7 +400,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.048646,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_006",
@@ -413,7 +413,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.759062,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_007",
@@ -426,7 +426,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.924,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_table_hanging_008",
@@ -439,7 +439,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.51525,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_001",
@@ -447,12 +447,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.743566,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_002",
@@ -460,12 +460,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "원판가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 원판가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.616628,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_003",
@@ -473,12 +473,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "고리가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 고리가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.132092,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_004",
@@ -486,12 +486,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "속이 찬 구가 미끄러지지 않고 높이 1.5m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1.5m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.584913,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_005",
@@ -499,12 +499,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "원판가 미끄러지지 않고 높이 1.5m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 원판가 미끄러지지 않고 높이 1.5m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.429447,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_006",
@@ -512,12 +512,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "고리가 미끄러지지 않고 높이 1.5m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 고리가 미끄러지지 않고 높이 1.5m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.836014,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_007",
@@ -525,12 +525,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "속이 찬 구가 미끄러지지 않고 높이 2m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 2m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 5.294202,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_008",
@@ -538,12 +538,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "원판가 미끄러지지 않고 높이 2m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 원판가 미끄러지지 않고 높이 2m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 5.114685,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_rolling_009",
@@ -551,12 +551,12 @@
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
     "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
     "topic": "pure_rolling_energy",
-    "problem_ko": "고리가 미끄러지지 않고 높이 2m 굴러 내려온다. 속도는?",
+    "problem_ko": "정지 상태에서 고리가 미끄러지지 않고 높이 2m 굴러 내려온다. 속도는?",
     "expected_solver": "pure_rolling_energy",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.429447,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_fixed_axis_001",
@@ -568,8 +568,8 @@
     "expected_solver": "fixed_axis_rotation",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 5.0,
-    "tolerance": 1e-05
+    "expected_numeric": 5,
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_fixed_axis_002",
@@ -581,8 +581,8 @@
     "expected_solver": "fixed_axis_rotation",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 4.0,
-    "tolerance": 1e-05
+    "expected_numeric": 4,
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_fixed_axis_003",
@@ -594,8 +594,8 @@
     "expected_solver": "fixed_axis_rotation",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 3.0,
-    "tolerance": 1e-05
+    "expected_numeric": 3,
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_fixed_axis_004",
@@ -607,8 +607,8 @@
     "expected_solver": "fixed_axis_rotation",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 5.0,
-    "tolerance": 1e-05
+    "expected_numeric": 5,
+    "tolerance": 0.00001
   },
   {
     "id": "fossee_fixed_axis_005",
@@ -620,7 +620,7 @@
     "expected_solver": "fixed_axis_rotation",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 5.0,
-    "tolerance": 1e-05
+    "expected_numeric": 5,
+    "tolerance": 0.00001
   }
 ]
