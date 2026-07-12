@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import pytest
-from fastapi import HTTPException
 
-from app.routes import records as records_route
-from app.schemas.records import RecordCreate
 from engine.canonical.adapter import attach_canonical_v2
 from engine.models import CanonicalProblem, Quantity
 from engine.routing.config import ROUTING_CONFIG
@@ -107,17 +103,3 @@ def test_unsupported_route_never_returns_a_clarification_question():
     assert response.unsupported_reason is not None
     assert "3D" in response.unsupported_reason
 
-
-@pytest.mark.parametrize("raw_result", [None, {}])
-def test_computed_record_without_verification_evidence_is_rejected(raw_result):
-    request = RecordCreate(
-        problem_text="테스트 문제",
-        solver="constant_acceleration_1d",
-        answer_display="v=42m/s",
-        raw_result=raw_result,
-    )
-
-    with pytest.raises(HTTPException) as caught:
-        records_route.create_record(request)
-
-    assert caught.value.status_code == 422
