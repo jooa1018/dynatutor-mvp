@@ -73,6 +73,11 @@ def create_record(req: RecordCreate) -> RecordItem:
                 status_code=422,
                 detail="answer_display가 검증된 engine 결과와 일치하지 않습니다.",
             )
+    elif req.source == "manual" and raw is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="manual 기록에는 engine raw_result를 첨부할 수 없습니다.",
+        )
     payload = req.model_dump()
     payload["verified"] = req.source == "engine"
     return RecordItem(**add_record(payload))
