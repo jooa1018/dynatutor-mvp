@@ -1,19 +1,22 @@
 # Known Limitations
 
-This document records known limitations as of Phase 23.
+This document records limitations that still apply after the Phase 46
+routing and physics-audit follow-ups.
 
-## Frontend build not verified in container
+## CI and runtime budgets
 
-The backend test suite passed, but frontend build was not run because
-`frontend/node_modules` was missing.
+GitHub Actions now runs the default and complete backend suites, frontend
+typecheck/build, a warm 43-case solve-latency budget, and cold import/RSS
+budgets on every relevant pull request.
 
-Run locally before deployment:
+Production/Render enables a process-local rate limit (60 CPU-heavy requests per
+minute per client) and a 64 KiB request-body limit by default. These can be
+configured with `DYNATUTOR_RATE_LIMIT_PER_MINUTE` and
+`DYNATUTOR_MAX_BODY_BYTES`.
 
-```bash
-cd frontend
-npm install
-npm run build
-```
+The limiter is intentionally process-local for the current personal single
+worker deployment. A multi-worker/public service still needs a shared gateway
+or datastore-backed limiter and deployment-level timeouts.
 
 ## PyChrono numerical simulation not executed here
 
@@ -66,14 +69,15 @@ The normal student solve path remains closed-form and lightweight.
 
 ## Not commercial/public release
 
-Phase 23 is suitable as a personal-use release candidate.
+The current engine is suitable as a personal-use release candidate.
 
-Before public/commercial release, add:
+Before public/commercial release, add or independently verify:
 
 ```text
 security review
 dependency license review
-frontend production build verification
+external private evaluation set and false-solve measurement
+deployment-level shared rate limiting and hard worker timeouts
 hosted database/storage plan
 user accounts/auth review
 privacy policy
