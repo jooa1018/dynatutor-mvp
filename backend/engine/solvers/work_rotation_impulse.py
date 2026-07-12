@@ -104,7 +104,11 @@ class FixedAxisRotationSolver(BaseSolver):
         asks_speed = any(w in c.raw_text for w in ["속력", "속도는", "speed"])
         alphaq, tq = knowns.get("alpha"), knowns.get("t")
         if alphaq and tq and asks_omega:
-            omega0q = knowns.get("omega0") or knowns.get("omega")
+            omega0q = knowns.get("omega0")
+            omega0_sign_key = "omega0_sign"
+            if omega0q is None:
+                omega0q = knowns.get("omega")
+                omega0_sign_key = "omega_sign"
             if omega0q is None and not explicitly_starts_from_angular_rest(c):
                 return SolverResult(
                     ok=False,
@@ -121,7 +125,15 @@ class FixedAxisRotationSolver(BaseSolver):
                 if omega0q is not None
                 else 0.0
             )
+            omega0_sign = (c.coordinate_data or {}).get(omega0_sign_key)
+            if omega0_sign in (-1, 1):
+                omega0 = abs(omega0) * float(omega0_sign)
+
             alpha_value = magnitude_si(alphaq, "rad/s^2")
+            alpha_sign = (c.coordinate_data or {}).get("alpha_sign")
+            if alpha_sign in (-1, 1):
+                alpha_value = abs(alpha_value) * float(alpha_sign)
+
             time_value = magnitude_si(tq, "s")
             if time_value < 0:
                 return SolverResult(
