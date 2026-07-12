@@ -47,6 +47,22 @@ def _connect() -> sqlite3.Connection:
     return con
 
 
+
+def _legacy_local_study_is_verified(raw_result_json: str | None) -> bool:
+    if not raw_result_json:
+        return False
+    try:
+        raw_result = json.loads(raw_result_json)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return False
+    return bool(
+        isinstance(raw_result, dict)
+        and raw_result.get("ok") is True
+        and isinstance(raw_result.get("verification"), dict)
+        and raw_result["verification"].get("passed") is True
+    )
+
+
 def _migrate(con: sqlite3.Connection) -> None:
     existing = {row[1] for row in con.execute("PRAGMA table_info(records)").fetchall()}
     columns = {
@@ -65,6 +81,19 @@ def _migrate(con: sqlite3.Connection) -> None:
             con.execute(f"ALTER TABLE records ADD COLUMN {name} {ddl}")
     con.execute("UPDATE records SET review_due = COALESCE(review_due, date(created_at, '+1 day'))")
     con.execute("UPDATE records SET updated_at = COALESCE(updated_at, created_at)")
+
+    # PR #13 provenance migration: old frontend records used source=local-study.
+    # Only a persisted, successful verification report is strong enough to
+    # recover engine provenance. Everything else fails closed as manual.
+    legacy_rows = con.execute(
+        "SELECT id, raw_result_json FROM records WHERE source='local-study'"
+    ).fetchall()
+    for row in legacy_rows:
+        verified = _legacy_local_study_is_verified(row["raw_result_json"])
+        con.execute(
+            "UPDATE records SET source=?, verified=? WHERE id=?",
+            ("engine" if verified else "manual", 1 if verified else 0, row["id"]),
+        )
 
 
 def _record_source(value: Any) -> str:
