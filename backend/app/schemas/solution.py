@@ -55,6 +55,8 @@ class RouteCandidateModel(BaseModel):
     source_system_type: str | None = None
     source_subtype: str | None = None
     interpretation_score: float = 1.0
+    interpretation_provenance: str = "legacy_primary"
+    selection_eligible: bool = True
 
 
 class RouteDecisionModel(BaseModel):
@@ -104,6 +106,7 @@ class AnswerItemModel(BaseModel):
     unit: str | None = None
     display: str
     role: str | None = "primary"
+    output_key: str | None = None
 
 
 class VerificationReport(BaseModel):
@@ -114,12 +117,21 @@ class VerificationReport(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class ClarificationInputFieldModel(BaseModel):
+    symbol: str
+    label: str
+    unit: str
+    input_type: str = "number"
+    required: bool = True
+
+
 class ClarificationOptionModel(BaseModel):
     id: str
     label: str
     description: str = ""
     patch: dict = Field(default_factory=dict)
     needs_value: str | None = None
+    input_fields: list[ClarificationInputFieldModel] = Field(default_factory=list)
 
 
 class ClarificationModel(BaseModel):

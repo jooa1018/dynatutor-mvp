@@ -165,6 +165,11 @@ export function saveLocalRecord(payload: any) {
   const existing = listLocalRecords();
   const record = {
     ...payload,
+    verified: Boolean(
+      payload?.source === 'engine'
+      && payload?.raw_result?.ok
+      && payload?.raw_result?.verification?.passed
+    ),
     id: -Date.now(),
     local_only: true,
     created_at: new Date().toISOString(),

@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 
+from engine.errors import PhysicsClarificationError
 from engine.models import CanonicalProblem, Quantity
 
 # patch로 지정 가능한 값 화이트리스트 (API 노출 지점 — 임의 값 주입 차단)
@@ -95,6 +96,20 @@ _UNITS_BY_SYMBOL = {
     "vrel": {"m/s", None},
 }
 
+_MULTI_VALUE_CONTRACTS: dict[str, tuple[tuple[str, str], ...]] = {
+    "rigid_vA_vector": (("vAx", "m/s"), ("vAy", "m/s")),
+    "rigid_aA_vector": (("aAx", "m/s^2"), ("aAy", "m/s^2")),
+}
+
+
+@dataclass(frozen=True)
+class ClarifyInputField:
+    symbol: str
+    label: str
+    unit: str
+    input_type: str = "number"
+    required: bool = True
+
 
 @dataclass
 class ClarifyOption:
@@ -102,7 +117,8 @@ class ClarifyOption:
     label: str
     description: str
     patch: dict
-    needs_value: str | None = None  # 예: "mu" — 사용자가 숫자를 입력해야 완성되는 선택지
+    needs_value: str | None = None  # 예: "mu" — 기존 단일 값 입력 호환 경로
+    input_fields: list[ClarifyInputField] = field(default_factory=list)
 
 
 @dataclass
@@ -138,7 +154,7 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
         raise ClarifyPatchError("clarify_patch는 객체여야 합니다.")
     allowed_keys = {
         "system_type", "subtype", "assume", "set_known", "set_knowns",
-        "remove_knowns", "requested_outputs", "friction_type",
+        "remove_knowns", "requested_outputs", "friction_type", "input_contract",
     }
     unknown_keys = set(patch) - allowed_keys
     if unknown_keys:
@@ -187,6 +203,37 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
             raise ClarifyPatchError("set_knowns는 리스트여야 합니다.")
         for item in values:
             _validate_known_spec(item, field_name="set_knowns")
+
+    input_contract = patch.get("input_contract")
+    if input_contract is not None:
+        expected = _MULTI_VALUE_CONTRACTS.get(input_contract)
+        if expected is None:
+            raise ClarifyPatchError(f"지원하지 않는 다중 입력 계약: {input_contract}")
+        values = patch.get("set_knowns")
+        if not isinstance(values, list):
+            raise ClarifyPatchError(
+                f"{input_contract} 계약에는 모든 set_knowns 값이 필요합니다."
+            )
+        by_symbol: dict[str, dict] = {}
+        for item in values:
+            symbol = item.get("symbol") if isinstance(item, dict) else None
+            if symbol in by_symbol:
+                raise ClarifyPatchError(f"{symbol} 값이 중복되었습니다.")
+            if isinstance(symbol, str):
+                by_symbol[symbol] = item
+        required_symbols = {symbol for symbol, _ in expected}
+        if set(by_symbol) != required_symbols:
+            missing = sorted(required_symbols - set(by_symbol))
+            extra = sorted(set(by_symbol) - required_symbols)
+            raise ClarifyPatchError(
+                f"{input_contract} 성분이 완전하지 않습니다. "
+                f"missing={missing}, extra={extra}"
+            )
+        for symbol, unit in expected:
+            if (by_symbol[symbol].get("unit") or None) != unit:
+                raise ClarifyPatchError(
+                    f"{symbol} 단위는 {unit}이어야 합니다."
+                )
     if "remove_knowns" in patch:
         values = patch.get("remove_knowns")
         if not isinstance(values, list):
@@ -203,7 +250,7 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
             raise ClarifyPatchError(f"허용되지 않는 requested_outputs: {bad}")
 
 
-class ClarifyPatchError(ValueError):
+class ClarifyPatchError(PhysicsClarificationError):
     pass
 
 
@@ -237,6 +284,46 @@ def _apply_one_known(cp: CanonicalProblem, sk: dict) -> None:
         cp.flags["no_friction"] = False
 
 
+def _clear_satisfied_input_contract(
+    cp: CanonicalProblem,
+    input_contract: str | None,
+) -> None:
+    needles_by_contract = {
+        "rigid_vA_vector": (
+            "A점 속도",
+            "vA",
+            "v_A",
+            "vAx",
+            "vAy",
+            "reference velocity",
+        ),
+        "rigid_aA_vector": (
+            "A점 가속도",
+            "aA",
+            "a_A",
+            "aAx",
+            "aAy",
+            "reference acceleration",
+        ),
+    }
+    needles = needles_by_contract.get(input_contract)
+    if needles is None:
+        return
+
+    def retain(item: str) -> bool:
+        compact = str(item).replace(" ", "")
+        return not any(
+            needle.replace(" ", "").lower() in compact.lower()
+            for needle in needles
+        )
+
+    cp.missing_info = [item for item in cp.missing_info if retain(item)]
+    if cp.canonical_v2 is not None:
+        cp.canonical_v2.missing_info = [
+            item for item in cp.canonical_v2.missing_info if retain(item)
+        ]
+
+
 def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     """사용자 선택/수정 patch를 canonical에 반영. 화이트리스트 밖 값은 거부.
 
@@ -259,6 +346,7 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
         if sub not in ALLOWED_SUBTYPES:
             raise ClarifyPatchError(f"허용되지 않는 subtype: {sub}")
         cp.subtype = sub
+        cp.flags["_clarify_model_chosen"] = True
     if "friction_type" in patch:
         ft = patch.get("friction_type")
         if ft not in ALLOWED_FRICTION_TYPES:
@@ -287,6 +375,7 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
         if not isinstance(item, dict):
             raise ClarifyPatchError("set_knowns 항목은 객체여야 합니다.")
         _apply_one_known(cp, item)
+    _clear_satisfied_input_contract(cp, patch.get("input_contract"))
 
     for symbol in patch.get("remove_knowns") or []:
         if symbol not in ALLOWED_KNOWN_SYMBOLS:
@@ -672,12 +761,22 @@ def _rule_rigid_missing_reference(cp: CanonicalProblem) -> Clarification | None:
                 label=f"A점 {quantity_label} 성분 입력",
                 description=f"{x_key}, {y_key} 두 성분을 모두 입력해야 합니다.",
                 patch={
-                    "set_knowns": [
-                        {"symbol": x_key, "unit": unit, "label": x_key},
-                        {"symbol": y_key, "unit": unit, "label": y_key},
-                    ]
+                    "input_contract": (
+                        "rigid_vA_vector" if is_velocity else "rigid_aA_vector"
+                    )
                 },
-                needs_value=f"{x_key},{y_key}",
+                input_fields=[
+                    ClarifyInputField(
+                        symbol=x_key,
+                        label=f"A점 {quantity_label} x성분",
+                        unit=unit,
+                    ),
+                    ClarifyInputField(
+                        symbol=y_key,
+                        label=f"A점 {quantity_label} y성분",
+                        unit=unit,
+                    ),
+                ],
             ),
         ],
     )

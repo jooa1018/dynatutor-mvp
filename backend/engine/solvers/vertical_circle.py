@@ -85,7 +85,7 @@ class VerticalCircleSolver(BaseSolver):
                             0.0,
                             "N",
                             "한계 구속력 T = 0.000 N",
-                            "primary",
+                            "primary", output_key="tension"
                         )
                     ]
                     if requested.intersection({"tension", "force", "normal_force"})
@@ -175,7 +175,7 @@ class VerticalCircleSolver(BaseSolver):
                     round(T, 5),
                     "N",
                     f"T = {T:.3f} N",
-                    "primary",
+                    "primary", output_key="tension"
                 )
             ],
             steps=steps,

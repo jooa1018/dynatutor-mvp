@@ -45,6 +45,27 @@ REQUESTED_OUTPUT_SYMBOLS: dict[str, set[str]] = {
 }
 
 
+
+SEMANTIC_KEY_REQUIRED = {
+    "period",
+    "tension",
+    "frequency",
+    "friction_force",
+    "angular_frequency",
+    "angular_velocity",
+}
+# omega/ω can denote angular velocity or angular frequency. They follow the
+# same fail-closed rule as T/f; AnswerItem's legacy mapping still supplies the
+# correct semantic key for ordinary omega and the omega_n variants.
+AMBIGUOUS_OUTPUT_SYMBOLS = {"T", "f", "omega", "ω"}
+OUTPUT_KEY_COMPATIBILITY: dict[str, set[str]] = {
+    "force": {"force", "tension", "friction_force", "normal_force"},
+    "distance": {"distance", "range"},
+    "final_velocity": {"final_velocity", "minimum_speed", "tangential_velocity"},
+    "post_collision_velocity": {"post_collision_velocity", "v1_after", "v2_after"},
+}
+
+
 REQUESTED_OUTPUT_LABEL_HINTS: dict[str, set[str]] = {
     "time": {"시간", "비행"},
     "range": {"수평거리", "사거리"},
@@ -86,10 +107,27 @@ def _num_in_display(numeric: float | None, display: str | None) -> bool:
     return any(math.isclose(float(numeric), x, rel_tol=2e-3, abs_tol=2e-3) for x in nums)
 
 
-def _has_requested_answer(req: str, symbols: set[str], labels: set[str]) -> bool:
+def _has_requested_answer(
+    req: str,
+    answers: list[Any],
+    symbols: set[str],
+    labels: set[str],
+) -> bool:
+    accepted_keys = {req} | OUTPUT_KEY_COMPATIBILITY.get(req, set())
+    for answer in answers:
+        output_key = getattr(answer, "output_key", None)
+        if output_key in accepted_keys:
+            return True
+
     expected = REQUESTED_OUTPUT_SYMBOLS.get(req, set())
-    if symbols & expected:
+    # T and f are semantic collisions. They are never accepted without an
+    # explicit output_key, regardless of a matching human-readable label.
+    unambiguous_symbols = symbols - AMBIGUOUS_OUTPUT_SYMBOLS
+    if unambiguous_symbols & expected:
         return True
+    if req in SEMANTIC_KEY_REQUIRED:
+        return False
+
     label_hints = REQUESTED_OUTPUT_LABEL_HINTS.get(req, set())
     return any(hint in label for hint in label_hints for label in labels)
 
@@ -116,6 +154,11 @@ def validate_answer_consistency(*, ok: bool, answer: Any | None, answers: list[A
                     warnings.append("대표 answer.numeric이 answers[0].numeric과 다릅니다.")
         for idx, ans in enumerate(answers):
             role = getattr(ans, "role", None)
+            output_key = getattr(ans, "output_key", None)
+            if output_key is not None and output_key not in REQUESTED_OUTPUT_SYMBOLS:
+                errors.append(
+                    f"answers[{idx}]에 미등록 output_key `{output_key}`가 있습니다."
+                )
             numeric = getattr(ans, "numeric", None)
             display = getattr(ans, "display", None)
             if ok and numeric is None and display:
@@ -142,7 +185,7 @@ def validate_answer_consistency(*, ok: bool, answer: Any | None, answers: list[A
             if req not in REQUESTED_OUTPUT_SYMBOLS:
                 errors.append(f"requested_outputs에 미등록 출력 \u0060{req}\u0060가 있습니다.")
                 continue
-            if not _has_requested_answer(req, symbols, labels):
+            if not _has_requested_answer(req, answers, symbols, labels):
                 expected = sorted(REQUESTED_OUTPUT_SYMBOLS.get(req, set()))
                 got = sorted(symbols)
                 errors.append(f"requested_outputs `{req}`에 해당하는 answer가 없습니다. expected={expected}, got={got}, labels={sorted(labels)}")

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Any
+from typing import Any, Literal
 
 
 class RecordCreate(BaseModel):
@@ -14,7 +14,7 @@ class RecordCreate(BaseModel):
     difficulty: str | None = None
     favorite: bool = False
     review_due: str | None = None
-    source: str | None = None
+    source: Literal["engine", "manual", "import", "local-study"] = "manual"
 
 
 class RecordUpdate(BaseModel):
@@ -24,7 +24,6 @@ class RecordUpdate(BaseModel):
     difficulty: str | None = None
     tags: list[str] | None = None
     mastery: int | None = None
-    source: str | None = None
 
 
 class ReviewUpdate(BaseModel):
@@ -48,7 +47,8 @@ class RecordItem(BaseModel):
     review_count: int = 0
     last_reviewed_at: str | None = None
     mastery: int = 0
-    source: str = "manual"
+    source: Literal["engine", "manual", "import"] = "manual"
+    verified: bool = False
 
 
 class RecordList(BaseModel):

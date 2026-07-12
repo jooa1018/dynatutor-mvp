@@ -53,7 +53,7 @@ class AtwoodPulleySolver(BaseSolver):
             answer=Answer(symbolic="a=(m2-m1)g/(m1+m2), T=2m1m2g/(m1+m2)", numeric=round(a_val, 6), unit="m/s²", display=display),
             answers=[
                 AnswerItem("가속도 성분", "a", round(a_val, 6), "m/s²", f"가속도 성분 a = {a_val:.3f} m/s² ({direction})", "primary"),
-                AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary"),
+                AnswerItem("장력", "T", round(T_val, 6), "N", f"장력 T = {T_val:.3f} N", "primary", output_key="tension"),
             ],
             steps=steps,
             verification=merge_reports(pre, verification),

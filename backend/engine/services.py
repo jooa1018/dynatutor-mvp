@@ -74,7 +74,15 @@ def _partial_guidance_steps(c):
 
 
 def _answer_item_model(a):
-    return AnswerItemModel(label=a.label, symbol=a.symbol, numeric=a.numeric, unit=a.unit, display=a.display, role=a.role)
+    return AnswerItemModel(
+        label=a.label,
+        symbol=a.symbol,
+        numeric=a.numeric,
+        unit=a.unit,
+        display=a.display,
+        role=a.role,
+        output_key=a.output_key,
+    )
 
 
 def _answers_from_result(result):
@@ -82,7 +90,7 @@ def _answers_from_result(result):
         return [_answer_item_model(a) for a in result.answers]
     if result.answer:
         label = "최종 답"
-        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary")]
+        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary", output_key=None)]
     return []
 
 def _quantity_model(q):
@@ -135,6 +143,8 @@ def _route_decision_model(decision):
                 source_system_type=candidate.source_system_type,
                 source_subtype=candidate.source_subtype,
                 interpretation_score=candidate.interpretation_score,
+                interpretation_provenance=candidate.interpretation_provenance,
+                selection_eligible=candidate.selection_eligible,
             )
             for candidate in decision.candidates
         ],
@@ -293,6 +303,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                     ClarificationOptionModel(
                         id=o.id, label=o.label, description=o.description,
                         patch=o.patch, needs_value=o.needs_value,
+                        input_fields=[field.__dict__ for field in o.input_fields],
                     )
                     for o in clar.options
                 ],
@@ -384,7 +395,8 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                 question=clar.question,
                 why=clar.why,
                 options=[
-                    ClarificationOptionModel(id=o.id, label=o.label, description=o.description, patch=o.patch, needs_value=o.needs_value)
+                    ClarificationOptionModel(id=o.id, label=o.label, description=o.description, patch=o.patch, needs_value=o.needs_value,
+                        input_fields=[field.__dict__ for field in o.input_fields])
                     for o in clar.options
                 ],
             )

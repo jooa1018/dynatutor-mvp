@@ -480,7 +480,15 @@ def test_answer_validator_knows_extended_output_symbols():
     answers = [
         AnswerItem("운동마찰력", "f_k", 2.0, "N", "f_k = 2.000 N", "primary"),
         AnswerItem("탄성 퍼텐셜 에너지", "E", 3.0, "J", "E = 3.000 J", "primary"),
-        AnswerItem("주기", "T", 4.0, "s", "T = 4.000 s", "primary"),
+        AnswerItem(
+            "주기",
+            "T",
+            4.0,
+            "s",
+            "T = 4.000 s",
+            "primary",
+            output_key="period",
+        ),
         AnswerItem("충격량", "J", 5.0, "N*s", "J = 5.000 N*s", "primary"),
     ]
 

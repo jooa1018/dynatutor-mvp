@@ -8,7 +8,29 @@ function CheckIcon() {
   );
 }
 
-function FinalAnswers({ data }: { data: any }) {
+type AnswerItem = {
+  label: string;
+  symbol?: string | null;
+  numeric?: number | null;
+  unit?: string | null;
+  display: string;
+  role?: string | null;
+  output_key?: string | null;
+};
+
+type AnswerData = {
+  ok: boolean;
+  verification?: { passed?: boolean; checks?: string[] };
+  answers?: AnswerItem[];
+  answer?: { display?: string | null };
+  unsupported_reason?: string | null;
+  diagnosis?: {
+    selected_solver?: string | null;
+    canonical?: { confidence?: string | null };
+  };
+};
+
+function FinalAnswers({ data }: { data: AnswerData }) {
   const isVerified = Boolean(data?.ok && data?.verification?.passed);
   if (!isVerified) {
     return <p className="unsupported">{data?.unsupported_reason ?? '검증을 통과하지 못해 숫자 답을 표시하지 않습니다.'}</p>;
@@ -17,7 +39,7 @@ function FinalAnswers({ data }: { data: any }) {
   if (answers.length) {
     return (
       <div>
-        {answers.map((ans: any, idx: number) => (
+        {answers.map((ans: AnswerItem, idx: number) => (
           <div className="ans-line" key={`${ans.symbol ?? ans.label ?? idx}-${idx}`}>
             <span className="ans-sym">{ans.symbol ?? '·'}</span>
             <span className="ans-val">{ans.display}</span>
@@ -37,7 +59,7 @@ function FinalAnswers({ data }: { data: any }) {
   return <p className="unsupported">{data?.unsupported_reason}</p>;
 }
 
-export default function AnswerCard({ data, onSave }: { data: any; onSave: () => void }) {
+export default function AnswerCard({ data, onSave }: { data: AnswerData; onSave: () => void }) {
   const isVerified = Boolean(data?.ok && data?.verification?.passed);
   const checks: string[] = data?.verification?.checks ?? [];
   const residualPassed = checks.some((item) => item.startsWith('역대입:') && item.endsWith('✓'));

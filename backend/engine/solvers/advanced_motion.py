@@ -119,10 +119,26 @@ class InstantCenterVelocitySolver(BaseSolver):
         if omega is None:
             omega = v / r
             ans = Answer(symbolic="ω = v/r", numeric=round(omega, 6), unit="rad/s", display=f"ω = {omega:.3f} rad/s")
+            answer_item = AnswerItem(
+                label="각속도",
+                symbol="ω",
+                numeric=round(omega, 6),
+                unit="rad/s",
+                display=f"ω = {omega:.3f} rad/s",
+                output_key="angular_velocity",
+            )
             expected = "angular_velocity"
         else:
             v = omega * r
             ans = Answer(symbolic="v = ωr", numeric=round(v, 6), unit="m/s", display=f"v = {v:.3f} m/s")
+            answer_item = AnswerItem(
+                label="점의 속도",
+                symbol="v",
+                numeric=round(v, 6),
+                unit="m/s",
+                display=f"v = {v:.3f} m/s",
+                output_key="final_velocity",
+            )
             expected = "velocity"
         steps = [
             StepCard("순간중심 선택", "평면강체는 한 순간에 순간중심 IC를 기준으로 순수 회전하는 것처럼 속도를 구할 수 있습니다."),
@@ -131,7 +147,7 @@ class InstantCenterVelocitySolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, checks=["순간중심에 있는 점의 속도는 0입니다.", "IC에서 멀수록 같은 ω에서 속도가 커집니다."])
         attach_unit_check(verification, expected_unknown=expected, actual_unit=ans.unit)
-        return SolverResult(ok=True, answer=ans, steps=steps, verification=verification, used_equations=["v=ωr"])
+        return SolverResult(ok=True, answer=ans, answers=[answer_item], steps=steps, verification=verification, used_equations=["v=ωr"])
 
 
 class SlotPinRelativeMotionSolver(BaseSolver):

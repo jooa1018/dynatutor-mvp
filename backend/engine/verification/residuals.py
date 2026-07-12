@@ -50,6 +50,19 @@ def _k(cp: CanonicalProblem, key: str, unit: str) -> float | None:
         return None
 
 
+def _signed_angular_known(
+    cp: CanonicalProblem,
+    value: float | None,
+    sign_key: str,
+) -> float | None:
+    if value is None:
+        return None
+    sign = (cp.coordinate_data or {}).get(sign_key)
+    if sign in (-1, 1):
+        return abs(value) * float(sign)
+    return value
+
+
 def _first_not_none(*values):
     for value in values:
         if value is not None:
@@ -253,8 +266,11 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         y_final = y0 if "같은 높이" in raw else 0.0
     vx, vy = v0 * math.cos(th), v0 * math.sin(th)
     t, R = pool.get("t"), pool.get("R")
-    if t is None and R is not None and abs(vx) > 1e-12:
-        t = R / vx  # x-식으로 유도한 t를 y-식에 대입 — 결합 항등식 검사
+    delta_x = _first_not_none(pool.get("delta_x"), pool.get("Δx"))
+    # R is an unsigned range magnitude. It cannot recover signed time when vx<0.
+    # Only signed displacement may be used to reconstruct t.
+    if t is None and delta_x is not None and abs(vx) > 1e-12:
+        t = delta_x / vx
     checks: list[ResidualCheck] = []
     if t is not None:
         checks.append(ResidualCheck(
@@ -263,7 +279,21 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
             max(abs(y0), abs(y_final), 0.5 * g * t * t, 1.0),
         ))
     if t is not None and R is not None:
-        checks.append(ResidualCheck("포물선 R - vₓ·t", R - vx * t, max(abs(R), 1.0)))
+        checks.append(
+            ResidualCheck(
+                "포물선 사거리 크기: R - |vₓ·t|",
+                R - abs(vx * t),
+                max(abs(R), abs(vx * t), 1.0),
+            )
+        )
+    if t is not None and delta_x is not None:
+        checks.append(
+            ResidualCheck(
+                "포물선 수평 변위: Δx - vₓ·t",
+                delta_x - vx * t,
+                max(abs(delta_x), abs(vx * t), 1.0),
+            )
+        )
     hmax = _first_not_none(pool.get("H"), pool.get("h_max"))
     if hmax is not None:
         checks.append(ResidualCheck("최대높이 H - vy²/2g - y0", hmax - (y0 + vy * vy / (2 * g)), max(abs(hmax), 1.0)))
@@ -444,12 +474,24 @@ def _fixed_axis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         checks.append(ResidualCheck("고정축 회전: I·α - τ", I * alpha - tau, abs(tau) + 1.0))
     # Phase 39: 회전 kinematics 답 (ω = ω₀ + αt, v = ωr)
     omega_f = pool.get("omega_f")
-    a_k, t_k = _k(cp, "alpha", "rad/s^2"), _k(cp, "t", "s")
+    a_k = _signed_angular_known(
+        cp,
+        _k(cp, "alpha", "rad/s^2"),
+        "alpha_sign",
+    )
+    t_k = _k(cp, "t", "s")
     if omega_f is not None and None not in (a_k, t_k):
-        omega0 = _first_not_none(
+        omega0 = _signed_angular_known(
+            cp,
             _k(cp, "omega0", "rad/s"),
-            _k(cp, "omega", "rad/s"),
+            "omega0_sign",
         )
+        if omega0 is None:
+            omega0 = _signed_angular_known(
+                cp,
+                _k(cp, "omega", "rad/s"),
+                "omega_sign",
+            )
         if omega0 is None and explicitly_starts_from_angular_rest(cp):
             omega0 = 0.0
         if omega0 is not None:
@@ -682,8 +724,10 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
     if omega is None or alpha is None or radius is None:
         return []
     cd = getattr(cp, "coordinate_data", {}) or {}
-    omega_sign = _first_not_none(cd.get("omega_sign"), cd.get("angular_sign"))
-    alpha_sign = _first_not_none(cd.get("alpha_sign"), cd.get("angular_sign"))
+    omega_sign = cd.get("omega_sign")
+    alpha_sign = cd.get("alpha_sign")
+    if omega_sign is None and alpha_sign is None:
+        omega_sign = alpha_sign = cd.get("angular_sign")
     w = float(omega_sign) * omega if omega_sign is not None else None
     al = float(alpha_sign) * alpha if alpha_sign is not None else None
     checks: list[ResidualCheck] = []

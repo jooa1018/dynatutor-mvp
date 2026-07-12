@@ -87,6 +87,58 @@ class Answer:
     display: str | None = None
 
 
+_LEGACY_OUTPUT_KEY_BY_SYMBOL = {
+    "t": "time",
+    "R": "range",
+    "delta_x": "distance",
+    "Δx": "distance",
+    "s": "distance",
+    "x": "distance",
+    "H": "max_height",
+    "v_min": "minimum_speed",
+    "v0": "initial_velocity",
+    "v_i": "initial_velocity",
+    "vf": "final_velocity",
+    "v_f": "final_velocity",
+    "v": "final_velocity",
+    "v_r": "final_velocity",
+    "v_θ": "final_velocity",
+    "vB": "final_velocity",
+    "v_B": "final_velocity",
+    "a": "acceleration",
+    "aB": "acceleration",
+    "a_B": "acceleration",
+    "F": "force",
+    "F_net": "force",
+    "f_k": "friction_force",
+    "f_s": "friction_force",
+    "f_s,max": "friction_force",
+    "F_f": "friction_force",
+    "N": "normal_force",
+    "N1": "normal_force",
+    "N2": "normal_force",
+    "m": "mass",
+    "W": "work",
+    "J": "impulse",
+    "K": "kinetic_energy",
+    "KE": "kinetic_energy",
+    "U": "potential_energy",
+    "PE": "potential_energy",
+    "E_s": "elastic_energy",
+    "omega_n": "angular_frequency",
+    "ω_n": "angular_frequency",
+    "omega_f": "angular_velocity",
+    "omega": "angular_velocity",
+    "ω": "angular_velocity",
+    "alpha": "angular_acceleration",
+    "α": "angular_acceleration",
+    "v_t": "tangential_velocity",
+    "a_c": "centripetal_acceleration",
+    "T1": "tension",
+    "T2": "tension",
+}
+
+
 @dataclass
 class AnswerItem:
     label: str
@@ -95,6 +147,11 @@ class AnswerItem:
     unit: str | None = None
     display: str = ""
     role: str | None = "primary"
+    output_key: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.output_key is None and self.symbol is not None:
+            self.output_key = _LEGACY_OUTPUT_KEY_BY_SYMBOL.get(self.symbol)
 
 
 @dataclass

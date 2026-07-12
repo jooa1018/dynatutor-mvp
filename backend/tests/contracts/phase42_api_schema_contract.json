@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "source_commit": "a87596c56232b229e775693f39d62209c062ab8f",
+  "schema_version": 3,
+  "source_commit": "29073c47743f814e927ee767dead86b12263f0fa",
   "engine_dataclasses": {
     "CanonicalProblem": [
       "system_type",
@@ -108,7 +108,8 @@
       "numeric",
       "unit",
       "display",
-      "role"
+      "role",
+      "output_key"
     ],
     "VerificationReport": [
       "passed",
@@ -122,7 +123,8 @@
       "label",
       "description",
       "patch",
-      "needs_value"
+      "needs_value",
+      "input_fields"
     ],
     "ClarificationModel": [
       "rule",
@@ -175,6 +177,8 @@
     "Existing student-facing fields may not be deleted or repurposed.",
     "New optional fields may be added when the schema contract version is incremented.",
     "route_decision is additive and distinguishes select, clarify, and unsupported without changing legacy answer fields.",
-    "Legacy solvers continue to consume knowns, flags, and requested_outputs through the v1 compatibility view."
+    "Legacy solvers continue to consume knowns, flags, and requested_outputs through the v1 compatibility view.",
+    "AnswerItem output_key disambiguates colliding display symbols without removing legacy symbol or label fields.",
+    "Clarification input_fields adds typed multi-value inputs while needs_value remains for single-value clients."
   ]
 }

@@ -40,6 +40,8 @@ class RouteCandidate:
     source_system_type: str | None = None
     source_subtype: str | None = None
     interpretation_score: float = 1.0
+    interpretation_provenance: str = "legacy_primary"
+    selection_eligible: bool = True
     solver: BaseSolver | None = field(default=None, repr=False, compare=False)
 
 
@@ -217,37 +219,109 @@ class SolverRegistry:
             return solver_family
         return TYPE_TO_FAMILY.get(solver_id, solver_id.split("_", 1)[0])
 
-    def _variant_specs(self, c: CanonicalProblem) -> list[tuple[str, str | None, float, list[str]]]:
-        specs: dict[tuple[str, str | None], tuple[float, list[str]]] = {}
+    def _variant_specs(
+        self, c: CanonicalProblem
+    ) -> list[tuple[str, str | None, float, list[str], list[str], bool, str]]:
+        specs: dict[
+            tuple[str, str | None],
+            tuple[float, list[str], list[str], bool, str],
+        ] = {}
+        current = (c.system_type, c.subtype)
+        confirmed_by_user = bool((c.flags or {}).get("_clarify_model_chosen"))
+        provenance_priority = {
+            "alternative_interpretation": 0,
+            "parser_candidate": 1,
+            "legacy_primary": 2,
+            "user_confirmed": 3,
+        }
 
-        def add(system_type: str, subtype: str | None, score: float, reason: str) -> None:
+        def add(
+            system_type: str,
+            subtype: str | None,
+            score: float,
+            reason: str,
+            *,
+            provenance: str,
+            selection_eligible: bool,
+            risk_flags: list[str] | None = None,
+        ) -> None:
             key = (system_type, subtype)
             score = max(0.0, min(1.0, float(score)))
+            flags = list(risk_flags or [])
             if key not in specs:
-                specs[key] = (score, [reason])
+                specs[key] = (
+                    score,
+                    [reason],
+                    flags,
+                    selection_eligible,
+                    provenance,
+                )
                 return
-            previous_score, reasons = specs[key]
+            previous_score, reasons, previous_flags, previous_eligible, previous_provenance = specs[key]
             if reason not in reasons:
                 reasons.append(reason)
-            specs[key] = (max(previous_score, score), reasons)
+            for flag in flags:
+                if flag not in previous_flags:
+                    previous_flags.append(flag)
+            selected_provenance = (
+                provenance
+                if provenance_priority[provenance]
+                > provenance_priority[previous_provenance]
+                else previous_provenance
+            )
+            specs[key] = (
+                max(previous_score, score),
+                reasons,
+                previous_flags,
+                previous_eligible or selection_eligible,
+                selected_provenance,
+            )
 
         if c.canonical_v2 is not None:
             for parse_candidate in c.canonical_v2.parse_candidates:
                 for type_candidate in parse_candidate.system_type_candidates:
+                    key = (type_candidate.system_type, type_candidate.subtype)
+                    is_current = key == current
                     add(
                         type_candidate.system_type,
                         type_candidate.subtype,
                         min(float(parse_candidate.score), float(type_candidate.score)),
                         type_candidate.reason,
+                        provenance="parser_candidate",
+                        selection_eligible=not confirmed_by_user or is_current,
+                        risk_flags=(
+                            ["parser_candidate"]
+                            if not confirmed_by_user or is_current
+                            else ["parser_candidate", "alternative_interpretation"]
+                        ),
                     )
-        if (c.system_type, c.subtype) not in specs:
-            add(c.system_type, c.subtype, 1.0, "canonical compatibility interpretation")
+
+        if confirmed_by_user:
+            # A clarification choice is authoritative even when the same key was
+            # already emitted by the parser. Re-adding upgrades both score and
+            # provenance instead of leaving the parser's stale confidence intact.
+            add(
+                c.system_type,
+                c.subtype,
+                1.0,
+                "user-confirmed interpretation",
+                provenance="user_confirmed",
+                selection_eligible=True,
+                risk_flags=["user_confirmed"],
+            )
+        elif current not in specs:
+            add(
+                c.system_type,
+                c.subtype,
+                1.0,
+                "canonical compatibility interpretation",
+                provenance="legacy_primary",
+                selection_eligible=True,
+                risk_flags=["legacy_primary"],
+            )
 
         evidence = rank_type_evidence(c)
-        if (
-            len(evidence) > 1
-            and not (c.flags or {}).get("_clarify_model_chosen")
-        ):
+        if len(evidence) > 1 and not confirmed_by_user:
             for item in evidence:
                 score = min(
                     ROUTING_CONFIG.evidence_candidate_ceiling,
@@ -265,6 +339,9 @@ class SolverRegistry:
                     evidence_subtype,
                     score,
                     f"{item.label} evidence: {', '.join(item.reasons)}",
+                    provenance="alternative_interpretation",
+                    selection_eligible=True,
+                    risk_flags=["alternative_interpretation"],
                 )
 
         requested = set(c.requested_outputs or c.unknowns or [])
@@ -279,10 +356,30 @@ class SolverRegistry:
                 None,
                 0.65,
                 "generic F=ma compatibility candidate",
+                provenance="alternative_interpretation",
+                selection_eligible=not confirmed_by_user,
+                risk_flags=["alternative_interpretation"],
             )
         return [
-            (system_type, subtype, score, reasons)
-            for (system_type, subtype), (score, reasons) in specs.items()
+            (
+                system_type,
+                subtype,
+                score,
+                reasons,
+                risk_flags,
+                selection_eligible,
+                provenance,
+            )
+            for (
+                system_type,
+                subtype,
+            ), (
+                score,
+                reasons,
+                risk_flags,
+                selection_eligible,
+                provenance,
+            ) in specs.items()
         ]
 
     def _has_symbol(self, c: CanonicalProblem, symbol: str) -> bool:
@@ -770,7 +867,15 @@ class SolverRegistry:
         unsupported = self._unsupported_reasons(c)
         by_solver: dict[str, RouteCandidate] = {}
 
-        for system_type, subtype, interpretation_score, interpretation_evidence in self._variant_specs(c):
+        for (
+            system_type,
+            subtype,
+            interpretation_score,
+            interpretation_evidence,
+            interpretation_risk_flags,
+            selection_eligible,
+            interpretation_provenance,
+        ) in self._variant_specs(c):
             variant = replace(c, system_type=system_type, subtype=subtype)
             for solver in self.solvers:
                 match = solver.match(variant)
@@ -783,7 +888,7 @@ class SolverRegistry:
                     variant,
                     capability.get("requested_outputs", []),
                 )
-                risk_flags: list[str] = []
+                risk_flags: list[str] = list(interpretation_risk_flags)
                 if "generic" in match.reason.lower() or solver_id == "single_particle_newton":
                     risk_flags.append("generic_fallback")
                 if (system_type, subtype) != (c.system_type, c.subtype):
@@ -810,19 +915,34 @@ class SolverRegistry:
                     source_system_type=system_type,
                     source_subtype=subtype,
                     interpretation_score=round(interpretation_score, 4),
+                    interpretation_provenance=interpretation_provenance,
+                    selection_eligible=selection_eligible,
                     solver=match.solver,
                 )
                 previous = by_solver.get(solver_id)
-                if previous is None or candidate.normalized_score > previous.normalized_score:
+                if (
+                    previous is None
+                    or (
+                        candidate.selection_eligible,
+                        candidate.normalized_score,
+                    )
+                    > (
+                        previous.selection_eligible,
+                        previous.normalized_score,
+                    )
+                ):
                     by_solver[solver_id] = candidate
-                elif candidate.normalized_score == previous.normalized_score:
+                elif (
+                    candidate.selection_eligible == previous.selection_eligible
+                    and candidate.normalized_score == previous.normalized_score
+                ):
                     previous.evidence = list(
                         dict.fromkeys(previous.evidence + candidate.evidence)
                     )
 
         candidates = sorted(
             by_solver.values(),
-            key=lambda item: item.normalized_score,
+            key=lambda item: (item.selection_eligible, item.normalized_score),
             reverse=True,
         )
         if unsupported:
@@ -837,11 +957,24 @@ class SolverRegistry:
                 [],
                 reason="No solver matched any retained interpretation.",
             )
+        if (
+            (c.flags or {}).get("_clarify_model_chosen")
+            and not any(candidate.selection_eligible for candidate in candidates)
+        ):
+            return RouteDecision(
+                "unsupported",
+                candidates,
+                reason="The user-confirmed interpretation is not supported.",
+            )
 
         viable = [
             candidate
             for candidate in candidates
-            if not candidate.missing_requirements and not candidate.contradictions
+            if (
+                candidate.selection_eligible
+                and not candidate.missing_requirements
+                and not candidate.contradictions
+            )
         ]
         if not viable:
             return RouteDecision(

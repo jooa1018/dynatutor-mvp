@@ -65,12 +65,10 @@ class PlaneRigidBodyAccelerationSolver(BaseSolver):
         aA = _get_aA(c)
         omega_magnitude = magnitude_si(c.knowns["omega"], "rad/s") if "omega" in c.knowns else None
         alpha_magnitude = magnitude_si(c.knowns["alpha"], "rad/s^2") if "alpha" in c.knowns else None
-        omega_sign = c.coordinate_data.get(
-            "omega_sign", c.coordinate_data.get("angular_sign")
-        )
-        alpha_sign = c.coordinate_data.get(
-            "alpha_sign", c.coordinate_data.get("angular_sign")
-        )
+        omega_sign = c.coordinate_data.get("omega_sign")
+        alpha_sign = c.coordinate_data.get("alpha_sign")
+        if omega_sign is None and alpha_sign is None:
+            omega_sign = alpha_sign = c.coordinate_data.get("angular_sign")
         compact_raw = (c.raw_text or "").replace(" ", "").lower()
         requested = set(c.requested_outputs or c.unknowns or [])
         cartesian_requested = (

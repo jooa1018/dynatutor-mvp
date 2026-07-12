@@ -27,24 +27,24 @@ for arg in "$@"; do
 done
 
 echo "[check_all] frontend metadata"
-./scripts/check_frontend_metadata.sh
+bash ./scripts/check_frontend_metadata.sh
 
 echo "[check_all] backend fast"
-./scripts/check_backend_fast.sh
+bash ./scripts/check_backend_fast.sh
 
 if [ "$WITH_BENCHMARK" = "1" ]; then
   echo "[check_all] backend benchmark (optional convenience check; official validation also supports running this script separately)"
-  ./scripts/check_backend_benchmark.sh
+  bash ./scripts/check_backend_benchmark.sh
 fi
 
 if [ "$WITH_AUDIT" = "1" ]; then
   echo "[check_all] backend audit (optional convenience check; official validation also supports running this script separately)"
-  ./scripts/check_backend_audit.sh
+  bash ./scripts/check_backend_audit.sh
 fi
 
 if [ "$WITH_FRONTEND_BUILD" = "1" ]; then
   echo "[check_all] frontend build"
-  ./scripts/check_frontend_build.sh
+  bash ./scripts/check_frontend_build.sh
 fi
 
 echo "[check_all] completed"
