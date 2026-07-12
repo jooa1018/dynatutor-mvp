@@ -38,7 +38,7 @@ def test_phase17_spring_energy_generator():
 
 
 def test_phase17_rolling_energy_generator_uses_shape_beta():
-    out = solve_problem("속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
+    out = solve_problem("정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
     assert out.ok
     expected = math.sqrt(2 * 9.81 / (1 + 2/5))
     assert math.isclose(out.answer.numeric, expected, rel_tol=1e-5)
