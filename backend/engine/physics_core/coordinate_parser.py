@@ -44,6 +44,11 @@ _ANGULAR_CLAUSE_BOUNDARY_RE = re.compile(
     r"(?:이고|이며|그리고|[,.;\n]|(?<![A-Za-z0-9_])and(?![A-Za-z0-9_]))",
     re.IGNORECASE,
 )
+_ANGULAR_QUANTITY_RE = re.compile(
+    rf"{_ASCII_IDENTIFIER_LEFT}(?:omega_?0|omega|alpha){_ASCII_IDENTIFIER_RIGHT}"
+    r"|ω\s*[₀0]?|α|초기\s*각속도|각속도|각가속도",
+    re.IGNORECASE,
+)
 
 
 def _normalized_direction_token(text: str) -> str:
@@ -102,11 +107,12 @@ def _quantity_angular_sign(
     *,
     excluded_spans: tuple[tuple[int, int], ...] = (),
 ) -> int | None:
-    """Bind a direction to an angular quantity inside the same clause.
+    """Bind a direction to an angular quantity without crossing another quantity.
 
-    Alias matches that overlap a more specific quantity span can be excluded,
-    so omega0 phrases never double as ordinary omega. The nearest direction
-    wins; conflicting directions in one clause remain ambiguous.
+    Same-clause directions are preferred. A direction-only clause immediately
+    before or after the quantity is also accepted for natural forms such as
+    omega=2이며 반시계방향. Alias spans overlapping omega0 remain excluded
+    from ordinary omega, and any conflicting candidate fails closed.
     """
     alias_spans = _angular_alias_spans(
         text,
@@ -123,33 +129,55 @@ def _quantity_angular_sign(
         clause_start = boundary.end()
     clause_ranges.append((clause_start, len(text)))
 
-    candidates: list[tuple[int, int]] = []
+    directions_by_clause: list[list[tuple[int, int, int]]] = []
     for start, end in clause_ranges:
-        matches = [
-            span
-            for span in alias_spans
-            if start <= span[0] and span[1] <= end
-        ]
-        if not matches:
+        directions_by_clause.append(
+            [
+                (direction_start + start, direction_end + start, sign)
+                for direction_start, direction_end, sign
+                in _direction_mentions(text[start:end])
+            ]
+        )
+
+    candidates: list[tuple[int, int]] = []
+    for alias_start, alias_end in alias_spans:
+        clause_index = next(
+            (
+                index
+                for index, (start, end) in enumerate(clause_ranges)
+                if start <= alias_start and alias_end <= end
+            ),
+            None,
+        )
+        if clause_index is None:
             continue
-        directions = [
-            (direction_start + start, direction_end + start, sign)
-            for direction_start, direction_end, sign
-            in _direction_mentions(text[start:end])
-        ]
+
+        directions = list(directions_by_clause[clause_index])
+        if not directions:
+            for adjacent_index in (clause_index - 1, clause_index + 1):
+                if not 0 <= adjacent_index < len(clause_ranges):
+                    continue
+                adjacent_start, adjacent_end = clause_ranges[adjacent_index]
+                adjacent_text = text[adjacent_start:adjacent_end]
+                adjacent_directions = directions_by_clause[adjacent_index]
+                if (
+                    adjacent_directions
+                    and not _ANGULAR_QUANTITY_RE.search(adjacent_text)
+                ):
+                    directions.extend(adjacent_directions)
+
         if not directions:
             continue
         signs = {sign for _, _, sign in directions}
         if len(signs) != 1:
             return None
         sign = next(iter(signs))
-        for alias_start, alias_end in matches:
-            alias_center = (alias_start + alias_end) // 2
-            distance = min(
-                abs(alias_center - ((direction_start + direction_end) // 2))
-                for direction_start, direction_end, _ in directions
-            )
-            candidates.append((distance, sign))
+        alias_center = (alias_start + alias_end) // 2
+        distance = min(
+            abs(alias_center - ((direction_start + direction_end) // 2))
+            for direction_start, direction_end, _ in directions
+        )
+        candidates.append((distance, sign))
 
     if not candidates:
         return None
