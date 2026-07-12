@@ -245,7 +245,9 @@ details.step summary::-webkit-details-marker { display: none; }
 .rec { padding: 15px 0; border-top: 1px solid var(--line); }
 .rec:first-child { border-top: none; }
 .rec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.rec-id { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.rec-id { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.verified-record { color: var(--ok); background: var(--ok-soft); }
+.unverified-record { color: var(--muted); background: #F4F4F8; }
 .rec-title { font-weight: 580; font-size: 14.5px; }
 .rec-ans { font-family: var(--mono); font-size: 13px; color: var(--ok); font-weight: 600; word-break: keep-all; }
 .rec p { margin: 6px 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
