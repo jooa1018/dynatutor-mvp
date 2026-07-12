@@ -407,6 +407,16 @@ class HorizontalFrictionForceSolver(BaseSolver):
                         role="component",
                     )
                 )
+            answers.append(
+                AnswerItem(
+                    label="수직항력",
+                    symbol="N",
+                    numeric=round(normal, 6),
+                    unit="N",
+                    display=f"N = {normal:.3f} N",
+                    role="component",
+                )
+            )
             return SolverResult(
                 ok=True,
                 answer=Answer(
