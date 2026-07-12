@@ -300,7 +300,7 @@ class InclineHangingPulleySolver(BaseSolver):
 
         generated = solve_particle_newton_system(c)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors))
+            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors), selection_decision=generated.decision)
         sol = generated.solution
         a_val = float(sol[S.a])
         T_val = float(sol[S.T])
@@ -348,5 +348,6 @@ class InclineHangingPulleySolver(BaseSolver):
             verification=merge_reports(pre, verification),
             used_equations=["T - m1g sinθ = m1a", "m2g - T = m2a"],
             fbd=["m1: T, m1g sinθ, N", "m2: m2g, T"],
+            selection_decision=generated.decision,
             coordinate_guide=["+ 방향: m1 경사면 위, m2 아래"],
         )

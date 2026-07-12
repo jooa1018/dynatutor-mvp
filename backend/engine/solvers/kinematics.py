@@ -6,6 +6,12 @@ from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, St
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.physics_core.units import magnitude_si
 from engine.verification.checks import require_no_missing, merge_reports
+from engine.physics_core.validators import (
+    ValidationContext,
+    VariableConstraint,
+    candidate_from_mapping,
+    validate_and_select,
+)
 
 
 class ConstantAcceleration1DSolver(BaseSolver):
@@ -167,27 +173,105 @@ class ConstantAcceleration1DSolver(BaseSolver):
                 ),
             )
 
-        solved: list[tuple[str, float]] = []
-        for requested in requested_keys:
-            values = _unique_values(float(state[sym_map[requested]]) for state in states)
-            event_value = _select_event_value(c, requested, values)
-            if event_value is not None:
-                values = [event_value]
-            if len(values) > 1:
-                formatted = ", ".join(f"{value:.6g}" for value in values)
+        candidate_solutions = [
+            candidate_from_mapping(
+                state,
+                candidate_id=f"kinematics-state-{index}",
+                branch_info={"state_index": index},
+                rank_metadata={"solver": self.name},
+            )
+            for index, state in enumerate(states)
+        ]
+        preferred_candidate_id = None
+        event_description = None
+        if requested_keys == ["t"] and len(candidate_solutions) > 1:
+            time_values = [
+                float(candidate.symbolic_mapping[sym_map["t"]])
+                for candidate in candidate_solutions
+            ]
+            selected_time = _select_event_value(c, "t", time_values)
+            if selected_time is not None:
+                for candidate in candidate_solutions:
+                    value = float(candidate.symbolic_mapping[sym_map["t"]])
+                    if math.isclose(
+                        value,
+                        selected_time,
+                        rel_tol=1e-8,
+                        abs_tol=1e-9,
+                    ):
+                        preferred_candidate_id = candidate.candidate_id
+                        event_description = (
+                            "문제의 처음/다시/진행 구간 표현이 시간 사건을 유일하게 지정했습니다."
+                        )
+                        break
+        explicit_constraints = []
+        if sym_map["t"] in [sym_map[key] for key in unknown_candidates]:
+            explicit_constraints.append(
+                VariableConstraint(
+                    sym_map["t"],
+                    lower_bound=0.0,
+                    lower_inclusive=True,
+                    reason="시간은 명시된 운동 구간에서 0 이상이어야 합니다.",
+                    source="constant_acceleration_time_domain",
+                )
+            )
+        candidate_context = ValidationContext(
+            equations=equations,
+            substitutions=substitutions,
+            constraints=explicit_constraints,
+            requested_symbols=[sym_map[key] for key in requested_keys],
+            preferred_candidate_id=preferred_candidate_id,
+            event_description=event_description,
+            selection_policy="constant-acceleration-explicit-event",
+        )
+        selection_decision = validate_and_select(
+            candidate_solutions,
+            candidate_context,
+        )
+        if (
+            selection_decision.status != "selected"
+            or selection_decision.selected_candidate is None
+        ):
+            if selection_decision.status == "ambiguous":
+                alternatives = ", ".join(
+                    str(candidate.numerical_mapping)
+                    for candidate in selection_decision.valid_alternatives
+                )
                 return SolverResult(
                     ok=False,
                     verification=VerificationReport(
                         passed=False,
                         warnings=[
-                            f"{_label_for(requested)}에 물리적으로 가능한 해가 여러 개입니다: {formatted} {_unit_for(requested)}"
+                            "물리적으로 가능한 등가속도 후보가 여러 개입니다: "
+                            + alternatives
                         ],
-                        errors=[],
                     ),
-                    unsupported_reason="운동의 시간 구간이나 진행 방향을 더 지정해 어떤 해인지 선택해 주세요.",
+                    unsupported_reason=(
+                        "운동의 시간 구간이나 진행 방향을 더 지정해 어떤 해인지 선택해 주세요."
+                    ),
+                    selection_decision=selection_decision,
                 )
-            if values:
-                solved.append((requested, values[0]))
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=[
+                        "공통 후보 검증에서 등가속도 해를 확정하지 못했습니다: "
+                        + selection_decision.status
+                    ],
+                ),
+                unsupported_reason=(
+                    "입력한 조건과 물리적 정의역을 확인해 주세요."
+                ),
+                selection_decision=selection_decision,
+            )
+
+        selected_state = selection_decision.selected_candidate.symbolic_mapping
+        solved: list[tuple[str, float]] = [
+            (key, float(selected_state[sym_map[key]]))
+            for key in requested_keys
+            if sym_map[key] in selected_state
+        ]
 
         if not solved:
             return SolverResult(
@@ -230,6 +314,7 @@ class ConstantAcceleration1DSolver(BaseSolver):
             verification=merge_reports(pre if pre.passed else VerificationReport(passed=True), VerificationReport(passed=True, checks=checks)),
             used_equations=["vf=v0+at", "s=v0t+1/2at²", "vf²=v0²+2as", "s=(v0+vf)t/2"],
             coordinate_guide=["운동 방향을 +x로 잡고 속도와 가속도 부호를 정합니다."],
+            selection_decision=selection_decision,
         )
 
 

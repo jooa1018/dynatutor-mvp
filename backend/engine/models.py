@@ -100,6 +100,8 @@ _LEGACY_OUTPUT_KEY_BY_SYMBOL = {
     "v_i": "initial_velocity",
     "vf": "final_velocity",
     "v_f": "final_velocity",
+    "v1'": "v1_after",
+    "v2'": "v2_after",
     "v": "final_velocity",
     "v_r": "final_velocity",
     "v_θ": "final_velocity",
@@ -174,3 +176,5 @@ class SolverResult:
     used_equations: list[str] = field(default_factory=list)
     fbd: list[str] = field(default_factory=list)
     coordinate_guide: list[str] = field(default_factory=list)
+    # Additive Phase 47 diagnostics, serialized through the API adapter.
+    selection_decision: Any | None = None
