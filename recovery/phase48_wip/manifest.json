@@ -1,0 +1,24 @@
+{
+  "archive": "wjs.zip",
+  "archive_sha256": "9083aba0d33f2dcc5c41f935677750e917f9a459449e414e113272b474b387f3",
+  "archive_bytes": 55370,
+  "status": "emergency_workspace_draft_not_validated",
+  "phase47_remote_head": "91c944e96ac303b09568cabb026d9996a523a983",
+  "files": [
+    {"path":"wjs/work/phase48_adapted/AUDIT_NOTES.md","bytes":2023,"lines":38,"sha256":"59884cd3ab0aedd50a762c14d1cf8bbb6c10dcc18d41a1b69c32aefdb6b50231"},
+    {"path":"wjs/work/phase48_adapted/invariants.py","bytes":31158,"lines":816,"sha256":"50e427e93bc7ab02e9e563e10c070d1fbc5d1d07d2eff421905eec9bc2a7dd17"},
+    {"path":"wjs/work/phase48_adapted/loader.py","bytes":8276,"lines":236,"sha256":"2c646d717ae8bd24ff444e15d7ab0bfc72aa0efb21c1096f6f8291fe993f347b"},
+    {"path":"wjs/work/phase48_adapted/test_phase48_invariants.py","bytes":13824,"lines":406,"sha256":"038d8b82804ee07517d30c471fabd3eee2b73f4fe7fb3703fc8c5595ec2211af"},
+    {"path":"wjs/work/phase48_drafts/invariants.py","bytes":28586,"lines":735,"sha256":"ed5721a6c4d811fa612165c36ac4b0b73bc1f1ed60f9b1f7c3a334508bd15e14"},
+    {"path":"wjs/work/phase48_drafts/loader.py","bytes":6366,"lines":183,"sha256":"c3953095b0f9aaa197815118ec37dc1c2bb011442f8f101dc60ccc3da5feafd4"},
+    {"path":"wjs/work/phase48_drafts/test_phase48_invariants.py","bytes":11894,"lines":358,"sha256":"616a39e972db1b8c5cdcdf467188902ee48f661b34e04f65f357dcde8b55fbed"},
+    {"path":"wjs/work/phase48_drafts2/conditioning.py","bytes":13032,"lines":362,"sha256":"2b00fff25b4bd46b07091946d7d7cf36a63f75d8d824b0a6dc5bdad3351c52b8"},
+    {"path":"wjs/work/phase48_drafts2/policy.py","bytes":7761,"lines":220,"sha256":"c33885d40629083303044a8da17de5823469285683cd3a964e41dedb53054bd9"},
+    {"path":"wjs/work/phase48_drafts2/test_phase48_policy_conditioning.py","bytes":9080,"lines":268,"sha256":"71bccc69bc0a03f87ce06f3ff56d2492923ded6205eed0c48938202330942f07"},
+    {"path":"wjs/work/phase48_drafts2/types.py","bytes":4784,"lines":142,"sha256":"1eae4fc49c6051c235cfc13505df5937b3211c837fac11d9d12816cf96c5ab29"},
+    {"path":"wjs/work/phase48_suite/NOTES.md","bytes":1741,"lines":34,"sha256":"3a7b13068264d01171e924a9b2f99b72189309523722d2c75c52ea8a41aa2892"},
+    {"path":"wjs/work/phase48_suite/residuals.py","bytes":40798,"lines":972,"sha256":"fba7840e3099330127d98680945a9679d27fa43f29aa733f92fd3957691410f3"},
+    {"path":"wjs/work/phase48_suite/suite.py","bytes":18851,"lines":500,"sha256":"feee2292ee45016684d1412adb507e5cb684385e6acb14f8090c7b76d91241f5"},
+    {"path":"wjs/work/phase48_suite/test_phase48_suite.py","bytes":9095,"lines":288,"sha256":"9e3e767afb307907d18e60aca7b95642988c6d63e8d36c643ac3ee0c8cba86ef"}
+  ]
+}
