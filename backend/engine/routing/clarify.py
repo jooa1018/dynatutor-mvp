@@ -20,6 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import math
 
+from engine.errors import PhysicsClarificationError
 from engine.models import CanonicalProblem, Quantity
 
 # patch로 지정 가능한 값 화이트리스트 (API 노출 지점 — 임의 값 주입 차단)
@@ -249,7 +250,7 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
             raise ClarifyPatchError(f"허용되지 않는 requested_outputs: {bad}")
 
 
-class ClarifyPatchError(ValueError):
+class ClarifyPatchError(PhysicsClarificationError):
     pass
 
 
