@@ -426,17 +426,26 @@
               "body_shape",
               "I"
             ]
+          },
+          {
+            "one_of": [
+              "v0",
+              "v",
+              "explicit rest condition"
+            ]
           }
         ]
       },
       "optional_inputs": [
-        "g"
+        "g",
+        "v0",
+        "v"
       ],
       "requested_outputs": [
         "final_velocity"
       ],
       "assumptions": [
-        "starts from rest",
+        "initial speed or rest condition is explicit",
         "pure rolling",
         "static friction does no work"
       ],
@@ -487,6 +496,13 @@
               "body_shape",
               "I plus m and R"
             ]
+          },
+          {
+            "one_of": [
+              "v0",
+              "v",
+              "explicit rest condition"
+            ]
           }
         ]
       },
@@ -494,13 +510,15 @@
         "g",
         "m",
         "I",
-        "R"
+        "R",
+        "v0",
+        "v"
       ],
       "requested_outputs": [
         "final_velocity"
       ],
       "assumptions": [
-        "starts from rest",
+        "initial speed or rest condition is explicit",
         "pure rolling"
       ],
       "analytic_solver": "rolling_energy_general",
