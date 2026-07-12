@@ -253,8 +253,11 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         y_final = y0 if "같은 높이" in raw else 0.0
     vx, vy = v0 * math.cos(th), v0 * math.sin(th)
     t, R = pool.get("t"), pool.get("R")
-    if t is None and R is not None and abs(vx) > 1e-12:
-        t = R / vx  # x-식으로 유도한 t를 y-식에 대입 — 결합 항등식 검사
+    delta_x = _first_not_none(pool.get("delta_x"), pool.get("Δx"))
+    # R is an unsigned range magnitude. It cannot recover signed time when vx<0.
+    # Only signed displacement may be used to reconstruct t.
+    if t is None and delta_x is not None and abs(vx) > 1e-12:
+        t = delta_x / vx
     checks: list[ResidualCheck] = []
     if t is not None:
         checks.append(ResidualCheck(
@@ -263,7 +266,21 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
             max(abs(y0), abs(y_final), 0.5 * g * t * t, 1.0),
         ))
     if t is not None and R is not None:
-        checks.append(ResidualCheck("포물선 R - vₓ·t", R - vx * t, max(abs(R), 1.0)))
+        checks.append(
+            ResidualCheck(
+                "포물선 사거리 크기: R - |vₓ·t|",
+                R - abs(vx * t),
+                max(abs(R), abs(vx * t), 1.0),
+            )
+        )
+    if t is not None and delta_x is not None:
+        checks.append(
+            ResidualCheck(
+                "포물선 수평 변위: Δx - vₓ·t",
+                delta_x - vx * t,
+                max(abs(delta_x), abs(vx * t), 1.0),
+            )
+        )
     hmax = _first_not_none(pool.get("H"), pool.get("h_max"))
     if hmax is not None:
         checks.append(ResidualCheck("최대높이 H - vy²/2g - y0", hmax - (y0 + vy * vy / (2 * g)), max(abs(hmax), 1.0)))
