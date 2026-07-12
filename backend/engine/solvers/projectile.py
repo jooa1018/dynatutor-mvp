@@ -177,7 +177,7 @@ class ProjectileMotionSolver(BaseSolver):
             times = positive_times_for_height(y_final)
             if times:
                 asks_first = any(word in raw for word in ("처음", "최초", "first"))
-                asks_later = any(word in raw for word in ("다시", "두 번째", "두번째", "나중", "later", "second time"))
+                asks_later = any(word in raw for word in ("다시", "두 번째", "두번째", "나중", "착지", "떨어졌", "도착", "later", "second time", "landing"))
                 if len(times) > 1 and not (asks_first or asks_later):
                     alternatives = ", ".join(f"{value:.3f} s" for value in times)
                     return SolverResult(
