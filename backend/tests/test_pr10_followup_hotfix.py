@@ -134,6 +134,33 @@ def test_user_confirmed_model_with_missing_inputs_returns_clarify():
     )
 
 
+def test_user_confirmed_subtype_is_authoritative():
+    problem = CanonicalProblem(
+        system_type="particle_on_incline",
+        subtype="unknown_friction",
+        raw_text="30도 경사면 위 블록의 가속도는?",
+        knowns={
+            "theta": q("theta", 30.0, "deg"),
+            "g": q("g", 9.81, "m/s^2"),
+        },
+        requested_outputs=["acceleration"],
+        flags={"incline": True},
+    )
+    attach_canonical_v2(problem)
+    apply_clarify_patch(problem, {"subtype": "no_friction"})
+
+    decision = SolverRegistry().route(problem)
+
+    assert decision.status == "select"
+    assert decision.selected_solver_id == "incline_no_friction"
+    confirmed = next(
+        candidate
+        for candidate in decision.candidates
+        if candidate.source_subtype == "no_friction"
+    )
+    assert confirmed.interpretation_provenance == "user_confirmed"
+
+
 def test_user_confirmed_unsupported_model_does_not_fallback():
     problem = _mixed_problem(primary="spring_energy", requested="final_velocity")
     problem.system_type = "rigid_body_3d"
