@@ -99,13 +99,41 @@ class ConstantAcceleration1DSolver(BaseSolver):
         unknown_candidates = [k for k in ["vf", "s", "t", "a", "v0"] if k not in known]
 
         if not unknown_candidates:
+            inconsistent = [
+                str(eq)
+                for eq in equations
+                if not _residual_is_zero((eq.lhs - eq.rhs).subs(substitutions))
+            ]
+            if inconsistent:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=[
+                            "주어진 v0, vf, a, t, s가 모든 등가속도 운동식을 동시에 만족하지 않습니다."
+                        ],
+                    ),
+                    unsupported_reason="서로 모순되는 등가속도 조건을 확인해 주세요.",
+                )
             return SolverResult(
-                ok=False,
-                verification=VerificationReport(
-                    passed=False,
-                    errors=["모든 등가속도 변수가 이미 주어져 있어 새로 계산할 미지수가 없습니다."],
+                ok=True,
+                answer=Answer(
+                    symbolic="all constant-acceleration residuals = 0",
+                    numeric=None,
+                    unit="",
+                    display="주어진 등가속도 조건은 서로 일치합니다.",
                 ),
-                unsupported_reason="구하려는 값을 하나 이상 미지수로 남겨 주세요.",
+                steps=[
+                    StepCard(
+                        "조건 일관성 검사",
+                        "다섯 변수가 모두 주어져 네 개의 독립 등가속도 운동식에 전부 대입했습니다.",
+                    )
+                ],
+                verification=VerificationReport(
+                    passed=True,
+                    checks=["네 등가속도 운동식의 잔차가 모두 0입니다."],
+                ),
+                used_equations=["vf=v0+at", "s=v0t+1/2at²", "vf²=v0²+2as", "s=(v0+vf)t/2"],
             )
         requested_keys = _requested_keys(c, unknown_candidates)
 
@@ -142,6 +170,9 @@ class ConstantAcceleration1DSolver(BaseSolver):
         solved: list[tuple[str, float]] = []
         for requested in requested_keys:
             values = _unique_values(float(state[sym_map[requested]]) for state in states)
+            event_value = _select_event_value(c, requested, values)
+            if event_value is not None:
+                values = [event_value]
             if len(values) > 1:
                 formatted = ", ".join(f"{value:.6g}" for value in values)
                 return SolverResult(
@@ -219,6 +250,44 @@ def _requested_keys(c: CanonicalProblem, candidates: list[str]) -> list[str]:
     if keys:
         return keys
     return [_requested_key(c, candidates)]
+
+
+def _select_event_value(c: CanonicalProblem, key: str, values: list[float]) -> float | None:
+    """Select a root only when the problem states which event is intended."""
+
+    if key != "t" or len(values) <= 1:
+        return values[0] if len(values) == 1 else None
+    raw = (c.raw_text or "").lower().replace(" ", "")
+    positive = [value for value in values if value > 1e-9]
+
+    later_tokens = (
+        "다시",
+        "재차",
+        "돌아오",
+        "되돌아오",
+        "두번째",
+        "두번째",
+        "꼭대기이후",
+        "내려오",
+        "하강하며",
+    )
+    if any(token in raw for token in later_tokens):
+        return max(positive or values)
+
+    first_tokens = (
+        "처음으로",
+        "최초",
+        "첫번째",
+        "첫번째",
+        "올라가며",
+        "상승하며",
+    )
+    if any(token in raw for token in first_tokens):
+        return min(positive or values)
+
+    if any(token in raw for token in ("t>0", "t＞0", "0보다큰시간", "출발후")):
+        return positive[0] if len(positive) == 1 else None
+    return None
 
 
 def _consistent_states(equations, substitutions, sym_map, unknown_candidates: list[str]):
