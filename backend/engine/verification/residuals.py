@@ -470,18 +470,57 @@ def _fixed_axis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
 
 
 def _horizontal_friction(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
-    mu = _first_not_none(_k(cp, "mu_k", ""), _k(cp, "mu", ""))
+    mu = _first_not_none(
+        _k(cp, "mu_s", ""),
+        _k(cp, "mu_k", ""),
+        _k(cp, "mu", ""),
+    )
     m = _k(cp, "m", "kg")
     if m is None and "m2" not in (cp.knowns or {}):
         m = _k(cp, "m1", "kg")
     g = _k(cp, "g", "m/s^2")
-    f = pool.get("f")
-    if f is None or None in (m, g, mu):
+    if None in (m, g, mu):
         return []
-    checks = [ResidualCheck("수평 마찰력: f - μmg", f - mu * m * g, max(mu * m * g, 1.0))]
-    N = pool.get("N")
-    if N is not None:
-        checks.append(ResidualCheck("수직항력: N - mg", N - m * g, max(m * g, 1.0)))
+
+    limit = mu * m * g
+    checks: list[ResidualCheck] = []
+    maximum = pool.get("f_s,max")
+    static = pool.get("f_s")
+    kinetic = _first_not_none(pool.get("f_k"), pool.get("f"))
+    if maximum is not None:
+        checks.append(
+            ResidualCheck(
+                "최대 정지마찰력: f_s,max - μ_smg",
+                maximum - limit,
+                max(abs(limit), 1.0),
+            )
+        )
+    if static is not None:
+        violation = max(0.0, abs(static) - limit)
+        checks.append(
+            ResidualCheck(
+                "실제 정지마찰력 한계: max(0, |f_s|-μ_smg)",
+                violation,
+                max(abs(limit), 1.0),
+            )
+        )
+    if kinetic is not None:
+        checks.append(
+            ResidualCheck(
+                "수평 운동마찰력: f_k - μ_kmg",
+                kinetic - limit,
+                max(abs(limit), 1.0),
+            )
+        )
+    normal = pool.get("N")
+    if normal is not None:
+        checks.append(
+            ResidualCheck(
+                "수직항력: N - mg",
+                normal - m * g,
+                max(abs(m * g), 1.0),
+            )
+        )
     return checks
 
 
@@ -797,7 +836,7 @@ RELEVANT_KNOWNS: dict[str, set[str]] = {
     "fixed_axis_rotation": {"tau", "I", "omega", "omega0", "alpha", "t"},
     "vertical_circle": {"m", "R", "v", "g"},
     "instant_center_velocity": {"r", "R", "omega", "v", "vB"},
-    "horizontal_friction_force": {"mu", "mu_k", "m", "m1", "g"},
+    "horizontal_friction_force": {"mu", "mu_k", "mu_s", "m", "m1", "g", "F"},
     "pure_rolling_energy": {"g", "h"},
     "rolling_energy_general": {"g", "h", "I", "R", "m"},
     "flat_curve_friction": {"g", "r", "R", "mu", "mu_k", "mu_s"},
