@@ -234,13 +234,16 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
     # Angular signs are optional and bound independently to ω, ω₀, and α.
     omega0_sign = _quantity_angular_sign(
         text,
-        (r"\bomega_?0\b", r"ω\s*[₀0]", r"초기\s*각속도"),
+        (r"(?<![A-Za-z0-9_])omega_?0(?![A-Za-z0-9_])", r"ω\s*[₀0]", r"초기\s*각속도"),
     )
     omega_sign = _quantity_angular_sign(
         text,
-        (r"\bomega\b", r"ω(?!\s*[₀0])", r"(?<!초기\s)각속도"),
+        (r"(?<![A-Za-z0-9_])omega(?![A-Za-z0-9_])", r"ω(?!\s*[₀0])", r"(?<!초기\s)각속도"),
     )
-    alpha_sign = _quantity_angular_sign(text, (r"\balpha\b", r"α", r"각가속도"))
+    alpha_sign = _quantity_angular_sign(
+        text,
+        (r"(?<![A-Za-z0-9_])alpha(?![A-Za-z0-9_])", r"α", r"각가속도"),
+    )
     global_sign = explicit_angular_direction(text)
     if omega0_sign is not None:
         values["omega0_sign"] = float(omega0_sign)
@@ -251,14 +254,9 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
     if alpha_sign is not None:
         values["alpha_sign"] = float(alpha_sign)
         notes.append("angular acceleration direction parsed explicitly")
-    # A single global direction may fill both quantities only when none was
-    # quantity-bound. This prevents ω's explicit direction leaking into α.
-    if (
-        global_sign is not None
-        and omega0_sign is None
-        and omega_sign is None
-        and alpha_sign is None
-    ):
+    # Keep the explicit global sign for API compatibility and global phrases,
+    # but solvers prefer independently bound signs whenever either is present.
+    if global_sign is not None:
         values["angular_sign"] = float(global_sign)
         notes.append(
             "clockwise angular direction parsed as negative"
