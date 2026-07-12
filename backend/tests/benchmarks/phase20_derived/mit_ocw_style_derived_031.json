@@ -9,8 +9,8 @@
     "expected_solver": "plane_rigid_body_velocity",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 2.0,
-    "tolerance": 1e-05
+    "expected_numeric": 2,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_velocity_002",
@@ -22,8 +22,8 @@
     "expected_solver": "plane_rigid_body_velocity",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 2.0,
-    "tolerance": 1e-05
+    "expected_numeric": 2,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_velocity_003",
@@ -36,7 +36,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 1.5,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_velocity_004",
@@ -49,7 +49,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.6,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_velocity_005",
@@ -61,8 +61,8 @@
     "expected_solver": "plane_rigid_body_velocity",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 2.0,
-    "tolerance": 1e-05
+    "expected_numeric": 2,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_velocity_006",
@@ -75,7 +75,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 5.4,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_velocity_007",
@@ -87,8 +87,8 @@
     "expected_solver": "plane_rigid_body_velocity",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 2.0,
-    "tolerance": 1e-05
+    "expected_numeric": 2,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_velocity_008",
@@ -101,7 +101,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.25,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_acceleration_001",
@@ -114,7 +114,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 8.786353,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_acceleration_002",
@@ -127,7 +127,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 2.061553,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_acceleration_003",
@@ -140,7 +140,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 9.219544,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_acceleration_004",
@@ -153,7 +153,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 18.282232,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_acceleration_005",
@@ -166,7 +166,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 13.413426,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_rigid_acceleration_006",
@@ -179,7 +179,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 7.523962,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_polar_velocity_001",
@@ -192,7 +192,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.020797,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_polar_velocity_002",
@@ -205,7 +205,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.003332,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_polar_velocity_003",
@@ -218,7 +218,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 6.082763,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_polar_velocity_004",
@@ -231,7 +231,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 4.011234,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_polar_velocity_005",
@@ -244,7 +244,7 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 3.75,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_polar_velocity_006",
@@ -257,85 +257,85 @@
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
     "expected_numeric": 7.211103,
-    "tolerance": 1e-05
+    "tolerance": 0.00001
   },
   {
     "id": "mit_coriolis_001",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
+    "derivation_note": "DynaTutor-created Coriolis-term benchmark: a_C=2ωv_rel; no missing rotating-frame terms are assumed.",
     "topic": "coriolis_relative_motion",
     "problem_ko": "회전좌표계에서 r=0.5 m, 상대속도 v_rel=0.4 m/s, 각속도 omega=6 rad/s일 때 코리올리 가속도는?",
     "expected_solver": "coriolis_relative_motion",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 18.62901,
-    "tolerance": 1e-05
+    "expected_numeric": 4.8,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_coriolis_002",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
+    "derivation_note": "DynaTutor-created Coriolis-term benchmark: a_C=2ωv_rel; no missing rotating-frame terms are assumed.",
     "topic": "coriolis_relative_motion",
     "problem_ko": "회전좌표계에서 r=1 m, 상대속도 v_rel=0.5 m/s, 각속도 omega=3 rad/s일 때 코리올리 가속도는?",
     "expected_solver": "coriolis_relative_motion",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 9.486833,
-    "tolerance": 1e-05
+    "expected_numeric": 3,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_coriolis_003",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
+    "derivation_note": "DynaTutor-created Coriolis-term benchmark: a_C=2ωv_rel; no missing rotating-frame terms are assumed.",
     "topic": "coriolis_relative_motion",
     "problem_ko": "회전좌표계에서 r=0.8 m, 상대속도 v_rel=0.2 m/s, 각속도 omega=4 rad/s일 때 코리올리 가속도는?",
     "expected_solver": "coriolis_relative_motion",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 12.899612,
-    "tolerance": 1e-05
+    "expected_numeric": 1.6,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_coriolis_004",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
+    "derivation_note": "DynaTutor-created Coriolis-term benchmark: a_C=2ωv_rel; no missing rotating-frame terms are assumed.",
     "topic": "coriolis_relative_motion",
     "problem_ko": "회전좌표계에서 r=1.2 m, 상대속도 v_rel=0.6 m/s, 각속도 omega=2 rad/s일 때 코리올리 가속도는?",
     "expected_solver": "coriolis_relative_motion",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 5.366563,
-    "tolerance": 1e-05
+    "expected_numeric": 2.4,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_coriolis_005",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
+    "derivation_note": "DynaTutor-created Coriolis-term benchmark: a_C=2ωv_rel; no missing rotating-frame terms are assumed.",
     "topic": "coriolis_relative_motion",
     "problem_ko": "회전좌표계에서 r=0.4 m, 상대속도 v_rel=0.3 m/s, 각속도 omega=5 rad/s일 때 코리올리 가속도는?",
     "expected_solver": "coriolis_relative_motion",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 10.440307,
-    "tolerance": 1e-05
+    "expected_numeric": 3,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_coriolis_006",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied.",
+    "derivation_note": "DynaTutor-created Coriolis-term benchmark: a_C=2ωv_rel; no missing rotating-frame terms are assumed.",
     "topic": "coriolis_relative_motion",
     "problem_ko": "회전좌표계에서 r=1.5 m, 상대속도 v_rel=0.1 m/s, 각속도 omega=4 rad/s일 때 코리올리 가속도는?",
     "expected_solver": "coriolis_relative_motion",
     "expected_ok": true,
     "must_not_use_llm_for_answer": true,
-    "expected_numeric": 24.01333,
-    "tolerance": 1e-05
+    "expected_numeric": 0.8,
+    "tolerance": 0.00001
   },
   {
     "id": "mit_relative_accel_001",
