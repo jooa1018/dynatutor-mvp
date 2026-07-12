@@ -284,6 +284,46 @@ def _apply_one_known(cp: CanonicalProblem, sk: dict) -> None:
         cp.flags["no_friction"] = False
 
 
+def _clear_satisfied_input_contract(
+    cp: CanonicalProblem,
+    input_contract: str | None,
+) -> None:
+    needles_by_contract = {
+        "rigid_vA_vector": (
+            "A점 속도",
+            "vA",
+            "v_A",
+            "vAx",
+            "vAy",
+            "reference velocity",
+        ),
+        "rigid_aA_vector": (
+            "A점 가속도",
+            "aA",
+            "a_A",
+            "aAx",
+            "aAy",
+            "reference acceleration",
+        ),
+    }
+    needles = needles_by_contract.get(input_contract)
+    if needles is None:
+        return
+
+    def retain(item: str) -> bool:
+        compact = str(item).replace(" ", "")
+        return not any(
+            needle.replace(" ", "").lower() in compact.lower()
+            for needle in needles
+        )
+
+    cp.missing_info = [item for item in cp.missing_info if retain(item)]
+    if cp.canonical_v2 is not None:
+        cp.canonical_v2.missing_info = [
+            item for item in cp.canonical_v2.missing_info if retain(item)
+        ]
+
+
 def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     """사용자 선택/수정 patch를 canonical에 반영. 화이트리스트 밖 값은 거부.
 
@@ -334,6 +374,7 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
         if not isinstance(item, dict):
             raise ClarifyPatchError("set_knowns 항목은 객체여야 합니다.")
         _apply_one_known(cp, item)
+    _clear_satisfied_input_contract(cp, patch.get("input_contract"))
 
     for symbol in patch.get("remove_knowns") or []:
         if symbol not in ALLOWED_KNOWN_SYMBOLS:
