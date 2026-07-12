@@ -116,12 +116,21 @@ class VerificationReport(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class ClarificationInputFieldModel(BaseModel):
+    symbol: str
+    label: str
+    unit: str
+    input_type: str = "number"
+    required: bool = True
+
+
 class ClarificationOptionModel(BaseModel):
     id: str
     label: str
     description: str = ""
     patch: dict = Field(default_factory=dict)
     needs_value: str | None = None
+    input_fields: list[ClarificationInputFieldModel] = Field(default_factory=list)
 
 
 class ClarificationModel(BaseModel):
