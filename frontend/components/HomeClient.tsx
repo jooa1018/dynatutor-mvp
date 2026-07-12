@@ -155,7 +155,7 @@ export default function HomeClient() {
       tags: [data.diagnosis?.canonical?.system_type, data.diagnosis?.selected_solver, 'local-study'].filter(Boolean),
       raw_result: data,
       difficulty: data.diagnosis?.canonical?.system_type?.includes('coriolis') || data.diagnosis?.canonical?.system_type?.includes('rigid') ? '상급' : '미지정',
-      source: 'local-study',
+      source: 'engine',
     };
     try {
       const record = await saveRecord(payload);
