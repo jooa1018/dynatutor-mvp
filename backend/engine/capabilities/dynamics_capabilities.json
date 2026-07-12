@@ -69,7 +69,7 @@
         "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
       },
       "known_limitations": [
-        "Requires two of m/F/a; common residual checker has no dedicated single-particle Newton rule."
+        "Requires two of m/F/a; direction and net-force semantics need explicit or unambiguous evidence."
       ]
     },
     {
