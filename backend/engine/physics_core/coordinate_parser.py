@@ -337,21 +337,47 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
         r"초기\s*각속도",
     )
     omega0_spans = tuple(_angular_alias_spans(text, omega0_aliases))
+    omega_aliases = (
+        r"(?<![A-Za-z0-9_])omega(?![A-Za-z0-9_])",
+        r"ω",
+        r"각속도",
+    )
+    alpha_aliases = (
+        r"(?<![A-Za-z0-9_])alpha(?![A-Za-z0-9_])",
+        r"α",
+        r"각가속도",
+    )
+    omega_spans = tuple(
+        _angular_alias_spans(
+            text,
+            omega_aliases,
+            excluded_spans=omega0_spans,
+        )
+    )
+    alpha_spans = tuple(_angular_alias_spans(text, alpha_aliases))
+
     omega0_sign = _quantity_angular_sign(text, omega0_aliases)
     omega_sign = _quantity_angular_sign(
         text,
-        (
-            r"(?<![A-Za-z0-9_])omega(?![A-Za-z0-9_])",
-            r"ω",
-            r"각속도",
-        ),
+        omega_aliases,
         excluded_spans=omega0_spans,
     )
-    alpha_sign = _quantity_angular_sign(
-        text,
-        (r"(?<![A-Za-z0-9_])alpha(?![A-Za-z0-9_])", r"α", r"각가속도"),
-    )
+    alpha_sign = _quantity_angular_sign(text, alpha_aliases)
     global_sign = explicit_angular_direction(text)
+
+    collective_direction = re.search(
+        r"(?:둘\s*다|모두|(?<![A-Za-z0-9_])both(?![A-Za-z0-9_]))",
+        text,
+        re.IGNORECASE,
+    )
+    if global_sign is not None and collective_direction is not None:
+        if omega0_spans and omega0_sign is None:
+            omega0_sign = global_sign
+        if omega_spans and omega_sign is None:
+            omega_sign = global_sign
+        if alpha_spans and alpha_sign is None:
+            alpha_sign = global_sign
+        notes.append("collective angular direction applied to named quantities")
     if omega0_sign is not None:
         values["omega0_sign"] = float(omega0_sign)
         notes.append("initial angular velocity direction parsed explicitly")
