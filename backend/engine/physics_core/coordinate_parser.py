@@ -29,15 +29,36 @@ def _compact(text: str) -> str:
     return re.sub(r"\s+", "", text.lower())
 
 
+_ANGULAR_DIRECTION_RE = re.compile(
+    r"반\s*시계(?:\s*방향)?|counter\s*-?\s*clockwise|\bccw\b"
+    r"|시계(?:\s*방향)?|\bclockwise\b|\bcw\b",
+    re.IGNORECASE,
+)
+_ANGULAR_CLAUSE_BOUNDARY_RE = re.compile(
+    r"(?:이고|이며|그리고|[,.;\n]|\band\b)",
+    re.IGNORECASE,
+)
+
+
+def _direction_mentions(text: str) -> list[tuple[int, int, int]]:
+    mentions: list[tuple[int, int, int]] = []
+    for match in _ANGULAR_DIRECTION_RE.finditer(text):
+        compact = _compact(match.group(0))
+        sign = (
+            +1
+            if compact.startswith("반시계")
+            or compact.startswith("counterclockwise")
+            or compact == "ccw"
+            else -1
+        )
+        mentions.append((match.start(), match.end(), sign))
+    return mentions
+
+
 def explicit_angular_direction(text: str) -> int | None:
-    """Return an explicitly stated angular sign, or None when unstated."""
-    compact = _compact(text)
-    # "반시계방향" contains "시계방향", so CCW must be checked first.
-    if any(w in compact for w in ["반시계방향", "반시계", "counterclockwise", "ccw", "ccw방향"]):
-        return +1
-    if any(w in compact for w in ["시계방향", "clockwise", "cw", "cw방향"]):
-        return -1
-    return None
+    """Return one unambiguous explicit angular sign, never a default."""
+    signs = {sign for _, _, sign in _direction_mentions(text)}
+    return next(iter(signs)) if len(signs) == 1 else None
 
 
 def signed_angular_direction(text: str) -> int:
@@ -47,13 +68,40 @@ def signed_angular_direction(text: str) -> int:
 
 
 def _quantity_angular_sign(text: str, aliases: tuple[str, ...]) -> int | None:
-    for alias in aliases:
-        for match in re.finditer(alias, text, re.IGNORECASE):
-            window = text[max(0, match.start() - 35): min(len(text), match.end() + 35)]
-            sign = explicit_angular_direction(window)
-            if sign is not None:
-                return sign
-    return None
+    """Bind a direction to an angular quantity inside the same clause.
+
+    The nearest direction wins. Conflicting directions in the same clause, or
+    an equal-distance tie across clauses, are treated as ambiguous.
+    """
+    candidates: list[tuple[int, int]] = []
+    for clause in _ANGULAR_CLAUSE_BOUNDARY_RE.split(text):
+        alias_matches = [
+            match
+            for alias in aliases
+            for match in re.finditer(alias, clause, re.IGNORECASE)
+        ]
+        if not alias_matches:
+            continue
+        directions = _direction_mentions(clause)
+        if not directions:
+            continue
+        signs = {sign for _, _, sign in directions}
+        if len(signs) != 1:
+            return None
+        sign = next(iter(signs))
+        for alias_match in alias_matches:
+            alias_center = (alias_match.start() + alias_match.end()) // 2
+            distance = min(
+                abs(alias_center - ((start + end) // 2))
+                for start, end, _ in directions
+            )
+            candidates.append((distance, sign))
+
+    if not candidates:
+        return None
+    nearest = min(distance for distance, _ in candidates)
+    nearest_signs = {sign for distance, sign in candidates if distance == nearest}
+    return next(iter(nearest_signs)) if len(nearest_signs) == 1 else None
 
 
 def direction_to_angle_deg(direction_text: str) -> float | None:
@@ -183,22 +231,35 @@ def parse_coordinate_data_from_text(text: str) -> ParsedCoordinateData:
             values["aAx"], values["aAy"] = vec.x, vec.y
             notes.append(f"a_A direction parsed: {src}")
 
-    # Angular signs are optional and kept separately for ω and α.
-    omega_sign = _quantity_angular_sign(text, (r"omega", r"ω", r"각속도"))
-    alpha_sign = _quantity_angular_sign(text, (r"alpha", r"α", r"각가속도"))
+    # Angular signs are optional and bound independently to ω, ω₀, and α.
+    omega0_sign = _quantity_angular_sign(
+        text,
+        (r"\bomega_?0\b", r"ω\s*[₀0]", r"초기\s*각속도"),
+    )
+    omega_sign = _quantity_angular_sign(
+        text,
+        (r"\bomega\b", r"ω(?!\s*[₀0])", r"(?<!초기\s)각속도"),
+    )
+    alpha_sign = _quantity_angular_sign(text, (r"\balpha\b", r"α", r"각가속도"))
     global_sign = explicit_angular_direction(text)
+    if omega0_sign is not None:
+        values["omega0_sign"] = float(omega0_sign)
+        notes.append("initial angular velocity direction parsed explicitly")
     if omega_sign is not None:
         values["omega_sign"] = float(omega_sign)
         notes.append("angular velocity direction parsed explicitly")
     if alpha_sign is not None:
         values["alpha_sign"] = float(alpha_sign)
         notes.append("angular acceleration direction parsed explicitly")
-    if global_sign is not None:
+    # A single global direction may fill both quantities only when none was
+    # quantity-bound. This prevents ω's explicit direction leaking into α.
+    if (
+        global_sign is not None
+        and omega0_sign is None
+        and omega_sign is None
+        and alpha_sign is None
+    ):
         values["angular_sign"] = float(global_sign)
-        if omega_sign is None:
-            values["omega_sign"] = float(global_sign)
-        if alpha_sign is None:
-            values["alpha_sign"] = float(global_sign)
         notes.append(
             "clockwise angular direction parsed as negative"
             if global_sign < 0
