@@ -153,6 +153,7 @@ def _quantity_angular_sign(
             continue
 
         directions = list(directions_by_clause[clause_index])
+        same_clause = bool(directions)
         if not directions:
             for adjacent_index in (clause_index - 1, clause_index + 1):
                 if not 0 <= adjacent_index < len(clause_ranges):
@@ -168,16 +169,26 @@ def _quantity_angular_sign(
 
         if not directions:
             continue
-        signs = {sign for _, _, sign in directions}
-        if len(signs) != 1:
+        if same_clause and len({sign for _, _, sign in directions}) != 1:
             return None
-        sign = next(iter(signs))
+
         alias_center = (alias_start + alias_end) // 2
-        distance = min(
-            abs(alias_center - ((direction_start + direction_end) // 2))
-            for direction_start, direction_end, _ in directions
-        )
-        candidates.append((distance, sign))
+        direction_distances = [
+            (
+                abs(alias_center - ((direction_start + direction_end) // 2)),
+                sign,
+            )
+            for direction_start, direction_end, sign in directions
+        ]
+        distance = min(value for value, _ in direction_distances)
+        nearest_signs = {
+            sign
+            for value, sign in direction_distances
+            if value == distance
+        }
+        if len(nearest_signs) != 1:
+            return None
+        candidates.append((distance, next(iter(nearest_signs))))
 
     if not candidates:
         return None
