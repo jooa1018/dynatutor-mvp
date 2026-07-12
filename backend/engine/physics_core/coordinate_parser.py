@@ -155,7 +155,10 @@ def _quantity_angular_sign(
         directions = list(directions_by_clause[clause_index])
         same_clause = bool(directions)
         if not directions:
-            for adjacent_index in (clause_index - 1, clause_index + 1):
+            # Korean/English connective grammar normally places a quantity's
+            # direction in the following clause. Only fall back to a preceding
+            # direction-only clause for direction-before-quantity forms.
+            for adjacent_index in (clause_index + 1, clause_index - 1):
                 if not 0 <= adjacent_index < len(clause_ranges):
                     continue
                 adjacent_start, adjacent_end = clause_ranges[adjacent_index]
@@ -165,7 +168,8 @@ def _quantity_angular_sign(
                     adjacent_directions
                     and not _ANGULAR_QUANTITY_RE.search(adjacent_text)
                 ):
-                    directions.extend(adjacent_directions)
+                    directions = list(adjacent_directions)
+                    break
 
         if not directions:
             continue
