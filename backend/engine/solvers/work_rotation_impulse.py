@@ -69,6 +69,15 @@ class FixedAxisRotationSolver(BaseSolver):
             if kin is not None:
                 return kin
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["토크 τ와 관성모멘트 I가 필요합니다."]))
+        if Iq.value is None or Iq.value <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["질량 관성모멘트 I는 0보다 커야 합니다."],
+                ),
+                unsupported_reason="관성모멘트의 물리적 범위를 확인해 주세요.",
+            )
         alpha = tauq.value / Iq.value
         steps = [
             StepCard("문제 유형", "고정축 주위 회전에서는 병진운동의 F=ma에 대응해서 회전방정식 ΣM=Iα를 씁니다."),
@@ -87,7 +96,7 @@ class FixedAxisRotationSolver(BaseSolver):
     def _solve_rotational_kinematics(self, c: CanonicalProblem) -> SolverResult | None:
         """τ·I 없이도 답이 정해지는 회전 kinematics.
 
-        (a) α와 t가 주어지고 각속도를 물으면 ω = ω₀ + αt (ω₀ 기본 0).
+        (a) α와 t가 주어지고 각속도를 물으면 ω = ω₀ + αt.
         (b) ω와 반지름이 주어지고 점의 속력을 물으면 v = ωr.
         """
         knowns = c.knowns
@@ -114,6 +123,15 @@ class FixedAxisRotationSolver(BaseSolver):
             )
             alpha_value = magnitude_si(alphaq, "rad/s^2")
             time_value = magnitude_si(tq, "s")
+            if time_value < 0:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=["경과시간 t는 0 이상이어야 합니다."],
+                    ),
+                    unsupported_reason="작용시간의 물리적 범위를 확인해 주세요.",
+                )
             omega_f = omega0 + alpha_value * time_value
             steps = [
                 StepCard("문제 유형", "토크 없이 각가속도와 시간이 주어졌으므로 회전 kinematics(등각가속도)입니다. 직선운동의 v=v₀+at에 대응합니다."),
@@ -183,6 +201,16 @@ class ImpulseMomentumSolver(BaseSolver):
                     errors=["충격량 계산에는 힘 F와 작용시간 t가 필요합니다."],
                 ),
             )
+        duration = magnitude_si(tq, "s")
+        if duration < 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["작용시간 Δt는 0 이상이어야 합니다."],
+                ),
+                unsupported_reason="작용시간의 물리적 범위를 확인해 주세요.",
+            )
         if asks_final_velocity and (mq is None or v0q is None):
             return SolverResult(
                 ok=False,
@@ -190,6 +218,15 @@ class ImpulseMomentumSolver(BaseSolver):
                     passed=False,
                     errors=["최종속도에는 질량 m과 초기속도 v_i가 필요합니다."],
                 ),
+            )
+        if asks_final_velocity and magnitude_si(mq, "kg") <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["최종속도 계산의 질량 m은 0보다 커야 합니다."],
+                ),
+                unsupported_reason="질량의 물리적 범위를 확인해 주세요.",
             )
 
         generated = solve_energy_momentum_system(c)
@@ -204,7 +241,6 @@ class ImpulseMomentumSolver(BaseSolver):
             )
         impulse = float(generated.solution["J"])
         force_component = float(generated.solution["force_component"])
-        duration = magnitude_si(tq, "s")
 
         if asks_final_velocity:
             final_velocity = float(generated.solution["v_f"])
@@ -305,4 +341,3 @@ class ImpulseMomentumSolver(BaseSolver):
             ),
             used_equations=["|J| = |F|Δt"],
         )
-
