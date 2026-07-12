@@ -295,6 +295,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                     ClarificationOptionModel(
                         id=o.id, label=o.label, description=o.description,
                         patch=o.patch, needs_value=o.needs_value,
+                        input_fields=[field.__dict__ for field in o.input_fields],
                     )
                     for o in clar.options
                 ],
@@ -386,7 +387,8 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                 question=clar.question,
                 why=clar.why,
                 options=[
-                    ClarificationOptionModel(id=o.id, label=o.label, description=o.description, patch=o.patch, needs_value=o.needs_value)
+                    ClarificationOptionModel(id=o.id, label=o.label, description=o.description, patch=o.patch, needs_value=o.needs_value,
+                        input_fields=[field.__dict__ for field in o.input_fields])
                     for o in clar.options
                 ],
             )
