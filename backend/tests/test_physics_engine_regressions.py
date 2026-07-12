@@ -258,7 +258,7 @@ def test_inconsistent_overdetermined_kinematics_is_rejected():
 def test_multiple_physical_kinematic_roots_require_clarification():
     problem = CanonicalProblem(
         system_type="constant_acceleration_1d",
-        raw_text="v0=10 m/s, a=-1 m/s²에서 변위가 다시 0일 때 시간은?",
+        raw_text="v0=10 m/s, a=-1 m/s²에서 변위가 0일 때 시간은?",
         knowns={
             "v0": q("v0", 10.0, "m/s"),
             "a": q("a", -1.0, "m/s^2"),
