@@ -26,7 +26,20 @@ class RelativeAccelerationTranslationSolver(BaseSolver):
             or any(compact.count(word) >= 2 for word in ("오른쪽", "왼쪽", "위쪽", "아래쪽", "right", "left", "upward", "downward"))
         )
         opposite_direction = "반대방향" in compact or "opposite" in compact
-        if not (same_direction or opposite_direction):
+        signed_common_axis = any(
+            phrase in compact
+            for phrase in (
+                "오른쪽을+",
+                "왼쪽을+",
+                "위쪽을+",
+                "아래쪽을+",
+                "+x",
+                "+y",
+                "부호있는성분",
+                "signedcomponent",
+            )
+        )
+        if not (same_direction or opposite_direction or signed_common_axis):
             return SolverResult(
                 ok=False,
                 verification=VerificationReport(
