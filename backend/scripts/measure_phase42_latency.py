@@ -15,6 +15,8 @@ from pathlib import Path
 BLOCKED_OPTIONAL_ROOTS = frozenset({"chrono", "pychrono", "pydy", "scipy"})
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_PATH = BACKEND_ROOT / "tests" / "golden" / "phase42_dynamics_cases.json"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 
 class _BlockOptionalDependencies(importlib.abc.MetaPathFinder):
