@@ -1298,7 +1298,7 @@
       ],
       "assumptions": [
         "translating reference relation",
-        "collinear components when directions absent"
+        "directions or a signed common axis are explicit"
       ],
       "analytic_solver": "relative_acceleration_translation",
       "validators": [
@@ -1323,7 +1323,7 @@
         "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
       },
       "known_limitations": [
-        "Scalar default can hide vector-direction ambiguity."
+        "General non-collinear vectors require component inputs; direction-free magnitudes are rejected."
       ]
     },
     {
@@ -1351,7 +1351,8 @@
         "acceleration"
       ],
       "assumptions": [
-        "planar rotating frame"
+        "planar rotating frame",
+        "the Coriolis term alone needs omega and vrel; full acceleration needs every additional term"
       ],
       "analytic_solver": "coriolis_relative_motion",
       "validators": [
@@ -1376,7 +1377,7 @@
         "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
       },
       "known_limitations": [
-        "Uses a prescribed 2D component form; no general 3D frame orientation or trajectory."
+        "Uses a prescribed 2D component form; omitted r, alpha, or relative acceleration are not defaulted to zero."
       ]
     },
     {
@@ -1399,8 +1400,7 @@
             "one_of": [
               "aA vector",
               "zero aA",
-              "A fixed statement",
-              "relative-to-A request"
+              "A fixed statement"
             ]
           }
         ]
@@ -1473,7 +1473,8 @@
         "acceleration"
       ],
       "assumptions": [
-        "planar polar coordinates"
+        "planar polar coordinates",
+        "missing derivatives are never treated as zero without an explicit constancy statement"
       ],
       "analytic_solver": "polar_kinematics",
       "validators": [
@@ -1498,7 +1499,7 @@
         "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
       },
       "known_limitations": [
-        "Missing radial/angular derivatives default to zero; that assumption may be implicit."
+        "Acceleration requires rdot, rddot, and alpha/thetaddot, or explicit constant-radius/angular-speed evidence."
       ]
     },
     {
