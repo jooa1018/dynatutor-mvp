@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class RoutingConfig:
+    minimum_selection_score: float = 0.55
     selection_margin: float = 0.08
     cross_family_margin: float = 0.16
     missing_requirement_penalty: float = 0.15
