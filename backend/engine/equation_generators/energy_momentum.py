@@ -253,11 +253,7 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
                 else _q(c, "v", "m/s")
                 if "v" in c.knowns
                 else 0.0
-                if _explicitly_starts_from_rest(c)
-                else None
             )
-            if initial_speed is None:
-                return EnergyMomentumSolve(False, {}, system, ["초기속도 v0 또는 명시적인 정지 출발 조건이 필요합니다."])
             if "I" in c.knowns:
                 m = _q(c, "m", "kg")
                 R = _q(c, "R", "m")
