@@ -135,6 +135,8 @@ def _route_decision_model(decision):
                 source_system_type=candidate.source_system_type,
                 source_subtype=candidate.source_subtype,
                 interpretation_score=candidate.interpretation_score,
+                interpretation_provenance=candidate.interpretation_provenance,
+                selection_eligible=candidate.selection_eligible,
             )
             for candidate in decision.candidates
         ],
