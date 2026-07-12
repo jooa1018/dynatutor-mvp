@@ -711,7 +711,7 @@ def test_ambiguous_clarify_patch_reroutes_to_user_choice():
 
 def test_rigid_vector_clarification_round_trip_solves():
     text = (
-        "평면 강체에서 B점은 A점으로부터 오른쪽 1m에 있다. "
+        "평면 강체에서 rBA=(1,0)m이다. "
         "omega=2rad/s이며 반시계방향이다. B점 속도를 구하라."
     )
     initial = solve_problem(text)
@@ -729,7 +729,7 @@ def test_rigid_vector_clarification_round_trip_solves():
 
     response = solve_problem(text, clarify_patch=patch)
 
-    assert response.ok is True, response.model_dump()
-    assert response.verification.passed is True, response.model_dump()
+    assert response.ok is True, response.model_dump_json()
+    assert response.verification.passed is True, response.model_dump_json()
     assert response.diagnosis.selected_solver == "plane_rigid_body_velocity"
     assert response.answers
