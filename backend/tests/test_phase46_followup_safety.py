@@ -103,3 +103,16 @@ def test_unsupported_route_never_returns_a_clarification_question():
     assert response.unsupported_reason is not None
     assert "3D" in response.unsupported_reason
 
+def test_banked_curve_wording_does_not_create_incline_family_competition():
+    response = solve_problem(
+        "마찰 없는 경사진 커브 반지름 R=80m, 뱅크각 20도일 때 설계속도를 구하라."
+    )
+
+    assert response.ok is True
+    assert response.route_decision is not None
+    assert response.route_decision.status == "select"
+    assert response.route_decision.selected_solver_id == "banked_curve_no_friction"
+    assert "incline_no_friction" not in {
+        candidate.solver_id for candidate in response.route_decision.candidates
+    }
+
