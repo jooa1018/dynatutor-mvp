@@ -254,9 +254,15 @@ class SolverRegistry:
                     ROUTING_CONFIG.evidence_candidate_base
                     + ROUTING_CONFIG.evidence_candidate_step * item.score,
                 )
+                evidence_subtype = c.subtype if item.rep_type == c.system_type else None
+                if item.rep_type == "particle_on_incline":
+                    if (c.flags or {}).get("no_friction"):
+                        evidence_subtype = "no_friction"
+                    elif (c.flags or {}).get("friction"):
+                        evidence_subtype = "with_friction"
                 add(
                     item.rep_type,
-                    c.subtype if item.rep_type == c.system_type else None,
+                    evidence_subtype,
                     score,
                     f"{item.label} evidence: {', '.join(item.reasons)}",
                 )
@@ -846,7 +852,10 @@ class SolverRegistry:
             )
 
         top = viable[0]
-        if top.normalized_score < ROUTING_CONFIG.minimum_selection_score:
+        if (
+            top.normalized_score < ROUTING_CONFIG.minimum_selection_score
+            and not (c.flags or {}).get("_clarify_patch_applied")
+        ):
             return RouteDecision(
                 "clarify",
                 candidates,
