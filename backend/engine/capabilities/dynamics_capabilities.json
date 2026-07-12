@@ -890,7 +890,8 @@
           {
             "one_of": [
               "mu",
-              "mu_k"
+              "mu_k",
+              "mu_s"
             ]
           },
           {
@@ -902,7 +903,8 @@
         ]
       },
       "optional_inputs": [
-        "g"
+        "g",
+        "F"
       ],
       "requested_outputs": [
         "friction_force",
@@ -910,7 +912,8 @@
       ],
       "assumptions": [
         "horizontal surface",
-        "kinetic Coulomb friction"
+        "friction regime (static/kinetic) is explicit",
+        "actual static friction is bounded by μ_sN and is not automatically maximal"
       ],
       "analytic_solver": "horizontal_friction_force",
       "validators": [
@@ -935,7 +938,7 @@
         "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
       },
       "known_limitations": [
-        "Direct f=mu mg evaluation only; no static-friction inequality or coupled motion."
+        "Static-to-kinetic transition needs a separate μ_k before motion can be solved."
       ]
     },
     {
