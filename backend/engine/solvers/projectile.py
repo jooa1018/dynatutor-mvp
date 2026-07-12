@@ -195,6 +195,14 @@ class ProjectileMotionSolver(BaseSolver):
                 computed["time"] = AnswerItem("시간", "t", round(t_f, 6), "s", f"시간 t = {t_f:.3f} s", "primary")
                 computed["range"] = AnswerItem("수평 사거리", "R", round(range_magnitude, 6), "m", f"수평 사거리 R = {range_magnitude:.3f} m ({horizontal_direction}, Δx={range_x:.3f} m)", "primary")
                 computed["distance"] = computed["range"]
+                computed["delta_x"] = AnswerItem(
+                    "수평 변위",
+                    "delta_x",
+                    round(range_x, 6),
+                    "m",
+                    f"수평 변위 Δx = {range_x:.3f} m ({horizontal_direction})",
+                    "supporting",
+                )
                 event_note = "첫 도달" if len(times) > 1 and asks_first else "다시 도달" if len(times) > 1 else "유일한 양수 사건"
                 steps.append(StepCard("착지/목표 높이 조건", f"y_final={y_final:g} m에서 {event_note} 시간 해를 사용합니다.", r"y_0+v_0\sin\theta\,t-\frac12gt^2=y_f"))
                 steps.append(StepCard("수평 운동", "수평방향 가속도는 0이므로 x=vx t입니다.", r"x=v_0\cos\theta\,t"))
@@ -211,6 +219,23 @@ class ProjectileMotionSolver(BaseSolver):
                     answers.append(computed[key])
             elif key == "max_height":
                 answers.append(computed["max_height"])
+
+        if any(key in req for key in ("range", "distance")) and "range" in computed:
+            existing_symbols = {answer.symbol for answer in answers}
+            if "t" not in existing_symbols:
+                time_item = computed["time"]
+                answers.append(
+                    AnswerItem(
+                        time_item.label,
+                        time_item.symbol,
+                        time_item.numeric,
+                        time_item.unit,
+                        time_item.display,
+                        "supporting",
+                    )
+                )
+            if "delta_x" not in existing_symbols:
+                answers.append(computed["delta_x"])
 
         if not answers and computed:
             # fallback to legacy behavior
