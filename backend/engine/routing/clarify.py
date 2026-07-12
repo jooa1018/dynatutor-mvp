@@ -244,6 +244,7 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
     같은 안전한 patch 통로를 사용한다.
     """
     validate_clarify_patch(cp, patch)
+    cp.flags["_clarify_patch_applied"] = True
 
     st = patch.get("system_type")
     if st is not None:
