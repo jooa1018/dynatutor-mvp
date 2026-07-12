@@ -246,7 +246,15 @@ def solve_energy_momentum_system(c: CanonicalProblem, model: PhysicalModel | Non
 
         if st in {"pure_rolling_energy", "rolling_energy_general"}:
             h = _q(c, "h", "m") if "h" in c.knowns else float(c.launch_height or 0.0)
-            g = _q(c, "g", "m/s^2") or 9.81
+            gravity_input = _q(c, "g", "m/s^2") if "g" in c.knowns else None
+            g = 9.81 if gravity_input is None else gravity_input
+            if g <= 0 or h < 0:
+                return EnergyMomentumSolve(
+                    False,
+                    {},
+                    system,
+                    ["중력가속도 g는 0보다 크고 내려온 높이 h는 0 이상이어야 합니다."],
+                )
             initial_speed = (
                 _q(c, "v0", "m/s")
                 if "v0" in c.knowns
