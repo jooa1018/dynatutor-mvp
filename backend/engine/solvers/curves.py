@@ -18,7 +18,17 @@ class FlatCurveFrictionSolver(BaseSolver):
         Rq, muq = c.knowns.get("R"), c.knowns.get("mu")
         if not Rq or not muq:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["평평한 커브 최대속도에는 반지름 R과 마찰계수 μ가 필요합니다."]))
-        g = c.knowns["g"].value or 9.81
+        gq = c.knowns.get("g")
+        g = gq.value if gq is not None and gq.value is not None else 9.81
+        if Rq.value is None or Rq.value <= 0 or muq.value is None or muq.value < 0 or g <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["반지름 R과 중력가속도 g는 0보다 크고 마찰계수 μ는 0 이상이어야 합니다."],
+                ),
+                unsupported_reason="커브 입력값의 물리적 범위를 확인해 주세요.",
+            )
         v = math.sqrt(muq.value * g * Rq.value)
         steps = [
             StepCard("힘 역할", "평평한 커브에서는 도로가 기울어져 있지 않으므로 정지마찰력이 구심력 역할을 합니다."),
@@ -43,7 +53,23 @@ class BankedCurveNoFrictionSolver(BaseSolver):
         Rq, thq = c.knowns.get("R"), c.knowns.get("theta")
         if not Rq or not thq:
             return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["경사진 커브 설계속도에는 반지름 R과 뱅크각 θ가 필요합니다."]))
-        g = c.knowns["g"].value or 9.81
+        gq = c.knowns.get("g")
+        g = gq.value if gq is not None and gq.value is not None else 9.81
+        if (
+            Rq.value is None
+            or Rq.value <= 0
+            or thq.value is None
+            or not 0 < thq.value < 90
+            or g <= 0
+        ):
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["반지름 R과 중력가속도 g는 0보다 크고 뱅크각 θ는 0°<θ<90°여야 합니다."],
+                ),
+                unsupported_reason="경사진 커브 입력값의 물리적 범위를 확인해 주세요.",
+            )
         theta = math.radians(thq.value)
         v = math.sqrt(Rq.value * g * math.tan(theta))
         steps = [
