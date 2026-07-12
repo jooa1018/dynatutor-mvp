@@ -10,6 +10,7 @@ from typing import Iterable
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
 DEFAULT_PROTECTED_PREFIXES = ("/solve", "/diagnose", "/feedback", "/explain")
@@ -48,42 +49,79 @@ def configured_max_body_bytes() -> int:
     return value
 
 
-class RequestBodyLimitMiddleware(BaseHTTPMiddleware):
+class RequestBodyLimitMiddleware:
+    """Bound protected request bodies without trusting Content-Length alone."""
+
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         *,
         max_body_bytes: int,
         protected_prefixes: Iterable[str] = DEFAULT_PROTECTED_PREFIXES,
     ) -> None:
-        super().__init__(app)
+        self.app = app
         self.max_body_bytes = max(0, int(max_body_bytes))
         self.protected_prefixes = tuple(protected_prefixes)
 
-    async def dispatch(self, request: Request, call_next):
-        if (
-            self.max_body_bytes <= 0
-            or request.method not in {"POST", "PUT", "PATCH"}
-            or not request.url.path.startswith(self.protected_prefixes)
-        ):
-            return await call_next(request)
+    async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
+        response = JSONResponse(
+            status_code=413,
+            content={
+                "detail": "요청 본문이 허용 크기를 초과했습니다.",
+                "code": "request_body_too_large",
+                "max_body_bytes": self.max_body_bytes,
+            },
+        )
+        await response(scope, receive, send)
 
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or self.max_body_bytes <= 0
+            or scope.get("method") not in {"POST", "PUT", "PATCH"}
+            or not scope.get("path", "").startswith(self.protected_prefixes)
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        raw_content_length = dict(scope.get("headers", [])).get(b"content-length")
+        if raw_content_length is not None:
             try:
-                too_large = int(content_length) > self.max_body_bytes
-            except ValueError:
-                too_large = True
-            if too_large:
-                return JSONResponse(
-                    status_code=413,
-                    content={
-                        "detail": "요청 본문이 허용 크기를 초과했습니다.",
-                        "code": "request_body_too_large",
-                        "max_body_bytes": self.max_body_bytes,
-                    },
-                )
-        return await call_next(request)
+                declared_length = int(raw_content_length)
+            except (TypeError, ValueError):
+                await self._reject(scope, receive, send)
+                return
+            if declared_length < 0 or declared_length > self.max_body_bytes:
+                await self._reject(scope, receive, send)
+                return
+
+        buffered: list[Message] = []
+        received_bytes = 0
+        more_body = True
+        while more_body:
+            message = await receive()
+            buffered.append(message)
+            if message["type"] == "http.disconnect":
+                break
+            if message["type"] != "http.request":
+                continue
+            received_bytes += len(message.get("body", b""))
+            if received_bytes > self.max_body_bytes:
+                await self._reject(scope, receive, send)
+                return
+            more_body = bool(message.get("more_body", False))
+
+        index = 0
+
+        async def replay_receive() -> Message:
+            nonlocal index
+            if index < len(buffered):
+                message = buffered[index]
+                index += 1
+                return message
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await self.app(scope, replay_receive, send)
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
