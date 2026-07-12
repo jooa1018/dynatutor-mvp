@@ -75,6 +75,10 @@ def rank_type_evidence(cp: CanonicalProblem, floor: int = 2) -> list[FamilyEvide
     knowns = cp.knowns or {}
     out: list[FamilyEvidence] = []
     for family, (label, rep_type, flag_keys, known_keys) in _FAMILIES.items():
+        # "경사진 커브/뱅크각"의 경사 cue는 경사면 위 입자 모형이 아니다.
+        # Curve evidence가 명시되면 incline family의 substring 오탐을 억제한다.
+        if family == "incline" and flags.get("curve"):
+            continue
         score = 0
         reasons: list[str] = []
         hit_flags = [k for k in flag_keys if flags.get(k)]

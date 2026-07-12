@@ -278,7 +278,11 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
             errors=[],
             checks=[],
         )
-        clar = build_clarification(canonical)
+        clar = (
+            build_clarification(canonical)
+            if route_decision.status == "clarify"
+            else None
+        )
         clarification_model = None
         if clar is not None:
             clarification_model = ClarificationModel(
@@ -293,7 +297,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                     for o in clar.options
                 ],
             )
-        if clarification_model is None:
+        if clarification_model is None and route_decision.status == "clarify":
             clarification_model = _route_clarification_model(route_decision, canonical)
         response = SolveResponse(
             ok=False,
