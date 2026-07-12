@@ -14,7 +14,7 @@ class RecordCreate(BaseModel):
     difficulty: str | None = None
     favorite: bool = False
     review_due: str | None = None
-    source: Literal["engine", "manual", "import"] = "manual"
+    source: Literal["engine", "manual", "import", "local-study"] = "manual"
 
 
 class RecordUpdate(BaseModel):
