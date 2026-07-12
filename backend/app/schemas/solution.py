@@ -106,6 +106,7 @@ class AnswerItemModel(BaseModel):
     unit: str | None = None
     display: str
     role: str | None = "primary"
+    output_key: str | None = None
 
 
 class VerificationReport(BaseModel):
