@@ -95,6 +95,20 @@ _UNITS_BY_SYMBOL = {
     "vrel": {"m/s", None},
 }
 
+_MULTI_VALUE_CONTRACTS: dict[str, tuple[tuple[str, str], ...]] = {
+    "rigid_vA_vector": (("vAx", "m/s"), ("vAy", "m/s")),
+    "rigid_aA_vector": (("aAx", "m/s^2"), ("aAy", "m/s^2")),
+}
+
+
+@dataclass(frozen=True)
+class ClarifyInputField:
+    symbol: str
+    label: str
+    unit: str
+    input_type: str = "number"
+    required: bool = True
+
 
 @dataclass
 class ClarifyOption:
@@ -102,7 +116,8 @@ class ClarifyOption:
     label: str
     description: str
     patch: dict
-    needs_value: str | None = None  # 예: "mu" — 사용자가 숫자를 입력해야 완성되는 선택지
+    needs_value: str | None = None  # 예: "mu" — 기존 단일 값 입력 호환 경로
+    input_fields: list[ClarifyInputField] = field(default_factory=list)
 
 
 @dataclass
@@ -138,7 +153,7 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
         raise ClarifyPatchError("clarify_patch는 객체여야 합니다.")
     allowed_keys = {
         "system_type", "subtype", "assume", "set_known", "set_knowns",
-        "remove_knowns", "requested_outputs", "friction_type",
+        "remove_knowns", "requested_outputs", "friction_type", "input_contract",
     }
     unknown_keys = set(patch) - allowed_keys
     if unknown_keys:
@@ -187,6 +202,37 @@ def validate_clarify_patch(cp: CanonicalProblem, patch: dict) -> None:
             raise ClarifyPatchError("set_knowns는 리스트여야 합니다.")
         for item in values:
             _validate_known_spec(item, field_name="set_knowns")
+
+    input_contract = patch.get("input_contract")
+    if input_contract is not None:
+        expected = _MULTI_VALUE_CONTRACTS.get(input_contract)
+        if expected is None:
+            raise ClarifyPatchError(f"지원하지 않는 다중 입력 계약: {input_contract}")
+        values = patch.get("set_knowns")
+        if not isinstance(values, list):
+            raise ClarifyPatchError(
+                f"{input_contract} 계약에는 모든 set_knowns 값이 필요합니다."
+            )
+        by_symbol: dict[str, dict] = {}
+        for item in values:
+            symbol = item.get("symbol") if isinstance(item, dict) else None
+            if symbol in by_symbol:
+                raise ClarifyPatchError(f"{symbol} 값이 중복되었습니다.")
+            if isinstance(symbol, str):
+                by_symbol[symbol] = item
+        required_symbols = {symbol for symbol, _ in expected}
+        if set(by_symbol) != required_symbols:
+            missing = sorted(required_symbols - set(by_symbol))
+            extra = sorted(set(by_symbol) - required_symbols)
+            raise ClarifyPatchError(
+                f"{input_contract} 성분이 완전하지 않습니다. "
+                f"missing={missing}, extra={extra}"
+            )
+        for symbol, unit in expected:
+            if (by_symbol[symbol].get("unit") or None) != unit:
+                raise ClarifyPatchError(
+                    f"{symbol} 단위는 {unit}이어야 합니다."
+                )
     if "remove_knowns" in patch:
         values = patch.get("remove_knowns")
         if not isinstance(values, list):
@@ -672,12 +718,22 @@ def _rule_rigid_missing_reference(cp: CanonicalProblem) -> Clarification | None:
                 label=f"A점 {quantity_label} 성분 입력",
                 description=f"{x_key}, {y_key} 두 성분을 모두 입력해야 합니다.",
                 patch={
-                    "set_knowns": [
-                        {"symbol": x_key, "unit": unit, "label": x_key},
-                        {"symbol": y_key, "unit": unit, "label": y_key},
-                    ]
+                    "input_contract": (
+                        "rigid_vA_vector" if is_velocity else "rigid_aA_vector"
+                    )
                 },
-                needs_value=f"{x_key},{y_key}",
+                input_fields=[
+                    ClarifyInputField(
+                        symbol=x_key,
+                        label=f"A점 {quantity_label} x성분",
+                        unit=unit,
+                    ),
+                    ClarifyInputField(
+                        symbol=y_key,
+                        label=f"A점 {quantity_label} y성분",
+                        unit=unit,
+                    ),
+                ],
             ),
         ],
     )
