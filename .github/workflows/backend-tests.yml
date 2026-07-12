@@ -34,6 +34,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -68,6 +70,33 @@ jobs:
           python scripts/measure_runtime_budget.py
           --max-import-ms 5000
           --max-rss-mb 512
+
+      - name: Measure PR10 hotfix head performance
+        run: >-
+          python scripts/measure_pr10_hotfix_performance.py
+          --output /tmp/pr10-head-performance.json
+          --repeats 30
+          --warmups 5
+
+      - name: Measure PR10 hotfix base performance
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git worktree add /tmp/dynatutor-pr-base "$BASE_SHA"
+          cd /tmp/dynatutor-pr-base/backend
+          python "$GITHUB_WORKSPACE/backend/scripts/measure_pr10_hotfix_performance.py" \
+            --output /tmp/pr10-base-performance.json \
+            --repeats 30 \
+            --warmups 5
+
+      - name: Compare PR10 hotfix performance
+        if: github.event_name == 'pull_request'
+        run: >-
+          python scripts/measure_pr10_hotfix_performance.py
+          --compare-base /tmp/pr10-base-performance.json
+          --compare-head /tmp/pr10-head-performance.json
+          --max-regression-percent 15
 
   frontend:
     runs-on: ubuntu-latest
