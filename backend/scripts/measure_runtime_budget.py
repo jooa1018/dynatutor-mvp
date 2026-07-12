@@ -4,12 +4,15 @@ import argparse
 import importlib
 import json
 import platform
-import resource
 import sys
 import time
 
 
-def _max_rss_mb() -> float:
+def _max_rss_mb() -> float | None:
+    try:
+        import resource
+    except ModuleNotFoundError:
+        return None
     raw = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
     # Linux reports KiB; macOS reports bytes.
     if sys.platform == "darwin":
@@ -25,7 +28,9 @@ def measure_runtime_import() -> dict:
         "schema_version": 1,
         "import": "engine.services",
         "cold_import_ms": round(elapsed_ms, 6),
-        "max_rss_mb": round(_max_rss_mb(), 3),
+        "max_rss_mb": (
+            round(rss_mb, 3) if (rss_mb := _max_rss_mb()) is not None else None
+        ),
         "python": platform.python_version(),
         "platform": platform.platform(),
     }
@@ -51,7 +56,11 @@ def main() -> None:
             f"cold import {result['cold_import_ms']:.3f}ms > "
             f"budget {args.max_import_ms:.3f}ms"
         )
-    if args.max_rss_mb is not None and result["max_rss_mb"] > args.max_rss_mb:
+    if (
+        args.max_rss_mb is not None
+        and result["max_rss_mb"] is not None
+        and result["max_rss_mb"] > args.max_rss_mb
+    ):
         violations.append(
             f"RSS {result['max_rss_mb']:.3f}MB > budget {args.max_rss_mb:.3f}MB"
         )
