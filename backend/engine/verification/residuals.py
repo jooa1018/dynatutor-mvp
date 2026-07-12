@@ -699,8 +699,10 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
     if omega is None or alpha is None or radius is None:
         return []
     cd = getattr(cp, "coordinate_data", {}) or {}
-    omega_sign = _first_not_none(cd.get("omega_sign"), cd.get("angular_sign"))
-    alpha_sign = _first_not_none(cd.get("alpha_sign"), cd.get("angular_sign"))
+    omega_sign = cd.get("omega_sign")
+    alpha_sign = cd.get("alpha_sign")
+    if omega_sign is None and alpha_sign is None:
+        omega_sign = alpha_sign = cd.get("angular_sign")
     w = float(omega_sign) * omega if omega_sign is not None else None
     al = float(alpha_sign) * alpha if alpha_sign is not None else None
     checks: list[ResidualCheck] = []
