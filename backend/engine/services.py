@@ -74,7 +74,15 @@ def _partial_guidance_steps(c):
 
 
 def _answer_item_model(a):
-    return AnswerItemModel(label=a.label, symbol=a.symbol, numeric=a.numeric, unit=a.unit, display=a.display, role=a.role)
+    return AnswerItemModel(
+        label=a.label,
+        symbol=a.symbol,
+        numeric=a.numeric,
+        unit=a.unit,
+        display=a.display,
+        role=a.role,
+        output_key=a.output_key,
+    )
 
 
 def _answers_from_result(result):
@@ -82,7 +90,7 @@ def _answers_from_result(result):
         return [_answer_item_model(a) for a in result.answers]
     if result.answer:
         label = "최종 답"
-        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary")]
+        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary", output_key=None)]
     return []
 
 def _quantity_model(q):
