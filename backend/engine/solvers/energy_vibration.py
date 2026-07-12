@@ -275,46 +275,231 @@ class WorkEnergySpeedSolver(BaseSolver):
 
 
 class HorizontalFrictionForceSolver(BaseSolver):
-    """수평면에서 미끄러지는 물체의 운동마찰력 f = μN = μmg (Phase 39).
-
-    "μ=0.2, m=2kg, 마찰력은?" 같은 직접 질문 유형. 수직항력도 함께 제시한다.
-    """
+    """Resolve kinetic friction, actual static friction, and its limiting value."""
 
     name = "horizontal_friction_force"
 
     def match(self, c: CanonicalProblem) -> SolverMatch | None:
         if c.system_type == "horizontal_friction_force":
-            return SolverMatch(self, 80, "수평면 운동마찰력 f = μmg")
+            return SolverMatch(self, 80, "수평면의 실제 마찰력과 최대 정지마찰력을 구분")
         return None
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
-        muq = c.knowns.get("mu") or c.knowns.get("mu_k")
-        # 단일 물체 문맥에서 m₁ 표기로 들어온 질량도 허용
-        mq = c.knowns.get("m") or (c.knowns.get("m1") if "m2" not in c.knowns else None)
+        raw = (c.raw_text or "").lower()
+        friction_type = c.friction_type
+        muq = (
+            c.knowns.get("mu_s")
+            if friction_type == "static"
+            else c.knowns.get("mu_k")
+            if friction_type == "kinetic"
+            else c.knowns.get("mu")
+            or c.knowns.get("mu_k")
+            or c.knowns.get("mu_s")
+        )
+        mq = c.knowns.get("m") or (
+            c.knowns.get("m1") if "m2" not in c.knowns else None
+        )
         gq = c.knowns.get("g")
-        if not muq or not mq or not gq:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=["마찰력 계산에는 마찰계수 μ와 질량 m이 필요합니다."]))
-        mu, m, g = muq.value, mq.value, gq.value
-        N = m * g
-        f = mu * N
+        if muq is None or mq is None:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["마찰력 계산에는 해당 상태의 마찰계수와 질량 m이 필요합니다."],
+                ),
+            )
+
+        mu = float(muq.value)
+        mass = magnitude_si(mq, "kg")
+        gravity = magnitude_si(gq, "m/s^2") if gq is not None else 9.81
+        if mu < 0 or mass <= 0 or gravity <= 0:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["마찰계수는 0 이상, 질량과 중력가속도는 0보다 커야 합니다."],
+                ),
+                unsupported_reason="마찰 문제 입력값의 물리적 범위를 확인해 주세요.",
+            )
+
+        normal = mass * gravity
+        if friction_type == "static":
+            max_static = mu * normal
+            asks_maximum = any(
+                phrase in raw
+                for phrase in (
+                    "최대정지마찰",
+                    "최대 정지마찰",
+                    "정지마찰력의 최대",
+                    "maximum static friction",
+                )
+            )
+            applied_q = c.knowns.get("F")
+            explicitly_unloaded = any(
+                phrase in raw
+                for phrase in (
+                    "그냥 정지",
+                    "가만히",
+                    "수평 외력이 없",
+                    "외력이 없",
+                    "힘이 작용하지 않",
+                    "no horizontal force",
+                )
+            )
+
+            if asks_maximum:
+                friction = max_static
+                label = "최대 정지마찰력"
+                symbol = "f_s,max"
+                explanation = "최대 정지마찰력은 정지 상태가 버틸 수 있는 한계값입니다."
+            elif applied_q is not None:
+                applied = abs(magnitude_si(applied_q, "N"))
+                if applied > max_static + 1e-9:
+                    return SolverResult(
+                        ok=False,
+                        verification=VerificationReport(
+                            passed=False,
+                            errors=[
+                                f"필요한 정지마찰력 {applied:.6g} N이 한계 {max_static:.6g} N을 넘습니다."
+                            ],
+                        ),
+                        unsupported_reason="물체가 움직인 뒤의 답에는 운동마찰계수 μ_k가 필요합니다.",
+                    )
+                friction = applied
+                label = "실제 정지마찰력"
+                symbol = "f_s"
+                explanation = "정지 중 실제 마찰력은 필요한 수평 외력만큼만 생깁니다."
+            elif explicitly_unloaded:
+                friction = 0.0
+                label = "실제 정지마찰력"
+                symbol = "f_s"
+                explanation = "수평 외력이 없으므로 정지를 유지하는 데 필요한 마찰력은 0입니다."
+            else:
+                return SolverResult(
+                    ok=False,
+                    verification=VerificationReport(
+                        passed=False,
+                        errors=[
+                            "실제 정지마찰력을 구하려면 수평 외력 또는 외력이 없다는 조건이 필요합니다."
+                        ],
+                    ),
+                    unsupported_reason="실제 정지마찰력인지 최대값인지, 수평 외력이 얼마인지 알려 주세요.",
+                )
+
+            answers = [
+                AnswerItem(
+                    label=label,
+                    symbol=symbol,
+                    numeric=round(friction, 6),
+                    unit="N",
+                    display=f"{symbol} = {friction:.3f} N",
+                    role="primary",
+                )
+            ]
+            if not asks_maximum:
+                answers.append(
+                    AnswerItem(
+                        label="최대 정지마찰력",
+                        symbol="f_s,max",
+                        numeric=round(max_static, 6),
+                        unit="N",
+                        display=f"f_s,max = {max_static:.3f} N",
+                        role="component",
+                    )
+                )
+            return SolverResult(
+                ok=True,
+                answer=Answer(
+                    symbolic="|f_s| ≤ μ_s N",
+                    numeric=round(friction, 6),
+                    unit="N",
+                    display=f"{symbol} = {friction:.3f} N",
+                ),
+                answers=answers,
+                steps=[
+                    StepCard("수직항력", "수평면에서 N=mg입니다.", r"N=mg"),
+                    StepCard(
+                        "정지마찰 구간",
+                        explanation,
+                        r"|f_s|\le f_{s,max}=\mu_sN",
+                    ),
+                    StepCard(
+                        "계산",
+                        f"실제값={friction:.5g} N, 한계값={max_static:.5g} N",
+                    ),
+                ],
+                verification=VerificationReport(
+                    passed=True,
+                    checks=[
+                        f"|f_s|={abs(friction):.6g} N ≤ f_s,max={max_static:.6g} N",
+                        "실제 정지마찰력과 최대 정지마찰력을 구분했습니다.",
+                    ],
+                ),
+                used_equations=["|f_s| ≤ μ_s N", "N=mg"],
+            )
+
+        moving = friction_type == "kinetic" or any(
+            phrase in raw
+            for phrase in (
+                "운동마찰",
+                "미끄러",
+                "운동 중",
+                "움직이는",
+                "kinetic friction",
+            )
+        )
+        if not moving:
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=["마찰이 정지마찰인지 운동마찰인지 구분해야 합니다."],
+                ),
+                unsupported_reason="물체가 정지해 있는지 미끄러지고 있는지 알려 주세요.",
+            )
+
+        friction = mu * normal
         steps = [
-            StepCard("문제 유형", "수평면에서는 수직항력이 무게와 같습니다: N = mg."),
-            StepCard("마찰력 공식", "운동마찰력은 수직항력에 비례합니다.", r"f=\mu N=\mu m g"),
-            StepCard("계산", f"N = {m:g}×{g:g} = {N:.5g} N,  f = {mu:g}×{N:.5g} = {f:.5g} N"),
+            StepCard("수직항력", "수평면에서는 수직항력이 무게와 같습니다.", r"N=mg"),
+            StepCard("운동마찰력", "미끄러지는 동안 운동마찰력 크기는 μ_kN입니다.", r"f_k=\mu_kN"),
+            StepCard(
+                "계산",
+                f"N={normal:.5g} N, f_k={mu:g}×{normal:.5g}={friction:.5g} N",
+            ),
         ]
-        verification = VerificationReport(passed=True, checks=[
-            "단위: μ(무차원)×kg×m/s² = N.",
-            "μ=0이면 마찰력도 0입니다.",
-            "경사면이라면 N=mg·cosθ로 달라지므로 이 공식은 수평면 전용입니다.",
-        ])
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="f = μmg", numeric=round(f, 6), unit="N", display=f"f = {f:.3f} N"),
+            answer=Answer(
+                symbolic="f_k = μ_kmg",
+                numeric=round(friction, 6),
+                unit="N",
+                display=f"f_k = {friction:.3f} N",
+            ),
             answers=[
-                AnswerItem(label="운동마찰력", symbol="f", numeric=round(f, 6), unit="N", display=f"f = {f:.3f} N", role="primary"),
-                AnswerItem(label="수직항력", symbol="N", numeric=round(N, 6), unit="N", display=f"N = {N:.3f} N", role="component"),
+                AnswerItem(
+                    label="운동마찰력",
+                    symbol="f_k",
+                    numeric=round(friction, 6),
+                    unit="N",
+                    display=f"f_k = {friction:.3f} N",
+                    role="primary",
+                ),
+                AnswerItem(
+                    label="수직항력",
+                    symbol="N",
+                    numeric=round(normal, 6),
+                    unit="N",
+                    display=f"N = {normal:.3f} N",
+                    role="component",
+                ),
             ],
             steps=steps,
-            verification=verification,
-            used_equations=["N = mg", "f = μN"],
+            verification=VerificationReport(
+                passed=True,
+                checks=[
+                    "단위: μ_k(무차원)×kg×m/s² = N.",
+                    "이 식은 수평면에서 미끄러지는 상태에만 적용됩니다.",
+                ],
+            ),
+            used_equations=["N=mg", "f_k=μ_kN"],
         )
