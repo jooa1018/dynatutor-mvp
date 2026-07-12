@@ -36,7 +36,7 @@ def test_perpendicular_work_zero():
 
 
 def test_solid_sphere_rolling_not_disk():
-    out = solve_problem("속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
+    out = solve_problem("정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 1m 굴러 내려온다. 속도는?")
     assert out.ok
     assert out.diagnosis.selected_solver in {"pure_rolling_energy", "rolling_energy_general"}
     expected = math.sqrt(2 * 9.81 * 1 / (1 + 2/5))
