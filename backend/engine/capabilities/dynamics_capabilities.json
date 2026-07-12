@@ -51,7 +51,8 @@
         "answer_consistency",
         "dimension",
         "plausibility",
-        "provenance"
+        "provenance",
+        "equation_residual"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -69,10 +70,7 @@
       },
       "known_limitations": [
         "Requires two of m/F/a; common residual checker has no dedicated single-particle Newton rule."
-      ],
-      "verification": {
-        "equation_residual": true
-      }
+      ]
     },
     {
       "system_type": "particle_on_incline",
@@ -386,7 +384,8 @@
         "answer_consistency",
         "dimension",
         "plausibility",
-        "provenance"
+        "provenance",
+        "equation_residual"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -405,10 +404,7 @@
       },
       "known_limitations": [
         "No common residual checker; no real PyChrono scene; assumes a=alpha R and taut string."
-      ],
-      "verification": {
-        "equation_residual": true
-      }
+      ]
     },
     {
       "system_type": "pure_rolling_energy",
@@ -578,7 +574,8 @@
         "answer_consistency",
         "dimension",
         "plausibility",
-        "provenance"
+        "provenance",
+        "equation_residual"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -596,10 +593,7 @@
       },
       "known_limitations": [
         "Supports selected top/bottom tension or top minimum-speed forms; no contact-loss trajectory and no residual checker."
-      ],
-      "verification": {
-        "equation_residual": true
-      }
+      ]
     },
     {
       "system_type": "collision_1d",
@@ -1521,7 +1515,8 @@
         "answer_consistency",
         "dimension",
         "plausibility",
-        "provenance"
+        "provenance",
+        "equation_residual"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1539,10 +1534,7 @@
       },
       "known_limitations": [
         "Velocity-only instantaneous relation; no acceleration validity and no residual checker."
-      ],
-      "verification": {
-        "equation_residual": true
-      }
+      ]
     },
     {
       "system_type": "slot_pin_relative_motion",
