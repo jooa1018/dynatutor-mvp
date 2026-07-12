@@ -16,12 +16,12 @@ def _val(c: CanonicalProblem, *keys: str, default: float | None = None) -> float
 
 def _constant_radius_is_explicit(c: CanonicalProblem) -> bool:
     raw = (c.raw_text or "").lower().replace(" ", "")
-    return any(phrase in raw for phrase in ("반지름일정", "r이일정", "r=constant", "constantradius", "등속원운동"))
+    return any(phrase in raw for phrase in ("반지름일정", "반지름은일정", "반지름과각속도가일정", "r이일정", "r=constant", "constantradius", "등속원운동"))
 
 
 def _constant_angular_speed_is_explicit(c: CanonicalProblem) -> bool:
     raw = (c.raw_text or "").lower().replace(" ", "")
-    return any(phrase in raw for phrase in ("각속도일정", "등각속도", "constantangularspeed", "등속원운동"))
+    return any(phrase in raw for phrase in ("각속도일정", "반지름과각속도가일정", "등각속도", "constantangularspeed", "등속원운동"))
 
 
 class PolarKinematicsSolver(BaseSolver):
@@ -152,8 +152,9 @@ class SlotPinRelativeMotionSolver(BaseSolver):
         rddot = _val(c, "rddot")
         v_theta = r * omega
         v_mag = math.hypot(rdot, v_theta)
-        a_r = rddot - r * omega**2
-        a_theta = r * alpha + 2 * rdot * omega
+        has_acceleration_terms = alpha is not None and rddot is not None
+        a_r = rddot - r * omega**2 if has_acceleration_terms else None
+        a_theta = r * alpha + 2 * rdot * omega if has_acceleration_terms else None
         steps = [
             StepCard("상대운동 모델", "핀은 슬롯을 따라 r 방향으로 미끄러지고, 슬롯은 θ 방향으로 회전합니다."),
             StepCard("속도", "절대속도는 슬롯 방향 상대속도 r_dot과 회전에 의한 접선속도 rω의 벡터합입니다.", r"\vec v=\dot r\,\mathbf e_r+r\omega\,\mathbf e_\theta"),
