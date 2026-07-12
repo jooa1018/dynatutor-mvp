@@ -382,13 +382,6 @@ class SolverRegistry:
                 and c.knowns["aA"].value is not None
                 and abs(float(c.knowns["aA"].value)) <= 1e-12
             ),
-            "relative-to-A request": (
-                c.system_type == "plane_rigid_body_acceleration"
-                and any(
-                    phrase in raw.replace(" ", "")
-                    for phrase in ("A에대한", "A기준", "A에대해")
-                )
-            ),
             "fixed A plus scalar radius": (
                 ("r" in c.knowns or "R" in c.knowns)
                 and (
@@ -413,13 +406,6 @@ class SolverRegistry:
                         and "aA" in c.knowns
                         and c.knowns["aA"].value is not None
                         and abs(float(c.knowns["aA"].value)) <= 1e-12
-                    )
-                    or (
-                        c.system_type == "plane_rigid_body_acceleration"
-                        and any(
-                            phrase in raw.replace(" ", "")
-                            for phrase in ("A에대한", "A기준", "A에대해")
-                        )
                     )
                 )
             ),
@@ -529,6 +515,97 @@ class SolverRegistry:
                 key in c.knowns for key in ("mu_k", "mu")
             ):
                 missing.append("mu_k")
+        compact_raw = (c.raw_text or "").lower().replace(" ", "")
+        if solver_id == "relative_acceleration_translation":
+            same_direction = (
+                "같은방향" in compact_raw
+                or any(
+                    compact_raw.count(word) >= 2
+                    for word in (
+                        "오른쪽",
+                        "왼쪽",
+                        "위쪽",
+                        "아래쪽",
+                        "right",
+                        "left",
+                        "upward",
+                        "downward",
+                    )
+                )
+            )
+            opposite_direction = (
+                "반대방향" in compact_raw or "opposite" in compact_raw
+            )
+            signed_axis = any(
+                phrase in compact_raw
+                for phrase in (
+                    "오른쪽을+",
+                    "왼쪽을+",
+                    "위쪽을+",
+                    "아래쪽을+",
+                    "+x",
+                    "+y",
+                    "부호있는성분",
+                    "signedcomponent",
+                )
+            )
+            if not (same_direction or opposite_direction or signed_axis):
+                missing.append("relative-acceleration direction or signed common axis")
+        if solver_id == "polar_kinematics":
+            constant_radius = any(
+                phrase in compact_raw
+                for phrase in (
+                    "반지름일정",
+                    "반지름은일정",
+                    "반지름과각속도가일정",
+                    "r이일정",
+                    "r=constant",
+                    "constantradius",
+                    "등속원운동",
+                )
+            )
+            constant_omega = any(
+                phrase in compact_raw
+                for phrase in (
+                    "각속도일정",
+                    "반지름과각속도가일정",
+                    "등각속도",
+                    "constantangularspeed",
+                    "등속원운동",
+                )
+            )
+            wants_acceleration = (
+                "acceleration" in requested
+                or "radial_acceleration" in requested
+                or "transverse_acceleration" in requested
+                or "가속도" in compact_raw
+            )
+            if "rdot" not in c.knowns and not constant_radius:
+                missing.append("rdot or explicit constant radius")
+            if wants_acceleration and "rddot" not in c.knowns and not constant_radius:
+                missing.append("rddot or explicit constant radius")
+            if (
+                wants_acceleration
+                and "alpha" not in c.knowns
+                and "thetaddot" not in c.knowns
+                and not constant_omega
+            ):
+                missing.append("alpha/thetaddot or explicit constant angular speed")
+        if solver_id == "coriolis_relative_motion":
+            coriolis_only = (
+                "코리올리" in compact_raw
+                and not any(
+                    word in compact_raw
+                    for word in ("전체가속도", "절대가속도", "가속도성분")
+                )
+            )
+            if not coriolis_only:
+                if "r" not in c.knowns and "R" not in c.knowns:
+                    missing.append("rotating-frame radius r")
+                if "alpha" not in c.knowns and "thetaddot" not in c.knowns:
+                    missing.append("rotating-frame angular acceleration")
+                if "arel" not in c.knowns and "rddot" not in c.knowns:
+                    missing.append("relative acceleration")
         if solver_id in {"plane_rigid_body_velocity", "plane_rigid_body_acceleration"}:
             raw = c.raw_text or ""
             fixed_A = any(
@@ -536,13 +613,6 @@ class SolverRegistry:
                 for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
             )
             ref_symbol = "vA" if solver_id == "plane_rigid_body_velocity" else "aA"
-            relative_to_A = (
-                solver_id == "plane_rigid_body_acceleration"
-                and any(
-                    phrase in raw.replace(" ", "")
-                    for phrase in ("A에대한", "A기준", "A에대해")
-                )
-            )
             zero_reference = (
                 ref_symbol in c.knowns
                 and c.knowns[ref_symbol].value is not None
@@ -560,10 +630,10 @@ class SolverRegistry:
                 and "rBAy" in (c.coordinate_data or {})
             ) or ("rBAx" in c.knowns and "rBAy" in c.knowns)
             has_scalar_r = "r" in c.knowns or "R" in c.knowns
-            if not has_reference_vector and not fixed_A and not zero_reference and not relative_to_A:
-                missing.append(f"{ref_symbol} vector, fixed A, or relative-to-A request")
-            if not has_r_vector and not ((fixed_A or zero_reference or relative_to_A) and has_scalar_r):
-                missing.append("rBA vector (scalar r only for fixed/relative magnitude)")
+            if not has_reference_vector and not fixed_A and not zero_reference:
+                missing.append(f"{ref_symbol} vector, zero reference, or fixed A")
+            if not has_r_vector and not ((fixed_A or zero_reference) and has_scalar_r):
+                missing.append("rBA vector (scalar r only for a fixed/zero reference point)")
             compact_raw = raw.replace(" ", "").lower()
             explicit_cartesian_components = (
                 any(
