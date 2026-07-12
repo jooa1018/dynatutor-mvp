@@ -11,12 +11,18 @@ export function RecordCard({ record, onRun, onReview, onFavorite, onDelete }: {
   onDelete?: (record: any) => void;
 }) {
   const isLocal = record.local_only || record.id < 0;
+  const verificationLabel = record.source === 'engine' && record.verified
+    ? '엔진 검증'
+    : record.source === 'import'
+      ? '가져온 기록 · 미검증'
+      : '수동 기록 · 미검증';
   return (
     <div className="rec">
       <div className="rec-head">
         <span className="rec-id">
           {isLocal ? <span className="chip local-badge" title="서버에 저장되지 않고 이 기기에만 있는 기록">이 기기</span> : `#${record.id} · `}
           {isLocal ? ` ${record.problem_type ?? ''}` : record.problem_type}{record.favorite ? ' ★' : ''}
+          <span className={record.verified ? 'chip verified-record' : 'chip unverified-record'}>{verificationLabel}</span>
         </span>
         {record.answer_display ? <span className="rec-ans">{record.answer_display}</span> : null}
       </div>
