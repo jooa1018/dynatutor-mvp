@@ -245,8 +245,7 @@ class SolverRegistry:
 
         evidence = rank_type_evidence(c)
         if (
-            c.system_type == "unknown"
-            and len(evidence) > 1
+            len(evidence) > 1
             and not (c.flags or {}).get("_clarify_model_chosen")
         ):
             for item in evidence:
@@ -261,6 +260,20 @@ class SolverRegistry:
                     score,
                     f"{item.label} evidence: {', '.join(item.reasons)}",
                 )
+
+        requested = set(c.requested_outputs or c.unknowns or [])
+        newton_symbols = {"m", "F", "a"}
+        if (
+            c.system_type != "single_particle_newton"
+            and requested.intersection({"acceleration", "force", "mass"})
+            and len(newton_symbols.intersection(c.knowns)) >= 2
+        ):
+            add(
+                "single_particle_newton",
+                None,
+                0.65,
+                "generic F=ma compatibility candidate",
+            )
         return [
             (system_type, subtype, score, reasons)
             for (system_type, subtype), (score, reasons) in specs.items()
@@ -833,6 +846,17 @@ class SolverRegistry:
             )
 
         top = viable[0]
+        if top.normalized_score < ROUTING_CONFIG.minimum_selection_score:
+            return RouteDecision(
+                "clarify",
+                candidates,
+                question=self._clarification_question(viable),
+                reason=(
+                    "Top route confidence is below the calibrated selection "
+                    f"threshold ({top.normalized_score:.4f} < "
+                    f"{ROUTING_CONFIG.minimum_selection_score:.4f})."
+                ),
+            )
         warnings = (
             ["generic fallback selected"]
             if "generic_fallback" in top.risk_flags
