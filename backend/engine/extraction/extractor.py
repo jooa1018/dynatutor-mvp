@@ -584,8 +584,15 @@ def extract_problem(problem_text: str) -> CanonicalProblem:
     elif flags["spring"] and ("x" in knowns or "A" in knowns) and "k" in knowns and _has_any(t, ["저장된 에너지", "탄성 에너지", "탄성에너지", "탄성 퍼텐셜", "elastic"]):
         # E = ½kx² 직접 질문 — 질량 불필요 (Phase 39)
         c.system_type = "spring_energy"
-    elif (flags["friction"] or "mu" in knowns) and not flags["incline"] and not flags["pulley"] and "mu" in knowns and ("m" in knowns or ("m1" in knowns and "m2" not in knowns)) and _has_any(t, ["마찰력은", "마찰력을", "마찰력이 얼마", "friction force"]):
-        # 수평면 운동마찰력 f = μmg 직접 질문 (Phase 39)
+    elif (
+        (flags["friction"] or any(key in knowns for key in ("mu", "mu_s", "mu_k")))
+        and not flags["incline"]
+        and not flags["pulley"]
+        and any(key in knowns for key in ("mu", "mu_s", "mu_k"))
+        and ("m" in knowns or ("m1" in knowns and "m2" not in knowns))
+        and _has_any(t, ["마찰력은", "마찰력을", "마찰력이 얼마", "friction force"])
+    ):
+        # 수평면의 실제 정지마찰력/최대값/운동마찰력을 상태에 따라 구분한다.
         c.system_type = "horizontal_friction_force"
     elif flags["curve"] and flags["banked"] and flags["no_friction"]:
         c.system_type = "banked_curve_no_friction"
