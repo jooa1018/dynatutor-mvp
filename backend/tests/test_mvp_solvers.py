@@ -26,7 +26,7 @@ def test_pulley():
 
 
 def test_rolling_energy():
-    res = solve_problem("원판이 미끄러지지 않고 경사면을 높이 1.5 m만큼 굴러 내려간다. 속도를 구하라.")
+    res = solve_problem("정지 상태에서 원판이 미끄러지지 않고 경사면을 높이 1.5 m만큼 굴러 내려간다. 속도를 구하라.")
     assert res.ok
     assert res.diagnosis.selected_solver == "pure_rolling_energy"
     assert res.answer.unit == "m/s"
