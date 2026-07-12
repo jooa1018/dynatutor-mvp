@@ -44,10 +44,31 @@ def _normalized_display(value: str | None) -> str:
     return " ".join((value or "").split())
 
 
+def _raw_result_is_verified(raw: object) -> bool:
+    return bool(
+        isinstance(raw, dict)
+        and raw.get("ok") is True
+        and isinstance(raw.get("verification"), dict)
+        and raw["verification"].get("passed") is True
+    )
+
+
 @router.post("", response_model=RecordItem)
 def create_record(req: RecordCreate) -> RecordItem:
     raw = req.raw_result
-    if req.source == "engine":
+    source = req.source
+
+    # Cached pre-hotfix tabs still submit source=local-study. Preserve their
+    # verified engine records, but fail closed to manual/unverified whenever
+    # the persisted result cannot prove both solve and verification success.
+    if source == "local-study":
+        if _raw_result_is_verified(raw):
+            source = "engine"
+        else:
+            source = "manual"
+            raw = None
+
+    if source == "engine":
         if not isinstance(raw, dict):
             raise HTTPException(
                 status_code=422,
@@ -73,13 +94,16 @@ def create_record(req: RecordCreate) -> RecordItem:
                 status_code=422,
                 detail="answer_display가 검증된 engine 결과와 일치하지 않습니다.",
             )
-    elif req.source == "manual" and raw is not None:
+    elif source == "manual" and raw is not None:
         raise HTTPException(
             status_code=422,
             detail="manual 기록에는 engine raw_result를 첨부할 수 없습니다.",
         )
+
     payload = req.model_dump()
-    payload["verified"] = req.source == "engine"
+    payload["source"] = source
+    payload["raw_result"] = raw
+    payload["verified"] = source == "engine"
     return RecordItem(**add_record(payload))
 
 
