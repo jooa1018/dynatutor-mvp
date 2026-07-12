@@ -22,7 +22,7 @@ EXPECTED_UNIT_BY_SYMBOL: dict[str, str] = {
     "a": "m/s^2", "aB": "m/s^2", "a_B": "m/s^2", "a_c": "m/s^2",
     "T": "N",  # 이 코드베이스에서 T는 (대개) 장력. 문맥별 예외는 아래 참조.
     "T1": "N", "T2": "N", "N1": "N", "N2": "N",
-    "F": "N", "F_net": "N", "N": "N", "f": "N", "f_k": "N", "f_s": "N", "F_f": "N",
+    "F": "N", "F_net": "N", "N": "N", "f": "N", "f_k": "N", "f_s": "N", "f_s,max": "N", "F_f": "N",
     "W": "J", "E": "J", "K": "J", "U": "J", "KE": "J", "PE": "J", "E_k": "J", "E_p": "J", "U_s": "J", "E_s": "J",
     "J": "N*s",
     "tau": "N*m",
