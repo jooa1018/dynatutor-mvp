@@ -346,6 +346,7 @@ def apply_clarify_patch(cp: CanonicalProblem, patch: dict) -> CanonicalProblem:
         if sub not in ALLOWED_SUBTYPES:
             raise ClarifyPatchError(f"허용되지 않는 subtype: {sub}")
         cp.subtype = sub
+        cp.flags["_clarify_model_chosen"] = True
     if "friction_type" in patch:
         ft = patch.get("friction_type")
         if ft not in ALLOWED_FRICTION_TYPES:
