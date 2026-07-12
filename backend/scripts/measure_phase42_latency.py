@@ -15,6 +15,8 @@ from pathlib import Path
 BLOCKED_OPTIONAL_ROOTS = frozenset({"chrono", "pychrono", "pydy", "scipy"})
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_PATH = BACKEND_ROOT / "tests" / "golden" / "phase42_dynamics_cases.json"
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
 
 
 class _BlockOptionalDependencies(importlib.abc.MetaPathFinder):
@@ -89,18 +91,27 @@ def main() -> None:
     parser.add_argument("--repeats", type=int, default=5)
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--block-optional-dependencies", action="store_true")
+    parser.add_argument("--max-mean-ms", type=float)
+    parser.add_argument("--max-p95-ms", type=float)
     args = parser.parse_args()
-    print(
-        json.dumps(
-            measure(
-                repeats=args.repeats,
-                warmups=args.warmups,
-                block_optional_dependencies=args.block_optional_dependencies,
-            ),
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+    result = measure(
+        repeats=args.repeats,
+        warmups=args.warmups,
+        block_optional_dependencies=args.block_optional_dependencies,
     )
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+
+    violations: list[str] = []
+    if args.max_mean_ms is not None and result["mean_ms"] > args.max_mean_ms:
+        violations.append(
+            f"mean {result['mean_ms']:.3f}ms > budget {args.max_mean_ms:.3f}ms"
+        )
+    if args.max_p95_ms is not None and result["p95_ms"] > args.max_p95_ms:
+        violations.append(
+            f"p95 {result['p95_ms']:.3f}ms > budget {args.max_p95_ms:.3f}ms"
+        )
+    if violations:
+        raise SystemExit("latency budget exceeded: " + "; ".join(violations))
 
 
 if __name__ == "__main__":
