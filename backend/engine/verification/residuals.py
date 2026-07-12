@@ -50,6 +50,19 @@ def _k(cp: CanonicalProblem, key: str, unit: str) -> float | None:
         return None
 
 
+def _signed_angular_known(
+    cp: CanonicalProblem,
+    value: float | None,
+    sign_key: str,
+) -> float | None:
+    if value is None:
+        return None
+    sign = (cp.coordinate_data or {}).get(sign_key)
+    if sign in (-1, 1):
+        return abs(value) * float(sign)
+    return value
+
+
 def _first_not_none(*values):
     for value in values:
         if value is not None:
@@ -461,12 +474,24 @@ def _fixed_axis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         checks.append(ResidualCheck("고정축 회전: I·α - τ", I * alpha - tau, abs(tau) + 1.0))
     # Phase 39: 회전 kinematics 답 (ω = ω₀ + αt, v = ωr)
     omega_f = pool.get("omega_f")
-    a_k, t_k = _k(cp, "alpha", "rad/s^2"), _k(cp, "t", "s")
+    a_k = _signed_angular_known(
+        cp,
+        _k(cp, "alpha", "rad/s^2"),
+        "alpha_sign",
+    )
+    t_k = _k(cp, "t", "s")
     if omega_f is not None and None not in (a_k, t_k):
-        omega0 = _first_not_none(
+        omega0 = _signed_angular_known(
+            cp,
             _k(cp, "omega0", "rad/s"),
-            _k(cp, "omega", "rad/s"),
+            "omega0_sign",
         )
+        if omega0 is None:
+            omega0 = _signed_angular_known(
+                cp,
+                _k(cp, "omega", "rad/s"),
+                "omega_sign",
+            )
         if omega0 is None and explicitly_starts_from_angular_rest(cp):
             omega0 = 0.0
         if omega0 is not None:
