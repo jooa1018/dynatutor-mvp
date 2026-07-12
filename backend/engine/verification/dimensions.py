@@ -15,8 +15,8 @@ Q_ = ureg.Quantity
 # 심볼 → 기대 단위 예시(차원 비교 기준). 값이 ""이면 무차원.
 EXPECTED_UNIT_BY_SYMBOL: dict[str, str] = {
     "t": "s",
-    "R": "m", "h": "m", "s": "m", "x": "m", "d": "m", "r": "m",
-    "v": "m/s", "vf": "m/s", "v_f": "m/s", "v0": "m/s", "v_i": "m/s", "v_t": "m/s",
+    "R": "m", "H": "m", "h": "m", "s": "m", "x": "m", "d": "m", "r": "m",
+    "v": "m/s", "vf": "m/s", "v_f": "m/s", "v0": "m/s", "v_i": "m/s", "v_t": "m/s", "v_min": "m/s", "v_G": "m/s",
     "v1": "m/s", "v2": "m/s", "v1'": "m/s", "v2'": "m/s",
     "vB": "m/s", "v_B": "m/s", "v_max": "m/s",
     "a": "m/s^2", "aB": "m/s^2", "a_B": "m/s^2", "a_c": "m/s^2",
