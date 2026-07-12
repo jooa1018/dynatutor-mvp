@@ -4,6 +4,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.middleware.personal_auth import PersonalAccessTokenMiddleware
+from app.middleware.runtime_limits import (
+    RateLimitMiddleware,
+    RequestBodyLimitMiddleware,
+    configured_max_body_bytes,
+    configured_rate_limit,
+)
 
 from app.routes.diagnose import router as diagnose_router
 from app.routes.solve import router as solve_router
@@ -73,8 +79,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# If DYNATUTOR_ACCESS_TOKEN is set, useful API endpoints require a personal token.
-# If unset, local development remains frictionless.
+# Production/Render defaults: reject oversized CPU-heavy requests and limit
+# repeated solve/diagnose/explain traffic. Local development remains unlimited
+# unless the corresponding environment variables are set explicitly.
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    max_body_bytes=configured_max_body_bytes(),
+)
+app.add_middleware(
+    RateLimitMiddleware,
+    requests_per_window=configured_rate_limit(),
+)
+
+# Added last so authentication is evaluated before the inner runtime budgets.
+# If DYNATUTOR_ACCESS_TOKEN is unset, local development remains frictionless.
 app.add_middleware(PersonalAccessTokenMiddleware)
 
 app.include_router(diagnose_router, prefix="/diagnose", tags=["diagnose"])
