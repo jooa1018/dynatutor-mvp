@@ -5,6 +5,8 @@ import math
 
 import pytest
 
+from app.routes import records as records_route
+from app.schemas.records import RecordCreate
 from engine.models import AnswerItem
 from engine.physics_core.answer_validators import validate_answer_consistency
 from engine.physics_core.coordinate_parser import parse_coordinate_data_from_text
@@ -219,3 +221,99 @@ def test_signed_initial_angular_velocity_passes_full_service_gate():
         if item.output_key == "angular_velocity"
     )
     assert math.isclose(angular_velocity.numeric, 3.0)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        (
+            "omega=2rad/s, alpha=1rad/s^2 둘 다 반시계방향",
+            1.0,
+        ),
+        (
+            "omega=2rad/s and alpha=1rad/s^2 are both clockwise",
+            -1.0,
+        ),
+    ],
+)
+def test_collective_direction_applies_to_both_named_quantities(
+    text: str,
+    expected: float,
+):
+    parsed = _signs(text)
+
+    assert parsed["omega_sign"] == expected
+    assert parsed["alpha_sign"] == expected
+
+
+def test_collective_rigid_direction_passes_verification_gate():
+    text = (
+        "평면 강체에서 rBA=(1,0)m이다. "
+        "omega=2rad/s, alpha=1rad/s^2 둘 다 반시계방향이다. "
+        "B점 가속도를 구하라."
+    )
+    initial = solve_problem(text)
+    option = next(
+        option
+        for option in initial.clarification.options
+        if option.patch.get("input_contract") == "rigid_aA_vector"
+    )
+    response = solve_problem(
+        text,
+        clarify_patch={
+            **option.patch,
+            "set_knowns": [
+                {"symbol": "aAx", "value": 0.0, "unit": "m/s^2"},
+                {"symbol": "aAy", "value": 0.0, "unit": "m/s^2"},
+            ],
+        },
+    )
+
+    assert response.ok is True, response.model_dump_json()
+    assert response.verification.passed is True, response.model_dump_json()
+
+
+def test_legacy_local_study_api_input_backfills_verified_engine(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(notebook, "DB_PATH", tmp_path / "records.sqlite")
+    raw = {
+        "ok": True,
+        "verification": {"passed": True},
+        "answer": {"display": "v = 3.000 m/s"},
+        "answers": [{"display": "v = 3.000 m/s"}],
+    }
+
+    record = records_route.create_record(
+        RecordCreate(
+            problem_text="cached verified result",
+            answer_display="v = 3.000 m/s",
+            raw_result=raw,
+            source="local-study",
+        )
+    )
+
+    assert record.source == "engine"
+    assert record.verified is True
+
+
+def test_legacy_local_study_api_input_fails_closed_to_manual(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setattr(notebook, "DB_PATH", tmp_path / "records.sqlite")
+
+    record = records_route.create_record(
+        RecordCreate(
+            problem_text="cached unverified result",
+            raw_result={
+                "ok": True,
+                "verification": {"passed": False},
+            },
+            source="local-study",
+        )
+    )
+
+    assert record.source == "manual"
+    assert record.verified is False
