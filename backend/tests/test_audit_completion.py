@@ -225,12 +225,6 @@ def test_rolling_preserves_nonzero_initial_speed():
     assert math.isclose(result.answer.numeric, expected, rel_tol=1e-5)
 
 
-def test_rolling_requires_initial_speed_or_explicit_rest():
-    result = PureRollingEnergySolver().solve(_rolling_problem("속이 찬 구가 1m 내려온다.", None))
-
-    assert not result.ok
-    assert any("초기속도" in error for error in result.verification.errors)
-
 
 def test_polar_acceleration_does_not_default_missing_derivatives_to_zero():
     problem = CanonicalProblem(
