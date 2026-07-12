@@ -67,6 +67,10 @@ def _migrate(con: sqlite3.Connection) -> None:
     con.execute("UPDATE records SET updated_at = COALESCE(updated_at, created_at)")
 
 
+def _record_source(value: Any) -> str:
+    return value if value in {"engine", "manual", "import"} else "manual"
+
+
 def _json_list(value: Any) -> list[str]:
     if value is None:
         return []
@@ -253,7 +257,7 @@ def _row_to_item(row: sqlite3.Row) -> dict[str, Any]:
         "review_count": int(row["review_count"] or 0),
         "last_reviewed_at": row["last_reviewed_at"],
         "mastery": int(row["mastery"] or 0),
-        "source": row["source"] or "manual",
+        "source": _record_source(row["source"]),
         "verified": bool(row["verified"]),
     }
 
