@@ -54,6 +54,21 @@ jobs:
       - name: Run complete backend suite
         run: python -m pytest -q -o addopts=
 
+      - name: Enforce warm solve latency budget
+        run: >-
+          python scripts/measure_phase42_latency.py
+          --repeats 2
+          --warmups 1
+          --block-optional-dependencies
+          --max-mean-ms 60
+          --max-p95-ms 120
+
+      - name: Enforce cold import and RSS budgets
+        run: >-
+          python scripts/measure_runtime_budget.py
+          --max-import-ms 5000
+          --max-rss-mb 512
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 20
