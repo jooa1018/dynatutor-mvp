@@ -15,7 +15,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 PROJECTILE = (
-    "지면에서 초속도 20m/s, 발사각 120도로 발사해 "
+    "지면에서 초속도 20m/s, 발사각 60도로 발사해 "
     "같은 높이에 착지한다. 사거리는?"
 )
 RIGID_BODY = (
