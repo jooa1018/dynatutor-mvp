@@ -733,8 +733,17 @@ def _relative_translation(cp: CanonicalProblem, pool: dict) -> list[ResidualChec
     aB = pool.get("a_B")
     if None in (aA, arel) or aB is None:
         return []
-    expected = aA + arel
-    return [ResidualCheck("상대가속도 a_B - (a_A + a_rel)", aB - expected, max(abs(expected), 1.0))]
+    compact = (cp.raw_text or "").lower().replace(" ", "")
+    sign = -1.0 if ("반대방향" in compact or "opposite" in compact) else 1.0
+    expected = aA + sign * arel
+    operator = "-" if sign < 0 else "+"
+    return [
+        ResidualCheck(
+            f"상대가속도 a_B - (a_A {operator} a_rel)",
+            aB - expected,
+            max(abs(expected), 1.0),
+        )
+    ]
 
 
 CHECKERS: dict[str, Callable[[CanonicalProblem, dict], list[ResidualCheck]]] = {
