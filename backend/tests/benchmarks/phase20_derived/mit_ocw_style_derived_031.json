@@ -341,55 +341,65 @@
     "id": "mit_relative_accel_001",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied. Numeric oracle intentionally omitted until signed scalar relative acceleration grammar is upgraded.",
+    "derivation_note": "DynaTutor-created signed-component benchmark on one explicitly declared axis: a_B=a_A+a_rel.",
     "topic": "relative_acceleration_translation",
-    "problem_ko": "상대가속도 문제에서 A점 가속도 aA=1m/s2, 상대가속도 a_rel=2m/s2이다. B점 가속도는?",
+    "problem_ko": "오른쪽을 +로 잡은 1차원 상대가속도 문제에서 A점 가속도 aA=1m/s2, 상대가속도 a_rel=2m/s2이다. B점 가속도는?",
     "expected_solver": "relative_acceleration_translation",
     "expected_ok": true,
-    "must_not_use_llm_for_answer": true
+    "must_not_use_llm_for_answer": true,
+    "expected_numeric": 3,
+    "tolerance": 1e-9
   },
   {
     "id": "mit_relative_accel_002",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied. Numeric oracle intentionally omitted until signed scalar relative acceleration grammar is upgraded.",
+    "derivation_note": "DynaTutor-created signed-component benchmark on one explicitly declared axis: a_B=a_A+a_rel.",
     "topic": "relative_acceleration_translation",
-    "problem_ko": "상대가속도 문제에서 A점 가속도 aA=2m/s2, 상대가속도 a_rel=3m/s2이다. B점 가속도는?",
+    "problem_ko": "오른쪽을 +로 잡은 1차원 상대가속도 문제에서 A점 가속도 aA=2m/s2, 상대가속도 a_rel=3m/s2이다. B점 가속도는?",
     "expected_solver": "relative_acceleration_translation",
     "expected_ok": true,
-    "must_not_use_llm_for_answer": true
+    "must_not_use_llm_for_answer": true,
+    "expected_numeric": 5,
+    "tolerance": 1e-9
   },
   {
     "id": "mit_relative_accel_003",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied. Numeric oracle intentionally omitted until signed scalar relative acceleration grammar is upgraded.",
+    "derivation_note": "DynaTutor-created signed-component benchmark on one explicitly declared axis: a_B=a_A+a_rel.",
     "topic": "relative_acceleration_translation",
-    "problem_ko": "상대가속도 문제에서 A점 가속도 aA=-1m/s2, 상대가속도 a_rel=4m/s2이다. B점 가속도는?",
+    "problem_ko": "오른쪽을 +로 잡은 1차원 상대가속도 문제에서 A점 가속도 aA=-1m/s2, 상대가속도 a_rel=4m/s2이다. B점 가속도는?",
     "expected_solver": "relative_acceleration_translation",
     "expected_ok": true,
-    "must_not_use_llm_for_answer": true
+    "must_not_use_llm_for_answer": true,
+    "expected_numeric": 3,
+    "tolerance": 1e-9
   },
   {
     "id": "mit_relative_accel_004",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied. Numeric oracle intentionally omitted until signed scalar relative acceleration grammar is upgraded.",
+    "derivation_note": "DynaTutor-created signed-component benchmark on one explicitly declared axis: a_B=a_A+a_rel.",
     "topic": "relative_acceleration_translation",
-    "problem_ko": "상대가속도 문제에서 A점 가속도 aA=0.5m/s2, 상대가속도 a_rel=1.5m/s2이다. B점 가속도는?",
+    "problem_ko": "오른쪽을 +로 잡은 1차원 상대가속도 문제에서 A점 가속도 aA=0.5m/s2, 상대가속도 a_rel=1.5m/s2이다. B점 가속도는?",
     "expected_solver": "relative_acceleration_translation",
     "expected_ok": true,
-    "must_not_use_llm_for_answer": true
+    "must_not_use_llm_for_answer": true,
+    "expected_numeric": 2,
+    "tolerance": 1e-9
   },
   {
     "id": "mit_relative_accel_005",
     "source_family": "MIT OCW dynamics style derived",
     "license_note": "Derived-style numerical benchmark for testing; no original problem wording or solution text copied.",
-    "derivation_note": "DynaTutor-created derived-style benchmark; no original wording copied. Numeric oracle intentionally omitted until signed scalar relative acceleration grammar is upgraded.",
+    "derivation_note": "DynaTutor-created signed-component benchmark on one explicitly declared axis: a_B=a_A+a_rel.",
     "topic": "relative_acceleration_translation",
-    "problem_ko": "상대가속도 문제에서 A점 가속도 aA=3m/s2, 상대가속도 a_rel=-1m/s2이다. B점 가속도는?",
+    "problem_ko": "오른쪽을 +로 잡은 1차원 상대가속도 문제에서 A점 가속도 aA=3m/s2, 상대가속도 a_rel=-1m/s2이다. B점 가속도는?",
     "expected_solver": "relative_acceleration_translation",
     "expected_ok": true,
-    "must_not_use_llm_for_answer": true
+    "must_not_use_llm_for_answer": true,
+    "expected_numeric": 2,
+    "tolerance": 1e-9
   }
 ]
