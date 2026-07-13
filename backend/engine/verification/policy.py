@@ -39,6 +39,7 @@ def _default_engine_tolerances() -> Mapping[str, Mapping[str, float]]:
             "rel_tol": 1e-7,
             "residual_tol": 1e-9,
             "constraint_tol": 1e-9,
+            "near_zero_tol": 1e-10,
         }
     }
 

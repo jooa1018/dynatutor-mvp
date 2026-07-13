@@ -190,15 +190,33 @@ class ValidationContext:
         return list(self.constraints)
 
     @property
+    def tolerance_policy(self) -> TolerancePolicy:
+        """Return the one effective policy for candidate validation/diagnostics."""
+
+        residual = (
+            self.residual_tolerance
+            if self.residual_tolerance is not None
+            else self.numerical_tolerance
+        )
+        return replace(
+            _CANDIDATE_POLICY,
+            abs_tol=self.numerical_tolerance,
+            rel_tol=self.relative_tolerance,
+            residual_tol=residual,
+            constraint_tol=residual,
+            policy_version=self.policy_version,
+            # Explicit ValidationContext overrides are already effective and
+            # must not be replaced a second time by the candidate-engine map.
+            engine_specific_tolerances={},
+        )
+
+    @property
     def tolerances(self) -> dict[str, float]:
+        policy = self.tolerance_policy
         return {
-            "absolute": self.numerical_tolerance,
-            "relative": self.relative_tolerance,
-            "residual": (
-                self.residual_tolerance
-                if self.residual_tolerance is not None
-                else self.numerical_tolerance
-            ),
+            "absolute": policy.abs_tol,
+            "relative": policy.rel_tol,
+            "residual": policy.residual_tol,
         }
 
 
@@ -246,22 +264,9 @@ class CandidateSolveBatch:
 
 
 def _context_policy(context: ValidationContext) -> TolerancePolicy:
-    """Build an immutable policy view that preserves explicit legacy overrides."""
+    """Compatibility helper for the context's authoritative policy view."""
 
-    residual = (
-        context.residual_tolerance
-        if context.residual_tolerance is not None
-        else context.numerical_tolerance
-    )
-    return replace(
-        DEFAULT_TOLERANCE_POLICY,
-        abs_tol=context.numerical_tolerance,
-        rel_tol=context.relative_tolerance,
-        residual_tol=residual,
-        constraint_tol=residual,
-        policy_version=context.policy_version,
-        engine_specific_tolerances={},
-    )
+    return context.tolerance_policy
 
 
 def _diagnostic_payload(check: Any, context: ValidationContext) -> dict[str, Any]:
@@ -357,7 +362,11 @@ def _selection_diagnostics(
     diagnostics.append(_diagnostic_payload(root_check, context))
     return diagnostics
 
-def _numeric(expr: Any) -> tuple[float | None, str | None]:
+def _numeric(
+    expr: Any,
+    *,
+    near_zero_tol: float = _CANDIDATE_POLICY.near_zero_tol,
+) -> tuple[float | None, str | None]:
     if isinstance(expr, (int, float)) and not isinstance(expr, bool):
         numeric = float(expr)
         return (
@@ -372,7 +381,7 @@ def _numeric(expr: Any) -> tuple[float | None, str | None]:
         complex_value = complex(value)
     except Exception:
         return None, "not_numeric"
-    if abs(complex_value.imag) > 1e-10:
+    if abs(complex_value.imag) > near_zero_tol:
         return None, "complex"
     if not math.isfinite(complex_value.real):
         return None, "non_finite"
@@ -566,6 +575,8 @@ def _evaluate_residual(
     evaluator: Any,
     candidate: CandidateSolution,
     substitutions: Mapping[Any, Any],
+    *,
+    near_zero_tol: float = _CANDIDATE_POLICY.near_zero_tol,
 ) -> tuple[float | None, str | None]:
     if callable(evaluator):
         try:
@@ -580,7 +591,7 @@ def _evaluate_residual(
             )
         except Exception:
             return None, "evaluation_error"
-        return _numeric(value)
+        return _numeric(value, near_zero_tol=near_zero_tol)
     try:
         expression = evaluator
         if isinstance(expression, sp.Equality):
@@ -590,7 +601,7 @@ def _evaluate_residual(
             candidate.symbolic_mapping,
             substitutions,
         )
-        return _numeric(value)
+        return _numeric(value, near_zero_tol=near_zero_tol)
     except Exception:
         return None, "evaluation_error"
 
@@ -631,13 +642,11 @@ def validate_candidates(
 ) -> list[ValidatedCandidate]:
     context = context or ValidationContext()
     validated: list[ValidatedCandidate] = []
-    absolute = context.numerical_tolerance
-    relative = context.relative_tolerance
-    residual_tolerance = (
-        context.residual_tolerance
-        if context.residual_tolerance is not None
-        else absolute
-    )
+    policy = context.tolerance_policy
+    absolute = policy.abs_tol
+    relative = policy.rel_tol
+    residual_tolerance = policy.residual_tol
+    near_zero = policy.near_zero_tol
 
     for candidate in candidates:
         checks: list[CandidateValidationCheck] = []
@@ -685,7 +694,7 @@ def validate_candidates(
             except Exception:
                 numeric_errors.append(f"{symbol}: not_numeric")
                 continue
-            _, error = _numeric(evaluated)
+            _, error = _numeric(evaluated, near_zero_tol=near_zero)
             if error:
                 numeric_errors.append(f"{symbol}: {error}")
         checks.append(
@@ -711,7 +720,7 @@ def validate_candidates(
                     candidate.symbolic_mapping,
                     context.substitutions,
                 )
-                numeric, error = _numeric(evaluated)
+                numeric, error = _numeric(evaluated, near_zero_tol=near_zero)
                 if (
                     error is not None
                     or numeric is None
@@ -743,7 +752,7 @@ def validate_candidates(
                 candidate.symbolic_mapping, constraint.symbol, context.substitutions
             )
             numeric, error = (
-                _numeric(value_expression) if value_expression is not None else (None, "missing")
+                _numeric(value_expression, near_zero_tol=near_zero) if value_expression is not None else (None, "missing")
             )
             passed = error is None and numeric is not None
             reasons: list[str] = []
@@ -826,15 +835,18 @@ def validate_candidates(
                         candidate.symbolic_mapping,
                         context.substitutions,
                     )
-                    left_num, left_error = _numeric(left)
-                    right_num, right_error = _numeric(right)
+                    left_num, left_error = _numeric(left, near_zero_tol=near_zero)
+                    right_num, right_error = _numeric(right, near_zero_tol=near_zero)
                     if left_error or right_error or left_num is None or right_num is None:
                         raise ValueError(left_error or right_error or "unresolved")
                     residual = left_num - right_num
                     scale = max(abs(left_num), abs(right_num), 1.0)
                 else:
                     residual_value, residual_error = _evaluate_residual(
-                        expression, candidate, context.substitutions
+                        expression,
+                        candidate,
+                        context.substitutions,
+                        near_zero_tol=near_zero,
                     )
                     if residual_error or residual_value is None:
                         raise ValueError(residual_error or "unresolved")
@@ -876,7 +888,10 @@ def validate_candidates(
 
         for constraint in context.model_constraints:
             residual, error = _evaluate_residual(
-                constraint.evaluator, candidate, context.substitutions
+                constraint.evaluator,
+                candidate,
+                context.substitutions,
+                near_zero_tol=near_zero,
             )
             tolerance = (
                 constraint.tolerance
@@ -984,6 +999,7 @@ def validate_output_candidates(
     """
 
     context = context or ValidationContext()
+    policy = context.tolerance_policy
     validated: list[ValidatedCandidate] = []
     for candidate in candidates:
         checks: list[CandidateValidationCheck] = []
@@ -1009,7 +1025,7 @@ def validate_output_candidates(
                 for symbol in candidate.unresolved_symbols
             )
         for symbol, value in candidate.symbolic_mapping.items():
-            _, error = _numeric(value)
+            _, error = _numeric(value, near_zero_tol=policy.near_zero_tol)
             if error is not None:
                 numeric_errors.append(f"{symbol}: {error}")
         checks.append(

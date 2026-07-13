@@ -396,6 +396,113 @@ _PULLEY_TYPES = frozenset(
 )
 
 
+def _string_force_evidence(
+    ctx: InvariantContext,
+) -> tuple[float, float, float, tuple[str, ...], tuple[str, ...]] | None:
+    """Independently derive endpoint accelerations from typed pulley outputs.
+
+    The public solver answer remains the selected acceleration.  This adapter
+    uses the solver's typed force outputs plus canonical facts to reconstruct
+    each endpoint acceleration from Newton's second law, so a corrupted force
+    or selected acceleration cannot satisfy the string invariant by sharing a
+    single copied value.
+    """
+
+    cp = ctx.canonical
+    reported = _one(
+        _semantic_values(ctx, "acceleration", safe_symbols=("a",))
+    )
+    m1 = _known(cp, ("m1",), "kg")
+    m2 = _known(cp, ("m2",), "kg")
+    gravity = _known(cp, ("g",), "m/s^2")
+    if (
+        reported is None
+        or m1 is None
+        or m2 is None
+        or gravity is None
+        or m1 <= 0.0
+        or m2 <= 0.0
+    ):
+        return None
+
+    if cp.system_type == "massive_pulley_atwood":
+        tension_1 = _one(
+            _semantic_values(ctx, "tension_1", safe_symbols=("T1",))
+        )
+        tension_2 = _one(
+            _semantic_values(ctx, "tension_2", safe_symbols=("T2",))
+        )
+        if tension_1 is None or tension_2 is None:
+            return None
+        endpoint_1 = (tension_1 - m1 * gravity) / m1
+        endpoint_2 = (m2 * gravity - tension_2) / m2
+        return (
+            endpoint_1,
+            endpoint_2,
+            reported,
+            (
+                "typed_answer:a",
+                "typed_answer:T1",
+                "typed_answer:T2",
+                "canonical:m1,m2,g",
+            ),
+            ("T1-m1*g=m1*a1", "m2*g-T2=m2*a2"),
+        )
+
+    tension = _one(_semantic_values(ctx, "tension"))
+    if tension is None:
+        return None
+    if cp.system_type == "pulley_atwood":
+        endpoint_1 = (tension - m1 * gravity) / m1
+        endpoint_2 = (m2 * gravity - tension) / m2
+        equations = ("T-m1*g=m1*a1", "m2*g-T=m2*a2")
+    elif cp.system_type == "pulley_table_hanging":
+        friction = _one(
+            _semantic_values(
+                ctx,
+                "friction_force",
+                safe_symbols=("f_s", "f_k", "F_f"),
+            )
+        )
+        if friction is None:
+            return None
+        endpoint_1 = (tension - abs(friction)) / m1
+        endpoint_2 = (m2 * gravity - tension) / m2
+        equations = ("T-|f|=m1*a1", "m2*g-T=m2*a2")
+    elif cp.system_type == "pulley_incline_hanging":
+        theta = _known(cp, ("theta",), "rad")
+        if theta is None:
+            theta_degrees = _known(cp, ("theta",), "deg")
+            theta = (
+                math.radians(theta_degrees)
+                if theta_degrees is not None
+                else None
+            )
+        mu = _known(cp, ("mu_k", "mu"), "")
+        frictionless = cp.friction_type in {None, "none"} or (
+            mu is not None
+            and ctx.policy.is_near_zero(mu, engine_id=ctx.engine_id)
+        )
+        if theta is None or not frictionless:
+            return None
+        endpoint_1 = (tension - m1 * gravity * math.sin(theta)) / m1
+        endpoint_2 = (m2 * gravity - tension) / m2
+        equations = (
+            "T-m1*g*sin(theta)=m1*a1",
+            "m2*g-T=m2*a2",
+        )
+    else:
+        return None
+
+    return (
+        endpoint_1,
+        endpoint_2,
+        reported,
+        ("typed_answer:a", "typed_answer:T", "canonical:m1,m2,g"),
+        equations,
+    )
+
+
 def string_constraint(ctx: InvariantContext) -> list[InvariantCheck]:
     validator_id = "string_constraint"
     if ctx.canonical.system_type not in _PULLEY_TYPES:
@@ -428,7 +535,54 @@ def string_constraint(ctx: InvariantContext) -> list[InvariantCheck]:
                 equations=["|v_1|=|v_2|"],
             )
         ]
-    return [_status_check(validator_id, InvariantStatus.INCONCLUSIVE, "string model applies, but two actual endpoint velocities/accelerations were not published")]
+
+    derived = _string_force_evidence(ctx)
+    if derived is None:
+        return [
+            _status_check(
+                validator_id,
+                InvariantStatus.INCONCLUSIVE,
+                "string model applies, but canonical masses/gravity and typed force/acceleration evidence are incomplete",
+                evidence=("typed solver outputs only; display text was not parsed",),
+            )
+        ]
+    endpoint_1, endpoint_2, reported, evidence, equations = derived
+    scale = max(abs(endpoint_1), abs(endpoint_2), abs(reported))
+    return [
+        _residual_check(
+            ctx,
+            validator_id,
+            "force_derived_endpoints",
+            "independent endpoint force balances satisfy the inextensible-string acceleration relation",
+            abs(endpoint_1) - abs(endpoint_2),
+            scale,
+            equations=equations,
+            evidence=evidence,
+            metadata={"evidence_kind": "force_derived_endpoint_accelerations"},
+        ),
+        _residual_check(
+            ctx,
+            validator_id,
+            "selected_vs_endpoint_1",
+            "selected acceleration matches the first force-derived endpoint acceleration",
+            abs(reported) - abs(endpoint_1),
+            scale,
+            equations=equations,
+            evidence=evidence,
+            metadata={"evidence_kind": "selected_vs_independent_force_balance"},
+        ),
+        _residual_check(
+            ctx,
+            validator_id,
+            "selected_vs_endpoint_2",
+            "selected acceleration matches the second force-derived endpoint acceleration",
+            abs(reported) - abs(endpoint_2),
+            scale,
+            equations=equations,
+            evidence=evidence,
+            metadata={"evidence_kind": "selected_vs_independent_force_balance"},
+        ),
+    ]
 
 
 def pure_rolling(ctx: InvariantContext) -> list[InvariantCheck]:
@@ -740,7 +894,8 @@ def _coordinate_pair(cp: CanonicalProblem, prefix: str, unit: str) -> tuple[floa
     return (x, y) if x is not None and y is not None else None
 
 
-def _fixed_reference(cp: CanonicalProblem, kind: str, unit: str) -> tuple[float, float] | None:
+def _fixed_reference(ctx: InvariantContext, kind: str, unit: str) -> tuple[float, float] | None:
+    cp = ctx.canonical
     pair = _coordinate_pair(cp, f"{kind}A", unit)
     if pair is not None:
         return pair
@@ -749,7 +904,10 @@ def _fixed_reference(cp: CanonicalProblem, kind: str, unit: str) -> tuple[float,
         phrase in (cp.raw_text or "")
         for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
     )
-    if fixed or (scalar is not None and abs(scalar) <= 1e-12):
+    if fixed or (
+        scalar is not None
+        and ctx.policy.is_near_zero(scalar, engine_id=ctx.engine_id)
+    ):
         return 0.0, 0.0
     return None
 
@@ -758,7 +916,7 @@ def rigid_relative_velocity(ctx: InvariantContext) -> list[InvariantCheck]:
     validator_id = "rigid_relative_velocity"
     if ctx.canonical.system_type != "plane_rigid_body_velocity":
         return [_status_check(validator_id, InvariantStatus.NOT_APPLICABLE, "not a plane rigid-body velocity model")]
-    reference = _fixed_reference(ctx.canonical, "v", "m/s")
+    reference = _fixed_reference(ctx, "v", "m/s")
     radius = _coordinate_pair(ctx.canonical, "rBA", "m")
     omega = _known(ctx.canonical, ("omega",), "rad/s")
     sign = (ctx.canonical.coordinate_data or {}).get("omega_sign")
@@ -785,7 +943,7 @@ def rigid_relative_acceleration(ctx: InvariantContext) -> list[InvariantCheck]:
     validator_id = "rigid_relative_acceleration"
     if ctx.canonical.system_type != "plane_rigid_body_acceleration":
         return [_status_check(validator_id, InvariantStatus.NOT_APPLICABLE, "not a plane rigid-body acceleration model")]
-    reference = _fixed_reference(ctx.canonical, "a", "m/s^2")
+    reference = _fixed_reference(ctx, "a", "m/s^2")
     radius = _coordinate_pair(ctx.canonical, "rBA", "m")
     omega = _known(ctx.canonical, ("omega",), "rad/s")
     alpha = _known(ctx.canonical, ("alpha",), "rad/s^2")

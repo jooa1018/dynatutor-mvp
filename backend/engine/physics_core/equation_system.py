@@ -20,10 +20,7 @@ from engine.verification.conditioning import (
     diagnose_local_perturbation,
     diagnose_near_cancellation,
 )
-from engine.verification.policy import (
-    CANDIDATE_ENGINE_ID,
-    DEFAULT_TOLERANCE_POLICY,
-)
+from engine.verification.policy import CANDIDATE_ENGINE_ID
 
 
 @dataclass
@@ -132,10 +129,7 @@ def _attach_equation_diagnostics(
     equation_items = list(equations)
     unknown_items = list(unknowns)
     source_ids = tuple(f"equation:{index}" for index in range(len(equation_items)))
-    policy = replace(
-        DEFAULT_TOLERANCE_POLICY,
-        policy_version=context.policy_version,
-    )
+    policy = context.tolerance_policy
     try:
         jacobian = sp.Matrix(
             [_equation_expression(equation) for equation in equation_items]

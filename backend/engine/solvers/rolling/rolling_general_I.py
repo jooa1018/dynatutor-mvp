@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from engine.models import Answer, CanonicalProblem, SolverResult, StepCard, VerificationReport
+from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.physics_core.inertia import beta_for_shape
 from engine.physics_core.units import magnitude_si
 from engine.solvers.base import BaseSolver, SolverMatch
@@ -25,8 +25,45 @@ class RollingEnergyGeneralSolver(BaseSolver):
         if not generated.ok:
             return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors), unsupported_reason="모델 기반 구름 에너지 방정식 생성/풀이에 실패했습니다.")
         v = float(generated.solution["v"])
-        omega = generated.solution.get("omega")
+        raw_omega = generated.solution.get("omega")
+        radius_quantity = c.knowns.get("R") or c.knowns.get("r")
+        radius = (
+            float(magnitude_si(radius_quantity, "m"))
+            if radius_quantity is not None
+            else None
+        )
+        omega = float(raw_omega) if raw_omega is not None else None
+        if (
+            omega is None
+            and radius is not None
+            and math.isfinite(radius)
+            and radius > 0.0
+        ):
+            omega = v / radius
         beta = float(generated.solution["beta"])
+        typed_answers = [
+            AnswerItem(
+                "질량중심 최종속도",
+                "v",
+                round(v, 6),
+                "m/s",
+                f"질량중심 최종속도 v = {v:.3f} m/s",
+                "primary",
+                output_key="final_velocity",
+            )
+        ]
+        if omega is not None and math.isfinite(omega):
+            typed_answers.append(
+                AnswerItem(
+                    "순수 구름 각속도",
+                    "omega",
+                    round(omega, 6),
+                    "rad/s",
+                    f"순수 구름 각속도 omega = {omega:.3f} rad/s",
+                    "component",
+                    output_key="angular_velocity",
+                )
+            )
         initial_speed = float(generated.solution.get("v0", 0.0))
         beta_info = f"β={beta:.3f}"
         if generated.solution.get("mode") == "I":
@@ -50,6 +87,7 @@ class RollingEnergyGeneralSolver(BaseSolver):
         return SolverResult(
             ok=True,
             answer=Answer(symbolic=symbolic, numeric=round(v, 6), unit="m/s", display=display),
+            answers=typed_answers,
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=used,
