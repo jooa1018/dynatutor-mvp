@@ -216,3 +216,38 @@ jobs:
           fi
           git commit -m "backup(phase48): extract and validate emergency workspace"
           git push origin HEAD:backup/phase48-wip-20260712
+
+
+  phase48-targeted:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR 14 Phase 48 checkpoint
+        uses: actions/checkout@v6
+        with:
+          ref: codex/phase47-54-engine-completion
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Compile restored Phase 48 modules
+        working-directory: backend
+        run: |
+          python -m compileall -q             app/schemas/solution.py             engine/capabilities             engine/models.py             engine/services.py             engine/verification             tests/test_phase48_invariants.py             tests/test_phase48_policy_conditioning.py             tests/test_phase48_suite.py
+
+      - name: Run Phase 48 focused tests
+        working-directory: backend
+        run: |
+          pytest -q -o addopts=             tests/test_phase48_invariants.py             tests/test_phase48_policy_conditioning.py             tests/test_phase48_suite.py
+
+      - name: Run Phase 47 candidate regression
+        working-directory: backend
+        run: pytest -q -o addopts= tests/test_phase47_candidate_validation.py
