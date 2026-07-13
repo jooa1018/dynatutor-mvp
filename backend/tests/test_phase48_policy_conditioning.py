@@ -43,6 +43,7 @@ def test_default_policy_is_versioned_and_complete() -> None:
                 "rel_tol": 1e-7,
                 "residual_tol": 1e-9,
                 "constraint_tol": 1e-9,
+                "near_zero_tol": 1e-10,
             }
         },
     }
@@ -55,6 +56,7 @@ def test_candidate_engine_override_is_explicit() -> None:
     assert candidate.rel_tol == 1e-7
     assert candidate.residual_tol == 1e-9
     assert candidate.constraint_tol == 1e-9
+    assert candidate.near_zero_tol == 1e-10
     assert candidate.conservation_tol == 1e-8
     assert candidate.policy_version == POLICY_VERSION
     assert DEFAULT_TOLERANCE_POLICY.for_engine("unknown") is DEFAULT_TOLERANCE_POLICY

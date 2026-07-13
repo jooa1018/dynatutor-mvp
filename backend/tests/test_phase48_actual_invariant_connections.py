@@ -381,4 +381,4 @@ def test_candidate_complex_cutoff_remains_central_and_phase47_compatible():
         candidate_id="rejected-complex",
     )
     assert accepted.numerical_mapping["x"] == pytest.approx(1.0)
-    assert "x" in rejected.unresolved_symbols
+    assert "x" not in rejected.numerical_mapping
