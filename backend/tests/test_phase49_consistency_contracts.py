@@ -381,7 +381,7 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
         "frictionless",
         "constant_gravity",
     )
-    assert observed.metadata["source"] == "actual_product_evidence"
+    assert observed.metadata["source"] == "SolverResult.answers[].output_key"
     assert observed.metadata["ignored_output_keys"] == ("<untyped>",)
     assert before == (
         result.answer.numeric,
