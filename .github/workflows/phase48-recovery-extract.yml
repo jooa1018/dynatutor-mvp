@@ -207,6 +207,7 @@ jobs:
           PY
 
       - name: Preserve verified recovery evidence
+        if: github.event_name == 'push'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
