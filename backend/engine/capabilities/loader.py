@@ -39,6 +39,27 @@ INVARIANT_VALIDATOR_IDS = frozenset(
 
 SUPPORTED_VALIDATOR_IDS = CORE_VALIDATOR_IDS | INVARIANT_VALIDATOR_IDS
 DEFAULT_CAPABILITY_PATH = Path(__file__).with_name("dynamics_capabilities.json")
+SOLVER_PATH_FAMILIES = frozenset(
+    {
+        "incline",
+        "pulley",
+        "collision",
+        "rolling",
+        "work_energy",
+        "fixed_axis_rotation",
+    }
+)
+SOLVER_PATH_ROLE_KEYS = frozenset(
+    {
+        "student_answer_path",
+        "secondary_analytic_path",
+        "numeric_validation_path",
+        "external_validation_path",
+        "fallback_path",
+    }
+)
+SECONDARY_ANALYTIC_PREFIX = "phase49.secondary."
+
 
 
 class CapabilityConfigError(ValueError):
@@ -53,6 +74,10 @@ class CapabilityMatrix:
     by_solver: Mapping[str, Mapping[str, Any]]
     validator_ids: frozenset[str]
     source_path: str
+    solver_path_roles: Mapping[str, Mapping[str, Any]]
+
+    def path_roles_for_family(self, family: str) -> Mapping[str, Any] | None:
+        return self.solver_path_roles.get(family)
 
     def for_solver(self, solver_id: str) -> Mapping[str, Any] | None:
         return self.by_solver.get(solver_id)
@@ -122,6 +147,85 @@ def _validate_required_inputs(value: Any, *, solver_id: str) -> None:
         raise CapabilityConfigError(f"{solver_id}.required_inputs.conditional must be a list")
 
 
+def _validate_solver_path_roles(
+    value: Any,
+    *,
+    solver_ids: frozenset[str],
+) -> Mapping[str, Mapping[str, Any]]:
+    # The field is additive for compatibility with small legacy test fixtures.
+    # When present it is a strict, complete Phase 49 contract.
+    if value is None:
+        return MappingProxyType({})
+    if not isinstance(value, dict) or set(value) != SOLVER_PATH_FAMILIES:
+        raise CapabilityConfigError(
+            "solver_path_roles must contain exactly "
+            f"{sorted(SOLVER_PATH_FAMILIES)}"
+        )
+    frozen: dict[str, Mapping[str, Any]] = {}
+    secondary_ids: set[str] = set()
+    for family in sorted(SOLVER_PATH_FAMILIES):
+        raw_roles = value[family]
+        if not isinstance(raw_roles, dict) or set(raw_roles) != SOLVER_PATH_ROLE_KEYS:
+            raise CapabilityConfigError(
+                f"solver_path_roles.{family} must contain exactly "
+                f"{sorted(SOLVER_PATH_ROLE_KEYS)}"
+            )
+        students = _validate_string_list(
+            raw_roles["student_answer_path"],
+            field_name=f"solver_path_roles.{family}.student_answer_path",
+        )
+        if not students:
+            raise CapabilityConfigError(
+                f"solver_path_roles.{family}.student_answer_path must not be empty"
+            )
+        unknown_solvers = sorted(set(students) - solver_ids)
+        if unknown_solvers:
+            raise CapabilityConfigError(
+                f"solver_path_roles.{family} references unknown solver IDs: "
+                + ", ".join(unknown_solvers)
+            )
+        secondary = raw_roles["secondary_analytic_path"]
+        expected_secondary = f"{SECONDARY_ANALYTIC_PREFIX}{family}"
+        if secondary != expected_secondary:
+            raise CapabilityConfigError(
+                f"solver_path_roles.{family}.secondary_analytic_path must be "
+                f"{expected_secondary!r}"
+            )
+        if secondary in secondary_ids:
+            raise CapabilityConfigError("duplicate secondary analytic path")
+        secondary_ids.add(secondary)
+        for unavailable in (
+            "numeric_validation_path",
+            "external_validation_path",
+        ):
+            if raw_roles[unavailable] is not None:
+                raise CapabilityConfigError(
+                    f"solver_path_roles.{family}.{unavailable} must be null "
+                    "until its optional engine is implemented"
+                )
+        fallback = raw_roles["fallback_path"]
+        if fallback is not None:
+            if not isinstance(fallback, str) or not fallback:
+                raise CapabilityConfigError(
+                    f"solver_path_roles.{family}.fallback_path must be a solver ID or null"
+                )
+            if fallback not in solver_ids:
+                raise CapabilityConfigError(
+                    f"solver_path_roles.{family}.fallback_path references "
+                    f"unknown solver ID {fallback!r}"
+                )
+        frozen[family] = MappingProxyType(
+            {
+                "student_answer_path": tuple(students),
+                "secondary_analytic_path": secondary,
+                "numeric_validation_path": None,
+                "external_validation_path": None,
+                "fallback_path": fallback,
+            }
+        )
+    return MappingProxyType(frozen)
+
+
 def _validated_matrix(
     raw: Any,
     *,
@@ -165,6 +269,11 @@ def _validated_matrix(
         copied_entries.append(frozen_entry)
         by_solver[solver_id] = frozen_entry
 
+    solver_path_roles = _validate_solver_path_roles(
+        raw.get("solver_path_roles"),
+        solver_ids=frozenset(by_solver),
+    )
+
     return CapabilityMatrix(
         schema_version=1,
         source_commit=(
@@ -176,6 +285,7 @@ def _validated_matrix(
         by_solver=MappingProxyType(by_solver),
         validator_ids=frozenset(used_validator_ids),
         source_path=source_path,
+        solver_path_roles=solver_path_roles,
     )
 
 
@@ -227,6 +337,9 @@ __all__ = [
     "CORE_VALIDATOR_IDS",
     "INVARIANT_VALIDATOR_IDS",
     "SUPPORTED_VALIDATOR_IDS",
+    "SECONDARY_ANALYTIC_PREFIX",
+    "SOLVER_PATH_FAMILIES",
+    "SOLVER_PATH_ROLE_KEYS",
     "CapabilityConfigError",
     "CapabilityMatrix",
     "clear_capability_cache",
