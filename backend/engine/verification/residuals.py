@@ -13,16 +13,24 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from engine.models import CanonicalProblem
 from engine.physics_core.units import magnitude_si
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
 from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest, explicitly_starts_from_rest
+from engine.verification.policy import DEFAULT_TOLERANCE_POLICY, TolerancePolicy
+from engine.verification.types import (
+    CheckApplicability,
+    CheckStatus,
+    VerificationCheck,
+)
 
-REL_TOL = 1e-4  # solver numeric은 ~6유효숫자 반올림 → 1e-6은 무고 오탐. 1e-4는 반올림은 통과, 실수(≥0.1%)는 검출.
-ABS_TOL = 1e-8
+# Compatibility aliases for callers that imported the Phase 46 constants.  The
+# authoritative values now live in the versioned Phase 48 policy.
+REL_TOL = DEFAULT_TOLERANCE_POLICY.rel_tol
+ABS_TOL = DEFAULT_TOLERANCE_POLICY.abs_tol
 
 
 @dataclass
@@ -30,14 +38,53 @@ class ResidualCheck:
     name: str
     residual: float
     scale: float
+    policy: TolerancePolicy = field(
+        default=DEFAULT_TOLERANCE_POLICY,
+        repr=False,
+        compare=False,
+    )
+
+    @property
+    def tolerance(self) -> float:
+        return self.policy.tolerance("residual", scale=self.scale)
+
+    @property
+    def absolute_error(self) -> float:
+        return abs(float(self.residual))
+
+    @property
+    def relative_error(self) -> float:
+        return self.absolute_error / max(abs(float(self.scale)), 1.0)
 
     @property
     def passed(self) -> bool:
-        return abs(self.residual) <= ABS_TOL + REL_TOL * max(self.scale, 1.0)
+        return self.absolute_error <= self.tolerance
 
     def describe(self) -> str:
         status = "✓" if self.passed else "✗"
-        return f"역대입: {self.name} |r|={abs(self.residual):.3g} (scale {self.scale:.3g}) {status}"
+        return f"역대입: {self.name} |r|={self.absolute_error:.3g} (scale {self.scale:.3g}) {status}"
+
+    def to_verification_check(self, index: int = 0) -> VerificationCheck:
+        """Return the shared Phase 48 typed representation.
+
+        ``describe`` remains the legacy student-facing message so existing API
+        consumers and UI badges do not lose their stable wording.
+        """
+
+        return VerificationCheck(
+            check_id=f"equation_residual:{index}",
+            category="equation_residual",
+            status=CheckStatus.PASSED if self.passed else CheckStatus.FAILED,
+            applicability=CheckApplicability.APPLICABLE,
+            observed=float(self.residual),
+            expected=0.0,
+            absolute_error=self.absolute_error,
+            relative_error=self.relative_error,
+            tolerance=self.tolerance,
+            message=self.describe(),
+            evidence=[],
+            source_equation_ids=[self.name],
+        )
 
 
 def _k(cp: CanonicalProblem, key: str, unit: str) -> float | None:
@@ -114,7 +161,7 @@ def _incline(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     mu = 0.0 if cp.subtype == "no_friction" else _mu(cp)
     # 정지마찰이 버티는 경우 a=0: 미끄러짐 방정식 a=g(sinθ-μcosθ)는 적용되지 않는다
     # (정지마찰은 필요한 만큼 조정됨). 이때는 정지 조건 μ_s ≥ tanθ 를 검사한다.
-    if abs(a) < 1e-9:
+    if DEFAULT_TOLERANCE_POLICY.is_near_zero(a):
         mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""), mu)
         # tanθ ≤ μ_s 이면 정지가 물리적으로 타당 → 통과. 잔차는 위반량(초과분).
         violation = max(0.0, math.tan(th) - mu_s)
@@ -140,7 +187,7 @@ def _table_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     m1, m2, g = _k(cp, "m1", "kg"), _k(cp, "m2", "kg"), _k(cp, "g", "m/s^2")
     if None in (a, T, m1, m2, g):
         return []
-    if abs(a) < 1e-9:
+    if DEFAULT_TOLERANCE_POLICY.is_near_zero(a):
         checks = [
             ResidualCheck(
                 "정지 매달린 물체: T = m2g",
@@ -195,7 +242,7 @@ def _incline_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     # 정지마찰이 버텨 a=0인 경우: 미끄러짐 방정식이 적용되지 않는다.
     # 매달린 물체 정지조건 T=m2·g, 경사면 물체는 정지마찰이 |m2g - m1g·sinθ| ≤ μs·m1g·cosθ
     # 를 만족하면 타당. 잔차는 위반량.
-    if abs(a) < 1e-9:
+    if DEFAULT_TOLERANCE_POLICY.is_near_zero(a):
         mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""), mu)
         required_static = abs(m2 * g - m1 * g * math.sin(th))
         max_static = mu_s * m1 * g * math.cos(th)
@@ -269,7 +316,11 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     delta_x = _first_not_none(pool.get("delta_x"), pool.get("Δx"))
     # R is an unsigned range magnitude. It cannot recover signed time when vx<0.
     # Only signed displacement may be used to reconstruct t.
-    if t is None and delta_x is not None and abs(vx) > 1e-12:
+    if (
+        t is None
+        and delta_x is not None
+        and not DEFAULT_TOLERANCE_POLICY.is_near_zero(vx)
+    ):
         t = delta_x / vx
     checks: list[ResidualCheck] = []
     if t is not None:
@@ -317,7 +368,8 @@ def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         checks.append(ResidualCheck("운동량 보존", p_before - (m1 * v1p + m2 * v2p), abs(p_before) + 1.0))
         restitution = _k(cp, "e", "")
         elastic_mode = bool((cp.flags or {}).get("elastic")) and (
-            restitution is None or math.isclose(restitution, 1.0, abs_tol=1e-12)
+            restitution is None
+            or DEFAULT_TOLERANCE_POLICY.is_near_zero(restitution - 1.0)
         )
         if elastic_mode:
             ke_b = 0.5 * m1 * v1 * v1 + 0.5 * m2 * v2 * v2
@@ -445,7 +497,11 @@ def _const_force_work(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     checks = [ResidualCheck("|W| - |F·s·cosθ|", abs(W) - magnitude, magnitude + 1.0)]
     raw = cp.raw_text or ""
     opposing = any(w in raw for w in ["반대로", "반대 방향", "저항", "마찰력이 한 일", "opposing", "against"])
-    if opposing and W > 0 and magnitude > 1e-9:
+    if (
+        opposing
+        and W > 0
+        and not DEFAULT_TOLERANCE_POLICY.is_near_zero(magnitude)
+    ):
         checks.append(ResidualCheck("저항일 부호(음수 기대)", W, magnitude))
     return checks
 
@@ -682,7 +738,10 @@ def _rigid_reference_vector(cp: CanonicalProblem, prefix: str, unit: str):
         phrase in raw
         for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
     )
-    if fixed or (scalar is not None and abs(scalar) <= 1e-12):
+    if fixed or (
+        scalar is not None
+        and DEFAULT_TOLERANCE_POLICY.is_near_zero(scalar)
+    ):
         return 0.0, 0.0
     return None
 
@@ -901,12 +960,26 @@ def _extract_beta(display: str | None) -> float | None:
     return float(m.group(1)) if m else None
 
 
-def run_residual_checks(cp: CanonicalProblem, pool: dict, rep_display: str | None = None) -> tuple[list[ResidualCheck], bool]:
-    """(checks, supported). supported=False → 이 유형은 역대입 미지원(정직하게 보고)."""
+def run_residual_checks(
+    cp: CanonicalProblem,
+    pool: dict,
+    rep_display: str | None = None,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+    engine_id: str | None = None,
+) -> tuple[list[ResidualCheck], bool]:
+    """Return residual checks using the caller's effective central policy."""
     st = cp.system_type
     if st in ("pure_rolling_energy", "rolling_energy_general"):
-        return _rolling(cp, pool, _extract_beta(rep_display)), True
-    fn = CHECKERS.get(st)
-    if fn is None:
-        return [], False
-    return fn(cp, pool), True
+        checks = _rolling(cp, pool, _extract_beta(rep_display))
+        supported = True
+    else:
+        fn = CHECKERS.get(st)
+        if fn is None:
+            return [], False
+        checks = fn(cp, pool)
+        supported = True
+    effective = policy.for_engine(engine_id)
+    for check in checks:
+        check.policy = effective
+    return checks, supported

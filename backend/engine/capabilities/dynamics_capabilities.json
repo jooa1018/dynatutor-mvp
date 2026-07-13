@@ -13,7 +13,8 @@
   "notes": [
     "One entry corresponds to one SolverRegistry solver; particle_on_incline therefore has separate subtype entries.",
     "numeric_support means the current student-answer numeric path, not independent SciPy/PyDy simulation.",
-    "Chrono manual_required_hook is not a successful numerical simulation."
+    "Chrono manual_required_hook is not a successful numerical simulation.",
+    "Phase 48 structured invariant validators are selected by analytic_solver and record explicit applicability."
   ],
   "capabilities": [
     {
@@ -101,7 +102,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -156,7 +158,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -205,7 +209,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -268,7 +274,10 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -323,7 +332,10 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -385,7 +397,10 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack",
+        "pulley_no_slip"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -455,7 +470,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "pure_rolling",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -527,7 +544,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "pure_rolling",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -593,7 +612,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "tension_slack"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -650,7 +671,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "collision_momentum",
+        "collision_restitution"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -939,7 +962,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1063,7 +1088,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "work_energy"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1214,7 +1240,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1261,7 +1289,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1421,7 +1450,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "rigid_relative_acceleration"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1654,7 +1684,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "rigid_relative_velocity"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1675,5 +1706,6 @@
       ]
     }
   ],
-  "source_ref": "codex/fix-physics-audit"
+  "source_ref": "codex/fix-physics-audit",
+  "verification_policy_version": "phase48-tolerance-policy-v1"
 }

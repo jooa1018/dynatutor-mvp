@@ -169,6 +169,19 @@ def _selection_decision_model(decision):
     return SelectionDecisionModel(**decision.to_dict())
 
 
+def _verification_report_model(report):
+    payload = dict(report.__dict__)
+    payload["structured_checks"] = [
+        (
+            check.to_dict()
+            if callable(getattr(check, "to_dict", None))
+            else dict(check)
+        )
+        for check in getattr(report, "structured_checks", [])
+    ]
+    return VerificationReportSchema(**payload)
+
+
 def _physical_model_payload(payload, decision):
     out = dict(payload or {})
     route_model = _route_decision_model(decision)
@@ -433,7 +446,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         # Phase 30/47: only a selected candidate proceeds to the established
         # dimension, plausibility and governing-equation verification suite.
         if result.selection_decision.status == "selected":
-            suite_report = verify_result(canonical, result)
+            suite_report = verify_result(canonical, result, solver_id=solver.name)
             result.verification = merge_reports(result.verification, suite_report)
     # 강등은 아래 apply_result_gate 한 곳에서만 수행한다 (Phase 33 통합).
     model_cards = physical_model_step_cards(physical_model)
@@ -444,7 +457,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         answer=AnswerModel(**result.answer.__dict__) if result.answer else None,
         answers=_answers_from_result(result),
         steps=[StepCardSchema(**s.__dict__) for s in all_steps],
-        verification=VerificationReportSchema(**result.verification.__dict__),
+        verification=_verification_report_model(result.verification),
         unsupported_reason=result.unsupported_reason,
         route_decision=_route_decision_model(route_decision),
         physical_model=_physical_model_payload(physical_model.to_dict(), route_decision),
