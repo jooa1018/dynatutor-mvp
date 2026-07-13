@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import replace
+from types import SimpleNamespace
 import inspect
 import json
 import math
@@ -21,6 +22,8 @@ from engine.verification import consistency as consistency_module
 from engine.verification import oracles as oracles_module
 from engine.verification.consistency import (
     ConsistencyContractError,
+    EQUATION_ROLE_CONTRACT,
+    PRIMARY_OUTPUT_CONTRACT,
     ObservedSemanticOutput,
     SolverPathObservation,
     compare_oracle_observation,
@@ -48,7 +51,7 @@ def _output(**overrides):
         "root_count": 1,
         "multiplicity": [1],
         "ambiguity": False,
-        "equation_ids": ["P49-INCLINE-FREE:a=g*sin(theta)"],
+        "equation_ids": ["newton_second_law_tangent"],
     }
     raw.update(overrides)
     return raw
@@ -106,7 +109,7 @@ def _observation(output=None, **overrides):
                 root_count=1,
                 multiplicity=(1,),
                 ambiguity=False,
-                equation_ids=("P49-INCLINE-FREE:a=g*sin(theta)",),
+                equation_ids=("newton_second_law_tangent",),
             ),
         )
     raw = {
@@ -347,7 +350,7 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
         ok=True,
         answer=Answer(numeric=999.0, unit="m/s^2", display="wrong representative"),
         answers=[item, unrelated],
-        used_equations=["PROD-INCLINE-EQUATION"],
+        used_equations=["ΣF_x = ma", "mg sinθ = ma"],
     )
     canonical = CanonicalProblem(
         system_type="particle_on_incline",
@@ -376,7 +379,9 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
     )
 
     assert observed.outputs[0].numeric == 2.0
-    assert observed.outputs[0].equation_ids == ("PROD-INCLINE-EQUATION",)
+    assert observed.outputs[0].equation_ids == ("newton_second_law_tangent",)
+    assert observed.metadata["raw_equation_evidence"] == ("ΣF_x = ma", "mg sinθ = ma")
+    assert observed.metadata["equation_evidence_source"] == "SolverResult.used_equations"
     assert observed.outputs[0].assumptions == (
         "frictionless",
         "constant_gravity",
@@ -396,7 +401,7 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
 
 
 @pytest.mark.parametrize(
-    "family,solver_id,output_key,unit,frame,direction",
+    "family,solver_id,output_key,unit,frame,direction,equations,roles",
     [
         (
             "incline",
@@ -405,6 +410,8 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
             "m/s^2",
             "incline_tangent",
             "down_slope",
+            ["ΣF_x = ma", "mg sinθ = ma"],
+            ("newton_second_law_tangent",),
         ),
         (
             "work_energy",
@@ -413,6 +420,8 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
             "m/s",
             "path_tangent",
             "direction_of_motion",
+            ["W=ΔK"],
+            ("work_energy_theorem",),
         ),
         (
             "fixed_axis_rotation",
@@ -421,11 +430,13 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
             "rad/s^2",
             "fixed_axis",
             "counterclockwise",
+            ["ΣM=Iα"],
+            ("fixed_axis_torque_balance",),
         ),
     ],
 )
 def test_actual_shaped_single_answer_results_use_typed_fallback(
-    family, solver_id, output_key, unit, frame, direction
+    family, solver_id, output_key, unit, frame, direction, equations, roles
 ):
     result = SolverResult(
         ok=True,
@@ -435,7 +446,7 @@ def test_actual_shaped_single_answer_results_use_typed_fallback(
             display="malicious display = 999; must never be parsed",
         ),
         answers=[],
-        used_equations=["ACTUAL-SOLVER-EQUATION"],
+        used_equations=equations,
     )
     canonical = CanonicalProblem(
         assumptions=["actual solver assumption"],
@@ -456,9 +467,7 @@ def test_actual_shaped_single_answer_results_use_typed_fallback(
 
     assert observed.output_by_key[output_key].numeric == 2.5
     assert observed.output_by_key[output_key].unit == unit
-    assert observed.output_by_key[output_key].equation_ids == (
-        "ACTUAL-SOLVER-EQUATION",
-    )
+    assert observed.output_by_key[output_key].equation_ids == roles
     assert observed.metadata["source"] == "SolverResult.answer.numeric/unit"
     assert observed.metadata["legacy_single_output_fallback"] is True
     assert result.answer.display == "malicious display = 999; must never be parsed"
@@ -544,7 +553,7 @@ def test_single_answer_fallback_never_parses_display_only_or_nonfinite_values():
             display="vf = 7 m/s",
         ),
         answers=[],
-        used_equations=["ACTUAL-WORK-ENERGY"],
+        used_equations=["W=ΔK"],
     )
     observed = observation_from_solver_result(
         display_only,
@@ -569,7 +578,7 @@ def test_single_answer_fallback_never_parses_display_only_or_nonfinite_values():
             display="vf = finite-looking text",
         ),
         answers=[],
-        used_equations=["ACTUAL-WORK-ENERGY"],
+        used_equations=["W=ΔK"],
     )
     with pytest.raises(ConsistencyContractError, match="finite"):
         observation_from_solver_result(
@@ -732,7 +741,12 @@ def test_six_independent_secondary_adapters_are_typed_and_versioned(
     assert observation.applicability is VerificationApplicability.APPLICABLE
     assert observation.path_id == f"phase49.secondary.{family}"
     assert observation.policy_version == DEFAULT_TOLERANCE_POLICY.policy_version
+    assert tuple(observation.output_by_key) == PRIMARY_OUTPUT_CONTRACT[family]
     assert required_key in observation.output_by_key
+    assert all(
+        output.equation_ids == EQUATION_ROLE_CONTRACT[family]
+        for output in observation.outputs
+    )
     assert observation.metadata["independent"] is True
     assert observation.metadata["offline_only"] is True
 
@@ -772,3 +786,284 @@ def test_independent_modules_have_no_production_solver_result_dependencies():
     assert all(name not in consistency_source for name in forbidden)
     assert "DEFAULT_TOLERANCE_POLICY" in oracle_source
     assert "DEFAULT_TOLERANCE_POLICY" in consistency_source
+
+@pytest.mark.parametrize(
+    "family,equations,outputs",
+    [
+        (
+            "incline",
+            ["ΣF_x = ma", "mg sinθ = ma"],
+            [("acceleration", "m/s^2", 2.0)],
+        ),
+        (
+            "pulley",
+            ["T - m1g = m1a", "m2g - T = m2a"],
+            [("acceleration", "m/s^2", 2.0)],
+        ),
+        (
+            "collision",
+            [
+                "m1*v1+m2*v2=m1*v1_after+m2*v2_after",
+                "v2_after-v1_after=e*(v1-v2)",
+            ],
+            [("v1_after", "m/s", 1.0), ("v2_after", "m/s", 2.0)],
+        ),
+        (
+            "rolling",
+            ["mgh = 1/2mv² + 1/2Iω²", "v=ωR", "I=βmR²"],
+            [("final_velocity", "m/s", 2.0)],
+        ),
+        (
+            "work_energy",
+            ["W=ΔK", "v_f = √(v_i² + 2W/m)"],
+            [("final_velocity", "m/s", 2.0)],
+        ),
+        (
+            "fixed_axis_rotation",
+            ["ΣM=Iα"],
+            [("angular_acceleration", "rad/s^2", 2.0)],
+        ),
+    ],
+)
+def test_product_adapter_maps_all_six_raw_equation_shapes_to_semantic_roles(
+    family, equations, outputs
+):
+    answers = [
+        AnswerItem(key, key, numeric, unit, "never parsed", output_key=key)
+        for key, unit, numeric in outputs
+    ]
+    result = SolverResult(ok=True, answers=answers, used_equations=equations)
+    canonical = CanonicalProblem(
+        assumptions=["actual"],
+        coordinate_data={
+            "coordinate_frame": "actual_frame",
+            "positive_direction": "actual_direction",
+        },
+    )
+
+    observed = observation_from_solver_result(
+        result,
+        canonical=canonical,
+        family=family,
+        path_id=f"student.{family}",
+        solver_id=f"solver.{family}",
+    )
+
+    assert tuple(observed.output_by_key) == PRIMARY_OUTPUT_CONTRACT[family]
+    assert all(
+        output.equation_ids == EQUATION_ROLE_CONTRACT[family]
+        for output in observed.outputs
+    )
+    assert observed.metadata["missing_equation_roles"] == ()
+    assert observed.metadata["raw_equation_evidence"] == tuple(equations)
+
+
+def test_collision_product_adapter_uses_actual_phase48_structured_fallback():
+    answers = [
+        AnswerItem("v1", "v1", 1.0, "m/s", "", output_key="v1_after"),
+        AnswerItem("v2", "v2", 2.0, "m/s", "", output_key="v2_after"),
+    ]
+    source_ids = (
+        "m1*v1+m2*v2=m1*v1_after+m2*v2_after",
+        "v2_after-v1_after=e*(v1-v2)",
+    )
+    result = SimpleNamespace(
+        answer=None,
+        answers=answers,
+        used_equations=[],
+        verification=SimpleNamespace(
+            structured_checks=[
+                {
+                    "category": "collision_momentum",
+                    "status": "passed",
+                    "source_equation_ids": [source_ids[0]],
+                },
+                {
+                    "category": "collision_restitution",
+                    "status": "passed_with_warning",
+                    "source_equation_ids": [source_ids[1]],
+                },
+            ]
+        ),
+    )
+    canonical = CanonicalProblem(
+        assumptions=["one_dimensional_impact"],
+        coordinate_data={
+            "coordinate_frame": "one_dimensional_lab",
+            "positive_direction": "right",
+        },
+    )
+
+    observed = observation_from_solver_result(
+        result,
+        canonical=canonical,
+        family="collision",
+        path_id="student.collision",
+        solver_id="collision_1d",
+    )
+
+    assert all(
+        output.equation_ids == EQUATION_ROLE_CONTRACT["collision"]
+        for output in observed.outputs
+    )
+    assert observed.metadata["equation_evidence_source"] == (
+        "VerificationReport.structured_checks"
+    )
+    assert observed.metadata["structured_equation_evidence"] == source_ids
+
+
+def test_mutated_or_missing_equation_evidence_fails_closed():
+    result = SolverResult(
+        ok=True,
+        answers=[
+            AnswerItem(
+                "acceleration",
+                "a",
+                2.0,
+                "m/s^2",
+                "",
+                output_key="acceleration",
+            )
+        ],
+        used_equations=["a = fixture-shaped-number"],
+    )
+    canonical = CanonicalProblem(
+        assumptions=["frictionless", "constant_gravity"],
+        coordinate_data={
+            "coordinate_frame": "incline_tangent",
+            "positive_direction": "down_slope",
+        },
+    )
+    observed = observation_from_solver_result(
+        result,
+        canonical=canonical,
+        family="incline",
+        path_id="student.incline",
+        solver_id="incline_no_friction",
+    )
+    report = compare_oracle_observation(_oracle(), observed)
+
+    assert observed.outputs[0].equation_ids == ()
+    assert observed.metadata["missing_equation_roles"] == (
+        "newton_second_law_tangent",
+    )
+    assert not report.passed
+    assert "equation_ids" in _failed_categories(report)
+
+
+@pytest.mark.parametrize(
+    "family,requested",
+    [
+        ("incline", ["final_velocity"]),
+        ("collision", ["v1_after"]),
+    ],
+)
+def test_product_adapter_rejects_fixture_specific_primary_output_subset(
+    family, requested
+):
+    result = SolverResult(ok=True, answers=[], used_equations=[])
+    canonical = CanonicalProblem(
+        assumptions=[],
+        coordinate_data={
+            "coordinate_frame": "frame",
+            "positive_direction": "direction",
+        },
+    )
+    with pytest.raises(ConsistencyContractError, match="central primary-output"):
+        observation_from_solver_result(
+            result,
+            canonical=canonical,
+            family=family,
+            semantic_output_keys=requested,
+            path_id=f"student.{family}",
+            solver_id=family,
+        )
+
+
+@pytest.mark.parametrize(
+    "expected_unit,observed_unit,passes",
+    [
+        ("m/s^2", "m/s²", True),
+        ("rad/s^2", "rad/s²", True),
+        ("m/s^2", "m/s", False),
+        ("N", "kg", False),
+    ],
+)
+def test_unit_comparison_normalizes_spelling_only(
+    expected_unit, observed_unit, passes
+):
+    oracle = load_oracle_suite(
+        _suite(
+            [
+                _case(
+                    expected_outputs=[
+                        _output(unit=expected_unit)
+                    ]
+                )
+            ]
+        )
+    ).cases[0]
+    output = replace(_observation().outputs[0], unit=observed_unit)
+    report = compare_oracle_observation(oracle, _observation(output=(output,)))
+
+    assert report.passed is passes
+    if not passes:
+        assert "unit_dimension" in _failed_categories(report)
+
+
+def test_assumption_order_is_part_of_exact_semantic_contract():
+    output = replace(
+        _observation().outputs[0],
+        assumptions=("constant_gravity", "frictionless"),
+    )
+    report = compare_oracle_observation(_oracle(), _observation(output=(output,)))
+
+    assert not report.passed
+    assert "assumptions" in _failed_categories(report)
+
+
+def test_secondary_outputs_never_promote_analytic_extras_to_primary_answers():
+    pulley = evaluate_secondary_analytic(
+        "pulley",
+        {
+            "m1": 2.0,
+            "m2": 5.0,
+            "gravity": 9.81,
+            "pulley_inertia": 0.2,
+            "pulley_radius": 0.4,
+        },
+    )
+    rolling = evaluate_secondary_analytic(
+        "rolling",
+        {
+            "height": 2.0,
+            "gravity": 9.81,
+            "inertia_factor": 0.4,
+            "radius": 0.5,
+        },
+    )
+    fixed = evaluate_secondary_analytic(
+        "fixed_axis_rotation",
+        {
+            "torque": 6.0,
+            "inertia": 2.0,
+            "initial_angular_velocity": 1.0,
+            "time": 2.0,
+            "radius": 0.5,
+        },
+    )
+
+    assert tuple(pulley.output_by_key) == ("acceleration",)
+    assert set(pulley.metadata["analytic_extras"]) == {
+        "tension_1",
+        "tension_2",
+        "angular_acceleration",
+    }
+    assert tuple(rolling.output_by_key) == ("final_velocity",)
+    assert set(rolling.metadata["analytic_extras"]) == {"angular_velocity"}
+    assert tuple(fixed.output_by_key) == ("angular_acceleration",)
+    assert set(fixed.metadata["analytic_extras"]) == {
+        "angular_velocity",
+        "tangential_velocity",
+    }
+

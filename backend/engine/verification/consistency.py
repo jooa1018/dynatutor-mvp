@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import json
 import math
+import re
+import unicodedata
 from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -31,6 +33,33 @@ from engine.verification.types import (
 
 DISAGREEMENT_REPORT_VERSION = "phase49-disagreement-report-v1"
 SECONDARY_PATH_PREFIX = "phase49.secondary."
+PRIMARY_OUTPUT_CONTRACT = MappingProxyType(
+    {
+        "incline": ("acceleration",),
+        "pulley": ("acceleration",),
+        "collision": ("v1_after", "v2_after"),
+        "rolling": ("final_velocity",),
+        "work_energy": ("final_velocity",),
+        "fixed_axis_rotation": ("angular_acceleration",),
+    }
+)
+EQUATION_ROLE_CONTRACT = MappingProxyType(
+    {
+        "incline": ("newton_second_law_tangent",),
+        "pulley": ("newton_second_law_string_system",),
+        "collision": (
+            "linear_momentum_conservation",
+            "coefficient_of_restitution",
+        ),
+        "rolling": (
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model",
+        ),
+        "work_energy": ("work_energy_theorem",),
+        "fixed_axis_rotation": ("fixed_axis_torque_balance",),
+    }
+)
 _ALLOWED_SIGNS = frozenset(
     {"positive", "negative", "zero", "nonnegative", "nonpositive", "any"}
 )
@@ -100,6 +129,228 @@ def _numeric_sign(value: float, policy: TolerancePolicy) -> str:
     if policy.is_near_zero(value, scale=max(abs(value), 1.0)):
         return "zero"
     return "positive" if value > 0 else "negative"
+
+
+def _compact_equation(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    text = value
+    for source, target in (
+        ("²", "^2"),
+        ("⁻", "-"),
+        ("Σ", "sum"),
+        ("∑", "sum"),
+        ("α", "alpha"),
+        ("β", "beta"),
+        ("ω", "omega"),
+        ("θ", "theta"),
+        ("μ", "mu"),
+        ("τ", "tau"),
+        ("Δ", "delta"),
+        ("×", "*"),
+        ("·", "*"),
+        ("⋅", "*"),
+        ("−", "-"),
+        ("→", "->"),
+        ("≤", "<="),
+        ("≥", ">="),
+    ):
+        text = text.replace(source, target)
+    text = unicodedata.normalize("NFKC", text).casefold()
+    text = text.replace("\\left", "").replace("\\right", "")
+    return re.sub(r"[\\\s_{}]", "", text)
+
+
+def _normalize_unit(value: str) -> str:
+    """Canonicalize notation spelling without converting dimensions or magnitude."""
+    text = value
+    for source, target in (
+        ("²", "^2"),
+        ("⁻", "-"),
+        ("·", "*"),
+        ("⋅", "*"),
+        ("×", "*"),
+        ("−", "-"),
+    ):
+        text = text.replace(source, target)
+    text = unicodedata.normalize("NFKC", text).casefold()
+    text = re.sub(r"\s+", "", text).replace("**", "^")
+    aliases = {
+        "m/s2": "m/s^2",
+        "rad/s2": "rad/s^2",
+    }
+    return aliases.get(text, text)
+
+
+def _roles_from_raw_equations(
+    family: str,
+    equations: Sequence[str],
+) -> tuple[str, ...]:
+    compact = tuple(
+        item for item in (_compact_equation(value) for value in equations) if item
+    )
+    found: set[str] = set()
+    if family == "incline":
+        if any(
+            equation in {
+                "sumfx=ma",
+                "mgsintheta=ma",
+                "mgsintheta-f=ma",
+                "mgsintheta-mumgcostheta=ma",
+            }
+            or (
+                equation.endswith("=ma")
+                and ("mgsintheta" in equation or "sumfx" in equation)
+            )
+            or (
+                "mgsintheta" in equation
+                and "a=0" in equation
+                and ("<=" in equation or "=" in equation)
+            )
+            for equation in compact
+        ):
+            found.add("newton_second_law_tangent")
+    elif family == "pulley":
+        m1_balance = any(
+            equation.endswith("=m1a")
+            and equation.split("=", 1)[0]
+            and "t" in equation.split("=", 1)[0]
+            for equation in compact
+        )
+        m2_balance = any(
+            equation.endswith("=m2a")
+            and "m2g" in equation.split("=", 1)[0]
+            and "t" in equation.split("=", 1)[0]
+            for equation in compact
+        )
+        static_balance = any(
+            "m1g" in equation
+            and "m2g" in equation
+            and "a=0" in equation
+            and ("<=" in equation or "=" in equation)
+            for equation in compact
+        )
+        if (m1_balance and m2_balance) or static_balance:
+            found.add("newton_second_law_string_system")
+    elif family == "collision":
+        if any(
+            all(token in equation for token in ("m1", "m2", "v1", "v2", "="))
+            and "+" in equation
+            and "e*" not in equation
+            for equation in compact
+        ):
+            found.add("linear_momentum_conservation")
+        if any(
+            all(token in equation for token in ("v1", "v2", "e", "="))
+            and ("after" in equation or "'" in equation)
+            for equation in compact
+        ):
+            found.add("coefficient_of_restitution")
+    elif family == "rolling":
+        if any(
+            "mgh=" in equation
+            and "mv^2" in equation
+            and ("iomega^2" in equation or "betam" in equation)
+            for equation in compact
+        ):
+            found.add("mechanical_energy_conservation")
+        if any(
+            equation in {"v=omegar", "|vcm|=|omega|r"}
+            or ("v=" in equation and "omegar" in equation)
+            for equation in compact
+        ):
+            found.add("pure_rolling_constraint")
+        explicit_shape = any(
+            equation in {"i=betamr^2", "i=kmr^2"}
+            or ("i=" in equation and "mr^2" in equation)
+            for equation in compact
+        )
+        explicit_inertia = (
+            any("iomega^2" in equation for equation in compact)
+            and any("i/r^2" in equation for equation in compact)
+        )
+        if explicit_shape or explicit_inertia:
+            found.add("rigid_body_inertia_model")
+    elif family == "work_energy":
+        if any(
+            equation in {"w=deltak", "wnet=deltak"}
+            or ("w=" in equation and "vf^2" in equation and "vi^2" in equation)
+            for equation in compact
+        ):
+            found.add("work_energy_theorem")
+    elif family == "fixed_axis_rotation":
+        if any(
+            equation in {"summ=ialpha", "tau=ialpha", "alpha=tau/i"}
+            for equation in compact
+        ):
+            found.add("fixed_axis_torque_balance")
+    return tuple(
+        role for role in EQUATION_ROLE_CONTRACT[family] if role in found
+    )
+
+
+def _check_payload(check: Any) -> Mapping[str, Any]:
+    if isinstance(check, Mapping):
+        return check
+    return {
+        "category": getattr(check, "category", None),
+        "status": getattr(check, "status", None),
+        "source_equation_ids": getattr(check, "source_equation_ids", ()),
+    }
+
+
+def _derive_product_equation_roles(
+    family: str,
+    result: Any,
+) -> tuple[tuple[str, ...], str, tuple[str, ...], tuple[str, ...]]:
+    raw_value = getattr(result, "used_equations", None)
+    if not isinstance(raw_value, (list, tuple)):
+        raise ConsistencyContractError("result.used_equations must be a sequence")
+    raw = tuple(_text(item, "result.used_equations") for item in raw_value)
+    roles = _roles_from_raw_equations(family, raw)
+    structured_ids: list[str] = []
+    source = "SolverResult.used_equations" if raw else "none"
+    if family == "collision" and not raw:
+        verification = getattr(result, "verification", None)
+        checks = getattr(verification, "structured_checks", ()) if verification else ()
+        valid_statuses = {
+            VerificationStatus.PASSED.value,
+            VerificationStatus.PASSED_WITH_WARNING.value,
+        }
+        accepted_categories: set[str] = set()
+        for raw_check in checks or ():
+            check = _check_payload(raw_check)
+            status = str(getattr(check.get("status"), "value", check.get("status")))
+            category = str(check.get("category") or "")
+            ids = check.get("source_equation_ids") or ()
+            if (
+                status not in valid_statuses
+                or category not in {"collision_momentum", "collision_restitution"}
+                or not isinstance(ids, (list, tuple))
+                or not ids
+            ):
+                continue
+            candidate_ids = tuple(str(item) for item in ids)
+            mapped = set(_roles_from_raw_equations("collision", candidate_ids))
+            required_role = (
+                "linear_momentum_conservation"
+                if category == "collision_momentum"
+                else "coefficient_of_restitution"
+            )
+            if required_role in mapped:
+                accepted_categories.add(category)
+                structured_ids.extend(candidate_ids)
+        role_set = set(roles)
+        if "collision_momentum" in accepted_categories:
+            role_set.add("linear_momentum_conservation")
+        if "collision_restitution" in accepted_categories:
+            role_set.add("coefficient_of_restitution")
+        roles = tuple(
+            role for role in EQUATION_ROLE_CONTRACT[family] if role in role_set
+        )
+        if accepted_categories:
+            source = "VerificationReport.structured_checks"
+    return roles, source, raw, tuple(structured_ids)
 
 
 @dataclass(frozen=True)
@@ -336,25 +587,24 @@ def observation_from_solver_result(
     result: Any,
     *,
     canonical: Any,
-    semantic_output_keys: Sequence[str],
     family: str,
     path_id: str,
     solver_id: str,
+    semantic_output_keys: Sequence[str] | None = None,
     policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
     assumptions: Sequence[str] | None = None,
     equation_ids: Sequence[str] | None = None,
     frame: str | None = None,
     positive_direction: str | None = None,
 ) -> SolverPathObservation:
-    """Create a product-path snapshot exclusively from actual typed evidence.
+    """Snapshot product-path evidence under the central Phase 49 contracts.
 
-    The four optional metadata parameters are rejection sentinels: callers may
-    not inject oracle expectations.  Assumptions and coordinates come from the
-    canonical problem, while equation IDs come from result.used_equations.
-    semantic_output_keys is a capability/runner selection contract that filters
-    unrelated compatibility answer items; absent selected keys remain absent so
-    the comparator reports them.
+    Callers may repeat the complete primary-output contract for compatibility,
+    but cannot select a fixture-specific subset.  Equation role IDs are derived
+    fail-closed from actual solver or Phase 48 collision-verification evidence.
     """
+    if family not in PRIMARY_OUTPUT_CONTRACT:
+        raise ConsistencyContractError(f"unsupported family {family!r}")
     injected = {
         name
         for name, value in {
@@ -370,15 +620,24 @@ def observation_from_solver_result(
             "product observation metadata must be derived from actual sources; "
             f"caller overrides are forbidden: {sorted(injected)}"
         )
+
+    primary_keys = PRIMARY_OUTPUT_CONTRACT[family]
+    if semantic_output_keys is not None:
+        requested_keys = _unique_strings(
+            semantic_output_keys,
+            "semantic_output_keys",
+            allow_empty=False,
+        )
+        if requested_keys != primary_keys:
+            raise ConsistencyContractError(
+                "semantic_output_keys must equal the central primary-output "
+                f"contract for {family}: {primary_keys!r}"
+            )
+
     answers = getattr(result, "answers", None)
     if not isinstance(answers, (list, tuple)):
         raise ConsistencyContractError("result.answers must be a sequence")
-    selected_keys = _unique_strings(
-        semantic_output_keys,
-        "semantic_output_keys",
-        allow_empty=False,
-    )
-    selected_set = set(selected_keys)
+    selected_set = set(primary_keys)
     selected: list[Any] = []
     ignored_keys: list[str] = []
     for item in tuple(answers):
@@ -404,39 +663,45 @@ def observation_from_solver_result(
         raise ConsistencyContractError(
             "canonical.coordinate_data must record positive_direction"
         )
-    used_equations = getattr(result, "used_equations", None)
-    if not isinstance(used_equations, (list, tuple)):
-        raise ConsistencyContractError("result.used_equations must be a sequence")
+
+    roles, equation_source, raw_equations, structured_equations = (
+        _derive_product_equation_roles(family, result)
+    )
+    required_roles = EQUATION_ROLE_CONTRACT[family]
+    missing_roles = tuple(role for role in required_roles if role not in roles)
 
     fallback_output: ObservedSemanticOutput | None = None
     fallback_rejected_reason: str | None = None
-    if not selected and len(selected_keys) == 1:
-        representative = getattr(result, "answer", None)
-        if representative is None:
-            fallback_rejected_reason = "representative_answer_missing"
+    if not selected and len(primary_keys) == 1:
+        if missing_roles:
+            fallback_rejected_reason = "required_equation_roles_missing"
         else:
-            representative_numeric = getattr(representative, "numeric", None)
-            representative_unit = getattr(representative, "unit", None)
-            if representative_numeric is None:
-                fallback_rejected_reason = "representative_numeric_missing"
+            representative = getattr(result, "answer", None)
+            if representative is None:
+                fallback_rejected_reason = "representative_answer_missing"
             else:
-                numeric = _finite(
-                    representative_numeric,
-                    "result.answer.numeric",
-                )
-                if not isinstance(representative_unit, str):
-                    fallback_rejected_reason = "representative_unit_not_typed"
+                representative_numeric = getattr(representative, "numeric", None)
+                representative_unit = getattr(representative, "unit", None)
+                if representative_numeric is None:
+                    fallback_rejected_reason = "representative_numeric_missing"
                 else:
-                    fallback_output = ObservedSemanticOutput(
-                        output_key=selected_keys[0],
-                        numeric=numeric,
-                        unit=representative_unit,
-                        sign=_numeric_sign(numeric, policy),
-                        frame=actual_frame,
-                        positive_direction=actual_direction,
-                        assumptions=tuple(canonical_assumptions),
-                        equation_ids=tuple(used_equations),
+                    numeric = _finite(
+                        representative_numeric,
+                        "result.answer.numeric",
                     )
+                    if not isinstance(representative_unit, str):
+                        fallback_rejected_reason = "representative_unit_not_typed"
+                    else:
+                        fallback_output = ObservedSemanticOutput(
+                            output_key=primary_keys[0],
+                            numeric=numeric,
+                            unit=representative_unit,
+                            sign=_numeric_sign(numeric, policy),
+                            frame=actual_frame,
+                            positive_direction=actual_direction,
+                            assumptions=tuple(canonical_assumptions),
+                            equation_ids=roles,
+                        )
     elif selected:
         fallback_rejected_reason = "typed_answer_items_present"
     else:
@@ -454,7 +719,7 @@ def observation_from_solver_result(
             frame=actual_frame,
             positive_direction=actual_direction,
             assumptions=tuple(canonical_assumptions),
-            equation_ids=tuple(used_equations),
+            equation_ids=roles,
             policy=policy,
         )
         outputs = snapshot.outputs
@@ -469,15 +734,21 @@ def observation_from_solver_result(
         metadata={
             "source": answer_source,
             "answer_source": answer_source,
-            "equation_source": "SolverResult.used_equations",
+            "equation_source": equation_source,
+            "equation_evidence_source": equation_source,
+            "raw_equation_evidence": raw_equations,
+            "structured_equation_evidence": structured_equations,
+            "equation_role_ids": roles,
+            "missing_equation_roles": missing_roles,
             "assumption_source": "CanonicalProblem.assumptions",
             "coordinate_source": "CanonicalProblem.coordinate_data",
-            "semantic_output_keys": selected_keys,
+            "semantic_output_keys": primary_keys,
             "ignored_output_keys": tuple(ignored_keys),
             "legacy_single_output_fallback": fallback_output is not None,
             "fallback_rejected_reason": fallback_rejected_reason,
         },
     )
+
 
 
 def _add(
@@ -555,6 +826,45 @@ def compare_oracle_observation(
             message="solver path family does not match oracle family",
             policy=policy,
         )
+    primary_contract = PRIMARY_OUTPUT_CONTRACT[oracle.family]
+    expected_contract_keys = tuple(oracle.output_by_key)
+    oracle_primary_ok = expected_contract_keys == primary_contract
+    _add(
+        report,
+        check_id=f"{prefix}:primary_output_contract",
+        category="path_contract",
+        status=_same_status(oracle_primary_ok),
+        observed=expected_contract_keys,
+        expected=primary_contract,
+        message=(
+            "oracle uses the central primary-output contract"
+            if oracle_primary_ok
+            else "oracle violates the central primary-output contract"
+        ),
+        policy=policy,
+    )
+    required_roles = EQUATION_ROLE_CONTRACT[oracle.family]
+    oracle_role_ok = all(
+        tuple(output.equation_ids) == required_roles
+        for output in oracle.expected_outputs
+    )
+    _add(
+        report,
+        check_id=f"{prefix}:equation_role_contract",
+        category="path_contract",
+        status=_same_status(oracle_role_ok),
+        observed={
+            output.output_key: tuple(output.equation_ids)
+            for output in oracle.expected_outputs
+        },
+        expected=required_roles,
+        message=(
+            "oracle uses stable semantic equation roles"
+            if oracle_role_ok
+            else "oracle equation IDs violate the semantic-role contract"
+        ),
+        policy=policy,
+    )
     if observed.applicability is not VerificationApplicability.APPLICABLE:
         status = (
             VerificationStatus.NOT_APPLICABLE
@@ -631,14 +941,16 @@ def compare_oracle_observation(
             evidence=(oracle.derivation, oracle.independence_note),
             equation_ids=expected.equation_ids,
         )
-        unit_ok = actual.unit.strip() == expected.unit.strip()
+        observed_unit = _normalize_unit(actual.unit)
+        expected_unit = _normalize_unit(expected.unit)
+        unit_ok = observed_unit == expected_unit
         _add(
             report,
             check_id=f"{check_prefix}:unit",
             category="unit_dimension",
             status=_same_status(unit_ok),
-            observed=actual.unit,
-            expected=expected.unit,
+            observed={"raw": actual.unit, "normalized": observed_unit},
+            expected={"raw": expected.unit, "normalized": expected_unit},
             message="unit agrees" if unit_ok else "unit or dimension disagreement",
             policy=policy,
             equation_ids=expected.equation_ids,
@@ -681,20 +993,16 @@ def compare_oracle_observation(
             message="positive direction agrees" if direction_ok else "positive direction disagreement",
             policy=policy,
         )
-        actual_assumptions = set(actual.assumptions)
-        expected_assumptions = set(expected.assumptions)
+        actual_assumptions = tuple(actual.assumptions)
+        expected_assumptions = tuple(expected.assumptions)
         assumptions_ok = actual_assumptions == expected_assumptions
         _add(
             report,
             check_id=f"{check_prefix}:assumptions",
             category="assumptions",
             status=_same_status(assumptions_ok),
-            observed={
-                "values": sorted(actual_assumptions),
-                "missing": sorted(expected_assumptions - actual_assumptions),
-                "extra": sorted(actual_assumptions - expected_assumptions),
-            },
-            expected=sorted(expected_assumptions),
+            observed=actual_assumptions,
+            expected=expected_assumptions,
             message="assumptions agree" if assumptions_ok else "assumption disagreement",
             policy=policy,
         )
@@ -729,8 +1037,8 @@ def compare_oracle_observation(
             message="ambiguity classification agrees" if ambiguity_ok else "ambiguity disagreement",
             policy=policy,
         )
-        actual_equations = set(actual.equation_ids)
-        expected_equations = set(expected.equation_ids)
+        actual_equations = tuple(actual.equation_ids)
+        expected_equations = tuple(expected.equation_ids)
         equations_ok = actual_equations == expected_equations
         _add(
             report,
@@ -738,11 +1046,15 @@ def compare_oracle_observation(
             category="equation_ids",
             status=_same_status(equations_ok),
             observed={
-                "values": sorted(actual_equations),
-                "missing": sorted(expected_equations - actual_equations),
-                "extra": sorted(actual_equations - expected_equations),
+                "values": actual_equations,
+                "missing": tuple(
+                    role for role in expected_equations if role not in actual_equations
+                ),
+                "extra": tuple(
+                    role for role in actual_equations if role not in expected_equations
+                ),
             },
-            expected=sorted(expected_equations),
+            expected=expected_equations,
             message="equation IDs agree" if equations_ok else "equation ID disagreement",
             policy=policy,
         )
@@ -824,13 +1136,22 @@ def _secondary_observation(
     applicability: VerificationApplicability = VerificationApplicability.APPLICABLE,
     message: str = "",
     formula_ids: Sequence[str] = (),
+    analytic_extras: Mapping[str, Any] | None = None,
 ) -> SolverPathObservation:
     path_id = f"{SECONDARY_PATH_PREFIX}{family}"
+    output_tuple = tuple(outputs)
+    if applicability is VerificationApplicability.APPLICABLE:
+        actual_keys = tuple(output.output_key for output in output_tuple)
+        if actual_keys != PRIMARY_OUTPUT_CONTRACT[family]:
+            raise ConsistencyContractError(
+                f"secondary {family} outputs {actual_keys!r} violate central "
+                f"primary-output contract {PRIMARY_OUTPUT_CONTRACT[family]!r}"
+            )
     return SolverPathObservation(
         path_id=path_id,
         family=family,
         solver_id=path_id,
-        outputs=tuple(outputs),
+        outputs=output_tuple,
         policy_version=policy.policy_version,
         applicability=applicability,
         message=message,
@@ -838,8 +1159,11 @@ def _secondary_observation(
             "independent": True,
             "offline_only": True,
             "formula_ids": tuple(formula_ids),
+            "analytic_extras": dict(analytic_extras or {}),
+            "equation_role_ids": EQUATION_ROLE_CONTRACT[family],
         },
     )
+
 
 
 def _incline(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathObservation:
@@ -852,20 +1176,21 @@ def _incline(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathOb
     if mode == "frictionless":
         acceleration = gravity * math.sin(theta)
         assumptions = ("frictionless", "constant_gravity", "particle_model")
-        equations = ("P49-INCLINE-FREE:a=g*sin(theta)",)
+        formulas = ("P49-INCLINE-FREE:a=g*sin(theta)",)
     elif mode == "kinetic":
         mu_k = _number(inputs, "mu_k")
         if mu_k < 0:
             raise ConsistencyContractError("mu_k must be non-negative")
         acceleration = gravity * (math.sin(theta) - mu_k * math.cos(theta))
         assumptions = ("kinetic_friction", "constant_gravity", "particle_model")
-        equations = ("P49-INCLINE-KINETIC:a=g*(sin(theta)-mu_k*cos(theta))",)
+        formulas = ("P49-INCLINE-KINETIC:a=g*(sin(theta)-mu_k*cos(theta))",)
     elif mode == "static":
         mu_s = _number(inputs, "mu_s")
         if mu_s < 0:
             raise ConsistencyContractError("mu_s must be non-negative")
         drive = gravity * math.sin(theta)
         limit = mu_s * gravity * math.cos(theta)
+        static_formula = "P49-INCLINE-STATIC:|g*sin(theta)|<=mu_s*g*cos(theta)"
         if drive > limit + policy.tolerance("constraint", scale=max(drive, limit, 1.0)):
             return _secondary_observation(
                 "incline",
@@ -873,17 +1198,26 @@ def _incline(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathOb
                 policy=policy,
                 applicability=VerificationApplicability.NOT_APPLICABLE,
                 message="requested static state exceeds the static-friction limit",
-                formula_ids=("P49-INCLINE-STATIC:|g*sin(theta)|<=mu_s*g*cos(theta)",),
+                formula_ids=(static_formula,),
             )
         acceleration = 0.0
         assumptions = ("static_friction", "constant_gravity", "particle_model")
-        equations = ("P49-INCLINE-STATIC:a=0",)
+        formulas = (static_formula, "P49-INCLINE-STATIC:a=0")
     else:
         raise ConsistencyContractError(f"unsupported friction_mode {mode!r}")
     output = _semantic(
-        "acceleration", acceleration, "m/s^2", frame, direction, assumptions, equations, policy
+        "acceleration",
+        acceleration,
+        "m/s^2",
+        frame,
+        direction,
+        assumptions,
+        EQUATION_ROLE_CONTRACT["incline"],
+        policy,
     )
-    return _secondary_observation("incline", (output,), policy=policy, formula_ids=equations)
+    return _secondary_observation(
+        "incline", (output,), policy=policy, formula_ids=formulas
+    )
 
 
 def _pulley(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathObservation:
@@ -910,25 +1244,32 @@ def _pulley(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathObs
     acceleration = (m2 - m1) * gravity / denominator
     t1 = m1 * (gravity + acceleration)
     t2 = m2 * (gravity - acceleration)
-    outputs = [
-        _semantic("acceleration", acceleration, "m/s^2", "pulley_string", "mass2_down", assumptions, (formula,), policy),
-        _semantic("tension_1", t1, "N", "pulley_string", "away_from_mass1", assumptions, ("P49-PULLEY-T1:T1=m1*(g+a)",), policy),
-        _semantic("tension_2", t2, "N", "pulley_string", "away_from_mass2", assumptions, ("P49-PULLEY-T2:T2=m2*(g-a)",), policy),
-    ]
+    extras: dict[str, Any] = {
+        "tension_1": {"numeric": t1, "unit": "N"},
+        "tension_2": {"numeric": t2, "unit": "N"},
+    }
     if radius is not None:
-        outputs.append(
-            _semantic(
-                "angular_acceleration",
-                acceleration / radius,
-                "rad/s^2",
-                "pulley_axis",
-                "mass2_down_rotation",
-                assumptions,
-                ("P49-PULLEY-NOSLIP:alpha=a/R",),
-                policy,
-            )
-        )
-    return _secondary_observation("pulley", outputs, policy=policy, formula_ids=(formula,))
+        extras["angular_acceleration"] = {
+            "numeric": acceleration / radius,
+            "unit": "rad/s^2",
+        }
+    output = _semantic(
+        "acceleration",
+        acceleration,
+        "m/s^2",
+        "pulley_string",
+        "mass2_down",
+        assumptions,
+        EQUATION_ROLE_CONTRACT["pulley"],
+        policy,
+    )
+    return _secondary_observation(
+        "pulley",
+        (output,),
+        policy=policy,
+        formula_ids=(formula,),
+        analytic_extras=extras,
+    )
 
 
 def _collision(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathObservation:
@@ -944,15 +1285,16 @@ def _collision(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPath
     v1 = (m1 * u1 + m2 * u2 - m2 * restitution * (u1 - u2)) / denominator
     v2 = (m1 * u1 + m2 * u2 + m1 * restitution * (u1 - u2)) / denominator
     assumptions = ("one_dimensional_impact", "isolated_during_impact", "newton_restitution")
-    equations = (
+    formulas = (
         "P49-COLLISION-MOMENTUM:m1*u1+m2*u2=m1*v1+m2*v2",
         "P49-COLLISION-RESTITUTION:v2-v1=e*(u1-u2)",
     )
+    roles = EQUATION_ROLE_CONTRACT["collision"]
     outputs = (
-        _semantic("v1_after", v1, "m/s", "one_dimensional_lab", "right", assumptions, equations, policy),
-        _semantic("v2_after", v2, "m/s", "one_dimensional_lab", "right", assumptions, equations, policy),
+        _semantic("v1_after", v1, "m/s", "one_dimensional_lab", "right", assumptions, roles, policy),
+        _semantic("v2_after", v2, "m/s", "one_dimensional_lab", "right", assumptions, roles, policy),
     )
-    return _secondary_observation("collision", outputs, policy=policy, formula_ids=equations)
+    return _secondary_observation("collision", outputs, policy=policy, formula_ids=formulas)
 
 
 def _rolling(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathObservation:
@@ -964,25 +1306,31 @@ def _rolling(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathOb
         raise ConsistencyContractError("height and inertia_factor must be non-negative")
     velocity = math.sqrt(2 * gravity * height / (1 + factor))
     assumptions = ("pure_rolling", "no_energy_loss", "starts_from_rest")
-    equation = "P49-ROLLING:v=sqrt(2*g*h/(1+k))"
-    outputs = [
-        _semantic("final_velocity", velocity, "m/s", "path_tangent", "direction_of_motion", assumptions, (equation,), policy)
-    ]
+    formula = "P49-ROLLING:v=sqrt(2*g*h/(1+k))"
+    extras: dict[str, Any] = {}
     if "radius" in inputs:
         radius = _number(inputs, "radius", positive=True)
-        outputs.append(
-            _semantic(
-                "angular_velocity",
-                velocity / radius,
-                "rad/s",
-                "body_center",
-                "rolling_rotation",
-                assumptions,
-                ("P49-ROLLING-NOSLIP:omega=v/R",),
-                policy,
-            )
-        )
-    return _secondary_observation("rolling", outputs, policy=policy, formula_ids=(equation,))
+        extras["angular_velocity"] = {
+            "numeric": velocity / radius,
+            "unit": "rad/s",
+        }
+    output = _semantic(
+        "final_velocity",
+        velocity,
+        "m/s",
+        "path_tangent",
+        "direction_of_motion",
+        assumptions,
+        EQUATION_ROLE_CONTRACT["rolling"],
+        policy,
+    )
+    return _secondary_observation(
+        "rolling",
+        (output,),
+        policy=policy,
+        formula_ids=(formula,),
+        analytic_extras=extras,
+    )
 
 
 def _work_energy(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathObservation:
@@ -1003,67 +1351,68 @@ def _work_energy(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPa
         )
     velocity = math.sqrt(max(radicand, 0.0))
     assumptions = ("particle_model", "net_work_known", "speed_is_nonnegative")
-    equation = "P49-WORK-ENERGY:vf^2=vi^2+2W/m"
+    formula = "P49-WORK-ENERGY:vf^2=vi^2+2W/m"
     output = _semantic(
-        "final_velocity", velocity, "m/s", "path_tangent", "direction_of_motion", assumptions, (equation,), policy
+        "final_velocity",
+        velocity,
+        "m/s",
+        "path_tangent",
+        "direction_of_motion",
+        assumptions,
+        EQUATION_ROLE_CONTRACT["work_energy"],
+        policy,
     )
-    return _secondary_observation("work_energy", (output,), policy=policy, formula_ids=(equation,))
+    return _secondary_observation(
+        "work_energy", (output,), policy=policy, formula_ids=(formula,)
+    )
 
 
 def _fixed_axis(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathObservation:
-    _allowed_keys(inputs, {"torque", "inertia", "angular_acceleration", "initial_angular_velocity", "time", "radius"})
-    if "angular_acceleration" in inputs:
-        alpha = _number(inputs, "angular_acceleration")
-        alpha_equation = "P49-ROTATION-GIVEN:alpha=given"
-        assumptions = ("fixed_axis", "constant_angular_acceleration")
-    else:
-        torque = _number(inputs, "torque")
-        inertia = _number(inputs, "inertia", positive=True)
-        alpha = torque / inertia
-        alpha_equation = "P49-ROTATION-TORQUE:alpha=tau/I"
-        assumptions = ("fixed_axis", "constant_net_torque")
-    outputs = [
-        _semantic("angular_acceleration", alpha, "rad/s^2", "fixed_axis", "counterclockwise", assumptions, (alpha_equation,), policy)
-    ]
-    if "initial_angular_velocity" in inputs or "time" in inputs:
+    _allowed_keys(inputs, {"torque", "inertia", "initial_angular_velocity", "time", "radius"})
+    torque = _number(inputs, "torque")
+    inertia = _number(inputs, "inertia", positive=True)
+    alpha = torque / inertia
+    assumptions = ("fixed_axis", "constant_net_torque")
+    formulas = ["P49-ROTATION-TORQUE:alpha=tau/I"]
+    extras: dict[str, Any] = {}
+    has_kinematics = "initial_angular_velocity" in inputs or "time" in inputs
+    if has_kinematics:
         omega0 = _number(inputs, "initial_angular_velocity")
         time = _number(inputs, "time")
         if time < 0:
             raise ConsistencyContractError("time must be non-negative")
         omega = omega0 + alpha * time
-        outputs.append(
-            _semantic(
-                "angular_velocity",
-                omega,
-                "rad/s",
-                "fixed_axis",
-                "counterclockwise",
-                assumptions,
-                ("P49-ROTATION-KINEMATICS:omega=omega0+alpha*t",),
-                policy,
-            )
-        )
+        formulas.append("P49-ROTATION-KINEMATICS:omega=omega0+alpha*t")
+        extras["angular_velocity"] = {"numeric": omega, "unit": "rad/s"}
         if "radius" in inputs:
             radius = _number(inputs, "radius", positive=True)
-            outputs.append(
-                _semantic(
-                    "tangential_velocity",
-                    omega * radius,
-                    "m/s",
-                    "body_tangent",
-                    "counterclockwise_tangent",
-                    assumptions,
-                    ("P49-ROTATION-TANGENTIAL:v=omega*R",),
-                    policy,
-                )
-            )
+            formulas.append("P49-ROTATION-TANGENTIAL:v=omega*R")
+            extras["tangential_velocity"] = {
+                "numeric": omega * radius,
+                "unit": "m/s",
+            }
     elif "radius" in inputs:
         raise ConsistencyContractError("radius requires angular velocity inputs")
+    output = _semantic(
+        "angular_acceleration",
+        alpha,
+        "rad/s^2",
+        "fixed_axis",
+        "counterclockwise",
+        assumptions,
+        EQUATION_ROLE_CONTRACT["fixed_axis_rotation"],
+        policy,
+    )
     return _secondary_observation(
-        "fixed_axis_rotation", outputs, policy=policy, formula_ids=(alpha_equation,)
+        "fixed_axis_rotation",
+        (output,),
+        policy=policy,
+        formula_ids=tuple(formulas),
+        analytic_extras=extras,
     )
 
 
+_SECONDARY_ADAPTERS =
 _SECONDARY_ADAPTERS = MappingProxyType(
     {
         "incline": _incline,
@@ -1103,6 +1452,8 @@ def evaluate_secondary_analytic(
 __all__ = [
     "DISAGREEMENT_REPORT_VERSION",
     "SECONDARY_PATH_PREFIX",
+    "PRIMARY_OUTPUT_CONTRACT",
+    "EQUATION_ROLE_CONTRACT",
     "ConsistencyContractError",
     "DisagreementReport",
     "ObservedSemanticOutput",
