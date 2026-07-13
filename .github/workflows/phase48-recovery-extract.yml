@@ -66,6 +66,12 @@ jobs:
 
           outer_bytes = OUTER.read_bytes()
           outer_sha = sha256(outer_bytes)
+          print(
+              f"outer archive diagnostics: bytes={len(outer_bytes)}, "
+              f"sha256={outer_sha}, head={outer_bytes[:16].hex()}, "
+              f"tail={outer_bytes[-16:].hex()}",
+              flush=True,
+          )
           outer_hash_matches_recorded = outer_sha == EXPECTED_OUTER_SHA256
           if not outer_hash_matches_recorded:
               print(
@@ -102,7 +108,14 @@ jobs:
                   data_start = name_end + extra_length
                   data_end = data_start + compressed_size
                   if data_end > len(blob):
-                      raise SystemExit("outer ZIP entry payload is truncated")
+                      available_payload = max(0, len(blob) - data_start)
+                      raise SystemExit(
+                          f"outer ZIP entry payload is truncated for {name}: "
+                          f"file_bytes={len(blob)}, data_start={data_start}, "
+                          f"declared_compressed_bytes={compressed_size}, "
+                          f"available_payload_bytes={available_payload}, "
+                          f"required_end={data_end}"
+                      )
                   name_bytes = blob[name_start:name_end]
                   name = name_bytes.decode("utf-8" if flags & 0x800 else "cp437")
                   if name in entries:
