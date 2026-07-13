@@ -22,7 +22,9 @@ def _optional_evidence_radius(c: CanonicalProblem) -> float | None:
             continue
         try:
             radius = float(magnitude_si(quantity, "m"))
-        except (TypeError, ValueError, OverflowError):
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            # Pint UndefinedUnitError inherits AttributeError; this conversion
+            # is optional evidence only and cannot invalidate the primary solve.
             continue
         if math.isfinite(radius) and radius > 0.0:
             return radius

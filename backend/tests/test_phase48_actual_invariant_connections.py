@@ -6,6 +6,9 @@ import math
 import pytest
 import sympy as sp
 
+from engine.equation_generators.particle_newton import (
+    build_particle_newton_system,
+)
 from engine.models import (
     AnswerItem,
     CanonicalProblem,
@@ -426,6 +429,19 @@ _OPTIONAL_RADIUS_CASES = [
         True,
         id="invalid-R-valid-r-fallback",
     ),
+    pytest.param(
+        {"R": q("R", 2.0, "not_a_unit")},
+        False,
+        id="unknown-unit-radius",
+    ),
+    pytest.param(
+        {
+            "R": q("R", 2.0, "not_a_unit"),
+            "r": q("r", 0.2, "m"),
+        },
+        True,
+        id="unknown-unit-R-valid-r-fallback",
+    ),
 ]
 
 
@@ -496,3 +512,20 @@ def test_service_keeps_shape_rolling_solved_with_invalid_optional_radius(
     assert checks
     expected_status = "passed" if expects_angular else "inconclusive"
     assert {_status(check) for check in checks} == {expected_status}
+
+
+def test_unsupported_particle_newton_does_not_convert_rolling_radius():
+    canonical = _shape_rolling_problem(
+        "pure_rolling_energy",
+        radius_knowns={"R": q("R", 2.0, "not_a_unit")},
+    )
+
+    generated = build_particle_newton_system(canonical)
+
+    assert not generated.equations
+    assert generated.substitutions == {}
+    assert not generated.equations_ready
+    assert any(
+        "does not support pure_rolling_energy" in error
+        for error in generated.errors
+    )
