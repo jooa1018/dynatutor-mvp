@@ -141,7 +141,7 @@ def diagnose_jacobian_condition(
             source_equation_ids=source_equation_ids,
         )
 
-    singular = rank < min(matrix.shape) or not math.isfinite(condition_number)
+    singular = rank < matrix.shape[1] or not math.isfinite(condition_number)
     near_singular = (
         not singular
         and math.isfinite(condition_number)
@@ -163,7 +163,7 @@ def diagnose_jacobian_condition(
         )
     )
     excess = (
-        math.inf
+        None
         if not math.isfinite(condition_number)
         else max(condition_number - threshold, 0.0)
     )
@@ -343,7 +343,17 @@ def diagnose_tolerance_sensitivity(
         sys.float_info.epsilon * max(tolerance, 1.0),
     )
     sensitivity_score = tolerance / denominator
-    warning = sensitivity_score >= effective.sensitivity_warning_threshold
+    nominal_passed = absolute_error <= tolerance
+    tightened_passed = absolute_error <= tight_tolerance
+    loosened_passed = absolute_error <= loose_tolerance
+    outcome_flip = (
+        nominal_passed != tightened_passed
+        or nominal_passed != loosened_passed
+    )
+    warning = (
+        outcome_flip
+        or sensitivity_score >= effective.sensitivity_warning_threshold
+    )
     return emit(
         check_id=check_id,
         category="sensitivity",
@@ -360,9 +370,10 @@ def diagnose_tolerance_sensitivity(
         ),
         observed={
             "absolute_residual": absolute_error,
-            "nominal_passed": absolute_error <= tolerance,
-            "tightened_passed": absolute_error <= tight_tolerance,
-            "loosened_passed": absolute_error <= loose_tolerance,
+            "nominal_passed": nominal_passed,
+            "tightened_passed": tightened_passed,
+            "loosened_passed": loosened_passed,
+            "outcome_flip": outcome_flip,
             "sensitivity_score": sensitivity_score,
         },
         expected={
@@ -381,6 +392,7 @@ def diagnose_tolerance_sensitivity(
         metadata={
             "sensitivity_score": sensitivity_score,
             "warning_threshold": effective.sensitivity_warning_threshold,
+            "outcome_flip": outcome_flip,
         },
     )
 
@@ -390,51 +402,77 @@ def diagnose_near_cancellation(
     residual: float | None,
     *,
     scale: float | None = None,
-    term_magnitudes: Sequence[float] = (),
+    signed_terms: Sequence[float] = (),
     policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
     engine_id: str | None = None,
     check_id: str = "conditioning:near_cancellation",
     source_equation_ids: Sequence[str] = (),
 ) -> VerificationCheck:
-    """Warn when a small residual is produced from much larger finite terms."""
+    """Warn only from actual opposing signed equation terms."""
 
     effective = policy.for_engine(engine_id)
-    finite_terms: list[float] = []
     try:
         numeric_residual = abs(float(residual)) if residual is not None else math.nan
-        finite_terms = [
-            abs(float(value))
-            for value in term_magnitudes
-            if math.isfinite(float(value))
-        ]
-        numeric_scale = (
-            max(finite_terms)
-            if finite_terms
-            else abs(float(scale)) if scale is not None else math.nan
-        )
+        numeric_scale = abs(float(scale)) if scale is not None else math.nan
+        finite_terms = [float(value) for value in signed_terms]
     except (TypeError, ValueError, OverflowError):
         numeric_residual = math.nan
         numeric_scale = math.nan
-    if not math.isfinite(numeric_residual) or not math.isfinite(numeric_scale):
+        finite_terms = []
+    if (
+        not math.isfinite(numeric_residual)
+        or any(not math.isfinite(value) for value in finite_terms)
+    ):
         return _diagnostic(
             check_id=check_id,
             category="cancellation",
             status=VerificationStatus.INCONCLUSIVE,
             applicability=VerificationApplicability.UNDETERMINED,
-            message="near-cancellation analysis requires a finite residual and term scale",
+            message="near-cancellation analysis requires finite residual evidence",
             observed={"residual": residual, "scale": scale},
             source_equation_ids=source_equation_ids,
             policy_version=policy.policy_version,
             engine_id=engine_id,
         )
-    if numeric_scale <= effective.near_zero_tol:
+
+    has_positive = any(value > 0 for value in finite_terms)
+    has_negative = any(value < 0 for value in finite_terms)
+    if len(finite_terms) < 2 or not (has_positive and has_negative):
+        return _diagnostic(
+            check_id=check_id,
+            category="cancellation",
+            status=VerificationStatus.INCONCLUSIVE,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message=(
+                "signed opposing equation terms are unavailable; a residual "
+                "scale proxy is not sufficient to claim cancellation"
+            ),
+            observed={
+                "absolute_residual": numeric_residual,
+                "scale_proxy": (
+                    numeric_scale if math.isfinite(numeric_scale) else None
+                ),
+            },
+            source_equation_ids=source_equation_ids,
+            metadata={"scale_proxy_rejected": True},
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+
+    positive_total = sum(value for value in finite_terms if value > 0)
+    negative_total = abs(sum(value for value in finite_terms if value < 0))
+    term_scale = positive_total + negative_total
+    if term_scale <= effective.near_zero_tol:
         return _diagnostic(
             check_id=check_id,
             category="cancellation",
             status=VerificationStatus.NOT_APPLICABLE,
             applicability=VerificationApplicability.NOT_APPLICABLE,
-            message="all equation terms are near zero; cancellation risk is not meaningful",
-            observed={"absolute_residual": numeric_residual, "term_scale": numeric_scale},
+            message="all signed equation terms are near zero",
+            observed={
+                "absolute_residual": numeric_residual,
+                "term_scale": term_scale,
+            },
             tolerance=effective.near_zero_tol,
             source_equation_ids=source_equation_ids,
             policy_version=policy.policy_version,
@@ -443,10 +481,18 @@ def diagnose_near_cancellation(
 
     denominator = max(
         numeric_residual,
-        sys.float_info.epsilon * max(numeric_scale, 1.0),
+        sys.float_info.epsilon * max(term_scale, 1.0),
     )
-    cancellation_ratio = numeric_scale / denominator
-    warning = cancellation_ratio >= effective.condition_warning_threshold
+    cancellation_ratio = term_scale / denominator
+    large_term_floor = 1.0 / max(
+        effective.rel_tol,
+        math.sqrt(sys.float_info.epsilon),
+    )
+    large_opposing_terms = term_scale >= large_term_floor
+    warning = (
+        large_opposing_terms
+        and cancellation_ratio >= effective.condition_warning_threshold
+    )
     return _diagnostic(
         check_id=check_id,
         category="cancellation",
@@ -457,35 +503,33 @@ def diagnose_near_cancellation(
         ),
         applicability=VerificationApplicability.APPLICABLE,
         message=(
-            "large equation terms nearly cancel; residual accuracy may lose significant digits"
+            "large opposing equation terms nearly cancel; residual accuracy may lose significant digits"
             if warning
-            else "equation residual does not show material near-cancellation"
+            else "signed equation terms do not show material near-cancellation risk"
         ),
         observed={
             "absolute_residual": numeric_residual,
-            "term_scale": numeric_scale,
+            "positive_term_total": positive_total,
+            "negative_term_total": negative_total,
+            "term_scale": term_scale,
             "cancellation_ratio": cancellation_ratio,
         },
         expected={
-            "cancellation_ratio_below": effective.condition_warning_threshold
+            "cancellation_ratio_below": effective.condition_warning_threshold,
+            "large_term_floor": large_term_floor,
         },
         absolute_error=max(
             cancellation_ratio - effective.condition_warning_threshold,
             0.0,
-        ),
-        relative_error=numeric_residual / max(numeric_scale, 1.0),
+        ) if large_opposing_terms else 0.0,
+        relative_error=numeric_residual / max(term_scale, 1.0),
         tolerance=effective.condition_warning_threshold,
-        evidence=(
-            "explicit_term_magnitudes"
-            if finite_terms
-            else "residual_scale_proxy",
-        ),
+        evidence=("evaluated_signed_equation_terms",),
         source_equation_ids=source_equation_ids,
         metadata={
             "near_cancellation": warning,
-            "scale_source": (
-                "term_magnitudes" if finite_terms else "residual_scale_proxy"
-            ),
+            "large_opposing_terms": large_opposing_terms,
+            "term_evidence_count": len(finite_terms),
         },
         policy_version=policy.policy_version,
         engine_id=engine_id,
@@ -595,7 +639,7 @@ def diagnose_local_perturbation(
             engine_id=engine_id,
         )
 
-    singular = rank < min(matrix.shape)
+    singular = rank < matrix.shape[1]
     if singular:
         amplification = math.inf
     warning = (
@@ -628,7 +672,7 @@ def diagnose_local_perturbation(
             "amplification_below": effective.sensitivity_warning_threshold
         },
         absolute_error=(
-            math.inf
+            None
             if not math.isfinite(amplification)
             else max(
                 amplification - effective.sensitivity_warning_threshold,

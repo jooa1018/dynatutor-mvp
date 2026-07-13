@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import math
 from typing import Any, Iterable, Mapping
 
 import sympy as sp
@@ -17,6 +18,7 @@ from engine.physics_core.validators import (
 from engine.verification.conditioning import (
     diagnose_jacobian_condition,
     diagnose_local_perturbation,
+    diagnose_near_cancellation,
 )
 from engine.verification.policy import (
     CANDIDATE_ENGINE_ID,
@@ -90,6 +92,35 @@ def _equation_expression(equation: Any) -> Any:
     return equation.lhs - equation.rhs if isinstance(equation, sp.Equality) else equation
 
 
+
+def _evaluated_signed_terms(
+    equation: Any,
+    substitutions: Mapping[Any, Any],
+) -> tuple[float | None, list[float]]:
+    """Return an actual residual and signed terms evaluated at one candidate."""
+
+    try:
+        if isinstance(equation, sp.Equality):
+            left = float(sp.N(equation.lhs.subs(substitutions)))
+            right = float(sp.N(equation.rhs.subs(substitutions)))
+            values = [left, -right]
+            residual = left - right
+        else:
+            expression = sp.expand(_equation_expression(equation))
+            values = [
+                float(sp.N(term.subs(substitutions)))
+                for term in sp.Add.make_args(expression)
+            ]
+            residual = sum(values)
+    except (TypeError, ValueError, OverflowError):
+        return None, []
+    if (
+        not math.isfinite(residual)
+        or any(not math.isfinite(value) for value in values)
+    ):
+        return None, []
+    return residual, values
+
 def _attach_equation_diagnostics(
     equations: Iterable[Any],
     unknowns: Iterable[Any],
@@ -154,10 +185,37 @@ def _attach_equation_diagnostics(
             check_id=f"{candidate.candidate_id}:local_perturbation",
             source_equation_ids=source_ids,
         )
+        cancellation_checks = []
+        for index, equation in enumerate(equation_items):
+            residual, signed_terms = _evaluated_signed_terms(
+                equation,
+                substitutions,
+            )
+            cancellation_checks.append(
+                diagnose_near_cancellation(
+                    residual,
+                    scale=sum(abs(value) for value in signed_terms)
+                    if signed_terms
+                    else None,
+                    signed_terms=signed_terms,
+                    policy=policy,
+                    engine_id=CANDIDATE_ENGINE_ID,
+                    check_id=(
+                        f"{candidate.candidate_id}:equation:{index}:"
+                        "near_cancellation"
+                    ),
+                    source_equation_ids=(f"equation:{index}",),
+                ).to_dict()
+            )
+
         candidate.rank_metadata.setdefault(
             "numerical_diagnostics", []
         ).extend(
-            [payload, perturbation_check.to_dict()]
+            [
+                payload,
+                perturbation_check.to_dict(),
+                *cancellation_checks,
+            ]
         )
 
 def _physical_value(value: Any) -> float | None:

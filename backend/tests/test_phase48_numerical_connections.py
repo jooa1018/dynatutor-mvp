@@ -138,7 +138,11 @@ def test_candidate_mutation_still_blocks_despite_nonblocking_diagnostics():
 
 
 def test_cancellation_perturbation_and_boundary_diagnostics_are_typed_nonblocking():
-    cancellation = diagnose_near_cancellation(1e-12, scale=1e4)
+    cancellation = diagnose_near_cancellation(
+        0.0,
+        scale=2e12,
+        signed_terms=[1e12, -1e12],
+    )
     perturbation = diagnose_local_perturbation(
         [[1.0, 1.0], [2.0, 2.0]],
         solution_values=[1.0, 1.0],
@@ -223,7 +227,59 @@ def test_selection_diagnostics_reach_shared_verification_report():
     root_checks = [
         check
         for check in report.structured_checks
-        if check.check_id == "candidate:root_separation"
+        if check["check_id"] == "candidate:root_separation"
     ]
     assert root_checks
-    assert root_checks[0].status.value == "passed_with_warning"
+    assert root_checks[0]["status"] == "passed_with_warning"
+
+
+def test_scale_proxy_alone_never_claims_near_cancellation():
+    check = diagnose_near_cancellation(0.0, scale=1e12)
+
+    assert check.status.value == "inconclusive"
+    assert check.metadata["scale_proxy_rejected"] is True
+
+
+def test_candidate_tolerance_outcome_flip_is_warning_only():
+    x = sp.symbols("x")
+    tolerance = DEFAULT_TOLERANCE_POLICY.for_engine(
+        CANDIDATE_ENGINE_ID
+    ).tolerance("residual", scale=1.0)
+    decision = validate_and_select(
+        [
+            candidate_from_mapping(
+                {x: 1.0 + 0.75 * tolerance},
+                candidate_id="near-boundary",
+            )
+        ],
+        ValidationContext(equations=[sp.Eq(x, 1.0)]),
+    )
+
+    assert decision.status == "selected"
+    check = _diagnostic(decision, "sensitivity")
+    assert check["status"] == "passed_with_warning"
+    assert check["metadata"]["outcome_flip"] is True
+
+
+def test_underdetermined_full_row_rank_jacobian_is_nonunique():
+    check = diagnose_local_perturbation(
+        [[1.0, 0.0]],
+        solution_values=[1.0, 0.0],
+    )
+
+    assert check.status.value == "passed_with_warning"
+    assert check.metadata["singular"] is True
+
+
+def test_equation_system_cancellation_uses_evaluated_signed_terms():
+    x = sp.symbols("x")
+    decision = EquationSystem(
+        [sp.Eq(x + sp.Integer(10) ** 12, sp.Integer(10) ** 12)],
+        [x],
+    ).solve_candidates()
+
+    assert decision.status == "selected"
+    check = _diagnostic(decision, "near_cancellation")
+    assert check["status"] == "passed_with_warning"
+    assert check["metadata"]["term_evidence_count"] == 2
+    assert check["evidence"] == ["evaluated_signed_equation_terms"]
