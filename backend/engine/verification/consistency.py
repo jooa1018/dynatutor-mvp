@@ -201,8 +201,6 @@ class SolverPathObservation:
         outputs = tuple(self.outputs)
         if not all(isinstance(item, ObservedSemanticOutput) for item in outputs):
             raise ConsistencyContractError("outputs must be typed semantic outputs")
-        if self.applicability is VerificationApplicability.APPLICABLE and not outputs:
-            raise ConsistencyContractError("applicable observation must contain outputs")
         keys = [item.output_key for item in outputs]
         if len(keys) != len(set(keys)):
             raise ConsistencyContractError("outputs contains duplicate output_key")
@@ -336,13 +334,109 @@ def observation_from_answer_items(
 
 def observation_from_solver_result(
     result: Any,
-    **kwargs: Any,
+    *,
+    canonical: Any,
+    semantic_output_keys: Sequence[str],
+    family: str,
+    path_id: str,
+    solver_id: str,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+    assumptions: Sequence[str] | None = None,
+    equation_ids: Sequence[str] | None = None,
+    frame: str | None = None,
+    positive_direction: str | None = None,
 ) -> SolverPathObservation:
-    """Adapt a result through typed answer items without mutating it."""
+    """Create a product-path snapshot exclusively from actual typed evidence.
+
+    The four optional metadata parameters are rejection sentinels: callers may
+    not inject oracle expectations.  Assumptions and coordinates come from the
+    canonical problem, while equation IDs come from result.used_equations.
+    semantic_output_keys is a capability/runner selection contract that filters
+    unrelated compatibility answer items; absent selected keys remain absent so
+    the comparator reports them.
+    """
+    injected = {
+        name
+        for name, value in {
+            "assumptions": assumptions,
+            "equation_ids": equation_ids,
+            "frame": frame,
+            "positive_direction": positive_direction,
+        }.items()
+        if value is not None
+    }
+    if injected:
+        raise ConsistencyContractError(
+            "product observation metadata must be derived from actual sources; "
+            f"caller overrides are forbidden: {sorted(injected)}"
+        )
     answers = getattr(result, "answers", None)
     if not isinstance(answers, (list, tuple)):
         raise ConsistencyContractError("result.answers must be a sequence")
-    return observation_from_answer_items(tuple(answers), **kwargs)
+    selected_keys = _unique_strings(
+        semantic_output_keys,
+        "semantic_output_keys",
+        allow_empty=False,
+    )
+    selected_set = set(selected_keys)
+    selected: list[Any] = []
+    ignored_keys: list[str] = []
+    for item in tuple(answers):
+        key = getattr(item, "output_key", None)
+        if isinstance(key, str) and key in selected_set:
+            selected.append(item)
+        else:
+            ignored_keys.append(key if isinstance(key, str) and key else "<untyped>")
+
+    canonical_assumptions = getattr(canonical, "assumptions", None)
+    if not isinstance(canonical_assumptions, (list, tuple)):
+        raise ConsistencyContractError("canonical.assumptions must be a sequence")
+    coordinate_data = getattr(canonical, "coordinate_data", None)
+    if not isinstance(coordinate_data, Mapping):
+        raise ConsistencyContractError("canonical.coordinate_data must be a mapping")
+    actual_frame = coordinate_data.get("coordinate_frame", coordinate_data.get("frame"))
+    actual_direction = coordinate_data.get("positive_direction")
+    if not isinstance(actual_frame, str) or not actual_frame.strip():
+        raise ConsistencyContractError(
+            "canonical.coordinate_data must record coordinate_frame"
+        )
+    if not isinstance(actual_direction, str) or not actual_direction.strip():
+        raise ConsistencyContractError(
+            "canonical.coordinate_data must record positive_direction"
+        )
+    used_equations = getattr(result, "used_equations", None)
+    if not isinstance(used_equations, (list, tuple)):
+        raise ConsistencyContractError("result.used_equations must be a sequence")
+
+    snapshot = observation_from_answer_items(
+        tuple(selected),
+        family=family,
+        path_id=path_id,
+        solver_id=solver_id,
+        frame=actual_frame,
+        positive_direction=actual_direction,
+        assumptions=tuple(canonical_assumptions),
+        equation_ids=tuple(used_equations),
+        policy=policy,
+    )
+    return SolverPathObservation(
+        path_id=snapshot.path_id,
+        family=snapshot.family,
+        solver_id=snapshot.solver_id,
+        outputs=snapshot.outputs,
+        policy_version=snapshot.policy_version,
+        applicability=snapshot.applicability,
+        message=snapshot.message,
+        metadata={
+            "source": "actual_product_evidence",
+            "answer_source": "SolverResult.answers[].output_key",
+            "equation_source": "SolverResult.used_equations",
+            "assumption_source": "CanonicalProblem.assumptions",
+            "coordinate_source": "CanonicalProblem.coordinate_data",
+            "semantic_output_keys": selected_keys,
+            "ignored_output_keys": tuple(ignored_keys),
+        },
+    )
 
 
 def _add(

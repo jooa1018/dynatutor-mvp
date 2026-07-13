@@ -16,7 +16,7 @@ from engine.capabilities.loader import (
     load_capability_matrix,
     validate_capability_validator_ids,
 )
-from engine.models import Answer, AnswerItem, SolverResult
+from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult
 from engine.verification import consistency as consistency_module
 from engine.verification import oracles as oracles_module
 from engine.verification.consistency import (
@@ -326,7 +326,7 @@ def test_nonfinite_observation_fails_closed(value):
         replace(_observation().outputs[0], numeric=value)
 
 
-def test_typed_result_adapter_uses_output_key_and_does_not_mutate_source():
+def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
     item = AnswerItem(
         "acceleration",
         "a",
@@ -335,62 +335,159 @@ def test_typed_result_adapter_uses_output_key_and_does_not_mutate_source():
         "display text is not parsed",
         output_key="acceleration",
     )
+    unrelated = AnswerItem(
+        "legacy compatibility",
+        None,
+        999.0,
+        "kg",
+        "unrelated",
+        output_key=None,
+    )
     result = SolverResult(
         ok=True,
         answer=Answer(numeric=999.0, unit="m/s^2", display="wrong representative"),
-        answers=[item],
+        answers=[item, unrelated],
+        used_equations=["PROD-INCLINE-EQUATION"],
     )
-    before = (result.answer.numeric, tuple(result.answers), item.display, item.output_key)
+    canonical = CanonicalProblem(
+        system_type="particle_on_incline",
+        assumptions=["frictionless", "constant_gravity"],
+        coordinate_data={
+            "coordinate_frame": "incline_tangent",
+            "positive_direction": "down_slope",
+        },
+    )
+    before = (
+        result.answer.numeric,
+        tuple(result.answers),
+        tuple(result.used_equations),
+        tuple(canonical.assumptions),
+        deepcopy(canonical.coordinate_data),
+        item.display,
+        item.output_key,
+    )
     observed = observation_from_solver_result(
         result,
+        canonical=canonical,
+        semantic_output_keys=["acceleration"],
         family="incline",
         path_id="student.incline_no_friction",
         solver_id="incline_no_friction",
-        frame="incline_tangent",
-        positive_direction="down_slope",
-        assumptions=("frictionless", "constant_gravity"),
-        equation_ids=("P49-INCLINE-FREE:a=g*sin(theta)",),
     )
 
     assert observed.outputs[0].numeric == 2.0
-    assert observed.metadata["source"] == "AnswerItem.output_key"
+    assert observed.outputs[0].equation_ids == ("PROD-INCLINE-EQUATION",)
+    assert observed.outputs[0].assumptions == (
+        "frictionless",
+        "constant_gravity",
+    )
+    assert observed.metadata["source"] == "actual_product_evidence"
+    assert observed.metadata["ignored_output_keys"] == ("<untyped>",)
     assert before == (
         result.answer.numeric,
         tuple(result.answers),
+        tuple(result.used_equations),
+        tuple(canonical.assumptions),
+        canonical.coordinate_data,
         item.display,
         item.output_key,
     )
 
 
-def test_typed_result_adapter_rejects_missing_or_duplicate_semantic_keys():
-    missing = SolverResult(
+def test_product_adapter_rejects_expected_metadata_echo():
+    result = SolverResult(
         ok=True,
-        answers=[AnswerItem("x", None, 1.0, "m/s", "", output_key=None)],
+        answers=[
+            AnswerItem(
+                "acceleration",
+                "a",
+                2.0,
+                "m/s^2",
+                "",
+                output_key="acceleration",
+            )
+        ],
+        used_equations=["ACTUAL-EQUATION"],
     )
-    with pytest.raises(ConsistencyContractError, match="output_key"):
+    canonical = CanonicalProblem(
+        assumptions=["actual assumption"],
+        coordinate_data={
+            "coordinate_frame": "actual_frame",
+            "positive_direction": "actual_direction",
+        },
+    )
+
+    with pytest.raises(ConsistencyContractError, match="caller overrides"):
         observation_from_solver_result(
-            missing,
-            family="rolling",
-            path_id="student.rolling",
-            solver_id="pure_rolling_energy",
-            frame="path_tangent",
-            positive_direction="direction_of_motion",
+            result,
+            canonical=canonical,
+            semantic_output_keys=["acceleration"],
+            family="incline",
+            path_id="student.incline",
+            solver_id="incline_no_friction",
+            equation_ids=["ORACLE-EQUATION"],
+            assumptions=["oracle assumption"],
+            frame="oracle_frame",
+            positive_direction="oracle_direction",
         )
+
+
+def test_typed_result_adapter_filters_unrelated_items_and_preserves_missing_keys():
+    result = SolverResult(
+        ok=True,
+        answers=[
+            AnswerItem("legacy", None, 3.0, "kg", "", output_key=None),
+            AnswerItem("other", "x", 1.0, "m", "", output_key="distance"),
+        ],
+        used_equations=[],
+    )
+    canonical = CanonicalProblem(
+        assumptions=[],
+        coordinate_data={
+            "coordinate_frame": "incline_tangent",
+            "positive_direction": "down_slope",
+        },
+    )
+    observed = observation_from_solver_result(
+        result,
+        canonical=canonical,
+        semantic_output_keys=["acceleration"],
+        family="incline",
+        path_id="student.incline",
+        solver_id="incline_no_friction",
+    )
+    report = compare_oracle_observation(_oracle(), observed)
+
+    assert observed.outputs == ()
+    assert observed.metadata["ignored_output_keys"] == ("<untyped>", "distance")
+    assert not report.passed
+    assert "semantic_outputs" in _failed_categories(report)
+
+
+def test_typed_result_adapter_rejects_duplicate_selected_semantic_keys():
     duplicate = SolverResult(
         ok=True,
         answers=[
             AnswerItem("a", "a", 1.0, "m/s^2", "", output_key="acceleration"),
             AnswerItem("a2", "a", 2.0, "m/s^2", "", output_key="acceleration"),
         ],
+        used_equations=["ACTUAL"],
+    )
+    canonical = CanonicalProblem(
+        assumptions=[],
+        coordinate_data={
+            "coordinate_frame": "incline_tangent",
+            "positive_direction": "down_slope",
+        },
     )
     with pytest.raises(ConsistencyContractError, match="duplicate"):
         observation_from_solver_result(
             duplicate,
+            canonical=canonical,
+            semantic_output_keys=["acceleration"],
             family="incline",
             path_id="student.incline",
             solver_id="incline_no_friction",
-            frame="incline_tangent",
-            positive_direction="down_slope",
         )
 
 
