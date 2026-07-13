@@ -111,11 +111,17 @@ def _known(cp: CanonicalProblem, symbols: Sequence[str], unit: str) -> float | N
 
 
 def _answer_items(ctx: InvariantContext) -> list[AnswerItem]:
-    items = list(ctx.result.answers or [])
-    representative = ctx.result.answer
-    if representative is not None and not any(item is representative for item in items):
-        items.append(representative)
-    return items
+    """Return only semantically typed outputs.
+
+    The representative legacy Answer has no symbol or output_key.  Callers
+    handle it explicitly only where one requested output makes that safe.
+    """
+
+    return [
+        item
+        for item in (ctx.result.answers or [])
+        if isinstance(item, AnswerItem)
+    ]
 
 
 def _ambiguous_output_key(
