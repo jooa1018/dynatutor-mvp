@@ -14,6 +14,8 @@ on:
       - recovery/phase48_wip/wjs.zip
       - .github/workflows/phase48-recovery-extract.yml
 
+  workflow_dispatch:
+
 permissions:
   contents: write
 
@@ -219,13 +221,25 @@ jobs:
 
 
   phase48-targeted:
+    name: Phase 48 focused and contract validation
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
     steps:
-      - name: Check out PR 14 Phase 48 checkpoint
+      - name: Check out latest PR 14 Phase 48 HEAD
         uses: actions/checkout@v6
         with:
           ref: codex/phase47-54-engine-completion
           fetch-depth: 0
+
+      - name: Record checked-out target SHA
+        run: |
+          echo "TARGET_SHA=$(git rev-parse HEAD)"
+          git status --short --branch
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -235,19 +249,232 @@ jobs:
           cache-dependency-path: backend/requirements-lock.txt
 
       - name: Install backend dependencies
-        working-directory: backend
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
 
-      - name: Compile restored Phase 48 modules
-        working-directory: backend
-        run: |
-          python -m compileall -q             app/schemas/solution.py             engine/capabilities             engine/models.py             engine/services.py             engine/verification             tests/test_phase48_invariants.py             tests/test_phase48_policy_conditioning.py             tests/test_phase48_suite.py
+      - name: Compile Phase 48 product and focused tests
+        run: >-
+          python -m compileall -q
+          app/schemas/solution.py
+          engine/capabilities
+          engine/models.py
+          engine/services.py
+          engine/verification
+          tests/test_phase47_candidate_validation.py
+          tests/test_phase48_invariants.py
+          tests/test_phase48_policy_conditioning.py
+          tests/test_phase48_suite.py
+          tests/test_phase48_numerical_connections.py
+          tests/test_phase42_baseline_contracts.py
 
       - name: Run Phase 48 focused tests
-        working-directory: backend
-        run: |
-          pytest -q -o addopts=             tests/test_phase48_invariants.py             tests/test_phase48_policy_conditioning.py             tests/test_phase48_suite.py
+        if: ${{ always() }}
+        run: >-
+          python -m pytest -q -o addopts=
+          tests/test_phase48_invariants.py
+          tests/test_phase48_policy_conditioning.py
+          tests/test_phase48_suite.py
+          tests/test_phase48_numerical_connections.py
 
       - name: Run Phase 47 candidate regression
+        if: ${{ always() }}
+        run: python -m pytest -q -o addopts= tests/test_phase47_candidate_validation.py
+
+      - name: Run Phase 42 API and schema contracts
+        if: ${{ always() }}
+        run: python -m pytest -q -o addopts= tests/test_phase42_baseline_contracts.py
+
+  phase48-full:
+    name: Phase 48 full unfiltered backend suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
         working-directory: backend
-        run: pytest -q -o addopts= tests/test_phase47_candidate_validation.py
+    steps:
+      - name: Check out latest PR 14 Phase 48 HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: codex/phase47-54-engine-completion
+          fetch-depth: 0
+
+      - name: Record checked-out target SHA
+        run: |
+          echo "TARGET_SHA=$(git rev-parse HEAD)"
+          git status --short --branch
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Run complete unfiltered backend suite
+        run: python -m pytest -q -o addopts=
+
+  phase48-wrapper:
+    name: Phase 48 wrapper - ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: fast
+            command: bash ../scripts/check_backend_fast.sh
+          - name: benchmark
+            command: bash ../scripts/check_backend_benchmark.sh
+          - name: audit
+            command: bash ../scripts/check_backend_audit.sh
+          - name: aggregate
+            command: bash ../scripts/check_all.sh
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out latest PR 14 Phase 48 HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: codex/phase47-54-engine-completion
+          fetch-depth: 0
+
+      - name: Record checked-out target SHA
+        run: |
+          echo "TARGET_SHA=$(git rev-parse HEAD)"
+          git status --short --branch
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Run exact ${{ matrix.name }} wrapper
+        run: ${{ matrix.command }}
+
+  phase48-budgets:
+    name: Phase 48 warm and cold runtime budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out latest PR 14 Phase 48 HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: codex/phase47-54-engine-completion
+          fetch-depth: 0
+
+      - name: Record checked-out target SHA
+        run: |
+          echo "TARGET_SHA=$(git rev-parse HEAD)"
+          git status --short --branch
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Enforce warm solve latency budget
+        run: >-
+          python scripts/measure_phase42_latency.py
+          --repeats 2
+          --warmups 1
+          --block-optional-dependencies
+          --max-mean-ms 60
+          --max-p95-ms 120
+
+      - name: Enforce cold import and RSS budgets
+        if: ${{ always() }}
+        run: >-
+          python scripts/measure_runtime_budget.py
+          --max-import-ms 5000
+          --max-rss-mb 512
+
+  phase48-performance:
+    name: Phase 48 fixed Phase 47 performance comparison
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out latest PR 14 Phase 48 HEAD
+        uses: actions/checkout@v6
+        with:
+          ref: codex/phase47-54-engine-completion
+          fetch-depth: 0
+
+      - name: Record checked-out target SHA
+        run: |
+          echo "TARGET_SHA=$(git rev-parse HEAD)"
+          git status --short --branch
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Measure current Phase 48 HEAD
+        run: >-
+          python scripts/measure_pr10_hotfix_performance.py
+          --output /tmp/phase48-head-performance.json
+          --repeats 30
+          --warmups 5
+
+      - name: Measure fixed Phase 47 baseline with current measurement script
+        env:
+          BASELINE_SHA: 91c944e96ac303b09568cabb026d9996a523a983
+        run: |
+          git cat-file -e "${BASELINE_SHA}^{commit}"
+          git worktree add --detach /tmp/dynatutor-phase47-base "$BASELINE_SHA"
+          cd /tmp/dynatutor-phase47-base/backend
+          echo "BASELINE_SHA=$(git rev-parse HEAD)"
+          python "$GITHUB_WORKSPACE/backend/scripts/measure_pr10_hotfix_performance.py" \
+            --output /tmp/phase47-base-performance.json \
+            --repeats 30 \
+            --warmups 5
+
+      - name: Compare Phase 48 HEAD to fixed Phase 47 baseline
+        run: >-
+          python scripts/measure_pr10_hotfix_performance.py
+          --compare-base /tmp/phase47-base-performance.json
+          --compare-head /tmp/phase48-head-performance.json
+          --max-regression-percent 15
+
+      - name: Preserve performance JSON evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase48-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            /tmp/phase47-base-performance.json
+            /tmp/phase48-head-performance.json
+          if-no-files-found: warn
+
