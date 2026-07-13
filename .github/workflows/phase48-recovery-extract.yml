@@ -1,4 +1,5 @@
 name: Phase 48 verified inner archive recovery
+# Post-atomic evidence target: 6bc747d2ebc6fae5792130981d19fbdd95e29388
 
 on:
   push:
