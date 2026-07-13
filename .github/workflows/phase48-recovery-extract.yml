@@ -265,6 +265,7 @@ jobs:
           tests/test_phase48_policy_conditioning.py
           tests/test_phase48_suite.py
           tests/test_phase48_numerical_connections.py
+          tests/test_phase48_actual_invariant_connections.py
           tests/test_phase42_baseline_contracts.py
 
       - name: Run Phase 48 focused tests
@@ -275,6 +276,7 @@ jobs:
           tests/test_phase48_policy_conditioning.py
           tests/test_phase48_suite.py
           tests/test_phase48_numerical_connections.py
+          tests/test_phase48_actual_invariant_connections.py
 
       - name: Run Phase 47 candidate regression
         if: ${{ always() }}
