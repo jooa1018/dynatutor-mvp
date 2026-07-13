@@ -1,0 +1,891 @@
+{
+  "schema_version": 1,
+  "relation_version": "phase49-metamorphic-v1",
+  "oracle_version": "phase49-oracle-v1",
+  "benchmark_version": "phase49-benchmark-v1",
+  "policy_version": "phase48-tolerance-policy-v1",
+  "minimum_distinct_relations": 15,
+  "relations": [
+    {
+      "relation_id": "p49.mr.001.unit_representation_invariance",
+      "family": "incline",
+      "relation_kind": "unit_representation_invariance",
+      "base_oracle_id": "p49.incline.003",
+      "applicability": "The product canonical builder accepts equivalent theta and gravity quantity units.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "angle_rad": 0.4363323129985824
+        },
+        "canonical_inputs_remove": [
+          "angle_deg"
+        ],
+        "product_quantity_units": {
+          "theta": "rad",
+          "g": "cm/s^2"
+        },
+        "product_quantity_values": {
+          "g": 981
+        }
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.0789796207767175,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Equivalent physical units leave canonical SI acceleration unchanged."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_tangent"
+        ],
+        "derivation": "Convert 25 deg to 25*pi/180 rad and 9.81 m/s^2 to 981 cm/s^2 before applying the same force balance."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Unit representation covariance; no physical parameter changes."
+    },
+    {
+      "relation_id": "p49.mr.002.fixed_axis_coordinate_sign_covariance",
+      "family": "fixed_axis_rotation",
+      "relation_kind": "coordinate_sign_covariance",
+      "base_oracle_id": "p49.fixed_axis_rotation.001",
+      "applicability": "Signed torque and angular acceleration use an explicit fixed-axis positive direction.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "torque": -6
+        },
+        "product_coordinate_overrides": {
+          "positive_direction": "clockwise"
+        }
+      },
+      "semantic_output_keys": [
+        "angular_acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": -2.4,
+          "unit": "rad/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "negated",
+        "statement": "Reversing the coordinate sense negates torque and angular acceleration while preserving magnitude."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "fixed_axis_torque_balance"
+        ],
+        "derivation": "Under axis reversal tau'=-tau, so alpha'=tau'/I=-2.4 rad/s^2."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Coordinate covariance, not a numeric scale-only variant."
+    },
+    {
+      "relation_id": "p49.mr.003.incline_mass_independence",
+      "family": "incline",
+      "relation_kind": "cancelled_mass_invariance",
+      "base_oracle_id": "p49.incline.004",
+      "applicability": "Point-particle incline with Coulomb friction and no mass-dependent drag.",
+      "transformation": {
+        "product_extra_inputs": {
+          "mass": {
+            "value": 7.5,
+            "unit": "kg"
+          }
+        }
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.205858157774931,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Adding/changing positive mass leaves acceleration unchanged because mass cancels."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_tangent"
+        ],
+        "derivation": "Both gravity and kinetic friction terms are proportional to m; divide the balance by m."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Tests cancellation of an otherwise present physical input."
+    },
+    {
+      "relation_id": "p49.mr.004.incline_gravity_homogeneity",
+      "family": "incline",
+      "relation_kind": "gravity_homogeneity",
+      "base_oracle_id": "p49.incline.006",
+      "applicability": "Angle and friction regime remain unchanged under positive gravity scaling.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "gravity": 0.5
+        }
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 2.777128426162616,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "scaled",
+        "factor": 0.5,
+        "statement": "Acceleration scales linearly with gravity."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_tangent"
+        ],
+        "derivation": "a'=0.5*g*(sin(theta)-mu*cos(theta))=0.5*a."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "First-degree field-strength homogeneity."
+    },
+    {
+      "relation_id": "p49.mr.005.incline_zero_friction_limit",
+      "family": "incline",
+      "relation_kind": "constitutive_limit",
+      "base_oracle_id": "p49.incline.004",
+      "applicability": "The same known-motion incline supports the kinetic coefficient limit mu_k -> 0.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "mu_k": 0
+        }
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 4.904999999999999,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "limit",
+        "statement": "At mu_k=0 the kinetic formula reduces to the frictionless incline value."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_tangent"
+        ],
+        "derivation": "Set mu_k=0 in a=g*(sin(theta)-mu_k*cos(theta)); at 30 deg a=4.905."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "A constitutive-law endpoint, distinct from ordinary parameter scaling."
+    },
+    {
+      "relation_id": "p49.mr.006.pulley_common_mass_inertia_scaling",
+      "family": "pulley",
+      "relation_kind": "common_extensive_scaling",
+      "base_oracle_id": "p49.pulley.006",
+      "applicability": "Massive pulley inputs scale by one positive lambda while R and g remain fixed.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "m1": 3,
+          "m2": 3,
+          "pulley_inertia": 3
+        }
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 2.5815789473684214,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Common scaling cancels from the acceleration numerator and denominator."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_string_system"
+        ],
+        "derivation": "m1,m2,I all gain factor 3, including I/R^2, so acceleration is unchanged."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Extensive-system similarity, with inertia included."
+    },
+    {
+      "relation_id": "p49.mr.007.pulley_label_exchange",
+      "family": "pulley",
+      "relation_kind": "body_label_exchange",
+      "base_oracle_id": "p49.pulley.002",
+      "applicability": "Ideal two-body Atwood system with side labels exchanged.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "m1": 5,
+          "m2": 2
+        }
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": -4.204285714285715,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "negated",
+        "statement": "Swapping m1 and m2 reverses the signed string acceleration."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_string_system"
+        ],
+        "derivation": "The denominator is symmetric and m2-m1 changes sign under label exchange."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Entity-label symmetry with a signed orientation change."
+    },
+    {
+      "relation_id": "p49.mr.008.pulley_radius_inertia_similarity",
+      "family": "pulley",
+      "relation_kind": "geometric_inertia_similarity",
+      "base_oracle_id": "p49.pulley.005",
+      "applicability": "Massive pulley remains rigid/no-slip and lambda>0.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "pulley_radius": 0.15,
+          "pulley_inertia": 0.045
+        }
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.9240000000000004,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "R->R/2 and I->I/4 preserve I/R^2 and acceleration."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_string_system"
+        ],
+        "derivation": "0.045/0.15^2=0.18/0.3^2=2 kg effective inertia."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Geometric similarity through the invariant I/R^2."
+    },
+    {
+      "relation_id": "p49.mr.009.collision_galilean_boost",
+      "family": "collision",
+      "relation_kind": "galilean_covariance",
+      "base_oracle_id": "p49.collision.003",
+      "applicability": "Both descriptions are inertial frames and the closing relative velocity stays positive.",
+      "transformation": {
+        "canonical_inputs_add": {
+          "v1_before": 4,
+          "v2_before": 4
+        }
+      },
+      "semantic_output_keys": [
+        "v1_after",
+        "v2_after"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -0.45000000000000107,
+          "unit": "m/s"
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 5.15,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "offset",
+        "offset": 4,
+        "statement": "A common inertial-frame boost adds 4 m/s to each final velocity."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "linear_momentum_conservation",
+          "coefficient_of_restitution"
+        ],
+        "derivation": "Relative velocities are boost invariant; momentum equations shift the center-of-mass velocity by 4 m/s."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Frame covariance, not velocity scaling."
+    },
+    {
+      "relation_id": "p49.mr.010.collision_common_mass_scaling",
+      "family": "collision",
+      "relation_kind": "common_mass_scaling",
+      "base_oracle_id": "p49.collision.007",
+      "applicability": "Both positive masses receive the same scale while velocities and restitution are fixed.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "m1": 4,
+          "m2": 4
+        }
+      },
+      "semantic_output_keys": [
+        "v1_after",
+        "v2_after"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -5.68,
+          "unit": "m/s"
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 2.42,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Final velocities are invariant under common collision-mass scaling."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "linear_momentum_conservation",
+          "coefficient_of_restitution"
+        ],
+        "derivation": "The common mass scale cancels from the two-equation solution."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Extensive scaling of an isolated impact."
+    },
+    {
+      "relation_id": "p49.mr.011.collision_velocity_homogeneity",
+      "family": "collision",
+      "relation_kind": "velocity_homogeneity",
+      "base_oracle_id": "p49.collision.008",
+      "applicability": "Positive velocity scale preserves the closing ordering and restitution.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "v1_before": 2,
+          "v2_before": 2
+        }
+      },
+      "semantic_output_keys": [
+        "v1_after",
+        "v2_after"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -9.459999999999999,
+          "unit": "m/s"
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": -7.659999999999999,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "scaled",
+        "factor": 2,
+        "statement": "Both final velocities scale by the same positive velocity factor."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "linear_momentum_conservation",
+          "coefficient_of_restitution"
+        ],
+        "derivation": "Momentum and restitution equations are homogeneous of degree one in velocities."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Kinematic homogeneity, separate from Galilean offset."
+    },
+    {
+      "relation_id": "p49.mr.012.collision_label_reflection_symmetry",
+      "family": "collision",
+      "relation_kind": "label_exchange_with_spatial_reflection",
+      "base_oracle_id": "p49.collision.006",
+      "applicability": "Swap complete bodies and reflect the x-axis so transformed body 1 still closes on body 2.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "m1": 2,
+          "m2": 5,
+          "v1_before": -1.5,
+          "v2_before": -3
+        }
+      },
+      "semantic_output_keys": [
+        "v1_after",
+        "v2_after"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -3.2142857142857144,
+          "unit": "m/s"
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": -2.314285714285714,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "permuted_negation",
+        "statement": "v1'=-base.v2 and v2'=-base.v1 after label exchange plus reflection."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "linear_momentum_conservation",
+          "coefficient_of_restitution"
+        ],
+        "derivation": "Apply body permutation and x->-x to both conservation equations."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Combined entity symmetry and spatial reflection."
+    },
+    {
+      "relation_id": "p49.mr.013.collision_zero_restitution_limit",
+      "family": "collision",
+      "relation_kind": "restitution_endpoint_limit",
+      "base_oracle_id": "p49.collision.002",
+      "applicability": "Same closing impact supports the e=0 endpoint.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "restitution": 0
+        }
+      },
+      "semantic_output_keys": [
+        "v1_after",
+        "v2_after"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": 2.6666666666666665,
+          "unit": "m/s"
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 2.6666666666666665,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "endpoint",
+        "statement": "At e=0 both final velocities equal the center-of-mass velocity."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "linear_momentum_conservation",
+          "coefficient_of_restitution"
+        ],
+        "derivation": "With e=0, v2-v1=0 and momentum gives v1=v2=(2*4+1*0)/3=8/3."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Constitutive endpoint/limit relation."
+    },
+    {
+      "relation_id": "p49.mr.014.rolling_height_square_root_scaling",
+      "family": "rolling",
+      "relation_kind": "height_square_root_scaling",
+      "base_oracle_id": "p49.rolling.001",
+      "applicability": "Pure rolling regime, k and g remain fixed, height scale is positive.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "height": 4
+        }
+      },
+      "semantic_output_keys": [
+        "final_velocity"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 5.294201680005346,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "scaled",
+        "factor": 2,
+        "statement": "Quadrupling height doubles speed."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "mechanical_energy_conservation",
+          "pure_rolling_constraint",
+          "rigid_body_inertia_model"
+        ],
+        "derivation": "v is proportional to sqrt(h) at fixed g and k."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Square-root scaling rather than linear homogeneity."
+    },
+    {
+      "relation_id": "p49.mr.015.rolling_radius_independence",
+      "family": "rolling",
+      "relation_kind": "radius_independence_at_fixed_shape_factor",
+      "base_oracle_id": "p49.rolling.002",
+      "applicability": "Dimensionless inertia factor k is held fixed and product builder updates I=k*m*R^2.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "radius": 0.5
+        }
+      },
+      "semantic_output_keys": [
+        "final_velocity"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.9618177646126025,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Center speed is radius-independent at fixed k and height."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "mechanical_energy_conservation",
+          "pure_rolling_constraint",
+          "rigid_body_inertia_model"
+        ],
+        "derivation": "R cancels after I=k*m*R^2 and omega=v/R are substituted into energy."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Geometric cancellation, distinct from height scaling."
+    },
+    {
+      "relation_id": "p49.mr.016.rolling_energy_budget_invariance",
+      "family": "rolling",
+      "relation_kind": "shape_height_budget_invariance",
+      "base_oracle_id": "p49.rolling.002",
+      "applicability": "Positive h and k retain pure rolling and no-loss assumptions.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "height": 1.6,
+          "inertia_factor": 1
+        }
+      },
+      "semantic_output_keys": [
+        "final_velocity"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.9618177646126025,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Holding h/(1+k)=0.8 m preserves final speed."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "mechanical_energy_conservation",
+          "pure_rolling_constraint",
+          "rigid_body_inertia_model"
+        ],
+        "derivation": "1.2/(1+0.5)=1.6/(1+1)=0.8, so both energy radicands are equal."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Conserved composite energy budget across different shape factors."
+    },
+    {
+      "relation_id": "p49.mr.017.rolling_gravity_height_product_invariance",
+      "family": "rolling",
+      "relation_kind": "gravity_height_product_invariance",
+      "base_oracle_id": "p49.rolling.004",
+      "applicability": "Positive g and h with unchanged inertia factor.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "gravity": 0.5,
+          "height": 2
+        }
+      },
+      "semantic_output_keys": [
+        "final_velocity"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 4.852215988597376,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "g*h is preserved, so final speed is unchanged."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "mechanical_energy_conservation",
+          "pure_rolling_constraint",
+          "rigid_body_inertia_model"
+        ],
+        "derivation": "(g/2)*(2h)=g*h leaves 2gh/(1+k) invariant."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Field-length product invariance, distinct from shape-height budget."
+    },
+    {
+      "relation_id": "p49.mr.018.work_energy_mass_work_scaling",
+      "family": "work_energy",
+      "relation_kind": "mass_work_common_scaling",
+      "base_oracle_id": "p49.work_energy.002",
+      "applicability": "Mass and net work receive the same positive scale; initial speed stays fixed.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "mass": 4,
+          "net_work": 4
+        }
+      },
+      "semantic_output_keys": [
+        "final_velocity"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.605551275463989,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Common mass/work scaling preserves W/m and final speed."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "work_energy_theorem"
+        ],
+        "derivation": "2*(4W)/(4m)=2W/m, so the energy radicand is unchanged."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Extensive scaling of work and inertia."
+    },
+    {
+      "relation_id": "p49.mr.019.work_energy_equal_budget_transform",
+      "family": "work_energy",
+      "relation_kind": "equal_energy_budget_transform",
+      "base_oracle_id": "p49.work_energy.003",
+      "applicability": "Transformed mass is positive and its computed work leaves a positive radicand.",
+      "transformation": {
+        "canonical_inputs_patch": {
+          "mass": 4,
+          "initial_velocity": 1,
+          "net_work": 24
+        }
+      },
+      "semantic_output_keys": [
+        "final_velocity"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.605551275463989,
+          "unit": "m/s"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Different initial speed, mass and work produce the same final energy radicand 13."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "work_energy_theorem"
+        ],
+        "derivation": "Base: 5^2+2*(-12)/2=13. Transform: 1^2+2*24/4=13."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Energy-level-set equivalence, not common scaling."
+    },
+    {
+      "relation_id": "p49.mr.020.fixed_axis_torque_inertia_scaling",
+      "family": "fixed_axis_rotation",
+      "relation_kind": "torque_inertia_common_scaling",
+      "base_oracle_id": "p49.fixed_axis_rotation.004",
+      "applicability": "Positive inertia remains valid under a positive common scale.",
+      "transformation": {
+        "canonical_inputs_scale": {
+          "torque": 0.25,
+          "inertia": 0.25
+        }
+      },
+      "semantic_output_keys": [
+        "angular_acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": 1.5,
+          "unit": "rad/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Common tau/I scaling preserves angular acceleration."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "fixed_axis_torque_balance"
+        ],
+        "derivation": "(0.25*tau)/(0.25*I)=tau/I."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Rotational extensive similarity."
+    },
+    {
+      "relation_id": "p49.mr.021.actual_solver_paraphrase_invariance",
+      "family": "incline",
+      "relation_kind": "end_to_end_paraphrase_invariance",
+      "base_oracle_id": "p49.incline.001",
+      "applicability": "Both texts must traverse normalization, extraction, routing, canonical construction, actual solver, validation and selection; selected solver must be incline_no_friction.",
+      "transformation": {
+        "base_problem_text": "마찰이 없는 12도 경사면에서 물체가 미끄러진다. 중력가속도는 9.81 m/s^2이다. 경사면 아래 방향 가속도를 구하라.",
+        "transformed_problem_text": "중력가속도 9.81 m/s^2인 곳에서 파란 블록이 마찰 없는 12° 빗면을 따라 움직인다. 블록의 색은 계산과 무관하다. 빗면 아래쪽 가속도는 얼마인가?"
+      },
+      "semantic_output_keys": [
+        "acceleration"
+      ],
+      "transformed_expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 2.039613686922219,
+          "unit": "m/s^2"
+        }
+      ],
+      "expected_relation": {
+        "kind": "equal",
+        "statement": "Semantically irrelevant prose and sentence order preserve fingerprint, selected solver and acceleration."
+      },
+      "analytic_anchor": {
+        "equation_roles": [
+          "newton_second_law_tangent"
+        ],
+        "derivation": "Both wordings encode theta=12 deg, g=9.81 m/s^2 and zero friction; the independent anchor is a=g*sin(theta)."
+      },
+      "analytic_anchor_required": true,
+      "product_path_required": true,
+      "distinction_note": "Only text relation; explicitly requires the real end-to-end solver path."
+    }
+  ],
+  "mutation_controls": [
+    {
+      "mutation_id": "p49.mut.sign.001",
+      "kind": "sign",
+      "baseline_oracle_id": "p49.collision.002",
+      "semantic_output_key": "v1_after",
+      "observation_mutation": {
+        "numeric_transform": "negate",
+        "sign_transform": "recompute"
+      },
+      "expected_failed_categories": [
+        "numeric",
+        "sign"
+      ],
+      "baseline_must_pass": true,
+      "mutation_must_fail": true,
+      "description": "Negate the real passing v1_after observation; oracle data remain unchanged."
+    },
+    {
+      "mutation_id": "p49.mut.coefficient.001",
+      "kind": "coefficient",
+      "baseline_oracle_id": "p49.incline.004",
+      "semantic_output_key": "acceleration",
+      "observation_mutation": {
+        "replace_numeric": 4.055429078887465
+      },
+      "expected_failed_categories": [
+        "numeric"
+      ],
+      "baseline_must_pass": true,
+      "mutation_must_fail": true,
+      "description": "Replace the observation with the half-friction-coefficient mutant g(sin(theta)-0.5*mu*cos(theta))."
+    },
+    {
+      "mutation_id": "p49.mut.unit.001",
+      "kind": "unit",
+      "baseline_oracle_id": "p49.rolling.002",
+      "semantic_output_key": "final_velocity",
+      "observation_mutation": {
+        "replace_unit": "cm/s"
+      },
+      "expected_failed_categories": [
+        "unit_dimension"
+      ],
+      "baseline_must_pass": true,
+      "mutation_must_fail": true,
+      "description": "Keep the numeric value but mutate only its typed unit; no display parsing or conversion."
+    },
+    {
+      "mutation_id": "p49.mut.constraint.001",
+      "kind": "constraint_equation",
+      "baseline_oracle_id": "p49.pulley.006",
+      "semantic_output_key": "acceleration",
+      "observation_mutation": {
+        "replace_numeric": 4.45909090909091,
+        "replace_equation_ids": [
+          "ideal_pulley_constraint"
+        ]
+      },
+      "expected_failed_categories": [
+        "numeric",
+        "equation_ids"
+      ],
+      "baseline_must_pass": true,
+      "mutation_must_fail": true,
+      "description": "Mutate the massive-pulley observation to the ideal-pulley result, dropping rotational inertia/no-slip coupling."
+    }
+  ]
+}

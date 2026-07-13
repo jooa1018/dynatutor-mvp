@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "report_version": "phase49-solver-consistency-report-v1",
+  "status": "implemented_not_executed",
+  "passed": false,
+  "oracle_version": "phase49-oracle-v1",
+  "benchmark_version": "phase49-benchmark-v1",
+  "relation_version": "phase49-metamorphic-v1",
+  "policy_version": "phase48-tolerance-policy-v1",
+  "offline_only": true,
+  "oracle_schema_version": 2,
+  "student_answer_overwrite": false,
+  "summary": {
+    "oracle_cases_configured": 60,
+    "scalar_expected_outputs_configured": 70,
+    "family_counts_configured": {
+      "collision": 10,
+      "fixed_axis_rotation": 10,
+      "incline": 10,
+      "pulley": 10,
+      "rolling": 10,
+      "work_energy": 10
+    },
+    "distinct_metamorphic_relations_configured": 21,
+    "mutation_controls_configured": 4,
+    "product_path_executed": 0,
+    "secondary_path_executed": 0,
+    "metamorphic_executed": 0,
+    "mutation_controls_executed": 0
+  },
+  "environment_limitations": [
+    "Local Python process unavailable: CreateProcessAsUserW failed with access denied."
+  ],
+  "disagreements": [],
+  "unverified": [
+    "60 product observations",
+    "60 secondary comparisons",
+    "21 base/transformed metamorphic relations",
+    "4 mutation positive controls"
+  ]
+}
