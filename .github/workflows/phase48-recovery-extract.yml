@@ -1,19 +1,16 @@
-name: Phase 48 emergency archive recovery
+name: Phase 48 verified inner archive recovery
 
 on:
   push:
     branches:
       - backup/phase48-wip-20260712
     paths:
-      - recovery/phase48_wip/dynatutor_phase48_emergency_backup_20260712.zip
-      - .github/workflows/phase48-recovery-extract.yml
-
+      - recovery/phase48_wip/wjs.zip
   pull_request:
     branches:
       - codex/phase47-54-engine-completion
     paths:
-      - recovery/phase48_wip/dynatutor_phase48_emergency_backup_20260712.zip
-      - .github/workflows/phase48-recovery-extract.yml
+      - recovery/phase48_wip/wjs.zip
 
 permissions:
   contents: write
@@ -27,7 +24,7 @@ jobs:
         with:
           ref: backup/phase48-wip-20260712
 
-      - name: Validate nested archives and extract verified UTF-8 drafts
+      - name: Validate exact wjs.zip and extract verified UTF-8 drafts
         shell: bash
         run: |
           python3 - <<'PY'
@@ -38,19 +35,16 @@ jobs:
           import json
           import os
           import shutil
-          import struct
           import zipfile
-          import zlib
           from pathlib import Path, PurePosixPath
 
           ROOT = Path("recovery/phase48_wip")
-          OUTER = ROOT / "dynatutor_phase48_emergency_backup_20260712.zip"
+          ARCHIVE = ROOT / "wjs.zip"
           RECORDED_MANIFEST = ROOT / "manifest.json"
           EXTRACTED = ROOT / "extracted"
           VALIDATION = ROOT / "validation"
-          EXPECTED_OUTER_SHA256 = "0d2ccd7706599c29688cd99b93e0d2a4ed47f21cde760c7fde0e5bc561a2da45"
-          EXPECTED_INNER_SHA256 = "9083aba0d33f2dcc5c41f935677750e917f9a459449e414e113272b474b387f3"
-          EXPECTED_OUTER_ENTRIES = {"README.txt", "manifest.json", "original/wjs.zip"}
+          EXPECTED_SHA256 = "9083aba0d33f2dcc5c41f935677750e917f9a459449e414e113272b474b387f3"
+          EXPECTED_BYTES = 55370
 
           def sha256(data: bytes) -> str:
               return hashlib.sha256(data).hexdigest()
@@ -64,149 +58,28 @@ jobs:
                   and ".." not in path.parts
               )
 
-          outer_bytes = OUTER.read_bytes()
-          outer_sha = sha256(outer_bytes)
+          archive_bytes = ARCHIVE.read_bytes()
+          archive_sha = sha256(archive_bytes)
           print(
-              f"outer archive diagnostics: bytes={len(outer_bytes)}, "
-              f"sha256={outer_sha}, head={outer_bytes[:16].hex()}, "
-              f"tail={outer_bytes[-16:].hex()}",
+              f"wjs.zip diagnostics: bytes={len(archive_bytes)}, "
+              f"sha256={archive_sha}, head={archive_bytes[:16].hex()}, "
+              f"tail={archive_bytes[-16:].hex()}",
               flush=True,
           )
-          outer_hash_matches_recorded = outer_sha == EXPECTED_OUTER_SHA256
-          if not outer_hash_matches_recorded:
-              print(
-                  "WARNING: outer archive SHA-256 mismatch: "
-                  f"recorded {EXPECTED_OUTER_SHA256}, actual {outer_sha}",
-                  flush=True,
-              )
-
-          def salvage_local_entries(blob: bytes):
-              entries = {}
-              entry_metadata = []
-              position = 0
-              while position + 30 <= len(blob) and blob[position:position + 4] == b"PK\x03\x04":
-                  (
-                      version_needed,
-                      flags,
-                      compression_method,
-                      modified_time,
-                      modified_date,
-                      expected_crc32,
-                      compressed_size,
-                      uncompressed_size,
-                      name_length,
-                      extra_length,
-                  ) = struct.unpack_from("<HHHHHIIIHH", blob, position + 4)
-                  if flags & 0x1:
-                      raise SystemExit("encrypted outer ZIP entries cannot be recovered safely")
-                  if flags & 0x8:
-                      raise SystemExit(
-                          "outer ZIP uses data descriptors; local-header recovery is inconclusive"
-                      )
-                  name_start = position + 30
-                  name_end = name_start + name_length
-                  data_start = name_end + extra_length
-                  data_end = data_start + compressed_size
-                  if data_end > len(blob):
-                      available_payload = max(0, len(blob) - data_start)
-                      raise SystemExit(
-                          f"outer ZIP entry payload is truncated for {name}: "
-                          f"file_bytes={len(blob)}, data_start={data_start}, "
-                          f"declared_compressed_bytes={compressed_size}, "
-                          f"available_payload_bytes={available_payload}, "
-                          f"required_end={data_end}"
-                      )
-                  name_bytes = blob[name_start:name_end]
-                  name = name_bytes.decode("utf-8" if flags & 0x800 else "cp437")
-                  if name in entries:
-                      raise SystemExit(f"duplicate outer ZIP entry during salvage: {name}")
-                  compressed = blob[data_start:data_end]
-                  if compression_method == 0:
-                      data = compressed
-                  elif compression_method == 8:
-                      data = zlib.decompress(compressed, -15)
-                  else:
-                      raise SystemExit(
-                          f"unsupported outer ZIP compression method {compression_method} for {name}"
-                      )
-                  actual_crc32 = zlib.crc32(data) & 0xFFFFFFFF
-                  if len(data) != uncompressed_size:
-                      raise SystemExit(
-                          f"outer ZIP recovered-size mismatch for {name}: "
-                          f"expected {uncompressed_size}, got {len(data)}"
-                      )
-                  if actual_crc32 != expected_crc32:
-                      raise SystemExit(
-                          f"outer ZIP CRC mismatch for {name}: "
-                          f"expected {expected_crc32:08x}, got {actual_crc32:08x}"
-                      )
-                  entries[name] = data
-                  entry_metadata.append(
-                      {
-                          "path": name,
-                          "compression_method": compression_method,
-                          "compressed_bytes": compressed_size,
-                          "bytes": uncompressed_size,
-                          "crc32": f"{actual_crc32:08x}",
-                          "version_needed": version_needed,
-                          "modified_time": modified_time,
-                          "modified_date": modified_date,
-                      }
-                  )
-                  position = data_end
-              if not entries:
-                  raise SystemExit("no recoverable local ZIP entries found")
-              return entries, entry_metadata, len(blob) - position
-
-          outer_recovery_mode = "central_directory"
-          outer_central_directory_valid = True
-          outer_salvage_metadata = []
-          outer_salvage_trailing_bytes = 0
-          try:
-              with zipfile.ZipFile(io.BytesIO(outer_bytes)) as outer_zip:
-                  outer_entries = {
-                      info.filename: outer_zip.read(info.filename)
-                      for info in outer_zip.infolist()
-                      if not info.is_dir()
-                  }
-          except zipfile.BadZipFile:
-              outer_recovery_mode = "verified_local_header_salvage"
-              outer_central_directory_valid = False
-              (
-                  outer_entries,
-                  outer_salvage_metadata,
-                  outer_salvage_trailing_bytes,
-              ) = salvage_local_entries(outer_bytes)
-              print(
-                  "WARNING: outer ZIP central directory is invalid; "
-                  "recovered entries using local headers, sizes, deflate streams, and CRC32",
-                  flush=True,
-              )
-
-          outer_files = set(outer_entries)
-          unsafe_outer = sorted(name for name in outer_files if not safe_member(name))
-          if unsafe_outer:
-              raise SystemExit(f"unsafe outer ZIP paths: {unsafe_outer}")
-          if outer_files != EXPECTED_OUTER_ENTRIES:
+          if len(archive_bytes) != EXPECTED_BYTES:
               raise SystemExit(
-                  f"outer ZIP entries mismatch: expected {sorted(EXPECTED_OUTER_ENTRIES)}, "
-                  f"got {sorted(outer_files)}"
+                  f"wjs.zip size mismatch: expected {EXPECTED_BYTES}, got {len(archive_bytes)}"
               )
-          package_readme = outer_entries["README.txt"].decode("utf-8")
-          package_manifest = json.loads(
-              outer_entries["manifest.json"].decode("utf-8")
-          )
-          inner_bytes = outer_entries["original/wjs.zip"]
-
-          inner_sha = sha256(inner_bytes)
-          if inner_sha != EXPECTED_INNER_SHA256:
+          if archive_sha != EXPECTED_SHA256:
               raise SystemExit(
-                  f"embedded wjs.zip SHA-256 mismatch: expected {EXPECTED_INNER_SHA256}, got {inner_sha}"
+                  f"wjs.zip SHA-256 mismatch: expected {EXPECTED_SHA256}, got {archive_sha}"
               )
+          if not zipfile.is_zipfile(io.BytesIO(archive_bytes)):
+              raise SystemExit("wjs.zip does not contain a valid ZIP central directory")
 
           recorded = json.loads(RECORDED_MANIFEST.read_text(encoding="utf-8"))
-          if recorded.get("archive_sha256") != EXPECTED_INNER_SHA256:
-              raise SystemExit("recorded manifest archive SHA-256 does not match expected wjs.zip")
+          if recorded.get("archive_sha256") != EXPECTED_SHA256:
+              raise SystemExit("recorded manifest archive SHA-256 is inconsistent")
           recorded_files = recorded.get("files")
           if not isinstance(recorded_files, list):
               raise SystemExit("recorded manifest files must be a list")
@@ -216,23 +89,23 @@ jobs:
 
           verified_files = []
           extracted_payloads = {}
-          with zipfile.ZipFile(io.BytesIO(inner_bytes)) as inner_zip:
-              inner_infos = [info for info in inner_zip.infolist() if not info.is_dir()]
-              inner_names = [info.filename for info in inner_infos]
-              unsafe_inner = sorted(name for name in inner_names if not safe_member(name))
-              if unsafe_inner:
-                  raise SystemExit(f"unsafe embedded ZIP paths: {unsafe_inner}")
-              if len(inner_names) != len(set(inner_names)):
-                  raise SystemExit("embedded ZIP contains duplicate paths")
-              if set(inner_names) != set(expected_by_path):
-                  missing = sorted(set(expected_by_path) - set(inner_names))
-                  unexpected = sorted(set(inner_names) - set(expected_by_path))
+          with zipfile.ZipFile(io.BytesIO(archive_bytes)) as archive:
+              infos = [info for info in archive.infolist() if not info.is_dir()]
+              names = [info.filename for info in infos]
+              unsafe = sorted(name for name in names if not safe_member(name))
+              if unsafe:
+                  raise SystemExit(f"unsafe wjs.zip paths: {unsafe}")
+              if len(names) != len(set(names)):
+                  raise SystemExit("wjs.zip contains duplicate paths")
+              if set(names) != set(expected_by_path):
+                  missing = sorted(set(expected_by_path) - set(names))
+                  unexpected = sorted(set(names) - set(expected_by_path))
                   raise SystemExit(
-                      f"embedded ZIP manifest mismatch: missing={missing}, unexpected={unexpected}"
+                      f"wjs.zip manifest mismatch: missing={missing}, unexpected={unexpected}"
                   )
 
-              for info in inner_infos:
-                  data = inner_zip.read(info.filename)
+              for info in infos:
+                  data = archive.read(info.filename)
                   expected = expected_by_path[info.filename]
                   actual_sha = sha256(data)
                   if actual_sha != expected["sha256"]:
@@ -263,11 +136,6 @@ jobs:
                           "lines": logical_lines,
                           "sha256": actual_sha,
                           "encoding": "utf-8",
-                          "target_hint": (
-                              package_manifest.get("target_paths", {}).get(info.filename)
-                              if isinstance(package_manifest, dict)
-                              else None
-                          ),
                       }
                   )
 
@@ -279,62 +147,55 @@ jobs:
               destination.parent.mkdir(parents=True, exist_ok=True)
               destination.write_bytes(data)
 
-          validation_report = {
-              "status": (
-                  "verified"
-                  if outer_hash_matches_recorded
-                  else "verified_with_outer_hash_mismatch"
-              ),
+          report = {
+              "status": "verified",
               "source_commit": os.environ.get("GITHUB_SHA"),
-              "outer_archive": {
-                  "path": OUTER.as_posix(),
-                  "bytes": len(outer_bytes),
-                  "sha256": outer_sha,
-                  "recorded_sha256": EXPECTED_OUTER_SHA256,
-                  "matches_recorded_sha256": outer_hash_matches_recorded,
-                  "entries": sorted(EXPECTED_OUTER_ENTRIES),
-                  "central_directory_valid": outer_central_directory_valid,
-                  "recovery_mode": outer_recovery_mode,
-                  "salvage_entry_metadata": outer_salvage_metadata,
-                  "salvage_trailing_bytes": outer_salvage_trailing_bytes,
-              },
-              "embedded_archive": {
-                  "path": "original/wjs.zip",
-                  "bytes": len(inner_bytes),
-                  "sha256": inner_sha,
+              "archive": {
+                  "path": ARCHIVE.as_posix(),
+                  "bytes": len(archive_bytes),
+                  "sha256": archive_sha,
                   "manifest_file_count": len(recorded_files),
                   "actual_file_count": len(verified_files),
               },
-              "package_manifest": package_manifest,
-              "package_readme": package_readme,
+              "superseded_outer_upload": {
+                  "path": (
+                      "recovery/phase48_wip/"
+                      "dynatutor_phase48_emergency_backup_20260712.zip"
+                  ),
+                  "status": "truncated_unusable",
+                  "actual_bytes": 6057,
+                  "actual_sha256": (
+                      "8ddd3233b82b45ad2fba37b16daf2d6d7f57a8d3df119a043c356f85ff909af1"
+                  ),
+                  "declared_inner_compressed_bytes": 53519,
+                  "available_inner_payload_bytes": 5260,
+                  "evidence_workflow_run": 29243411999,
+              },
               "files": sorted(verified_files, key=lambda item: item["path"]),
           }
           (VALIDATION / "zip-validation.json").write_text(
-              json.dumps(validation_report, ensure_ascii=False, indent=2) + "\n",
+              json.dumps(report, ensure_ascii=False, indent=2) + "\n",
               encoding="utf-8",
           )
-          lines = [
-              "# Phase 48 emergency ZIP validation",
-              "",
-              (
-                  "- Status: **verified**"
-                  if outer_hash_matches_recorded
-                  else "- Status: **verified payload; outer archive hash mismatch recorded**"
-              ),
-              f"- Outer SHA-256: `{outer_sha}`",
-              f"- Embedded wjs.zip SHA-256: `{inner_sha}`",
-              f"- Outer recovery mode: `{outer_recovery_mode}`",
-              f"- Manifest files: {len(recorded_files)}",
-              f"- Verified UTF-8 files: {len(verified_files)}",
-              "- Extraction root: `recovery/phase48_wip/extracted/`",
-              "",
-              "The extracted files remain recovery evidence only and are not product code.",
-              "",
-          ]
           (VALIDATION / "zip-validation.md").write_text(
-              "\n".join(lines), encoding="utf-8"
+              "\n".join(
+                  [
+                      "# Phase 48 inner archive validation",
+                      "",
+                      "- Status: **verified**",
+                      f"- wjs.zip bytes: {len(archive_bytes)}",
+                      f"- wjs.zip SHA-256: `{archive_sha}`",
+                      f"- Manifest files: {len(recorded_files)}",
+                      f"- Verified UTF-8 files: {len(verified_files)}",
+                      "- Extraction root: `recovery/phase48_wip/extracted/`",
+                      "",
+                      "The extracted files remain recovery evidence only and are not product code.",
+                      "",
+                  ]
+              ),
+              encoding="utf-8",
           )
-          print(json.dumps(validation_report, ensure_ascii=False, indent=2))
+          print(json.dumps(report, ensure_ascii=False, indent=2))
           PY
 
       - name: Preserve verified recovery evidence
