@@ -8,6 +8,13 @@ on:
       - recovery/phase48_wip/dynatutor_phase48_emergency_backup_20260712.zip
       - .github/workflows/phase48-recovery-extract.yml
 
+  pull_request:
+    branches:
+      - codex/phase47-54-engine-completion
+    paths:
+      - recovery/phase48_wip/dynatutor_phase48_emergency_backup_20260712.zip
+      - .github/workflows/phase48-recovery-extract.yml
+
 permissions:
   contents: write
 
