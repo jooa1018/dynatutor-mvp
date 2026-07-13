@@ -1,0 +1,157 @@
+name: Phase 48 one-shot atomicize
+
+on:
+  push:
+    branches:
+      - backup/phase48-wip-20260712
+    paths:
+      - .github/workflows/phase48-atomicize.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase48-atomicize
+  cancel-in-progress: false
+
+env:
+  BASELINE: 91c944e96ac303b09568cabb026d9996a523a983
+  EXPECTED_HEAD: 2c262082b2c3f3326eaf3f0c3e1bf97173916078
+  TARGET_REF: refs/heads/codex/phase47-54-engine-completion
+  MESSAGE: "Phase 48: add dynamics invariants and numerical conditioning"
+
+jobs:
+  atomicize:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/backup/phase48-wip-20260712'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the frozen validated WIP commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.EXPECTED_HEAD }}
+          fetch-depth: 0
+
+      - name: Create exact-tree atomic commit and update target with a lease
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CHECKED_OUT="$(git rev-parse HEAD)"
+          echo "GUARD EXPECTED_HEAD=$EXPECTED_HEAD"
+          echo "GUARD CHECKED_OUT=$CHECKED_OUT"
+          if [[ "$CHECKED_OUT" != "$EXPECTED_HEAD" ]]; then
+            echo "checked-out HEAD does not match EXPECTED_HEAD" >&2
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "checkout is not clean" >&2
+            git status --short
+            exit 1
+          fi
+
+          git cat-file -e "$BASELINE^{commit}"
+          git cat-file -e "$EXPECTED_HEAD^{commit}"
+          if ! git merge-base --is-ancestor "$BASELINE" "$EXPECTED_HEAD"; then
+            echo "baseline is not an ancestor of EXPECTED_HEAD" >&2
+            exit 1
+          fi
+          MERGE_BASE="$(git merge-base "$BASELINE" "$EXPECTED_HEAD")"
+          echo "GUARD MERGE_BASE=$MERGE_BASE"
+          if [[ "$MERGE_BASE" != "$BASELINE" ]]; then
+            echo "merge-base does not match the fixed Phase 47 baseline" >&2
+            exit 1
+          fi
+          MERGE_COMMITS="$(git rev-list --min-parents=2 "$BASELINE..$EXPECTED_HEAD")"
+          if [[ -n "$MERGE_COMMITS" ]]; then
+            echo "merge commits found in the Phase 48 WIP range:" >&2
+            echo "$MERGE_COMMITS" >&2
+            exit 1
+          fi
+          echo "GUARD RANGE_COMMIT_COUNT=$(git rev-list --count "$BASELINE..$EXPECTED_HEAD")"
+          echo "GUARD MERGE_COMMITS=none"
+
+          REMOTE_INITIAL="$(git ls-remote origin "$TARGET_REF" | awk '{print $1}')"
+          echo "GUARD REMOTE_INITIAL=$REMOTE_INITIAL"
+          if [[ "$REMOTE_INITIAL" != "$EXPECTED_HEAD" ]]; then
+            echo "target ref moved before safety preservation" >&2
+            exit 1
+          fi
+
+          SAFETY_REF="refs/heads/backup/phase48-pre-atomic-${EXPECTED_HEAD:0:12}"
+          SAFETY_SHA="$(git ls-remote origin "$SAFETY_REF" | awk '{print $1}')"
+          if [[ -z "$SAFETY_SHA" ]]; then
+            git push origin "$EXPECTED_HEAD:$SAFETY_REF"
+            SAFETY_SHA="$EXPECTED_HEAD"
+          elif [[ "$SAFETY_SHA" != "$EXPECTED_HEAD" ]]; then
+            echo "safety ref exists at an unexpected SHA: $SAFETY_SHA" >&2
+            exit 1
+          fi
+          echo "GUARD SAFETY_REF=$SAFETY_REF"
+          echo "GUARD SAFETY_SHA=$SAFETY_SHA"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          TREE_SHA="$(git rev-parse "$EXPECTED_HEAD^{tree}")"
+          ATOMIC_SHA="$(printf '%s\n' "$MESSAGE" | git commit-tree "$TREE_SHA" -p "$BASELINE")"
+          ATOMIC_TREE="$(git rev-parse "$ATOMIC_SHA^{tree}")"
+          ATOMIC_PARENT="$(git rev-parse "$ATOMIC_SHA^")"
+          echo "GUARD TREE_SHA=$TREE_SHA"
+          echo "GUARD ATOMIC_SHA=$ATOMIC_SHA"
+          echo "GUARD ATOMIC_TREE=$ATOMIC_TREE"
+          echo "GUARD ATOMIC_PARENT=$ATOMIC_PARENT"
+
+          if [[ "$ATOMIC_TREE" != "$TREE_SHA" ]]; then
+            echo "atomic commit does not reuse the exact WIP tree" >&2
+            exit 1
+          fi
+          if [[ "$ATOMIC_PARENT" != "$BASELINE" ]]; then
+            echo "atomic commit parent is not the fixed Phase 47 baseline" >&2
+            exit 1
+          fi
+          if git rev-parse "$ATOMIC_SHA^2" >/dev/null 2>&1; then
+            echo "atomic commit unexpectedly has more than one parent" >&2
+            exit 1
+          fi
+          if ! git diff --quiet "$EXPECTED_HEAD" "$ATOMIC_SHA" --; then
+            echo "atomic commit tree differs from the validated WIP tree" >&2
+            exit 1
+          fi
+          echo "GUARD TREE_DIFF=clean"
+
+          REMOTE_BEFORE_PUSH="$(git ls-remote origin "$TARGET_REF" | awk '{print $1}')"
+          echo "GUARD REMOTE_BEFORE_PUSH=$REMOTE_BEFORE_PUSH"
+          if [[ "$REMOTE_BEFORE_PUSH" != "$EXPECTED_HEAD" ]]; then
+            echo "target ref moved before lease-protected update" >&2
+            exit 1
+          fi
+
+          git push \
+            --force-with-lease="$TARGET_REF:$EXPECTED_HEAD" \
+            origin \
+            "$ATOMIC_SHA:$TARGET_REF"
+
+          REMOTE_AFTER="$(git ls-remote origin "$TARGET_REF" | awk '{print $1}')"
+          echo "RESULT EXPECTED_HEAD=$EXPECTED_HEAD"
+          echo "RESULT TREE_SHA=$TREE_SHA"
+          echo "RESULT ATOMIC_SHA=$ATOMIC_SHA"
+          echo "RESULT SAFETY_REF=$SAFETY_REF"
+          echo "RESULT SAFETY_SHA=$SAFETY_SHA"
+          echo "RESULT PARENT=$ATOMIC_PARENT"
+          echo "RESULT REMOTE_AFTER=$REMOTE_AFTER"
+          if [[ "$REMOTE_AFTER" != "$ATOMIC_SHA" ]]; then
+            echo "remote target does not point to the atomic commit" >&2
+            exit 1
+          fi
+
+          {
+            echo "## Phase 48 atomicization"
+            echo "- EXPECTED_HEAD: \`$EXPECTED_HEAD\`"
+            echo "- TREE_SHA: \`$TREE_SHA\`"
+            echo "- ATOMIC_SHA: \`$ATOMIC_SHA\`"
+            echo "- SAFETY_REF: \`$SAFETY_REF\`"
+            echo "- SAFETY_SHA: \`$SAFETY_SHA\`"
+            echo "- PARENT: \`$ATOMIC_PARENT\`"
+            echo "- REMOTE_AFTER: \`$REMOTE_AFTER\`"
+          } >> "$GITHUB_STEP_SUMMARY"
