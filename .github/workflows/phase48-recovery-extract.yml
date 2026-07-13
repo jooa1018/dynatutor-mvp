@@ -6,11 +6,13 @@ on:
       - backup/phase48-wip-20260712
     paths:
       - recovery/phase48_wip/wjs.zip
+      - .github/workflows/phase48-recovery-extract.yml
   pull_request:
     branches:
       - codex/phase47-54-engine-completion
     paths:
       - recovery/phase48_wip/wjs.zip
+      - .github/workflows/phase48-recovery-extract.yml
 
 permissions:
   contents: write
@@ -123,17 +125,21 @@ jobs:
                   except UnicodeDecodeError as exc:
                       raise SystemExit(f"non-UTF-8 file {info.filename}: {exc}") from exc
                   logical_lines = len(text.splitlines())
-                  if logical_lines != expected["lines"]:
+                  manifest_lines = text.count("\n") + 1
+                  if manifest_lines != expected["lines"]:
                       raise SystemExit(
                           f"line-count mismatch for {info.filename}: "
-                          f"expected {expected['lines']}, got {logical_lines}"
+                          f"expected {expected['lines']}, "
+                          f"LF-plus-one={manifest_lines}, logical={logical_lines}"
                       )
                   extracted_payloads[info.filename] = data
                   verified_files.append(
                       {
                           "path": info.filename,
                           "bytes": len(data),
-                          "lines": logical_lines,
+                          "lines": manifest_lines,
+                          "logical_lines": logical_lines,
+                          "line_count_convention": "LF count plus one",
                           "sha256": actual_sha,
                           "encoding": "utf-8",
                       }
