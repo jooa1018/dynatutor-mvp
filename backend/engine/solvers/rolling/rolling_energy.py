@@ -9,6 +9,26 @@ from engine.verification.checks import merge_reports, require_no_missing
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
 
 
+def _optional_evidence_radius(c: CanonicalProblem) -> float | None:
+    """Return a valid optional radius without affecting the primary solve."""
+
+    for symbol in ("R", "r"):
+        quantity = c.knowns.get(symbol)
+        if (
+            quantity is None
+            or quantity.value is None
+            or isinstance(quantity.value, bool)
+        ):
+            continue
+        try:
+            radius = float(magnitude_si(quantity, "m"))
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if math.isfinite(radius) and radius > 0.0:
+            return radius
+    return None
+
+
 class PureRollingEnergySolver(BaseSolver):
     name = "pure_rolling_energy"
 
@@ -35,12 +55,7 @@ class PureRollingEnergySolver(BaseSolver):
             return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors), unsupported_reason="모델 기반 구름 에너지 방정식 생성/풀이에 실패했습니다.")
         v = float(generated.solution["v"])
         beta = float(generated.solution["beta"])
-        radius_quantity = c.knowns.get("R") or c.knowns.get("r")
-        radius = (
-            float(magnitude_si(radius_quantity, "m"))
-            if radius_quantity is not None
-            else None
-        )
+        radius = _optional_evidence_radius(c)
         typed_answers = [
             AnswerItem(
                 "질량중심 최종속도",

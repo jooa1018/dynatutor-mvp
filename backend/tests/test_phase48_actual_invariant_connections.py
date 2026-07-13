@@ -382,3 +382,117 @@ def test_candidate_complex_cutoff_remains_central_and_phase47_compatible():
     )
     assert accepted.numerical_mapping["x"] == pytest.approx(1.0)
     assert "x" not in rejected.numerical_mapping
+
+
+def _shape_rolling_problem(
+    system_type: str,
+    *,
+    radius_knowns: dict[str, Quantity],
+) -> CanonicalProblem:
+    return CanonicalProblem(
+        system_type=system_type,
+        raw_text="정지 상태에서 미끄러지지 않고 굴러 내려간다.",
+        body_shape=(
+            "solid_sphere"
+            if system_type == "pure_rolling_energy"
+            else "disk"
+        ),
+        knowns={
+            "h": q("h", 1.0, "m"),
+            "g": q("g", 9.81, "m/s^2"),
+            **radius_knowns,
+        },
+        requested_outputs=["final_velocity"],
+    )
+
+
+_OPTIONAL_RADIUS_CASES = [
+    pytest.param({}, False, id="absent-radius"),
+    pytest.param(
+        {"R": Quantity(symbol="R", value=None, unit="m")},
+        False,
+        id="none-radius",
+    ),
+    pytest.param(
+        {"R": q("R", 2.0, "s")},
+        False,
+        id="wrong-dimensional-radius",
+    ),
+    pytest.param(
+        {
+            "R": q("R", 2.0, "s"),
+            "r": q("r", 0.2, "m"),
+        },
+        True,
+        id="invalid-R-valid-r-fallback",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "solver",
+    [PureRollingEnergySolver(), RollingEnergyGeneralSolver()],
+    ids=["pure-shape", "general-shape"],
+)
+@pytest.mark.parametrize(
+    "radius_knowns,expects_angular",
+    _OPTIONAL_RADIUS_CASES,
+)
+def test_optional_rolling_radius_never_breaks_primary_velocity(
+    solver,
+    radius_knowns,
+    expects_angular,
+):
+    canonical = _shape_rolling_problem(
+        "pure_rolling_energy"
+        if isinstance(solver, PureRollingEnergySolver)
+        else "rolling_energy_general",
+        radius_knowns=radius_knowns,
+    )
+
+    result = solver.solve(canonical)
+
+    assert result.ok, result.verification.errors
+    assert result.answer is not None
+    assert result.answer.numeric is not None
+    output_keys = {answer.output_key for answer in result.answers}
+    assert "final_velocity" in output_keys
+    assert ("angular_velocity" in output_keys) is expects_angular
+
+    report = verify_result(canonical, result, solver_id=solver.name)
+    checks = _category_checks(report, "pure_rolling")
+    assert checks
+    expected_status = "passed" if expects_angular else "inconclusive"
+    assert {_status(check) for check in checks} == {expected_status}
+
+
+@pytest.mark.parametrize(
+    "radius_knowns,expects_angular",
+    _OPTIONAL_RADIUS_CASES,
+)
+def test_service_keeps_shape_rolling_solved_with_invalid_optional_radius(
+    monkeypatch,
+    radius_knowns,
+    expects_angular,
+):
+    canonical = _shape_rolling_problem(
+        "pure_rolling_energy",
+        radius_knowns=radius_knowns,
+    )
+    monkeypatch.setattr(
+        "engine.services.extract_problem",
+        lambda _problem_text: canonical,
+    )
+
+    response = solve_problem("optional rolling radius service regression")
+
+    assert response.ok
+    assert response.answer is not None
+    assert response.answer.numeric is not None
+    output_keys = {answer.output_key for answer in response.answers}
+    assert "final_velocity" in output_keys
+    assert ("angular_velocity" in output_keys) is expects_angular
+    checks = _category_checks(response.verification, "pure_rolling")
+    assert checks
+    expected_status = "passed" if expects_angular else "inconclusive"
+    assert {_status(check) for check in checks} == {expected_status}
