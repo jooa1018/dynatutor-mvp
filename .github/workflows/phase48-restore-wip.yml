@@ -1,0 +1,517 @@
+name: Phase 48 restore WIP checkpoint
+
+on:
+  push:
+    branches:
+      - backup/phase48-wip-20260712
+    paths:
+      - .github/workflows/phase48-restore-wip.yml
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Phase 47 product branch
+        uses: actions/checkout@v4
+        with:
+          ref: codex/phase47-54-engine-completion
+          path: target
+          fetch-depth: 0
+
+      - name: Check out verified recovery evidence
+        uses: actions/checkout@v4
+        with:
+          ref: backup/phase48-wip-20260712
+          path: backup
+
+      - name: Restore selected Phase 48 drafts and product connectors
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import shutil
+          from pathlib import Path
+
+          target = Path("target")
+          recovered = (
+              Path("backup")
+              / "recovery/phase48_wip/extracted/wjs/work"
+          )
+
+          copies = {
+              "phase48_adapted/invariants.py":
+                  "backend/engine/verification/invariants.py",
+              "phase48_adapted/loader.py":
+                  "backend/engine/capabilities/loader.py",
+              "phase48_adapted/test_phase48_invariants.py":
+                  "backend/tests/test_phase48_invariants.py",
+              "phase48_drafts2/policy.py":
+                  "backend/engine/verification/policy.py",
+              "phase48_drafts2/types.py":
+                  "backend/engine/verification/types.py",
+              "phase48_drafts2/conditioning.py":
+                  "backend/engine/verification/conditioning.py",
+              "phase48_drafts2/test_phase48_policy_conditioning.py":
+                  "backend/tests/test_phase48_policy_conditioning.py",
+              "phase48_suite/residuals.py":
+                  "backend/engine/verification/residuals.py",
+              "phase48_suite/suite.py":
+                  "backend/engine/verification/suite.py",
+              "phase48_suite/test_phase48_suite.py":
+                  "backend/tests/test_phase48_suite.py",
+              "phase48_adapted/AUDIT_NOTES.md":
+                  "backend/reports/phase48_recovery_audit.md",
+              "phase48_suite/NOTES.md":
+                  "docs/PHASE48_INTEGRATION_NOTES.md",
+          }
+          for source_rel, destination_rel in copies.items():
+              source = recovered / source_rel
+              destination = target / destination_rel
+              if not source.is_file():
+                  raise SystemExit(f"missing verified recovery source: {source}")
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source, destination)
+
+          init_path = target / "backend/engine/capabilities/__init__.py"
+          init_path.write_text(
+              '"""Validated engine capability contracts."""\n'
+              "from engine.capabilities.loader import (\n"
+              "    CapabilityConfigError,\n"
+              "    CapabilityMatrix,\n"
+              "    load_capability_matrix,\n"
+              ")\n\n"
+              "__all__ = [\n"
+              '    "CapabilityConfigError",\n'
+              '    "CapabilityMatrix",\n'
+              '    "load_capability_matrix",\n'
+              "]\n",
+              encoding="utf-8",
+          )
+
+          models_path = target / "backend/engine/models.py"
+          models = models_path.read_text(encoding="utf-8")
+          model_needle = """@dataclass
+          class VerificationReport:
+              passed: bool = True
+              dimension_summary: str | None = None
+              checks: list[str] = field(default_factory=list)
+              warnings: list[str] = field(default_factory=list)
+              errors: list[str] = field(default_factory=list)
+          """
+          model_replacement = """@dataclass
+          class VerificationReport:
+              passed: bool = True
+              dimension_summary: str | None = None
+              checks: list[str] = field(default_factory=list)
+              warnings: list[str] = field(default_factory=list)
+              errors: list[str] = field(default_factory=list)
+              # Additive Phase 48 evidence; legacy string views remain stable.
+              structured_checks: list[dict[str, Any]] = field(default_factory=list)
+              policy_version: str | None = None
+          """
+          if models.count(model_needle) != 1:
+              raise SystemExit("VerificationReport model connector did not match exactly once")
+          models_path.write_text(
+              models.replace(model_needle, model_replacement),
+              encoding="utf-8",
+          )
+
+          schema_path = target / "backend/app/schemas/solution.py"
+          schema = schema_path.read_text(encoding="utf-8")
+          schema_needle = """class VerificationReport(BaseModel):
+              passed: bool
+              dimension_summary: str | None = None
+              checks: list[str] = Field(default_factory=list)
+              warnings: list[str] = Field(default_factory=list)
+              errors: list[str] = Field(default_factory=list)
+          """
+          schema_replacement = """class VerificationCheckModel(BaseModel):
+              check_id: str
+              category: str
+              status: str
+              applicability: str
+              observed: Any = None
+              expected: Any = None
+              absolute_error: float | None = None
+              relative_error: float | None = None
+              tolerance: float | None = None
+              message: str
+              evidence: list[str] = Field(default_factory=list)
+              source_equation_ids: list[str] = Field(default_factory=list)
+              metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+          class VerificationReport(BaseModel):
+              passed: bool
+              dimension_summary: str | None = None
+              checks: list[str] = Field(default_factory=list)
+              warnings: list[str] = Field(default_factory=list)
+              errors: list[str] = Field(default_factory=list)
+              structured_checks: list[VerificationCheckModel] = Field(default_factory=list)
+              policy_version: str | None = None
+          """
+          if schema.count(schema_needle) != 1:
+              raise SystemExit("VerificationReport schema connector did not match exactly once")
+          schema_path.write_text(
+              schema.replace(schema_needle, schema_replacement),
+              encoding="utf-8",
+          )
+
+          checks_path = target / "backend/engine/verification/checks.py"
+          checks_path.write_text(
+              '''from __future__ import annotations
+
+          from typing import Any
+
+          from engine.models import CanonicalProblem, VerificationReport
+          from engine.verification.policy import DEFAULT_TOLERANCE_POLICY
+          from engine.verification.types import (
+              CheckApplicability,
+              CheckStatus,
+              VerificationCheck,
+          )
+
+
+          def require_no_missing(c: CanonicalProblem) -> VerificationReport:
+              if c.missing_info:
+                  return VerificationReport(
+                      passed=False,
+                      errors=["필수 조건 부족: " + ", ".join(c.missing_info)],
+                      warnings=[],
+                      checks=[],
+                      policy_version=DEFAULT_TOLERANCE_POLICY.policy_version,
+                  )
+              return VerificationReport(
+                  passed=True,
+                  policy_version=DEFAULT_TOLERANCE_POLICY.policy_version,
+              )
+
+
+          def _payload(check: VerificationCheck | dict[str, Any]) -> dict[str, Any]:
+              if isinstance(check, VerificationCheck):
+                  return check.to_dict()
+              return dict(check)
+
+
+          def record_verification_check(
+              report: VerificationReport,
+              check: VerificationCheck,
+          ) -> None:
+              payload = check.to_dict()
+              report.structured_checks.append(payload)
+              message = check.message
+              if check.status in {CheckStatus.FAILED, CheckStatus.ERROR}:
+                  report.errors.append(message)
+              elif check.status in {
+                  CheckStatus.PASSED_WITH_WARNING,
+                  CheckStatus.INCONCLUSIVE,
+              }:
+                  report.warnings.append(message)
+              else:
+                  report.checks.append(message)
+              report.passed = not report.errors
+              if report.policy_version is None:
+                  report.policy_version = DEFAULT_TOLERANCE_POLICY.policy_version
+
+
+          def ensure_structured_checks(
+              report: VerificationReport,
+              *,
+              prefix: str = "verification",
+          ) -> VerificationReport:
+              if report.policy_version is None:
+                  report.policy_version = DEFAULT_TOLERANCE_POLICY.policy_version
+              existing = {
+                  str(item.get("message", ""))
+                  for item in map(_payload, report.structured_checks)
+              }
+              legacy_groups = (
+                  ("checks", report.checks, CheckStatus.PASSED),
+                  ("warnings", report.warnings, CheckStatus.PASSED_WITH_WARNING),
+                  ("errors", report.errors, CheckStatus.FAILED),
+              )
+              for bucket, messages, status in legacy_groups:
+                  for index, message in enumerate(messages):
+                      if message in existing:
+                          continue
+                      check = VerificationCheck(
+                          check_id=f"{prefix}:legacy:{bucket}:{index}",
+                          category="legacy_compatibility",
+                          status=status,
+                          applicability=CheckApplicability.UNDETERMINED,
+                          message=message,
+                          evidence=("legacy compatibility view",),
+                      )
+                      report.structured_checks.append(check.to_dict())
+                      existing.add(message)
+              report.passed = not report.errors
+              return report
+
+
+          def merge_reports(*reports: VerificationReport) -> VerificationReport:
+              out = VerificationReport(
+                  passed=True,
+                  policy_version=DEFAULT_TOLERANCE_POLICY.policy_version,
+              )
+              summaries: list[str] = []
+              versions: list[str] = []
+              for report in reports:
+                  out.passed = out.passed and report.passed
+                  out.checks.extend(report.checks)
+                  out.warnings.extend(report.warnings)
+                  out.errors.extend(report.errors)
+                  out.structured_checks.extend(
+                      _payload(check)
+                      for check in getattr(report, "structured_checks", [])
+                  )
+                  if getattr(report, "dimension_summary", None):
+                      summaries.append(report.dimension_summary)
+                  if getattr(report, "policy_version", None):
+                      versions.append(str(report.policy_version))
+              unique_versions = list(dict.fromkeys(versions))
+              if len(unique_versions) == 1:
+                  out.policy_version = unique_versions[0]
+              elif len(unique_versions) > 1:
+                  mismatch = VerificationCheck(
+                      check_id="policy:version_mismatch",
+                      category="policy",
+                      status=CheckStatus.ERROR,
+                      applicability=CheckApplicability.APPLICABLE,
+                      observed=unique_versions,
+                      expected="one shared policy version",
+                      message=(
+                          "verification reports used different tolerance policy versions: "
+                          + ", ".join(unique_versions)
+                      ),
+                  )
+                  record_verification_check(out, mismatch)
+              if summaries:
+                  out.dimension_summary = " / ".join(summaries)
+              out.passed = not out.errors
+              return ensure_structured_checks(out, prefix="merge")
+
+
+          __all__ = [
+              "ensure_structured_checks",
+              "merge_reports",
+              "record_verification_check",
+              "require_no_missing",
+          ]
+          '''.replace("\n          ", "\n").lstrip(),
+              encoding="utf-8",
+          )
+
+          service_path = target / "backend/engine/services.py"
+          service = service_path.read_text(encoding="utf-8")
+          helper_needle = """def _selection_decision_model(decision):
+              if decision is None:
+                  return None
+              return SelectionDecisionModel(**decision.to_dict())
+
+
+          def _physical_model_payload(payload, decision):
+          """
+          helper_replacement = """def _selection_decision_model(decision):
+              if decision is None:
+                  return None
+              return SelectionDecisionModel(**decision.to_dict())
+
+
+          def _verification_report_model(report):
+              payload = dict(report.__dict__)
+              payload["structured_checks"] = [
+                  (
+                      check.to_dict()
+                      if callable(getattr(check, "to_dict", None))
+                      else dict(check)
+                  )
+                  for check in getattr(report, "structured_checks", [])
+              ]
+              return VerificationReportSchema(**payload)
+
+
+          def _physical_model_payload(payload, decision):
+          """
+          if service.count(helper_needle) != 1:
+              raise SystemExit("verification serialization helper connector did not match")
+          service = service.replace(helper_needle, helper_replacement)
+          if service.count("suite_report = verify_result(canonical, result)") != 1:
+              raise SystemExit("verify_result service call connector did not match")
+          service = service.replace(
+              "suite_report = verify_result(canonical, result)",
+              "suite_report = verify_result(canonical, result, solver_id=solver.name)",
+          )
+          if service.count(
+              "verification=VerificationReportSchema(**result.verification.__dict__),"
+          ) != 1:
+              raise SystemExit("verification schema serialization connector did not match")
+          service = service.replace(
+              "verification=VerificationReportSchema(**result.verification.__dict__),",
+              "verification=_verification_report_model(result.verification),",
+          )
+          service_path.write_text(service, encoding="utf-8")
+
+          residual_path = target / "backend/engine/verification/residuals.py"
+          residuals = residual_path.read_text(encoding="utf-8")
+          residual_needle = """def run_residual_checks(cp: CanonicalProblem, pool: dict, rep_display: str | None = None) -> tuple[list[ResidualCheck], bool]:
+              \"\"\"(checks, supported). supported=False → 이 유형은 역대입 미지원(정직하게 보고).\"\"\"
+              st = cp.system_type
+              if st in ("pure_rolling_energy", "rolling_energy_general"):
+                  return _rolling(cp, pool, _extract_beta(rep_display)), True
+              fn = CHECKERS.get(st)
+              if fn is None:
+                  return [], False
+              return fn(cp, pool), True
+          """
+          residual_replacement = """def run_residual_checks(
+              cp: CanonicalProblem,
+              pool: dict,
+              rep_display: str | None = None,
+              *,
+              policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+              engine_id: str | None = None,
+          ) -> tuple[list[ResidualCheck], bool]:
+              \"\"\"Return residual checks using the caller's effective central policy.\"\"\"
+              st = cp.system_type
+              if st in ("pure_rolling_energy", "rolling_energy_general"):
+                  checks = _rolling(cp, pool, _extract_beta(rep_display))
+                  supported = True
+              else:
+                  fn = CHECKERS.get(st)
+                  if fn is None:
+                      return [], False
+                  checks = fn(cp, pool)
+                  supported = True
+              effective = policy.for_engine(engine_id)
+              for check in checks:
+                  check.policy = effective
+              return checks, supported
+          """
+          if residuals.count(residual_needle) != 1:
+              raise SystemExit("residual policy propagation connector did not match")
+          residual_path.write_text(
+              residuals.replace(residual_needle, residual_replacement),
+              encoding="utf-8",
+          )
+
+          invariant_path = target / "backend/engine/verification/invariants.py"
+          invariants = invariant_path.read_text(encoding="utf-8")
+          invariant_needle = (
+              "residuals, supported = run_residual_checks("
+              "ctx.canonical, pool, display)"
+          )
+          invariant_replacement = """residuals, supported = run_residual_checks(
+              ctx.canonical,
+              pool,
+              display,
+              policy=ctx.policy,
+              engine_id=ctx.engine_id,
+          )"""
+          if invariants.count(invariant_needle) != 1:
+              raise SystemExit("invariant residual connector did not match")
+          invariant_path.write_text(
+              invariants.replace(invariant_needle, invariant_replacement),
+              encoding="utf-8",
+          )
+
+          suite_path = target / "backend/engine/verification/suite.py"
+          suite = suite_path.read_text(encoding="utf-8")
+          suite_needle = """            answer_pool=pool,
+                      policy=policy,
+                  )
+          """
+          suite_replacement = """            answer_pool=pool,
+                      policy=policy,
+                      engine_id=solver_id,
+                  )
+          """
+          if suite.count(suite_needle) != 1:
+              raise SystemExit("suite engine-policy connector did not match")
+          suite_path.write_text(
+              suite.replace(suite_needle, suite_replacement),
+              encoding="utf-8",
+          )
+
+          capability_path = (
+              target / "backend/engine/capabilities/dynamics_capabilities.json"
+          )
+          capability = json.loads(capability_path.read_text(encoding="utf-8"))
+          entries = capability.get("capabilities", [])
+          if len(entries) != 29:
+              raise SystemExit(
+                  f"expected 29 authoritative capabilities, got {len(entries)}"
+              )
+          extras = {
+              "incline_no_friction": ["contact_normal"],
+              "incline_with_friction": ["contact_normal", "friction_regime"],
+              "pulley_atwood": ["string_constraint", "tension_slack"],
+              "pulley_table_hanging": [
+                  "string_constraint", "tension_slack", "friction_regime"
+              ],
+              "pulley_incline_hanging": [
+                  "string_constraint", "tension_slack", "friction_regime"
+              ],
+              "massive_pulley_atwood": [
+                  "string_constraint", "tension_slack", "pulley_no_slip"
+              ],
+              "pure_rolling_energy": ["pure_rolling", "contact_normal"],
+              "rolling_energy_general": ["pure_rolling", "contact_normal"],
+              "vertical_circle": ["contact_normal", "tension_slack"],
+              "collision_1d": ["collision_momentum", "collision_restitution"],
+              "work_energy_speed": ["work_energy"],
+              "horizontal_friction_force": ["contact_normal", "friction_regime"],
+              "flat_curve_friction": ["contact_normal", "friction_regime"],
+              "banked_curve_no_friction": ["contact_normal"],
+              "plane_rigid_body_velocity": ["rigid_relative_velocity"],
+              "plane_rigid_body_acceleration": ["rigid_relative_acceleration"],
+          }
+          names = [entry.get("analytic_solver") for entry in entries]
+          if len(names) != len(set(names)):
+              raise SystemExit("duplicate analytic_solver in capability matrix")
+          for entry in entries:
+              solver_id = entry["analytic_solver"]
+              entry["validators"] = list(
+                  dict.fromkeys(entry.get("validators", []) + extras.get(solver_id, []))
+              )
+          missing_extra_targets = sorted(set(extras) - set(names))
+          if missing_extra_targets:
+              raise SystemExit(
+                  f"capability invariant targets not found: {missing_extra_targets}"
+              )
+          capability["verification_policy_version"] = (
+              "phase48-tolerance-policy-v1"
+          )
+          note = (
+              "Phase 48 structured invariant validators are selected by "
+              "analytic_solver and record explicit applicability."
+          )
+          if note not in capability.setdefault("notes", []):
+              capability["notes"].append(note)
+          capability_path.write_text(
+              json.dumps(capability, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Preserve restored integration draft
+        shell: bash
+        working-directory: target
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git status --short
+          git diff --check
+          git add             backend/app/schemas/solution.py             backend/engine/capabilities             backend/engine/models.py             backend/engine/services.py             backend/engine/verification             backend/tests/test_phase48_invariants.py             backend/tests/test_phase48_policy_conditioning.py             backend/tests/test_phase48_suite.py             backend/reports/phase48_recovery_audit.md             docs/PHASE48_INTEGRATION_NOTES.md
+          if git diff --cached --quiet; then
+            echo "No Phase 48 recovery changes to preserve."
+            exit 0
+          fi
+          git commit -m "wip(phase48): restore interrupted integration draft"
+          git push origin HEAD:codex/phase47-54-engine-completion
+          echo "local_head=$(git rev-parse HEAD)"
+          echo "remote_head=$(git ls-remote origin refs/heads/codex/phase47-54-engine-completion | cut -f1)"
