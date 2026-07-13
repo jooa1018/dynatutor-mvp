@@ -78,7 +78,7 @@ jobs:
               entries = {}
               entry_metadata = []
               position = 0
-              while position + 30 <= len(blob) and blob[position:position + 4] == b"PK\\x03\\x04":
+              while position + 30 <= len(blob) and blob[position:position + 4] == b"PK\x03\x04":
                   (
                       version_needed,
                       flags,
