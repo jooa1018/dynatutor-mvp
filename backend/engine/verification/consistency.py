@@ -408,33 +408,74 @@ def observation_from_solver_result(
     if not isinstance(used_equations, (list, tuple)):
         raise ConsistencyContractError("result.used_equations must be a sequence")
 
-    snapshot = observation_from_answer_items(
-        tuple(selected),
-        family=family,
-        path_id=path_id,
-        solver_id=solver_id,
-        frame=actual_frame,
-        positive_direction=actual_direction,
-        assumptions=tuple(canonical_assumptions),
-        equation_ids=tuple(used_equations),
-        policy=policy,
-    )
+    fallback_output: ObservedSemanticOutput | None = None
+    fallback_rejected_reason: str | None = None
+    if not selected and len(selected_keys) == 1:
+        representative = getattr(result, "answer", None)
+        if representative is None:
+            fallback_rejected_reason = "representative_answer_missing"
+        else:
+            representative_numeric = getattr(representative, "numeric", None)
+            representative_unit = getattr(representative, "unit", None)
+            if representative_numeric is None:
+                fallback_rejected_reason = "representative_numeric_missing"
+            else:
+                numeric = _finite(
+                    representative_numeric,
+                    "result.answer.numeric",
+                )
+                if not isinstance(representative_unit, str):
+                    fallback_rejected_reason = "representative_unit_not_typed"
+                else:
+                    fallback_output = ObservedSemanticOutput(
+                        output_key=selected_keys[0],
+                        numeric=numeric,
+                        unit=representative_unit,
+                        sign=_numeric_sign(numeric, policy),
+                        frame=actual_frame,
+                        positive_direction=actual_direction,
+                        assumptions=tuple(canonical_assumptions),
+                        equation_ids=tuple(used_equations),
+                    )
+    elif selected:
+        fallback_rejected_reason = "typed_answer_items_present"
+    else:
+        fallback_rejected_reason = "multiple_semantic_keys"
+
+    if fallback_output is not None:
+        outputs = (fallback_output,)
+        answer_source = "SolverResult.answer.numeric/unit"
+    else:
+        snapshot = observation_from_answer_items(
+            tuple(selected),
+            family=family,
+            path_id=path_id,
+            solver_id=solver_id,
+            frame=actual_frame,
+            positive_direction=actual_direction,
+            assumptions=tuple(canonical_assumptions),
+            equation_ids=tuple(used_equations),
+            policy=policy,
+        )
+        outputs = snapshot.outputs
+        answer_source = "SolverResult.answers[].output_key"
+
     return SolverPathObservation(
-        path_id=snapshot.path_id,
-        family=snapshot.family,
-        solver_id=snapshot.solver_id,
-        outputs=snapshot.outputs,
-        policy_version=snapshot.policy_version,
-        applicability=snapshot.applicability,
-        message=snapshot.message,
+        path_id=path_id,
+        family=family,
+        solver_id=solver_id,
+        outputs=outputs,
+        policy_version=policy.policy_version,
         metadata={
-            "source": "actual_product_evidence",
-            "answer_source": "SolverResult.answers[].output_key",
+            "source": answer_source,
+            "answer_source": answer_source,
             "equation_source": "SolverResult.used_equations",
             "assumption_source": "CanonicalProblem.assumptions",
             "coordinate_source": "CanonicalProblem.coordinate_data",
             "semantic_output_keys": selected_keys,
             "ignored_output_keys": tuple(ignored_keys),
+            "legacy_single_output_fallback": fallback_output is not None,
+            "fallback_rejected_reason": fallback_rejected_reason,
         },
     )
 

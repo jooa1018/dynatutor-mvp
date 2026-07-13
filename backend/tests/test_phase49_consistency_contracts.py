@@ -394,6 +394,193 @@ def test_typed_result_adapter_uses_actual_sources_and_does_not_mutate_source():
     )
 
 
+
+@pytest.mark.parametrize(
+    "family,solver_id,output_key,unit,frame,direction",
+    [
+        (
+            "incline",
+            "incline_no_friction",
+            "acceleration",
+            "m/s^2",
+            "incline_tangent",
+            "down_slope",
+        ),
+        (
+            "work_energy",
+            "work_energy_speed",
+            "final_velocity",
+            "m/s",
+            "path_tangent",
+            "direction_of_motion",
+        ),
+        (
+            "fixed_axis_rotation",
+            "fixed_axis_rotation",
+            "angular_acceleration",
+            "rad/s^2",
+            "fixed_axis",
+            "counterclockwise",
+        ),
+    ],
+)
+def test_actual_shaped_single_answer_results_use_typed_fallback(
+    family, solver_id, output_key, unit, frame, direction
+):
+    result = SolverResult(
+        ok=True,
+        answer=Answer(
+            numeric=2.5,
+            unit=unit,
+            display="malicious display = 999; must never be parsed",
+        ),
+        answers=[],
+        used_equations=["ACTUAL-SOLVER-EQUATION"],
+    )
+    canonical = CanonicalProblem(
+        assumptions=["actual solver assumption"],
+        coordinate_data={
+            "coordinate_frame": frame,
+            "positive_direction": direction,
+        },
+    )
+
+    observed = observation_from_solver_result(
+        result,
+        canonical=canonical,
+        semantic_output_keys=[output_key],
+        family=family,
+        path_id=f"student.{solver_id}",
+        solver_id=solver_id,
+    )
+
+    assert observed.output_by_key[output_key].numeric == 2.5
+    assert observed.output_by_key[output_key].unit == unit
+    assert observed.output_by_key[output_key].equation_ids == (
+        "ACTUAL-SOLVER-EQUATION",
+    )
+    assert observed.metadata["source"] == "SolverResult.answer.numeric/unit"
+    assert observed.metadata["legacy_single_output_fallback"] is True
+    assert result.answer.display == "malicious display = 999; must never be parsed"
+    assert result.answers == []
+
+
+def test_single_answer_fallback_is_forbidden_for_multi_output_and_partial_paths():
+    canonical = CanonicalProblem(
+        assumptions=["one_dimensional_impact"],
+        coordinate_data={
+            "coordinate_frame": "one_dimensional_lab",
+            "positive_direction": "right",
+        },
+    )
+    representative = Answer(
+        numeric=9.0,
+        unit="m/s",
+        display="v1=1, v2=8",
+    )
+    empty_multi = SolverResult(
+        ok=True,
+        answer=representative,
+        answers=[],
+        used_equations=["ACTUAL-COLLISION"],
+    )
+    empty_observation = observation_from_solver_result(
+        empty_multi,
+        canonical=canonical,
+        semantic_output_keys=["v1_after", "v2_after"],
+        family="collision",
+        path_id="student.collision",
+        solver_id="collision_1d",
+    )
+    partial_multi = SolverResult(
+        ok=True,
+        answer=representative,
+        answers=[
+            AnswerItem(
+                "v1",
+                "v1'",
+                1.0,
+                "m/s",
+                "",
+                output_key="v1_after",
+            )
+        ],
+        used_equations=["ACTUAL-COLLISION"],
+    )
+    partial_observation = observation_from_solver_result(
+        partial_multi,
+        canonical=canonical,
+        semantic_output_keys=["v1_after", "v2_after"],
+        family="collision",
+        path_id="student.collision",
+        solver_id="collision_1d",
+    )
+
+    assert empty_observation.outputs == ()
+    assert empty_observation.metadata["legacy_single_output_fallback"] is False
+    assert empty_observation.metadata["fallback_rejected_reason"] == (
+        "multiple_semantic_keys"
+    )
+    assert set(partial_observation.output_by_key) == {"v1_after"}
+    assert partial_observation.metadata["legacy_single_output_fallback"] is False
+    assert partial_observation.metadata["fallback_rejected_reason"] == (
+        "typed_answer_items_present"
+    )
+
+
+def test_single_answer_fallback_never_parses_display_only_or_nonfinite_values():
+    canonical = CanonicalProblem(
+        assumptions=[],
+        coordinate_data={
+            "coordinate_frame": "path_tangent",
+            "positive_direction": "direction_of_motion",
+        },
+    )
+    display_only = SolverResult(
+        ok=True,
+        answer=Answer(
+            numeric=None,
+            unit="m/s",
+            display="vf = 7 m/s",
+        ),
+        answers=[],
+        used_equations=["ACTUAL-WORK-ENERGY"],
+    )
+    observed = observation_from_solver_result(
+        display_only,
+        canonical=canonical,
+        semantic_output_keys=["final_velocity"],
+        family="work_energy",
+        path_id="student.work_energy",
+        solver_id="work_energy_speed",
+    )
+
+    assert observed.outputs == ()
+    assert observed.metadata["legacy_single_output_fallback"] is False
+    assert observed.metadata["fallback_rejected_reason"] == (
+        "representative_numeric_missing"
+    )
+
+    nonfinite = SolverResult(
+        ok=True,
+        answer=Answer(
+            numeric=math.inf,
+            unit="m/s",
+            display="vf = finite-looking text",
+        ),
+        answers=[],
+        used_equations=["ACTUAL-WORK-ENERGY"],
+    )
+    with pytest.raises(ConsistencyContractError, match="finite"):
+        observation_from_solver_result(
+            nonfinite,
+            canonical=canonical,
+            semantic_output_keys=["final_velocity"],
+            family="work_energy",
+            path_id="student.work_energy",
+            solver_id="work_energy_speed",
+        )
+
 def test_product_adapter_rejects_expected_metadata_echo():
     result = SolverResult(
         ok=True,
