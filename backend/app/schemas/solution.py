@@ -109,12 +109,30 @@ class AnswerItemModel(BaseModel):
     output_key: str | None = None
 
 
+class VerificationCheckModel(BaseModel):
+    check_id: str
+    category: str
+    status: str
+    applicability: str
+    observed: Any = None
+    expected: Any = None
+    absolute_error: float | None = None
+    relative_error: float | None = None
+    tolerance: float | None = None
+    message: str
+    evidence: list[str] = Field(default_factory=list)
+    source_equation_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class VerificationReport(BaseModel):
     passed: bool
     dimension_summary: str | None = None
     checks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    structured_checks: list[VerificationCheckModel] = Field(default_factory=list)
+    policy_version: str | None = None
 
 
 class CandidateValidationCheckModel(BaseModel):
@@ -159,6 +177,7 @@ class SelectionDecisionModel(BaseModel):
     explanation: str
     tolerances: dict[str, float] = Field(default_factory=dict)
     policy_version: str
+    diagnostics: list[VerificationCheckModel] = Field(default_factory=list)
 
 
 class ClarificationInputFieldModel(BaseModel):

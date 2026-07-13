@@ -6,13 +6,24 @@ The module deliberately receives explicit variable and model constraints.  It
 never infers physical meaning from a symbol's spelling.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 from typing import Any, Callable, Iterable, Mapping
 
 import sympy as sp
 
 from engine.physics_core.answer_validators import OUTPUT_KEY_COMPATIBILITY
+from engine.verification.conditioning import (
+    diagnose_root_separation,
+    diagnose_tolerance_sensitivity,
+)
+from engine.verification.policy import (
+    CANDIDATE_ENGINE_ID,
+    DEFAULT_TOLERANCE_POLICY,
+    TolerancePolicy,
+)
+
+_CANDIDATE_POLICY = DEFAULT_TOLERANCE_POLICY.for_engine(CANDIDATE_ENGINE_ID)
 
 
 CandidatePredicate = Callable[["CandidateSolution"], bool]
@@ -167,11 +178,11 @@ class ValidationContext:
     event_predicate: CandidatePredicate | None = None
     event_description: str | None = None
     preferred_candidate_id: str | None = None
-    numerical_tolerance: float = 1e-9
-    relative_tolerance: float = 1e-7
-    residual_tolerance: float | None = None
+    numerical_tolerance: float = _CANDIDATE_POLICY.abs_tol
+    relative_tolerance: float = _CANDIDATE_POLICY.rel_tol
+    residual_tolerance: float | None = _CANDIDATE_POLICY.residual_tol
     selection_policy: str = "all-valid-candidates"
-    policy_version: str = "candidate-policy-1"
+    policy_version: str = _CANDIDATE_POLICY.policy_version
 
     def variable_constraints(self) -> list[VariableConstraint]:
         if isinstance(self.constraints, dict):
@@ -179,15 +190,33 @@ class ValidationContext:
         return list(self.constraints)
 
     @property
+    def tolerance_policy(self) -> TolerancePolicy:
+        """Return the one effective policy for candidate validation/diagnostics."""
+
+        residual = (
+            self.residual_tolerance
+            if self.residual_tolerance is not None
+            else self.numerical_tolerance
+        )
+        return replace(
+            _CANDIDATE_POLICY,
+            abs_tol=self.numerical_tolerance,
+            rel_tol=self.relative_tolerance,
+            residual_tol=residual,
+            constraint_tol=residual,
+            policy_version=self.policy_version,
+            # Explicit ValidationContext overrides are already effective and
+            # must not be replaced a second time by the candidate-engine map.
+            engine_specific_tolerances={},
+        )
+
+    @property
     def tolerances(self) -> dict[str, float]:
+        policy = self.tolerance_policy
         return {
-            "absolute": self.numerical_tolerance,
-            "relative": self.relative_tolerance,
-            "residual": (
-                self.residual_tolerance
-                if self.residual_tolerance is not None
-                else self.numerical_tolerance
-            ),
+            "absolute": policy.abs_tol,
+            "relative": policy.rel_tol,
+            "residual": policy.residual_tol,
         }
 
 
@@ -200,7 +229,8 @@ class SelectionDecision:
     selection_policy: str = "all-valid-candidates"
     explanation: str = ""
     tolerances: dict[str, float] = field(default_factory=dict)
-    policy_version: str = "candidate-policy-1"
+    policy_version: str = _CANDIDATE_POLICY.policy_version
+    diagnostics: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def alternatives(self) -> list[CandidateSolution]:
@@ -222,6 +252,7 @@ class SelectionDecision:
             "explanation": self.explanation,
             "tolerances": dict(self.tolerances),
             "policy_version": self.policy_version,
+            "diagnostics": [_safe_value(item) for item in self.diagnostics],
         }
 
 
@@ -231,7 +262,111 @@ class CandidateSolveBatch:
     candidates: list[CandidateSolution]
 
 
-def _numeric(expr: Any) -> tuple[float | None, str | None]:
+
+def _context_policy(context: ValidationContext) -> TolerancePolicy:
+    """Compatibility helper for the context's authoritative policy view."""
+
+    return context.tolerance_policy
+
+
+def _diagnostic_payload(check: Any, context: ValidationContext) -> dict[str, Any]:
+    payload = check.to_dict()
+    metadata = dict(payload.get("metadata") or {})
+    metadata["policy_version"] = context.policy_version
+    metadata["engine_id"] = CANDIDATE_ENGINE_ID
+    payload["metadata"] = metadata
+    return payload
+
+
+def _candidate_root_values(
+    candidates: Iterable[CandidateSolution],
+) -> list[float] | None:
+    items = list(candidates)
+    if len(items) < 2:
+        return None
+    key_sets = [
+        {
+            str(key)
+            for key, value in candidate.numerical_mapping.items()
+            if isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        }
+        for candidate in items
+    ]
+    common = set.intersection(*key_sets) if key_sets else set()
+    if len(common) != 1:
+        return None
+    key = next(iter(common))
+    return [float(candidate.numerical_mapping[key]) for candidate in items]
+
+
+def _candidate_boundary_diagnostics(
+    candidate: CandidateSolution,
+    checks: Iterable[CandidateValidationCheck],
+    context: ValidationContext,
+) -> None:
+    policy = _context_policy(context)
+    diagnostics = candidate.rank_metadata.setdefault("numerical_diagnostics", [])
+    for check in checks:
+        if (
+            check.category not in {"equation_residual", "model_constraint", "constraint"}
+            or check.absolute_error is None
+            or check.tolerance is None
+        ):
+            continue
+        scale = 1.0
+        if (
+            check.relative_error is not None
+            and check.relative_error > 0
+            and math.isfinite(check.relative_error)
+        ):
+            scale = max(check.absolute_error / check.relative_error, 1.0)
+        category = (
+            "residual"
+            if check.category == "equation_residual"
+            else "constraint"
+        )
+        diagnostic = diagnose_tolerance_sensitivity(
+            check.absolute_error,
+            scale=scale,
+            category=category,
+            policy=policy,
+            check_id=f"{check.check_id}:sensitivity",
+            source_equation_ids=check.source_equation_ids,
+        )
+        diagnostics.append(_diagnostic_payload(diagnostic, context))
+
+
+def _selection_diagnostics(
+    items: Iterable[ValidatedCandidate],
+    valid: Iterable[CandidateSolution],
+    context: ValidationContext,
+) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    for item in items:
+        for payload in item.candidate.rank_metadata.get(
+            "numerical_diagnostics", []
+        ):
+            diagnostics.append(_safe_value(payload))
+
+    roots = _candidate_root_values(valid)
+    root_check = diagnose_root_separation(
+        roots,
+        policy=_context_policy(context),
+        check_id="candidate:root_separation",
+        source_equation_ids=[
+            str(index) for index, _ in enumerate(context.equations)
+        ],
+    )
+    diagnostics.append(_diagnostic_payload(root_check, context))
+    return diagnostics
+
+def _numeric(
+    expr: Any,
+    *,
+    near_zero_tol: float = _CANDIDATE_POLICY.near_zero_tol,
+) -> tuple[float | None, str | None]:
     if isinstance(expr, (int, float)) and not isinstance(expr, bool):
         numeric = float(expr)
         return (
@@ -246,7 +381,7 @@ def _numeric(expr: Any) -> tuple[float | None, str | None]:
         complex_value = complex(value)
     except Exception:
         return None, "not_numeric"
-    if abs(complex_value.imag) > 1e-10:
+    if abs(complex_value.imag) > near_zero_tol:
         return None, "complex"
     if not math.isfinite(complex_value.real):
         return None, "non_finite"
@@ -440,6 +575,8 @@ def _evaluate_residual(
     evaluator: Any,
     candidate: CandidateSolution,
     substitutions: Mapping[Any, Any],
+    *,
+    near_zero_tol: float = _CANDIDATE_POLICY.near_zero_tol,
 ) -> tuple[float | None, str | None]:
     if callable(evaluator):
         try:
@@ -454,7 +591,7 @@ def _evaluate_residual(
             )
         except Exception:
             return None, "evaluation_error"
-        return _numeric(value)
+        return _numeric(value, near_zero_tol=near_zero_tol)
     try:
         expression = evaluator
         if isinstance(expression, sp.Equality):
@@ -464,7 +601,7 @@ def _evaluate_residual(
             candidate.symbolic_mapping,
             substitutions,
         )
-        return _numeric(value)
+        return _numeric(value, near_zero_tol=near_zero_tol)
     except Exception:
         return None, "evaluation_error"
 
@@ -505,13 +642,11 @@ def validate_candidates(
 ) -> list[ValidatedCandidate]:
     context = context or ValidationContext()
     validated: list[ValidatedCandidate] = []
-    absolute = context.numerical_tolerance
-    relative = context.relative_tolerance
-    residual_tolerance = (
-        context.residual_tolerance
-        if context.residual_tolerance is not None
-        else absolute
-    )
+    policy = context.tolerance_policy
+    absolute = policy.abs_tol
+    relative = policy.rel_tol
+    residual_tolerance = policy.residual_tol
+    near_zero = policy.near_zero_tol
 
     for candidate in candidates:
         checks: list[CandidateValidationCheck] = []
@@ -559,7 +694,7 @@ def validate_candidates(
             except Exception:
                 numeric_errors.append(f"{symbol}: not_numeric")
                 continue
-            _, error = _numeric(evaluated)
+            _, error = _numeric(evaluated, near_zero_tol=near_zero)
             if error:
                 numeric_errors.append(f"{symbol}: {error}")
         checks.append(
@@ -585,7 +720,7 @@ def validate_candidates(
                     candidate.symbolic_mapping,
                     context.substitutions,
                 )
-                numeric, error = _numeric(evaluated)
+                numeric, error = _numeric(evaluated, near_zero_tol=near_zero)
                 if (
                     error is not None
                     or numeric is None
@@ -617,7 +752,7 @@ def validate_candidates(
                 candidate.symbolic_mapping, constraint.symbol, context.substitutions
             )
             numeric, error = (
-                _numeric(value_expression) if value_expression is not None else (None, "missing")
+                _numeric(value_expression, near_zero_tol=near_zero) if value_expression is not None else (None, "missing")
             )
             passed = error is None and numeric is not None
             reasons: list[str] = []
@@ -700,15 +835,18 @@ def validate_candidates(
                         candidate.symbolic_mapping,
                         context.substitutions,
                     )
-                    left_num, left_error = _numeric(left)
-                    right_num, right_error = _numeric(right)
+                    left_num, left_error = _numeric(left, near_zero_tol=near_zero)
+                    right_num, right_error = _numeric(right, near_zero_tol=near_zero)
                     if left_error or right_error or left_num is None or right_num is None:
                         raise ValueError(left_error or right_error or "unresolved")
                     residual = left_num - right_num
                     scale = max(abs(left_num), abs(right_num), 1.0)
                 else:
                     residual_value, residual_error = _evaluate_residual(
-                        expression, candidate, context.substitutions
+                        expression,
+                        candidate,
+                        context.substitutions,
+                        near_zero_tol=near_zero,
                     )
                     if residual_error or residual_value is None:
                         raise ValueError(residual_error or "unresolved")
@@ -750,7 +888,10 @@ def validate_candidates(
 
         for constraint in context.model_constraints:
             residual, error = _evaluate_residual(
-                constraint.evaluator, candidate, context.substitutions
+                constraint.evaluator,
+                candidate,
+                context.substitutions,
+                near_zero_tol=near_zero,
             )
             tolerance = (
                 constraint.tolerance
@@ -831,6 +972,7 @@ def validate_candidates(
                 )
             )
 
+        _candidate_boundary_diagnostics(candidate, checks, context)
         rejected = [check.message for check in checks if check.status == "failed"]
         candidate.validation_checks = list(checks)
         candidate.rejection_reasons = list(rejected)
@@ -857,6 +999,7 @@ def validate_output_candidates(
     """
 
     context = context or ValidationContext()
+    policy = context.tolerance_policy
     validated: list[ValidatedCandidate] = []
     for candidate in candidates:
         checks: list[CandidateValidationCheck] = []
@@ -882,7 +1025,7 @@ def validate_output_candidates(
                 for symbol in candidate.unresolved_symbols
             )
         for symbol, value in candidate.symbolic_mapping.items():
-            _, error = _numeric(value)
+            _, error = _numeric(value, near_zero_tol=policy.near_zero_tol)
             if error is not None:
                 numeric_errors.append(f"{symbol}: {error}")
         checks.append(
@@ -925,6 +1068,7 @@ def select_solution(
     items = list(validated)
     valid = [item.candidate for item in items if item.accepted]
     rejected = [item for item in items if not item.accepted]
+    diagnostics = _selection_diagnostics(items, valid, context)
 
     if context.preferred_candidate_id is not None:
         preferred = [
@@ -945,6 +1089,7 @@ def select_solution(
                 or "an explicit event, direction, or interval selected this candidate",
                 tolerances=context.tolerances,
                 policy_version=context.policy_version,
+                diagnostics=diagnostics,
             )
         # An explicitly requested event/branch is authoritative.  If it is
         # absent, rejected, or duplicated, selecting another valid branch would
@@ -961,6 +1106,7 @@ def select_solution(
             ),
             tolerances=context.tolerances,
             policy_version=context.policy_version,
+            diagnostics=diagnostics,
         )
 
     if len(valid) == 1:
@@ -973,6 +1119,7 @@ def select_solution(
             explanation="exactly one candidate satisfied all explicit constraints",
             tolerances=context.tolerances,
             policy_version=context.policy_version,
+            diagnostics=diagnostics,
         )
     if len(valid) > 1:
         return SelectionDecision(
@@ -984,6 +1131,7 @@ def select_solution(
             explanation="multiple candidates satisfy every explicit constraint",
             tolerances=context.tolerances,
             policy_version=context.policy_version,
+            diagnostics=diagnostics,
         )
 
     failed_checks = [
@@ -1016,6 +1164,7 @@ def select_solution(
         ),
         tolerances=context.tolerances,
         policy_version=context.policy_version,
+        diagnostics=diagnostics,
     )
 
 

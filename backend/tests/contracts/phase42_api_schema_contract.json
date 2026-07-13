@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "source_commit": "99b1b523b9993f95fb31deca7c3033895848cb08",
   "engine_dataclasses": {
     "CanonicalProblem": [
@@ -45,7 +45,9 @@
       "dimension_summary",
       "checks",
       "warnings",
-      "errors"
+      "errors",
+      "structured_checks",
+      "policy_version"
     ]
   },
   "api_models": {
@@ -117,7 +119,9 @@
       "dimension_summary",
       "checks",
       "warnings",
-      "errors"
+      "errors",
+      "structured_checks",
+      "policy_version"
     ],
     "ClarificationOptionModel": [
       "id",
@@ -182,6 +186,7 @@
     "Legacy solvers continue to consume knowns, flags, and requested_outputs through the v1 compatibility view.",
     "AnswerItem output_key disambiguates colliding display symbols without removing legacy symbol or label fields.",
     "Clarification input_fields adds typed multi-value inputs while needs_value remains for single-value clients.",
-    "selection_decision is an additive Phase 47 diagnostic; legacy answer and verification fields remain authoritative compatibility views."
+    "selection_decision is an additive Phase 47 diagnostic; legacy answer and verification fields remain authoritative compatibility views.",
+    "structured_checks and policy_version are additive Phase 48 verification evidence; legacy checks, warnings, and errors remain compatibility views."
   ]
 }
