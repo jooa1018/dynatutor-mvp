@@ -1412,7 +1412,6 @@ def _fixed_axis(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPat
     )
 
 
-_SECONDARY_ADAPTERS =
 _SECONDARY_ADAPTERS = MappingProxyType(
     {
         "incline": _incline,
