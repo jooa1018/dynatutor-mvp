@@ -1,33 +1,74 @@
-# Phase 48 suite integration notes
+# Phase 48 integration notes
 
-These are Maker P48-E drafts. They do not modify the product tree.
+This document describes the integrated product call paths at the Phase 48 Maker
+WIP checkpoint. It is not an acceptance verdict.
 
-- `residuals.py` is the Phase 47 file with only tolerance/typed-check changes:
-  pass/fail and near-zero decisions use the versioned central policy, while
-  `describe()` and the compatibility constants remain stable.
-- `suite.py` resolves validators from the capability matrix, accepts an
-  authoritative optional `solver_id`, falls back deterministically for direct
-  family-level calls, records typed checks while retaining legacy strings, and
-  adds non-blocking tolerance-sensitivity evidence for governing residuals.
-- `test_phase48_suite.py` includes policy/serialization/mutation/boundary
-  coverage plus a false-positive harness for collision, work-energy, massive
-  pulley, rigid-body velocity/acceleration, and vertical-circle solvers.
+## Shared contracts
 
-Integration assumptions:
+- `backend/engine/verification/policy.py` is the single versioned tolerance
+  source (`phase48-tolerance-policy-v1`). Candidate validation derives its
+  default absolute, relative, residual, and policy-version values from the
+  `candidate` engine view; explicit legacy constructor overrides remain exact.
+- `VerificationReport.structured_checks` stores JSON-safe dictionaries that
+  conform to the shared `VerificationCheck` schema. `checks`, `warnings`,
+  and `errors` remain student-facing compatibility views.
+- Every Phase 48 structured diagnostic records the policy version, and an
+  authoritative solver/engine ID when one is available.
 
-1. `VerificationReport` declares `structured_checks` and `policy_version`.
-2. `checks.record_verification_check` mirrors a typed check to the legacy
-   message lists without treating warning/inconclusive/not-applicable as
-   blocking.
-3. `CapabilityMatrix.for_problem(system_type, subtype)` is preferred, though
-   the suite contains a deterministic compatibility fallback.
-4. `evaluate_invariants(..., policy=...)` accepts the shared policy and returns
-   either the invariant draft type or the shared `VerificationCheck`; the
-   adapter handles both.
-5. The capability JSON validator IDs match `INVARIANT_EVALUATORS`.
+## Actual call paths
 
-Risk to verify after integration: the old residual tolerance was
-`abs_tol + rel_tol*scale`; the central policy intentionally uses its own
-versioned `max(floor, relative)` rule. Boundary tests should assert the policy,
-not the old arithmetic.
+1. `engine.services.solve_problem` preserves Phase 47 candidate selection.
+   Only a selected candidate reaches
+   `verification.suite.verify_result(..., solver_id=solver.name)`.
+2. `verify_result` resolves the solver capability, runs configured residual
+   and invariant validators, adds non-blocking diagnostics, and merges their
+   typed evidence into the existing report. It never changes an answer value.
+3. `ValidationContext` uses the shared candidate-policy defaults.
+   `select_solution` evaluates close-root and candidate-boundary sensitivity
+   evidence before returning a selection decision. Diagnostics do not rank or
+   select roots.
+4. `EquationSystem.solve_candidates` evaluates the actual symbolic residual
+   Jacobian at each candidate. It records rank/condition estimates, a
+   deterministic linearized right-hand-side perturbation estimate, and
+   signed-term cancellation evidence before the unchanged validation and
+   selection call.
+5. Contact-normal and static-friction validators retain the actual boundary
+   value and limit. The suite records boundary proximity without changing the
+   invariant result.
 
+## Diagnostic applicability
+
+- Jacobian condition and local perturbation are applicable only when an actual
+  equation system and candidate point exist. Direct-formula solvers do not get
+  a fabricated Jacobian.
+- Root separation currently applies to scalar candidates with one common
+  numeric output. Multi-output candidate distance is reported as not
+  applicable rather than guessed.
+- Near-cancellation requires evaluated opposing signed terms. A residual
+  `scale` proxy by itself is explicitly inconclusive and cannot emit a false
+  warning.
+- Static-to-kinetic proximity is measurable when a static-friction force and
+  its `mu_s*N` limit are available. A kinetic result without transition-state
+  evidence is explicitly inconclusive.
+- Missing NumPy is distinguished as `skipped`; malformed or unresolved
+  numerical evidence is `inconclusive`. Diagnostic statuses are never
+  blocking.
+- Singular/non-unique systems use column-rank uniqueness, including
+  underdetermined full-row-rank Jacobians. Infinite condition/amplification
+  values remain string evidence; typed numeric error fields stay JSON-safe.
+
+## Focused evidence
+
+Focused coverage is in:
+
+- `backend/tests/test_phase48_policy_conditioning.py`
+- `backend/tests/test_phase48_invariants.py`
+- `backend/tests/test_phase48_suite.py`
+- `backend/tests/test_phase48_numerical_connections.py`
+- `backend/tests/test_phase47_candidate_validation.py`
+
+The numerical-connection tests cover shared policy defaults and compatibility
+overrides, close roots, singular and ill-conditioned Jacobians, real local
+perturbation evidence, tolerance outcome flips, signed-term cancellation,
+contact/friction boundary applicability, mutation blocking, report propagation,
+and JSON-safe API serialization.
