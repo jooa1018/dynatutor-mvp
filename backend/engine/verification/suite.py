@@ -23,7 +23,11 @@ from engine.verification.checks import (
     ensure_structured_checks,
     record_verification_check,
 )
-from engine.verification.conditioning import diagnose_tolerance_sensitivity
+from engine.verification.conditioning import (
+    diagnose_boundary_proximity,
+    diagnose_near_cancellation,
+    diagnose_tolerance_sensitivity,
+)
 from engine.verification.dimensions import check_answer_dimension
 from engine.verification.invariants import (
     INVARIANT_EVALUATORS,
@@ -142,6 +146,7 @@ def _record_message(
             message=message,
             evidence=list(evidence or []),
             source_equation_ids=list(source_equation_ids or []),
+            metadata={"policy_version": report.policy_version},
         ),
     )
 
@@ -201,6 +206,9 @@ def _status_value(value: Any) -> str:
 def _typed_invariant_check(
     canonical: CanonicalProblem,
     raw: Any,
+    *,
+    policy: TolerancePolicy,
+    engine_id: str | None,
 ) -> VerificationCheck:
     raw_status = _status_value(getattr(raw, "status", "error"))
     try:
@@ -256,7 +264,15 @@ def _typed_invariant_check(
         source_equation_ids=list(
             getattr(raw, "source_equation_ids", ()) or ()
         ),
-        metadata=dict(getattr(raw, "metadata", {}) or {}),
+        metadata={
+            "policy_version": policy.policy_version,
+            **(
+                {"engine_id": engine_id}
+                if engine_id is not None
+                else {}
+            ),
+            **dict(getattr(raw, "metadata", {}) or {}),
+        },
     )
 
 
@@ -279,6 +295,44 @@ def _residual_scale(check: VerificationCheck) -> float:
     return 1.0
 
 
+
+def _record_selection_diagnostics(
+    report: VerificationReport,
+    result: SolverResult,
+) -> None:
+    decision = getattr(result, "selection_decision", None)
+    if decision is None:
+        return
+    for index, payload in enumerate(getattr(decision, "diagnostics", []) or []):
+        if not isinstance(payload, Mapping):
+            _record_message(
+                report,
+                check_id=f"selection:diagnostic:{index}",
+                category="conditioning",
+                status=CheckStatus.INCONCLUSIVE,
+                applicability=CheckApplicability.UNDETERMINED,
+                message="candidate-selection diagnostic has an invalid payload",
+                observed=type(payload).__name__,
+            )
+            continue
+        try:
+            check = VerificationCheck(**dict(payload))
+        except (KeyError, TypeError, ValueError) as exc:
+            _record_message(
+                report,
+                check_id=f"selection:diagnostic:{index}",
+                category="conditioning",
+                status=CheckStatus.INCONCLUSIVE,
+                applicability=CheckApplicability.UNDETERMINED,
+                message=(
+                    "candidate-selection diagnostic could not be decoded: "
+                    f"{type(exc).__name__}"
+                ),
+                observed=dict(payload),
+            )
+            continue
+        record_verification_check(report, check)
+
 def verify_result(
     canonical: CanonicalProblem,
     result: SolverResult,
@@ -299,6 +353,7 @@ def verify_result(
         )
         return ensure_structured_checks(report, prefix="suite")
 
+    _record_selection_diagnostics(report, result)
     validators, capability_found = _validator_ids(canonical, solver_id)
     if not capability_found:
         status = CheckStatus.FAILED if solver_id is not None else CheckStatus.PASSED_WITH_WARNING
@@ -456,7 +511,12 @@ def verify_result(
             engine_id=solver_id,
         )
         for raw in invariant_checks:
-            check = _typed_invariant_check(canonical, raw)
+            check = _typed_invariant_check(
+                canonical,
+                raw,
+                policy=policy,
+                engine_id=solver_id,
+            )
             record_verification_check(report, check)
             if (
                 check.category == "equation_residual"
@@ -472,10 +532,44 @@ def verify_result(
                     scale=_residual_scale(check),
                     category="residual",
                     policy=policy,
+                    engine_id=solver_id,
                     check_id=f"{check.check_id}:sensitivity",
                     source_equation_ids=check.source_equation_ids,
                 )
                 record_verification_check(report, sensitivity)
+                cancellation = diagnose_near_cancellation(
+                    float(check.observed),
+                    scale=_residual_scale(check),
+                    policy=policy,
+                    engine_id=solver_id,
+                    check_id=f"{check.check_id}:cancellation",
+                    source_equation_ids=check.source_equation_ids,
+                )
+                record_verification_check(report, cancellation)
+            if check.category in {"contact_normal", "friction_regime"}:
+                metadata = dict(check.metadata)
+                boundary_kind = (
+                    "contact"
+                    if check.category == "contact_normal"
+                    else "static_to_kinetic_friction"
+                )
+                boundary = diagnose_boundary_proximity(
+                    metadata.get("boundary_value"),
+                    metadata.get("boundary_limit"),
+                    scale=metadata.get("boundary_scale", 1.0),
+                    boundary_kind=boundary_kind,
+                    applicable=(
+                        False
+                        if check.applicability
+                        is CheckApplicability.NOT_APPLICABLE
+                        else True
+                    ),
+                    policy=policy,
+                    engine_id=solver_id,
+                    check_id=f"{check.check_id}:boundary",
+                    source_equation_ids=check.source_equation_ids,
+                )
+                record_verification_check(report, boundary)
             if (
                 check.category == "equation_residual"
                 and check.status in {CheckStatus.FAILED, CheckStatus.ERROR}

@@ -6,13 +6,24 @@ The module deliberately receives explicit variable and model constraints.  It
 never infers physical meaning from a symbol's spelling.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 from typing import Any, Callable, Iterable, Mapping
 
 import sympy as sp
 
 from engine.physics_core.answer_validators import OUTPUT_KEY_COMPATIBILITY
+from engine.verification.conditioning import (
+    diagnose_root_separation,
+    diagnose_tolerance_sensitivity,
+)
+from engine.verification.policy import (
+    CANDIDATE_ENGINE_ID,
+    DEFAULT_TOLERANCE_POLICY,
+    TolerancePolicy,
+)
+
+_CANDIDATE_POLICY = DEFAULT_TOLERANCE_POLICY.for_engine(CANDIDATE_ENGINE_ID)
 
 
 CandidatePredicate = Callable[["CandidateSolution"], bool]
@@ -167,11 +178,11 @@ class ValidationContext:
     event_predicate: CandidatePredicate | None = None
     event_description: str | None = None
     preferred_candidate_id: str | None = None
-    numerical_tolerance: float = 1e-9
-    relative_tolerance: float = 1e-7
-    residual_tolerance: float | None = None
+    numerical_tolerance: float = _CANDIDATE_POLICY.abs_tol
+    relative_tolerance: float = _CANDIDATE_POLICY.rel_tol
+    residual_tolerance: float | None = _CANDIDATE_POLICY.residual_tol
     selection_policy: str = "all-valid-candidates"
-    policy_version: str = "candidate-policy-1"
+    policy_version: str = _CANDIDATE_POLICY.policy_version
 
     def variable_constraints(self) -> list[VariableConstraint]:
         if isinstance(self.constraints, dict):
@@ -200,7 +211,8 @@ class SelectionDecision:
     selection_policy: str = "all-valid-candidates"
     explanation: str = ""
     tolerances: dict[str, float] = field(default_factory=dict)
-    policy_version: str = "candidate-policy-1"
+    policy_version: str = _CANDIDATE_POLICY.policy_version
+    diagnostics: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def alternatives(self) -> list[CandidateSolution]:
@@ -222,6 +234,7 @@ class SelectionDecision:
             "explanation": self.explanation,
             "tolerances": dict(self.tolerances),
             "policy_version": self.policy_version,
+            "diagnostics": [_safe_value(item) for item in self.diagnostics],
         }
 
 
@@ -230,6 +243,119 @@ class CandidateSolveBatch:
     result: Any
     candidates: list[CandidateSolution]
 
+
+
+def _context_policy(context: ValidationContext) -> TolerancePolicy:
+    """Build an immutable policy view that preserves explicit legacy overrides."""
+
+    residual = (
+        context.residual_tolerance
+        if context.residual_tolerance is not None
+        else context.numerical_tolerance
+    )
+    return replace(
+        DEFAULT_TOLERANCE_POLICY,
+        abs_tol=context.numerical_tolerance,
+        rel_tol=context.relative_tolerance,
+        residual_tol=residual,
+        constraint_tol=residual,
+        policy_version=context.policy_version,
+        engine_specific_tolerances={},
+    )
+
+
+def _diagnostic_payload(check: Any, context: ValidationContext) -> dict[str, Any]:
+    payload = check.to_dict()
+    metadata = dict(payload.get("metadata") or {})
+    metadata["policy_version"] = context.policy_version
+    metadata["engine_id"] = CANDIDATE_ENGINE_ID
+    payload["metadata"] = metadata
+    return payload
+
+
+def _candidate_root_values(
+    candidates: Iterable[CandidateSolution],
+) -> list[float] | None:
+    items = list(candidates)
+    if len(items) < 2:
+        return None
+    key_sets = [
+        {
+            str(key)
+            for key, value in candidate.numerical_mapping.items()
+            if isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        }
+        for candidate in items
+    ]
+    common = set.intersection(*key_sets) if key_sets else set()
+    if len(common) != 1:
+        return None
+    key = next(iter(common))
+    return [float(candidate.numerical_mapping[key]) for candidate in items]
+
+
+def _candidate_boundary_diagnostics(
+    candidate: CandidateSolution,
+    checks: Iterable[CandidateValidationCheck],
+    context: ValidationContext,
+) -> None:
+    policy = _context_policy(context)
+    diagnostics = candidate.rank_metadata.setdefault("numerical_diagnostics", [])
+    for check in checks:
+        if (
+            check.category not in {"equation_residual", "model_constraint", "constraint"}
+            or check.absolute_error is None
+            or check.tolerance is None
+        ):
+            continue
+        scale = 1.0
+        if (
+            check.relative_error is not None
+            and check.relative_error > 0
+            and math.isfinite(check.relative_error)
+        ):
+            scale = max(check.absolute_error / check.relative_error, 1.0)
+        category = (
+            "residual"
+            if check.category == "equation_residual"
+            else "constraint"
+        )
+        diagnostic = diagnose_tolerance_sensitivity(
+            check.absolute_error,
+            scale=scale,
+            category=category,
+            policy=policy,
+            check_id=f"{check.check_id}:sensitivity",
+            source_equation_ids=check.source_equation_ids,
+        )
+        diagnostics.append(_diagnostic_payload(diagnostic, context))
+
+
+def _selection_diagnostics(
+    items: Iterable[ValidatedCandidate],
+    valid: Iterable[CandidateSolution],
+    context: ValidationContext,
+) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    for item in items:
+        for payload in item.candidate.rank_metadata.get(
+            "numerical_diagnostics", []
+        ):
+            diagnostics.append(_safe_value(payload))
+
+    roots = _candidate_root_values(valid)
+    root_check = diagnose_root_separation(
+        roots,
+        policy=_context_policy(context),
+        check_id="candidate:root_separation",
+        source_equation_ids=[
+            str(index) for index, _ in enumerate(context.equations)
+        ],
+    )
+    diagnostics.append(_diagnostic_payload(root_check, context))
+    return diagnostics
 
 def _numeric(expr: Any) -> tuple[float | None, str | None]:
     if isinstance(expr, (int, float)) and not isinstance(expr, bool):
@@ -831,6 +957,7 @@ def validate_candidates(
                 )
             )
 
+        _candidate_boundary_diagnostics(candidate, checks, context)
         rejected = [check.message for check in checks if check.status == "failed"]
         candidate.validation_checks = list(checks)
         candidate.rejection_reasons = list(rejected)
@@ -925,6 +1052,7 @@ def select_solution(
     items = list(validated)
     valid = [item.candidate for item in items if item.accepted]
     rejected = [item for item in items if not item.accepted]
+    diagnostics = _selection_diagnostics(items, valid, context)
 
     if context.preferred_candidate_id is not None:
         preferred = [
@@ -945,6 +1073,7 @@ def select_solution(
                 or "an explicit event, direction, or interval selected this candidate",
                 tolerances=context.tolerances,
                 policy_version=context.policy_version,
+                diagnostics=diagnostics,
             )
         # An explicitly requested event/branch is authoritative.  If it is
         # absent, rejected, or duplicated, selecting another valid branch would
@@ -961,6 +1090,7 @@ def select_solution(
             ),
             tolerances=context.tolerances,
             policy_version=context.policy_version,
+            diagnostics=diagnostics,
         )
 
     if len(valid) == 1:
@@ -973,6 +1103,7 @@ def select_solution(
             explanation="exactly one candidate satisfied all explicit constraints",
             tolerances=context.tolerances,
             policy_version=context.policy_version,
+            diagnostics=diagnostics,
         )
     if len(valid) > 1:
         return SelectionDecision(
@@ -984,6 +1115,7 @@ def select_solution(
             explanation="multiple candidates satisfy every explicit constraint",
             tolerances=context.tolerances,
             policy_version=context.policy_version,
+            diagnostics=diagnostics,
         )
 
     failed_checks = [
@@ -1016,6 +1148,7 @@ def select_solution(
         ),
         tolerances=context.tolerances,
         policy_version=context.policy_version,
+        diagnostics=diagnostics,
     )
 
 

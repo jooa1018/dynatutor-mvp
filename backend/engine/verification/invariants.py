@@ -38,6 +38,7 @@ class InvariantCheck:
     tolerance: float | None = None
     evidence: tuple[str, ...] = ()
     source_equation_ids: tuple[str, ...] = ()
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def passed(self) -> bool:
@@ -60,6 +61,7 @@ class InvariantCheck:
             "tolerance": self.tolerance,
             "evidence": list(self.evidence),
             "source_equation_ids": list(self.source_equation_ids),
+            "metadata": dict(self.metadata),
         }
 
 
@@ -258,6 +260,7 @@ def _status_check(
     expected: Any = None,
     evidence: Iterable[str] = (),
     equations: Iterable[str] = (),
+    metadata: Mapping[str, Any] | None = None,
 ) -> InvariantCheck:
     return InvariantCheck(
         check_id=f"{validator_id}:{suffix}",
@@ -268,6 +271,7 @@ def _status_check(
         expected=expected,
         evidence=tuple(evidence),
         source_equation_ids=tuple(equations),
+        metadata=dict(metadata or {}),
     )
 
 
@@ -282,6 +286,7 @@ def _residual_check(
     expected: Any = 0.0,
     equations: Iterable[str] = (),
     evidence: Iterable[str] = (),
+    metadata: Mapping[str, Any] | None = None,
 ) -> InvariantCheck:
     scale = max(abs(float(scale)), 1.0)
     tolerance = ctx.policy.tolerance(
@@ -306,6 +311,16 @@ def _residual_check(
         tolerance=tolerance,
         evidence=tuple(evidence),
         source_equation_ids=tuple(equations),
+        metadata={
+            "policy_version": ctx.policy.policy_version,
+            **(
+                {"engine_id": ctx.engine_id}
+                if ctx.engine_id is not None
+                else {}
+            ),
+            "scale": scale,
+            **dict(metadata or {}),
+        },
     )
 
 
@@ -570,6 +585,12 @@ def contact_normal(ctx: InvariantContext) -> list[InvariantCheck]:
                 max(abs(value), 1.0),
                 expected=">= 0",
                 equations=[f"{symbol}>=0"],
+                metadata={
+                    "boundary_kind": "contact",
+                    "boundary_value": value,
+                    "boundary_limit": 0.0,
+                    "boundary_scale": max(abs(value), 1.0),
+                },
             )
         )
     return checks
@@ -648,6 +669,12 @@ def friction_regime(ctx: InvariantContext) -> list[InvariantCheck]:
                     max(abs(value), abs(limit)),
                     expected=f"|{symbol}| <= mu_s*N",
                     equations=["|f_s|<=mu_s*N"],
+                    metadata={
+                        "boundary_kind": "static_to_kinetic_friction",
+                        "boundary_value": abs(value),
+                        "boundary_limit": limit,
+                        "boundary_scale": max(abs(value), abs(limit), 1.0),
+                    },
                 )
             )
         return checks
@@ -665,6 +692,14 @@ def friction_regime(ctx: InvariantContext) -> list[InvariantCheck]:
                 abs(value) - expected_magnitude,
                 max(abs(value), abs(expected_magnitude)),
                 equations=["|f_k|=mu_k*N"],
+                metadata={
+                    "boundary_kind": "static_to_kinetic_friction",
+                    "boundary_value": None,
+                    "boundary_limit": None,
+                    "boundary_scale": max(
+                        abs(value), abs(expected_magnitude), 1.0
+                    ),
+                },
             )
             for symbol, value in frictions
         ]

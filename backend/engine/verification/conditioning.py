@@ -32,8 +32,14 @@ def _diagnostic(
     evidence: Iterable[str] = (),
     source_equation_ids: Iterable[str] = (),
     metadata: dict[str, Any] | None = None,
+    policy_version: str | None = None,
+    engine_id: str | None = None,
 ) -> VerificationCheck:
     details = {"diagnostic_only": True}
+    if policy_version is not None:
+        details["policy_version"] = policy_version
+    if engine_id is not None:
+        details["engine_id"] = engine_id
     if metadata:
         details.update(metadata)
     return VerificationCheck(
@@ -63,10 +69,17 @@ def diagnose_jacobian_condition(
 ) -> VerificationCheck:
     """Estimate Jacobian condition and rank without changing root selection."""
 
+    def emit(**kwargs: Any) -> VerificationCheck:
+        return _diagnostic(
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+            **kwargs,
+        )
+
     effective = policy.for_engine(engine_id)
     threshold = effective.condition_warning_threshold
     if jacobian is None:
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="conditioning",
             status=VerificationStatus.NOT_APPLICABLE,
@@ -78,7 +91,7 @@ def diagnose_jacobian_condition(
     try:
         import numpy as np
     except ImportError:
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="conditioning",
             status=VerificationStatus.SKIPPED,
@@ -91,7 +104,7 @@ def diagnose_jacobian_condition(
     try:
         matrix = np.asarray(jacobian, dtype=float)
     except (TypeError, ValueError, OverflowError) as exc:
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="conditioning",
             status=VerificationStatus.INCONCLUSIVE,
@@ -102,7 +115,7 @@ def diagnose_jacobian_condition(
             source_equation_ids=source_equation_ids,
         )
     if matrix.ndim != 2 or matrix.size == 0 or not np.isfinite(matrix).all():
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="conditioning",
             status=VerificationStatus.INCONCLUSIVE,
@@ -117,7 +130,7 @@ def diagnose_jacobian_condition(
         condition_number = float(np.linalg.cond(matrix))
         rank = int(np.linalg.matrix_rank(matrix))
     except (TypeError, ValueError, np.linalg.LinAlgError) as exc:
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="conditioning",
             status=VerificationStatus.INCONCLUSIVE,
@@ -128,25 +141,33 @@ def diagnose_jacobian_condition(
             source_equation_ids=source_equation_ids,
         )
 
-    ill_conditioned = (
-        not math.isfinite(condition_number) or condition_number >= threshold
+    singular = rank < min(matrix.shape) or not math.isfinite(condition_number)
+    near_singular = (
+        not singular
+        and math.isfinite(condition_number)
+        and condition_number >= threshold
     )
+    ill_conditioned = singular or near_singular
     status = (
         VerificationStatus.PASSED_WITH_WARNING
         if ill_conditioned
         else VerificationStatus.PASSED
     )
     message = (
-        "Jacobian is ill-conditioned; candidate roots may be numerically sensitive"
-        if ill_conditioned
-        else "Jacobian conditioning is within the configured warning threshold"
+        "Jacobian is singular; the local solution is not uniquely conditioned"
+        if singular
+        else (
+            "Jacobian is near-singular or ill-conditioned; candidate roots may be numerically sensitive"
+            if near_singular
+            else "Jacobian conditioning is within the configured warning threshold"
+        )
     )
     excess = (
         math.inf
         if not math.isfinite(condition_number)
         else max(condition_number - threshold, 0.0)
     )
-    return _diagnostic(
+    return emit(
         check_id=check_id,
         category="conditioning",
         status=status,
@@ -162,7 +183,11 @@ def diagnose_jacobian_condition(
         tolerance=threshold,
         evidence=(f"rank={rank}", f"shape={tuple(matrix.shape)}"),
         source_equation_ids=source_equation_ids,
-        metadata={"ill_conditioned": ill_conditioned},
+        metadata={
+            "ill_conditioned": ill_conditioned,
+            "singular": singular,
+            "near_singular": near_singular,
+        },
     )
 
 
@@ -176,10 +201,17 @@ def diagnose_root_separation(
 ) -> VerificationCheck:
     """Warn when distinct candidate roots are numerically indistinguishable."""
 
+    def emit(**kwargs: Any) -> VerificationCheck:
+        return _diagnostic(
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+            **kwargs,
+        )
+
     effective = policy.for_engine(engine_id)
     threshold = effective.root_separation_tol
     if roots is None or len(roots) < 2:
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="root_separation",
             status=VerificationStatus.NOT_APPLICABLE,
@@ -199,7 +231,7 @@ def diagnose_root_separation(
                 raise ValueError("non-finite root")
             numeric_roots.append(value)
     except (TypeError, ValueError, OverflowError) as exc:
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="root_separation",
             status=VerificationStatus.INCONCLUSIVE,
@@ -222,7 +254,7 @@ def diagnose_root_separation(
     assert closest is not None
     left_index, right_index, absolute, normalized = closest
     close = normalized <= threshold
-    return _diagnostic(
+    return emit(
         check_id=check_id,
         category="root_separation",
         status=(
@@ -266,6 +298,13 @@ def diagnose_tolerance_sensitivity(
 ) -> VerificationCheck:
     """Report whether a residual lies dangerously close to a policy boundary."""
 
+    def emit(**kwargs: Any) -> VerificationCheck:
+        return _diagnostic(
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+            **kwargs,
+        )
+
     try:
         numeric_residual = float(residual) if residual is not None else math.nan
         numeric_scale = abs(float(scale))
@@ -279,7 +318,7 @@ def diagnose_tolerance_sensitivity(
         or not math.isfinite(numeric_scale)
         or numeric_scale < 0
     ):
-        return _diagnostic(
+        return emit(
             check_id=check_id,
             category="sensitivity",
             status=VerificationStatus.INCONCLUSIVE,
@@ -305,7 +344,7 @@ def diagnose_tolerance_sensitivity(
     )
     sensitivity_score = tolerance / denominator
     warning = sensitivity_score >= effective.sensitivity_warning_threshold
-    return _diagnostic(
+    return emit(
         check_id=check_id,
         category="sensitivity",
         status=(
@@ -346,16 +385,369 @@ def diagnose_tolerance_sensitivity(
     )
 
 
+
+def diagnose_near_cancellation(
+    residual: float | None,
+    *,
+    scale: float | None = None,
+    term_magnitudes: Sequence[float] = (),
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+    engine_id: str | None = None,
+    check_id: str = "conditioning:near_cancellation",
+    source_equation_ids: Sequence[str] = (),
+) -> VerificationCheck:
+    """Warn when a small residual is produced from much larger finite terms."""
+
+    effective = policy.for_engine(engine_id)
+    finite_terms: list[float] = []
+    try:
+        numeric_residual = abs(float(residual)) if residual is not None else math.nan
+        finite_terms = [
+            abs(float(value))
+            for value in term_magnitudes
+            if math.isfinite(float(value))
+        ]
+        numeric_scale = (
+            max(finite_terms)
+            if finite_terms
+            else abs(float(scale)) if scale is not None else math.nan
+        )
+    except (TypeError, ValueError, OverflowError):
+        numeric_residual = math.nan
+        numeric_scale = math.nan
+    if not math.isfinite(numeric_residual) or not math.isfinite(numeric_scale):
+        return _diagnostic(
+            check_id=check_id,
+            category="cancellation",
+            status=VerificationStatus.INCONCLUSIVE,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message="near-cancellation analysis requires a finite residual and term scale",
+            observed={"residual": residual, "scale": scale},
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+    if numeric_scale <= effective.near_zero_tol:
+        return _diagnostic(
+            check_id=check_id,
+            category="cancellation",
+            status=VerificationStatus.NOT_APPLICABLE,
+            applicability=VerificationApplicability.NOT_APPLICABLE,
+            message="all equation terms are near zero; cancellation risk is not meaningful",
+            observed={"absolute_residual": numeric_residual, "term_scale": numeric_scale},
+            tolerance=effective.near_zero_tol,
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+
+    denominator = max(
+        numeric_residual,
+        sys.float_info.epsilon * max(numeric_scale, 1.0),
+    )
+    cancellation_ratio = numeric_scale / denominator
+    warning = cancellation_ratio >= effective.condition_warning_threshold
+    return _diagnostic(
+        check_id=check_id,
+        category="cancellation",
+        status=(
+            VerificationStatus.PASSED_WITH_WARNING
+            if warning
+            else VerificationStatus.PASSED
+        ),
+        applicability=VerificationApplicability.APPLICABLE,
+        message=(
+            "large equation terms nearly cancel; residual accuracy may lose significant digits"
+            if warning
+            else "equation residual does not show material near-cancellation"
+        ),
+        observed={
+            "absolute_residual": numeric_residual,
+            "term_scale": numeric_scale,
+            "cancellation_ratio": cancellation_ratio,
+        },
+        expected={
+            "cancellation_ratio_below": effective.condition_warning_threshold
+        },
+        absolute_error=max(
+            cancellation_ratio - effective.condition_warning_threshold,
+            0.0,
+        ),
+        relative_error=numeric_residual / max(numeric_scale, 1.0),
+        tolerance=effective.condition_warning_threshold,
+        evidence=(
+            "explicit_term_magnitudes"
+            if finite_terms
+            else "residual_scale_proxy",
+        ),
+        source_equation_ids=source_equation_ids,
+        metadata={
+            "near_cancellation": warning,
+            "scale_source": (
+                "term_magnitudes" if finite_terms else "residual_scale_proxy"
+            ),
+        },
+        policy_version=policy.policy_version,
+        engine_id=engine_id,
+    )
+
+
+def diagnose_local_perturbation(
+    jacobian: Any,
+    *,
+    solution_values: Sequence[Any] = (),
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+    engine_id: str | None = None,
+    check_id: str = "conditioning:local_perturbation",
+    source_equation_ids: Sequence[str] = (),
+) -> VerificationCheck:
+    """Estimate local input-to-solution amplification from an actual Jacobian."""
+
+    effective = policy.for_engine(engine_id)
+    try:
+        import numpy as np
+    except ImportError:
+        return _diagnostic(
+            check_id=check_id,
+            category="sensitivity",
+            status=VerificationStatus.SKIPPED,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message="NumPy is unavailable; local perturbation analysis was skipped",
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+    try:
+        matrix = np.asarray(jacobian, dtype=float)
+        solution = np.asarray(list(solution_values), dtype=float)
+    except (TypeError, ValueError, OverflowError) as exc:
+        return _diagnostic(
+            check_id=check_id,
+            category="sensitivity",
+            status=VerificationStatus.INCONCLUSIVE,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message="local perturbation analysis requires a finite numeric Jacobian",
+            observed=type(exc).__name__,
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+    if (
+        matrix.ndim != 2
+        or matrix.size == 0
+        or not np.isfinite(matrix).all()
+        or (solution.size and not np.isfinite(solution).all())
+    ):
+        return _diagnostic(
+            check_id=check_id,
+            category="sensitivity",
+            status=VerificationStatus.INCONCLUSIVE,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message="local perturbation inputs must be finite and dimensionally consistent",
+            observed={"shape": list(matrix.shape), "solution_size": int(solution.size)},
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+    if solution.size not in {0, matrix.shape[1]}:
+        return _diagnostic(
+            check_id=check_id,
+            category="sensitivity",
+            status=VerificationStatus.INCONCLUSIVE,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message="solution vector size does not match the Jacobian column count",
+            observed={"shape": list(matrix.shape), "solution_size": int(solution.size)},
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+
+    try:
+        rank = int(np.linalg.matrix_rank(matrix))
+        matrix_norm = float(np.linalg.norm(matrix, ord=np.inf))
+        solution_norm = (
+            float(np.linalg.norm(solution, ord=np.inf))
+            if solution.size
+            else 1.0
+        )
+        input_scale = max(matrix_norm * max(solution_norm, 1.0), 1.0)
+        relative_input_change = math.sqrt(sys.float_info.epsilon)
+        forcing = np.full(
+            matrix.shape[0],
+            relative_input_change * input_scale / math.sqrt(matrix.shape[0]),
+        )
+        delta, _, _, _ = np.linalg.lstsq(matrix, forcing, rcond=None)
+        relative_output_change = float(np.linalg.norm(delta)) / max(
+            solution_norm,
+            1.0,
+        )
+        amplification = relative_output_change / relative_input_change
+    except (TypeError, ValueError, np.linalg.LinAlgError) as exc:
+        return _diagnostic(
+            check_id=check_id,
+            category="sensitivity",
+            status=VerificationStatus.INCONCLUSIVE,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message="local perturbation estimate could not be evaluated",
+            observed=type(exc).__name__,
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+
+    singular = rank < min(matrix.shape)
+    if singular:
+        amplification = math.inf
+    warning = (
+        singular
+        or not math.isfinite(amplification)
+        or amplification >= effective.sensitivity_warning_threshold
+    )
+    return _diagnostic(
+        check_id=check_id,
+        category="sensitivity",
+        status=(
+            VerificationStatus.PASSED_WITH_WARNING
+            if warning
+            else VerificationStatus.PASSED
+        ),
+        applicability=VerificationApplicability.APPLICABLE,
+        message=(
+            "a small local equation perturbation can cause a large solution change"
+            if warning
+            else "the local solution response is stable under a small perturbation"
+        ),
+        observed={
+            "relative_input_change": relative_input_change,
+            "relative_output_change": relative_output_change,
+            "amplification": amplification,
+            "rank": rank,
+            "shape": list(matrix.shape),
+        },
+        expected={
+            "amplification_below": effective.sensitivity_warning_threshold
+        },
+        absolute_error=(
+            math.inf
+            if not math.isfinite(amplification)
+            else max(
+                amplification - effective.sensitivity_warning_threshold,
+                0.0,
+            )
+        ),
+        tolerance=effective.sensitivity_warning_threshold,
+        evidence=("deterministic_linearized_rhs_perturbation",),
+        source_equation_ids=source_equation_ids,
+        metadata={"singular": singular, "local_perturbation": True},
+        policy_version=policy.policy_version,
+        engine_id=engine_id,
+    )
+
+
+def diagnose_boundary_proximity(
+    value: float | None,
+    boundary: float | None,
+    *,
+    scale: float = 1.0,
+    boundary_kind: str,
+    applicable: bool | None = True,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+    engine_id: str | None = None,
+    check_id: str | None = None,
+    source_equation_ids: Sequence[str] = (),
+) -> VerificationCheck:
+    """Record contact/friction regime proximity without changing the solution."""
+
+    resolved_check_id = check_id or f"conditioning:{boundary_kind}_boundary"
+    effective = policy.for_engine(engine_id)
+    if applicable is False:
+        return _diagnostic(
+            check_id=resolved_check_id,
+            category="boundary",
+            status=VerificationStatus.NOT_APPLICABLE,
+            applicability=VerificationApplicability.NOT_APPLICABLE,
+            message=f"{boundary_kind} boundary is not part of this model",
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+    try:
+        numeric_value = float(value) if value is not None else math.nan
+        numeric_boundary = float(boundary) if boundary is not None else math.nan
+        numeric_scale = max(abs(float(scale)), 1.0)
+    except (TypeError, ValueError, OverflowError):
+        numeric_value = numeric_boundary = numeric_scale = math.nan
+    if not all(
+        math.isfinite(item)
+        for item in (numeric_value, numeric_boundary, numeric_scale)
+    ):
+        return _diagnostic(
+            check_id=resolved_check_id,
+            category="boundary",
+            status=VerificationStatus.INCONCLUSIVE,
+            applicability=VerificationApplicability.UNDETERMINED,
+            message=(
+                f"{boundary_kind} applies, but the state needed to locate its "
+                "transition boundary is unavailable"
+            ),
+            observed={"value": value, "boundary": boundary},
+            source_equation_ids=source_equation_ids,
+            policy_version=policy.policy_version,
+            engine_id=engine_id,
+        )
+
+    tolerance = effective.tolerance("constraint", scale=numeric_scale)
+    distance = abs(numeric_value - numeric_boundary)
+    near_boundary = distance <= tolerance
+    return _diagnostic(
+        check_id=resolved_check_id,
+        category="boundary",
+        status=(
+            VerificationStatus.PASSED_WITH_WARNING
+            if near_boundary
+            else VerificationStatus.PASSED
+        ),
+        applicability=VerificationApplicability.APPLICABLE,
+        message=(
+            f"state is near the {boundary_kind} transition boundary"
+            if near_boundary
+            else f"state is separated from the {boundary_kind} transition boundary"
+        ),
+        observed={
+            "value": numeric_value,
+            "boundary": numeric_boundary,
+            "distance": distance,
+        },
+        expected={"distance_above": tolerance},
+        absolute_error=max(tolerance - distance, 0.0),
+        relative_error=distance / numeric_scale,
+        tolerance=tolerance,
+        evidence=(f"boundary_kind={boundary_kind}",),
+        source_equation_ids=source_equation_ids,
+        metadata={"near_boundary": near_boundary, "boundary_kind": boundary_kind},
+        policy_version=policy.policy_version,
+        engine_id=engine_id,
+    )
+
+check_boundary_proximity = diagnose_boundary_proximity
 check_jacobian_condition = diagnose_jacobian_condition
+check_local_perturbation = diagnose_local_perturbation
+check_near_cancellation = diagnose_near_cancellation
 check_root_separation = diagnose_root_separation
 check_tolerance_sensitivity = diagnose_tolerance_sensitivity
 
 
 __all__ = [
+    "check_boundary_proximity",
     "check_jacobian_condition",
+    "check_local_perturbation",
+    "check_near_cancellation",
     "check_root_separation",
     "check_tolerance_sensitivity",
+    "diagnose_boundary_proximity",
     "diagnose_jacobian_condition",
+    "diagnose_local_perturbation",
+    "diagnose_near_cancellation",
     "diagnose_root_separation",
     "diagnose_tolerance_sensitivity",
 ]

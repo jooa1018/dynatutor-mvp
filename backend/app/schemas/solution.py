@@ -177,6 +177,7 @@ class SelectionDecisionModel(BaseModel):
     explanation: str
     tolerances: dict[str, float] = Field(default_factory=dict)
     policy_version: str
+    diagnostics: list[VerificationCheckModel] = Field(default_factory=list)
 
 
 class ClarificationInputFieldModel(BaseModel):
