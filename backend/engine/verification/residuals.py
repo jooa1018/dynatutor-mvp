@@ -13,16 +13,24 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable
 
 from engine.models import CanonicalProblem
 from engine.physics_core.units import magnitude_si
 from engine.physics_core.direction_parser import infer_angle_between_force_and_displacement
 from engine.physics_core.initial_conditions import explicitly_starts_from_angular_rest, explicitly_starts_from_rest
+from engine.verification.policy import DEFAULT_TOLERANCE_POLICY, TolerancePolicy
+from engine.verification.types import (
+    CheckApplicability,
+    CheckStatus,
+    VerificationCheck,
+)
 
-REL_TOL = 1e-4  # solver numeric은 ~6유효숫자 반올림 → 1e-6은 무고 오탐. 1e-4는 반올림은 통과, 실수(≥0.1%)는 검출.
-ABS_TOL = 1e-8
+# Compatibility aliases for callers that imported the Phase 46 constants.  The
+# authoritative values now live in the versioned Phase 48 policy.
+REL_TOL = DEFAULT_TOLERANCE_POLICY.rel_tol
+ABS_TOL = DEFAULT_TOLERANCE_POLICY.abs_tol
 
 
 @dataclass
@@ -30,14 +38,53 @@ class ResidualCheck:
     name: str
     residual: float
     scale: float
+    policy: TolerancePolicy = field(
+        default=DEFAULT_TOLERANCE_POLICY,
+        repr=False,
+        compare=False,
+    )
+
+    @property
+    def tolerance(self) -> float:
+        return self.policy.tolerance("residual", scale=self.scale)
+
+    @property
+    def absolute_error(self) -> float:
+        return abs(float(self.residual))
+
+    @property
+    def relative_error(self) -> float:
+        return self.absolute_error / max(abs(float(self.scale)), 1.0)
 
     @property
     def passed(self) -> bool:
-        return abs(self.residual) <= ABS_TOL + REL_TOL * max(self.scale, 1.0)
+        return self.absolute_error <= self.tolerance
 
     def describe(self) -> str:
         status = "✓" if self.passed else "✗"
-        return f"역대입: {self.name} |r|={abs(self.residual):.3g} (scale {self.scale:.3g}) {status}"
+        return f"역대입: {self.name} |r|={self.absolute_error:.3g} (scale {self.scale:.3g}) {status}"
+
+    def to_verification_check(self, index: int = 0) -> VerificationCheck:
+        """Return the shared Phase 48 typed representation.
+
+        ``describe`` remains the legacy student-facing message so existing API
+        consumers and UI badges do not lose their stable wording.
+        """
+
+        return VerificationCheck(
+            check_id=f"equation_residual:{index}",
+            category="equation_residual",
+            status=CheckStatus.PASSED if self.passed else CheckStatus.FAILED,
+            applicability=CheckApplicability.APPLICABLE,
+            observed=float(self.residual),
+            expected=0.0,
+            absolute_error=self.absolute_error,
+            relative_error=self.relative_error,
+            tolerance=self.tolerance,
+            message=self.describe(),
+            evidence=[],
+            source_equation_ids=[self.name],
+        )
 
 
 def _k(cp: CanonicalProblem, key: str, unit: str) -> float | None:
@@ -107,14 +154,19 @@ def _mu(cp: CanonicalProblem) -> float:
 
 
 # --------------------------------------------------------------- checkers
-def _incline(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _incline(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     a, g, th = pool.get("a"), _k(cp, "g", "m/s^2"), _theta_rad(cp)
     if a is None or g is None or th is None:
         return []
     mu = 0.0 if cp.subtype == "no_friction" else _mu(cp)
     # 정지마찰이 버티는 경우 a=0: 미끄러짐 방정식 a=g(sinθ-μcosθ)는 적용되지 않는다
     # (정지마찰은 필요한 만큼 조정됨). 이때는 정지 조건 μ_s ≥ tanθ 를 검사한다.
-    if abs(a) < 1e-9:
+    if policy.is_near_zero(a):
         mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""), mu)
         # tanθ ≤ μ_s 이면 정지가 물리적으로 타당 → 통과. 잔차는 위반량(초과분).
         violation = max(0.0, math.tan(th) - mu_s)
@@ -123,7 +175,12 @@ def _incline(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("경사면 뉴턴식 a - g(sinθ - μcosθ)", a - expected_term, max(abs(a), abs(expected_term)))]
 
 
-def _atwood(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _atwood(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     a, T = pool.get("a"), pool.get("T")
     m1, m2, g = _k(cp, "m1", "kg"), _k(cp, "m2", "kg"), _k(cp, "g", "m/s^2")
     if None in (a, T, m1, m2, g):
@@ -135,12 +192,17 @@ def _atwood(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     ]
 
 
-def _table_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _table_hanging(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     a, T = pool.get("a"), pool.get("T")
     m1, m2, g = _k(cp, "m1", "kg"), _k(cp, "m2", "kg"), _k(cp, "g", "m/s^2")
     if None in (a, T, m1, m2, g):
         return []
-    if abs(a) < 1e-9:
+    if policy.is_near_zero(a):
         checks = [
             ResidualCheck(
                 "정지 매달린 물체: T = m2g",
@@ -186,7 +248,12 @@ def _table_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _incline_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _incline_hanging(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     a, T = pool.get("a"), pool.get("T")
     m1, m2, g, th = _k(cp, "m1", "kg"), _k(cp, "m2", "kg"), _k(cp, "g", "m/s^2"), _theta_rad(cp)
     if None in (a, T, m1, m2, g) or th is None:
@@ -195,7 +262,7 @@ def _incline_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     # 정지마찰이 버텨 a=0인 경우: 미끄러짐 방정식이 적용되지 않는다.
     # 매달린 물체 정지조건 T=m2·g, 경사면 물체는 정지마찰이 |m2g - m1g·sinθ| ≤ μs·m1g·cosθ
     # 를 만족하면 타당. 잔차는 위반량.
-    if abs(a) < 1e-9:
+    if policy.is_near_zero(a):
         mu_s = _first_not_none(_k(cp, "mu_s", ""), _k(cp, "mu", ""), mu)
         required_static = abs(m2 * g - m1 * g * math.sin(th))
         max_static = mu_s * m1 * g * math.cos(th)
@@ -253,7 +320,12 @@ def _incline_hanging(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _projectile(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     g = _k(cp, "g", "m/s^2")
     v0 = _first_not_none(_k(cp, "v0", "m/s"), _k(cp, "v", "m/s"))
     th = _theta_rad(cp)
@@ -269,7 +341,11 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     delta_x = _first_not_none(pool.get("delta_x"), pool.get("Δx"))
     # R is an unsigned range magnitude. It cannot recover signed time when vx<0.
     # Only signed displacement may be used to reconstruct t.
-    if t is None and delta_x is not None and abs(vx) > 1e-12:
+    if (
+        t is None
+        and delta_x is not None
+        and not policy.is_near_zero(vx)
+    ):
         t = delta_x / vx
     checks: list[ResidualCheck] = []
     if t is not None:
@@ -300,7 +376,12 @@ def _projectile(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _collision(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     m1, m2 = _k(cp, "m1", "kg"), _k(cp, "m2", "kg")
     v1, v2 = _k(cp, "v1", "m/s"), _k(cp, "v2", "m/s")
     if None in (m1, m2, v1):
@@ -317,7 +398,8 @@ def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
         checks.append(ResidualCheck("운동량 보존", p_before - (m1 * v1p + m2 * v2p), abs(p_before) + 1.0))
         restitution = _k(cp, "e", "")
         elastic_mode = bool((cp.flags or {}).get("elastic")) and (
-            restitution is None or math.isclose(restitution, 1.0, abs_tol=1e-12)
+            restitution is None
+            or policy.is_near_zero(restitution - 1.0)
         )
         if elastic_mode:
             ke_b = 0.5 * m1 * v1 * v1 + 0.5 * m2 * v2 * v2
@@ -326,7 +408,12 @@ def _collision(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _const_acc(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _const_acc(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     v0 = _first_not_none(_k(cp, "v0", "m/s"), pool.get("v0"))
     vf = _first_not_none(pool.get("vf"), pool.get("v_f"), _k(cp, "vf", "m/s"))
     a = _first_not_none(pool.get("a"), _k(cp, "a", "m/s^2"))
@@ -374,7 +461,12 @@ def _const_acc(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _work_energy(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _work_energy(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     m, W = _k(cp, "m", "kg"), _k(cp, "W", "J")
     if W is None:
         F, s = _k(cp, "F", "N"), _k(cp, "s", "m")
@@ -397,7 +489,12 @@ def _work_energy(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("일-에너지: W - ½m(v² - v0²)", W - 0.5 * m * (v * v - v0 * v0), abs(W) + 1.0)]
 
 
-def _spring_energy(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _spring_energy(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     E = pool.get("E")
     k_e, x_e = _k(cp, "k", "N/m"), _first_not_none(_k(cp, "x", "m"), _k(cp, "A", "m"))
     if E is not None and None not in (k_e, x_e):
@@ -410,7 +507,12 @@ def _spring_energy(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("에너지: ½kx² - ½mv²", 0.5 * k * x * x - 0.5 * m * v * v, 0.5 * k * x * x + 1.0)]
 
 
-def _spring_vibration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _spring_vibration(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     k, m = _k(cp, "k", "N/m"), _k(cp, "m", "kg")
     if None in (k, m):
         return []
@@ -428,7 +530,12 @@ def _spring_vibration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _const_force_work(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _const_force_work(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     F, s = _k(cp, "F", "N"), _k(cp, "s", "m")
     W = pool.get("W")
     if None in (F, s) or W is None:
@@ -445,12 +552,21 @@ def _const_force_work(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     checks = [ResidualCheck("|W| - |F·s·cosθ|", abs(W) - magnitude, magnitude + 1.0)]
     raw = cp.raw_text or ""
     opposing = any(w in raw for w in ["반대로", "반대 방향", "저항", "마찰력이 한 일", "opposing", "against"])
-    if opposing and W > 0 and magnitude > 1e-9:
+    if (
+        opposing
+        and W > 0
+        and not policy.is_near_zero(magnitude)
+    ):
         checks.append(ResidualCheck("저항일 부호(음수 기대)", W, magnitude))
     return checks
 
 
-def _impulse(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _impulse(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     F, t = _k(cp, "F", "N"), _k(cp, "t", "s")
     J = pool.get("J")
     checks: list[ResidualCheck] = []
@@ -466,7 +582,12 @@ def _impulse(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _fixed_axis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _fixed_axis(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     checks: list[ResidualCheck] = []
     tau, I = _k(cp, "tau", "N*m"), _k(cp, "I", "kg*m^2")
     alpha = pool.get("alpha")
@@ -511,7 +632,12 @@ def _fixed_axis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _horizontal_friction(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _horizontal_friction(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     mu = _first_not_none(
         _k(cp, "mu_s", ""),
         _k(cp, "mu_k", ""),
@@ -566,7 +692,13 @@ def _horizontal_friction(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck
     return checks
 
 
-def _rolling(cp: CanonicalProblem, pool: dict, beta: float | None) -> list[ResidualCheck]:
+def _rolling(
+    cp: CanonicalProblem,
+    pool: dict,
+    beta: float | None,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     g, h = _k(cp, "g", "m/s^2"), _first_not_none(_k(cp, "h", "m"), cp.launch_height)
     v = _first_not_none(pool.get("v"), pool.get("v_f"), pool.get("vf"))
     if None in (g, h) or v is None or beta is None:
@@ -580,7 +712,12 @@ def _rolling(cp: CanonicalProblem, pool: dict, beta: float | None) -> list[Resid
     return [ResidualCheck("구름 에너지: ½(v²-v0²)(1+β) - gh", residual, g * h + 0.5 * v0 * v0 * (1 + beta) + 1.0)]
 
 
-def _curve_flat(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _curve_flat(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     g, r = _k(cp, "g", "m/s^2"), _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
     mu = _first_not_none(_k(cp, "mu_k", ""), _k(cp, "mu", ""))
     v = _first_not_none(pool.get("v_max"), pool.get("v"))
@@ -589,7 +726,12 @@ def _curve_flat(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("평면 커브: v² - μgr", v * v - mu * g * r, mu * g * r + 1.0)]
 
 
-def _curve_banked(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _curve_banked(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     g, r, th = _k(cp, "g", "m/s^2"), _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m")), _theta_rad(cp)
     v = _first_not_none(pool.get("v"), pool.get("v_max"))
     if None in (g, r) or th is None or v is None:
@@ -597,7 +739,12 @@ def _curve_banked(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("뱅크 커브: v² - gr·tanθ", v * v - g * r * math.tan(th), g * r * math.tan(th) + 1.0)]
 
 
-def _polar(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _polar(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     r = _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
     thetadot = _first_not_none(_k(cp, "thetadot", "rad/s"), _k(cp, "omega", "rad/s"))
     if r is None or thetadot is None:
@@ -626,7 +773,12 @@ def _polar(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _coriolis(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _coriolis(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     omega = _first_not_none(_k(cp, "omega", "rad/s"), _k(cp, "thetadot", "rad/s"))
     vrel = _first_not_none(_k(cp, "vrel", "m/s"), _k(cp, "rdot", "m/s"))
     if omega is None or vrel is None:
@@ -668,7 +820,13 @@ def _rigid_radius(cp: CanonicalProblem) -> float | None:
     return _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
 
 
-def _rigid_reference_vector(cp: CanonicalProblem, prefix: str, unit: str):
+def _rigid_reference_vector(
+    cp: CanonicalProblem,
+    prefix: str,
+    unit: str,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+):
     cd = getattr(cp, "coordinate_data", {}) or {}
     x_key, y_key = f"{prefix}Ax", f"{prefix}Ay"
     if x_key in cd and y_key in cd:
@@ -682,12 +840,20 @@ def _rigid_reference_vector(cp: CanonicalProblem, prefix: str, unit: str):
         phrase in raw
         for phrase in ("고정점", "A점이 고정", "A점은 고정", "A점 고정", "A is fixed")
     )
-    if fixed or (scalar is not None and abs(scalar) <= 1e-12):
+    if fixed or (
+        scalar is not None
+        and policy.is_near_zero(scalar)
+    ):
         return 0.0, 0.0
     return None
 
 
-def _rigid_velocity(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _rigid_velocity(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     omega = _k(cp, "omega", "rad/s")
     radius = _rigid_radius(cp)
     if omega is None or radius is None:
@@ -696,7 +862,7 @@ def _rigid_velocity(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     omega_sign = _first_not_none(cd.get("omega_sign"), cd.get("angular_sign"))
     w = float(omega_sign) * omega if omega_sign is not None else None
     rba = _rigid_rBA(cp)
-    reference = _rigid_reference_vector(cp, "v", "m/s")
+    reference = _rigid_reference_vector(cp, "v", "m/s", policy=policy)
     vBx, vBy, vB = pool.get("v_Bx"), pool.get("v_By"), pool.get("v_B")
     checks: list[ResidualCheck] = []
 
@@ -717,7 +883,12 @@ def _rigid_velocity(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return checks
 
 
-def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _rigid_acceleration(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     omega = _k(cp, "omega", "rad/s")
     alpha = _k(cp, "alpha", "rad/s^2")
     radius = _rigid_radius(cp)
@@ -740,7 +911,7 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
         checks.append(ResidualCheck("강체 a_n - ω²·r", a_n - expected, max(abs(expected), 1.0)))
 
     rba = _rigid_rBA(cp)
-    reference = _rigid_reference_vector(cp, "a", "m/s^2")
+    reference = _rigid_reference_vector(cp, "a", "m/s^2", policy=policy)
     aBx, aBy, aB = pool.get("a_Bx"), pool.get("a_By"), pool.get("a_B")
     if rba is not None and reference is not None and w is not None and al is not None:
         aAx, aAy = reference
@@ -759,7 +930,12 @@ def _rigid_acceleration(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]
     return checks
 
 
-def _single_particle(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _single_particle(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     m = _first_not_none(_k(cp, "m", "kg"), pool.get("m"))
     force = _first_not_none(_k(cp, "F", "N"), pool.get("F"))
     acceleration = _first_not_none(_k(cp, "a", "m/s^2"), pool.get("a"))
@@ -768,7 +944,12 @@ def _single_particle(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("단일 질점: F - ma", force - m * acceleration, max(abs(force), abs(m * acceleration), 1.0))]
 
 
-def _massive_pulley(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _massive_pulley(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     m1, m2 = _k(cp, "m1", "kg"), _k(cp, "m2", "kg")
     inertia = _first_not_none(_k(cp, "I", "kg*m^2"), _k(cp, "Ip", "kg*m^2"))
     radius = _first_not_none(_k(cp, "R", "m"), _k(cp, "Rp", "m"))
@@ -780,7 +961,12 @@ def _massive_pulley(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("질량 도르래: (m2-m1)g - (m1+m2+I/R²)a", drive - effective_mass * acceleration, max(abs(drive), 1.0))]
 
 
-def _vertical_circle(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _vertical_circle(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     radius, gravity = _k(cp, "R", "m"), _k(cp, "g", "m/s^2")
     if radius is None or gravity is None:
         return []
@@ -800,7 +986,12 @@ def _vertical_circle(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck(name, residual, max(abs(tension), mass * gravity, mass * speed * speed / radius, 1.0))]
 
 
-def _instant_center(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _instant_center(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     radius = _first_not_none(_k(cp, "r", "m"), _k(cp, "R", "m"))
     omega = _first_not_none(_k(cp, "omega", "rad/s"), pool.get("omega"))
     speed = _first_not_none(pool.get("v"), pool.get("v_B"))
@@ -810,7 +1001,12 @@ def _instant_center(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
     return [ResidualCheck("순간중심 속력: v - |ω|r", speed - expected, max(abs(expected), 1.0))]
 
 
-def _relative_translation(cp: CanonicalProblem, pool: dict) -> list[ResidualCheck]:
+def _relative_translation(
+    cp: CanonicalProblem,
+    pool: dict,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+) -> list[ResidualCheck]:
     aA = _k(cp, "aA", "m/s^2")
     arel = _k(cp, "arel", "m/s^2")
     aB = pool.get("a_B")
@@ -829,7 +1025,7 @@ def _relative_translation(cp: CanonicalProblem, pool: dict) -> list[ResidualChec
     ]
 
 
-CHECKERS: dict[str, Callable[[CanonicalProblem, dict], list[ResidualCheck]]] = {
+CHECKERS: dict[str, Callable[..., list[ResidualCheck]]] = {
     "single_particle_newton": _single_particle,
     "particle_on_incline": _incline,
     "pulley_atwood": _atwood,
@@ -901,12 +1097,31 @@ def _extract_beta(display: str | None) -> float | None:
     return float(m.group(1)) if m else None
 
 
-def run_residual_checks(cp: CanonicalProblem, pool: dict, rep_display: str | None = None) -> tuple[list[ResidualCheck], bool]:
-    """(checks, supported). supported=False → 이 유형은 역대입 미지원(정직하게 보고)."""
+def run_residual_checks(
+    cp: CanonicalProblem,
+    pool: dict,
+    rep_display: str | None = None,
+    *,
+    policy: TolerancePolicy = DEFAULT_TOLERANCE_POLICY,
+    engine_id: str | None = None,
+) -> tuple[list[ResidualCheck], bool]:
+    """Return residual checks using the caller's effective central policy."""
     st = cp.system_type
+    effective = policy.for_engine(engine_id)
     if st in ("pure_rolling_energy", "rolling_energy_general"):
-        return _rolling(cp, pool, _extract_beta(rep_display)), True
-    fn = CHECKERS.get(st)
-    if fn is None:
-        return [], False
-    return fn(cp, pool), True
+        checks = _rolling(
+            cp,
+            pool,
+            _extract_beta(rep_display),
+            policy=effective,
+        )
+        supported = True
+    else:
+        fn = CHECKERS.get(st)
+        if fn is None:
+            return [], False
+        checks = fn(cp, pool, policy=effective)
+        supported = True
+    for check in checks:
+        check.policy = effective
+    return checks, supported

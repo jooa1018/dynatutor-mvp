@@ -237,7 +237,18 @@ def build_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
         generator="particle_newton",
         equations=equations,
         unknowns=[str(u) for u in unknowns],
-        substitutions={str(k): float(v) for k, v in _model_subs(c, typed).items()},
+        # An unsupported/no-equation generator has no substitutions to
+        # consume.  Avoid eagerly converting unrelated canonical knowns (for
+        # example an optional rolling radius); supported Newton paths preserve
+        # the exact substitution contract below.
+        substitutions=(
+            {
+                str(key): float(value)
+                for key, value in _model_subs(c, typed).items()
+            }
+            if equations
+            else {}
+        ),
         equations_ready=ready,
         warnings=warnings,
         errors=errors,

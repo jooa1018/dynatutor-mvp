@@ -167,6 +167,9 @@ class VerificationReport:
     checks: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    # Additive Phase 48 evidence; legacy string views remain stable.
+    structured_checks: list[dict[str, Any]] = field(default_factory=list)
+    policy_version: str | None = None
 
 
 @dataclass
