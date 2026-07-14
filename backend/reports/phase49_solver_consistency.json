@@ -1,0 +1,565 @@
+{
+  "benchmark_version": "phase49-benchmark-v1",
+  "cases": [],
+  "configured_evidence": {
+    "cases": [
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.001",
+        "solver_id": "incline_no_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.002",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.003",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.004",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.005",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.006",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.007",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.008",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.009",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "incline",
+        "oracle_id": "p49.incline.010",
+        "solver_id": "incline_with_friction"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.001",
+        "solver_id": "pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.002",
+        "solver_id": "pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.003",
+        "solver_id": "pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.004",
+        "solver_id": "pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.005",
+        "solver_id": "massive_pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.006",
+        "solver_id": "massive_pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.007",
+        "solver_id": "massive_pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.008",
+        "solver_id": "massive_pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.009",
+        "solver_id": "massive_pulley_atwood"
+      },
+      {
+        "family": "pulley",
+        "oracle_id": "p49.pulley.010",
+        "solver_id": "massive_pulley_atwood"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.001",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.002",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.003",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.004",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.005",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.006",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.007",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.008",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.009",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "collision",
+        "oracle_id": "p49.collision.010",
+        "solver_id": "collision_1d"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.001",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.002",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.003",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.004",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.005",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.006",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.007",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.008",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.009",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "rolling",
+        "oracle_id": "p49.rolling.010",
+        "solver_id": "rolling_energy_general"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.001",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.002",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.003",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.004",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.005",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.006",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.007",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.008",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.009",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "work_energy",
+        "oracle_id": "p49.work_energy.010",
+        "solver_id": "work_energy_speed"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.001",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.002",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.003",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.004",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.005",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.006",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.007",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.008",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.009",
+        "solver_id": "fixed_axis_rotation"
+      },
+      {
+        "family": "fixed_axis_rotation",
+        "oracle_id": "p49.fixed_axis_rotation.010",
+        "solver_id": "fixed_axis_rotation"
+      }
+    ],
+    "metamorphic_relations": [
+      {
+        "relation_id": "p49.mr.001.unit_representation_invariance",
+        "relation_kind": "unit_representation_invariance",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.002.fixed_axis_coordinate_sign_covariance",
+        "relation_kind": "coordinate_sign_covariance",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.003.incline_mass_independence",
+        "relation_kind": "cancelled_mass_invariance",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.004.incline_gravity_homogeneity",
+        "relation_kind": "gravity_homogeneity",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.005.incline_zero_friction_limit",
+        "relation_kind": "constitutive_limit",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.006.pulley_common_mass_inertia_scaling",
+        "relation_kind": "common_extensive_scaling",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.007.pulley_label_exchange",
+        "relation_kind": "body_label_exchange",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.008.pulley_radius_inertia_similarity",
+        "relation_kind": "geometric_inertia_similarity",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.009.collision_galilean_boost",
+        "relation_kind": "galilean_covariance",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.010.collision_common_mass_scaling",
+        "relation_kind": "common_mass_scaling",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.011.collision_velocity_homogeneity",
+        "relation_kind": "velocity_homogeneity",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.012.collision_label_reflection_symmetry",
+        "relation_kind": "label_exchange_with_spatial_reflection",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.013.collision_zero_restitution_limit",
+        "relation_kind": "restitution_endpoint_limit",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.014.rolling_height_square_root_scaling",
+        "relation_kind": "height_square_root_scaling",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.015.rolling_radius_independence",
+        "relation_kind": "radius_independence_at_fixed_shape_factor",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.016.rolling_energy_budget_invariance",
+        "relation_kind": "shape_height_budget_invariance",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.017.rolling_gravity_height_product_invariance",
+        "relation_kind": "gravity_height_product_invariance",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.018.work_energy_mass_work_scaling",
+        "relation_kind": "mass_work_common_scaling",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.019.work_energy_equal_budget_transform",
+        "relation_kind": "equal_energy_budget_transform",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.020.fixed_axis_torque_inertia_scaling",
+        "relation_kind": "torque_inertia_common_scaling",
+        "required_path_call_count": 4
+      },
+      {
+        "relation_id": "p49.mr.021.actual_solver_paraphrase_invariance",
+        "relation_kind": "end_to_end_paraphrase_invariance",
+        "required_path_call_count": 4
+      }
+    ],
+    "mutation_controls": [
+      {
+        "kind": "sign",
+        "mutation_id": "p49.mut.sign.001"
+      },
+      {
+        "kind": "coefficient",
+        "mutation_id": "p49.mut.coefficient.001"
+      },
+      {
+        "kind": "unit",
+        "mutation_id": "p49.mut.unit.001"
+      },
+      {
+        "kind": "constraint_equation",
+        "mutation_id": "p49.mut.constraint.001"
+      }
+    ]
+  },
+  "disagreements": [],
+  "environment_limitations": [
+    "Local Python process unavailable: CreateProcessAsUserW failed with access denied."
+  ],
+  "failed_ids": {
+    "cases": [],
+    "metamorphic_relations": [],
+    "mutation_controls": []
+  },
+  "fixture_sha256": {
+    "phase49_dynamics_oracles_v1.json": "9d9d26ecf70340cd7345b06c5e92ceb39d8fde429494368054e57883e6822484",
+    "phase49_metamorphic_v1.json": "f141686129eb888207fdb8d947e1388fa07293333f63f9cf82221f49e55f6591"
+  },
+  "metamorphic_relations": [],
+  "mutation_controls": [],
+  "offline_only": true,
+  "oracle_schema_version": 2,
+  "oracle_version": "phase49-oracle-v1",
+  "passed": false,
+  "path_roles": {
+    "collision": {
+      "external_validation_path": null,
+      "fallback_path": null,
+      "numeric_validation_path": null,
+      "secondary_analytic_path": "phase49.secondary.collision",
+      "student_answer_path": [
+        "collision_1d"
+      ]
+    },
+    "fixed_axis_rotation": {
+      "external_validation_path": null,
+      "fallback_path": null,
+      "numeric_validation_path": null,
+      "secondary_analytic_path": "phase49.secondary.fixed_axis_rotation",
+      "student_answer_path": [
+        "fixed_axis_rotation"
+      ]
+    },
+    "incline": {
+      "external_validation_path": null,
+      "fallback_path": null,
+      "numeric_validation_path": null,
+      "secondary_analytic_path": "phase49.secondary.incline",
+      "student_answer_path": [
+        "incline_no_friction",
+        "incline_with_friction"
+      ]
+    },
+    "pulley": {
+      "external_validation_path": null,
+      "fallback_path": null,
+      "numeric_validation_path": null,
+      "secondary_analytic_path": "phase49.secondary.pulley",
+      "student_answer_path": [
+        "pulley_atwood",
+        "pulley_table_hanging",
+        "pulley_incline_hanging",
+        "massive_pulley_atwood"
+      ]
+    },
+    "rolling": {
+      "external_validation_path": null,
+      "fallback_path": null,
+      "numeric_validation_path": null,
+      "secondary_analytic_path": "phase49.secondary.rolling",
+      "student_answer_path": [
+        "pure_rolling_energy",
+        "rolling_energy_general"
+      ]
+    },
+    "work_energy": {
+      "external_validation_path": null,
+      "fallback_path": null,
+      "numeric_validation_path": null,
+      "secondary_analytic_path": "phase49.secondary.work_energy",
+      "student_answer_path": [
+        "work_energy_speed"
+      ]
+    }
+  },
+  "policy_version": "phase48-tolerance-policy-v1",
+  "relation_version": "phase49-metamorphic-v1",
+  "report_version": "phase49-solver-consistency-report-v1",
+  "schema_version": 1,
+  "status": "implemented_not_executed",
+  "student_answer_overwrite": false,
+  "summary": {
+    "direct_path_passed": 0,
+    "distinct_metamorphic_relations": 21,
+    "family_counts": {
+      "collision": 10,
+      "fixed_axis_rotation": 10,
+      "incline": 10,
+      "pulley": 10,
+      "rolling": 10,
+      "work_energy": 10
+    },
+    "metamorphic_executed": 0,
+    "metamorphic_passed": 0,
+    "metamorphic_total": 21,
+    "mutation_controls": 4,
+    "mutation_controls_executed": 0,
+    "mutations_killed": 0,
+    "oracle_cases": 60,
+    "oracle_product_executed": 0,
+    "oracle_product_passed": 0,
+    "oracle_product_total": 60,
+    "oracle_secondary_executed": 0,
+    "oracle_secondary_passed": 0,
+    "oracle_secondary_total": 60,
+    "product_path_passed": 0,
+    "product_secondary_executed": 0,
+    "product_secondary_passed": 0,
+    "product_secondary_total": 60,
+    "product_verified_executed": 0,
+    "product_verified_passed": 0,
+    "product_verified_total": 60,
+    "scalar_expected_outputs": 70,
+    "secondary_path_passed": 0,
+    "three_way_executed": 0,
+    "three_way_passed": 0,
+    "three_way_total": 60
+  },
+  "unverified": [
+    "60 Phase 48 product-verification prerequisites",
+    "60 oracle-product legs",
+    "60 oracle-secondary legs",
+    "60 direct product-secondary legs",
+    "60 strict three-way aggregates",
+    "21 four-call metamorphic relations",
+    "4 isolated-copy mutation controls"
+  ]
+}
