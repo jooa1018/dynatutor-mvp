@@ -38,7 +38,7 @@ class FlatCurveFrictionSolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, checks=["μ=0이면 마찰이 없어 커브를 돌 수 있는 최대속도도 0입니다.", "R이 클수록 완만한 커브라서 허용 속도가 커집니다."])
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v_max = √(μgR)", numeric=round(v, 5), unit="m/s", display=f"v_max = {v:.3f} m/s"), steps=steps, verification=verification, used_equations=["f_s ≤ μN", "ΣF_r = mv²/R"])
+        return SolverResult(ok=True, answer=Answer(symbolic="v_max = √(μgR)", numeric=round(v, 5), unit="m/s", display=f"v_max = {v:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["f_s ≤ μN", "ΣF_r = mv²/R"])
 
 
 class BankedCurveNoFrictionSolver(BaseSolver):
@@ -80,4 +80,4 @@ class BankedCurveNoFrictionSolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, checks=["θ=0°이면 평평한 마찰 없는 도로라서 설계속도 0이 됩니다.", "R이 커지면 더 완만한 커브라 설계속도가 커집니다."])
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v = √(gR tanθ)", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s"), steps=steps, verification=verification, used_equations=["Ncosθ=mg", "Nsinθ=mv²/R"])
+        return SolverResult(ok=True, answer=Answer(symbolic="v = √(gR tanθ)", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["Ncosθ=mg", "Nsinθ=mv²/R"])

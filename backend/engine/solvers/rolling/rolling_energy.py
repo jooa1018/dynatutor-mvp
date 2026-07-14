@@ -53,7 +53,7 @@ class PureRollingEnergySolver(BaseSolver):
         )
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="v = sqrt(v0²+2gh/(1+β))", numeric=round(v, 6), unit="m/s", display=f"v = {v:.3f} m/s (β={beta:g})"),
+            answer=Answer(symbolic="v = sqrt(v0²+2gh/(1+β))", numeric=round(v, 6), unit="m/s", display=f"v = {v:.3f} m/s (β={beta:g})", output_key="final_velocity"),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=["mgh = 1/2mv² + 1/2Iω²", "v=ωR", "I=βmR²"],

@@ -47,7 +47,7 @@ class InclineNoFrictionSolver(BaseSolver):
         model = model or build_physical_model(c)
         generated = solve_particle_newton_system(c, model)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
+            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.", selection_decision=generated.decision)
         a_val = float(generated.solution[S.a])
         symbolic = "g*sin(theta)"
 
@@ -68,11 +68,12 @@ class InclineNoFrictionSolver(BaseSolver):
         )
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic=f"a = {symbolic}", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²"),
+            answer=Answer(symbolic=f"a = {symbolic}", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²", output_key="acceleration"),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=["ΣF_x = ma", "mg sinθ = ma", "a = g sinθ"],
             fbd=["중력 mg", "수직항력 N"],
+            selection_decision=generated.decision,
             coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
         )
 
@@ -111,7 +112,7 @@ class InclineWithFrictionSolver(BaseSolver):
                 )
                 return SolverResult(
                     ok=True,
-                    answer=Answer(symbolic="a = 0, |f_s| <= μ_s N", numeric=0.0, unit="m/s²", display=f"a = 0.000 m/s², f_s = {decision.friction_force:.3f} N"),
+                    answer=Answer(symbolic="a = 0, |f_s| <= μ_s N", numeric=0.0, unit="m/s²", display=f"a = 0.000 m/s², f_s = {decision.friction_force:.3f} N", output_key="acceleration"),
                     steps=[
                         StepCard("정지마찰 판정", "정지마찰 문제는 먼저 움직이는지 확인합니다.", r"|f_s| \le \mu_s N"),
                         StepCard("부등식 비교", f"구동력={decision.driving_force:.3f} N, 최대정지마찰={decision.max_static:.3f} N → 정지 유지"),
@@ -125,7 +126,7 @@ class InclineWithFrictionSolver(BaseSolver):
         model = model or build_physical_model(c)
         generated = solve_particle_newton_system(c, model)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
+            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.", selection_decision=generated.decision)
         a_val = float(generated.solution[S.a])
         warnings = []
         if a_val < 0:
@@ -148,10 +149,11 @@ class InclineWithFrictionSolver(BaseSolver):
         )
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="a = g(sinθ - μcosθ)", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²"),
+            answer=Answer(symbolic="a = g(sinθ - μcosθ)", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²", output_key="acceleration"),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=["N = mg cosθ", "f = μN", "mg sinθ - f = ma"],
             fbd=["중력 mg", "수직항력 N", "마찰력 f"],
+            selection_decision=generated.decision,
             coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
         )

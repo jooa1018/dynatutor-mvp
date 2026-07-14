@@ -182,7 +182,7 @@ class SlotPinRelativeMotionSolver(BaseSolver):
         display = f"|v| = {v_mag:.3f} m/s"
         if has_acceleration_terms:
             display += f"; a_r = {a_r:.3f} m/s², a_θ = {a_theta:.3f} m/s²"
-        return SolverResult(ok=True, answer=Answer(symbolic="v = √(r_dot² + (rω)²)", numeric=round(v_mag, 6), unit="m/s", display=display), steps=steps, verification=verification, used_equations=["v_r=r_dot", "v_θ=rω", "a_r=r_ddot-rω²", "a_θ=rα+2r_dotω"])
+        return SolverResult(ok=True, answer=Answer(symbolic="v = √(r_dot² + (rω)²)", numeric=round(v_mag, 6), unit="m/s", display=display, output_key="final_velocity"), steps=steps, verification=verification, used_equations=["v_r=r_dot", "v_θ=rω", "a_r=r_ddot-rω²", "a_θ=rα+2r_dotω"])
 
 
 class PlaneRigidBodyVelocitySolver(BaseSolver):
@@ -215,4 +215,4 @@ class PlaneRigidBodyVelocitySolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, warnings=["이번 solver는 속도 크기 기본형입니다. 실제 문제에서 v_A와 ω×r의 방향각이 주어지면 벡터 성분 계산으로 확장해야 합니다."], checks=["ω=0이면 강체는 순간적으로 병진운동만 하므로 모든 점 속도가 v_A와 같습니다."])
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v_B = v_A + ω×r_B/A", numeric=round(vB, 6), unit="m/s", display=f"|v_B| ≈ {vB:.3f} m/s"), steps=steps, verification=verification, used_equations=["v_B=v_A+ω×r_B/A", "|v_B/A|=ωr"])
+        return SolverResult(ok=True, answer=Answer(symbolic="v_B = v_A + ω×r_B/A", numeric=round(vB, 6), unit="m/s", display=f"|v_B| ≈ {vB:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["v_B=v_A+ω×r_B/A", "|v_B/A|=ωr"])

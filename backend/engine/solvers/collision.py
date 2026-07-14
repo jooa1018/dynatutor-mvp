@@ -70,7 +70,35 @@ class Collision1DSolver(BaseSolver):
             return SolverResult(
                 ok=True,
                 answer=Answer(symbolic="vf=(m1v1+m2v2)/(m1+m2)", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s"),
-                answers=[AnswerItem("충돌 후 공통 속도", "v_f", round(vf, 6), "m/s", f"충돌 후 공통 속도 v_f = {vf:.3f} m/s", "primary")],
+                answers=[
+                    AnswerItem(
+                        "충돌 후 공통 속도",
+                        "v_f",
+                        round(vf, 6),
+                        "m/s",
+                        f"충돌 후 공통 속도 v_f = {vf:.3f} m/s",
+                        "primary",
+                        output_key="post_collision_velocity",
+                    ),
+                    AnswerItem(
+                        "충돌 후 m1 속도",
+                        "v1'",
+                        round(vf, 6),
+                        "m/s",
+                        f"충돌 후 m1의 속도 v1' = {vf:.3f} m/s",
+                        "component",
+                        output_key="v1_after",
+                    ),
+                    AnswerItem(
+                        "충돌 후 m2 속도",
+                        "v2'",
+                        round(vf, 6),
+                        "m/s",
+                        f"충돌 후 m2의 속도 v2' = {vf:.3f} m/s",
+                        "component",
+                        output_key="v2_after",
+                    ),
+                ],
                 steps=steps,
                 verification=VerificationReport(passed=True, checks=["완전비탄성에서는 운동에너지가 보존되지 않아도 됩니다."]),
             )

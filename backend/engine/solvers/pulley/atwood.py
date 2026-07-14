@@ -27,7 +27,7 @@ class AtwoodPulleySolver(BaseSolver):
 
         generated = solve_particle_newton_system(c)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors))
+            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors), selection_decision=generated.decision)
         sol = generated.solution
         a_val = float(sol[S.a])
         T_val = float(sol[S.T])
@@ -59,5 +59,6 @@ class AtwoodPulleySolver(BaseSolver):
             verification=merge_reports(pre, verification),
             used_equations=["m2g - T = m2a", "T - m1g = m1a"],
             fbd=["m1: 중력 m1g, 장력 T", "m2: 중력 m2g, 장력 T"],
+            selection_decision=generated.decision,
             coordinate_guide=["+ 방향: m2 아래, m1 위. 결과 부호로 실제 방향 판단"],
         )

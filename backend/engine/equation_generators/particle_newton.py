@@ -10,6 +10,7 @@ from engine.models import CanonicalProblem, StepCard
 from engine.model_builder.model_types import GeneratedEquation, GeneratedEquationSystem, PhysicalModel
 from engine.physics_core import symbols as S
 from engine.physics_core.equation_system import EquationSystem
+from engine.physics_core.validators import SelectionDecision, ValidationContext, VariableConstraint
 from engine.physics_core.units import magnitude_si
 
 
@@ -19,6 +20,7 @@ class GeneratedSolve:
     solution: dict[Any, Any]
     system: GeneratedEquationSystem
     errors: list[str]
+    decision: SelectionDecision | None = None
 
 
 def _ge(kind: str, body_id: str | None, axis: str | None, equation: str, sympy_eq: Any, *, source_forces: list[str], unknowns: list[str], notes: list[str] | None = None) -> GeneratedEquation:
@@ -279,10 +281,42 @@ def solve_particle_newton_system(c: CanonicalProblem, model: PhysicalModel | Non
     eqs = _sympy_equations(system)
     unknowns = _unknown_symbols(system)
     subs = _subs_from_system(system)
-    solved = EquationSystem(eqs, unknowns, subs).solve()
-    if not solved:
-        return GeneratedSolve(False, {}, system, ["물리적으로 가능한 해를 찾지 못했습니다."])
-    return GeneratedSolve(True, solved[0], system, [])
+    explicit_constraints = [
+        VariableConstraint(
+            symbol,
+            lower_bound=0.0,
+            lower_inclusive=True,
+            reason=f"{symbol} is a unilateral force magnitude",
+            source="particle_newton_generator",
+        )
+        for symbol in unknowns
+        if symbol in {S.T, S.T1, S.T2, S.F}
+    ]
+    context = ValidationContext(
+        constraints=explicit_constraints,
+        selection_policy="particle-newton-explicit-constraints",
+    )
+    decision = EquationSystem(
+        eqs,
+        unknowns,
+        subs,
+        constraints=explicit_constraints,
+    ).solve_candidates(context)
+    if decision.status != "selected" or decision.selected_candidate is None:
+        if decision.status == "ambiguous":
+            error = "여러 후보 해가 모든 Newton 제약을 만족해 하나를 임의 선택할 수 없습니다."
+        elif decision.status == "numerical_failure":
+            error = "Newton 후보 해의 수치 평가에 실패했습니다."
+        else:
+            error = "물리적으로 가능한 해를 찾지 못했습니다."
+        return GeneratedSolve(False, {}, system, [error], decision)
+    return GeneratedSolve(
+        True,
+        decision.selected_candidate.symbolic_mapping,
+        system,
+        [],
+        decision,
+    )
 
 
 def generated_equation_step_card(system: GeneratedEquationSystem) -> StepCard:

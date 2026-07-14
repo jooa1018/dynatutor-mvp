@@ -123,6 +123,7 @@ class SpringEnergySpeedSolver(BaseSolver):
                 unit="J",
                 display=f"E = {energy_value:.3f} J",
                 role="primary",
+                output_key="elastic_energy",
             )
             if not wants_speed:
                 return SolverResult(
@@ -132,6 +133,7 @@ class SpringEnergySpeedSolver(BaseSolver):
                         numeric=round(energy_value, 6),
                         unit="J",
                         display=f"E = {energy_value:.3f} J",
+                        output_key="elastic_energy",
                     ),
                     answers=[energy_item],
                     steps=[
@@ -272,7 +274,7 @@ class WorkEnergySpeedSolver(BaseSolver):
             ],
         )
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v_f = √(v_i² + 2W/m)", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s"), steps=steps, verification=verification, used_equations=["W=ΔK", "v_f = √(v_i² + 2W/m)"])
+        return SolverResult(ok=True, answer=Answer(symbolic="v_f = √(v_i² + 2W/m)", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["W=ΔK", "v_f = √(v_i² + 2W/m)"])
 
 
 class HorizontalFrictionForceSolver(BaseSolver):

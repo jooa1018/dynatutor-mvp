@@ -10,6 +10,7 @@ from app.schemas.solution import (
     QuantityModel,
     RouteCandidateModel,
     RouteDecisionModel,
+    SelectionDecisionModel,
     SolveResponse,
     StepCard as StepCardSchema,
     VerificationReport as VerificationReportSchema,
@@ -29,6 +30,13 @@ from engine.verification.gate import apply_result_gate
 from engine.routing.clarify import ClarifyPatchError, apply_clarify_patch, build_clarification, validate_clarify_patch
 from engine.verification.checks import merge_reports
 from engine.verification.plausibility import check_knowns
+from engine.physics_core.validators import (
+    CandidateSolveBatch,
+    ValidationContext,
+    candidate_from_solver_result,
+    validate_and_select,
+    validate_output_candidates,
+)
 
 
 
@@ -90,7 +98,7 @@ def _answers_from_result(result):
         return [_answer_item_model(a) for a in result.answers]
     if result.answer:
         label = "최종 답"
-        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary", output_key=None)]
+        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary", output_key=getattr(result.answer, "output_key", None))]
     return []
 
 def _quantity_model(q):
@@ -153,6 +161,12 @@ def _route_decision_model(decision):
         reason=decision.reason,
         warnings=decision.warnings,
     )
+
+
+def _selection_decision_model(decision):
+    if decision is None:
+        return None
+    return SelectionDecisionModel(**decision.to_dict())
 
 
 def _physical_model_payload(payload, decision):
@@ -358,15 +372,69 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
             unsupported_reason="입력값의 물리적 범위를 확인해 주세요.",
         )
     else:
-        result = (
-            solver.solve(canonical, physical_model)
-            if getattr(solver, "uses_prebuilt_physical_model", False)
-            else solver.solve(canonical)
+        if hasattr(solver, "solve_candidates"):
+            batch = (
+                solver.solve_candidates(canonical, physical_model)
+                if getattr(solver, "uses_prebuilt_physical_model", False)
+                else solver.solve_candidates(canonical)
+            )
+        else:
+            # Compatibility for injected/test solvers and third-party legacy
+            # adapters that implement only solve().
+            legacy_result = (
+                solver.solve(canonical, physical_model)
+                if getattr(solver, "uses_prebuilt_physical_model", False)
+                else solver.solve(canonical)
+            )
+            batch = CandidateSolveBatch(
+                result=legacy_result,
+                candidates=[
+                    candidate_from_solver_result(
+                        legacy_result,
+                        candidate_id=(
+                            f"{getattr(solver, 'name', 'legacy')}-candidate-0"
+                        ),
+                        requested_outputs=canonical.requested_outputs,
+                    )
+                ],
+            )
+        result = batch.result
+        candidate_context = ValidationContext(
+            requested_outputs=list(canonical.requested_outputs or []),
+            selection_policy=f"{solver.name}:validated-candidate",
         )
-        # Phase 30: 물리 검증 스위트 (차원 · 타당성 · 역대입 잔차).
-        # 검증 error는 '조용한 오답'이므로 ok=False로 강등한다.
-        suite_report = verify_result(canonical, result)
-        result.verification = merge_reports(result.verification, suite_report)
+        solver_decision = result.selection_decision
+        output_decision = (
+            validate_output_candidates(batch.candidates, candidate_context)
+            if solver_decision is not None
+            else validate_and_select(batch.candidates, candidate_context)
+        )
+        # Preserve richer solver/generator branch evidence when it selected a
+        # valid candidate.  The service output contract remains authoritative:
+        # a missing requested output overrides an otherwise selected branch.
+        if (
+            solver_decision is None
+            or (
+                solver_decision.status == "selected"
+                and output_decision.status != "selected"
+            )
+        ):
+            result.selection_decision = output_decision
+        if result.ok and result.selection_decision.status != "selected":
+            result.verification.errors.append(
+                "후보 해 선택을 확정하지 못했습니다: "
+                + result.selection_decision.status
+            )
+            result.unsupported_reason = (
+                "물리적으로 가능한 해가 여러 개입니다. 사건, 방향 또는 시간 구간을 더 지정해 주세요."
+                if result.selection_decision.status == "ambiguous"
+                else "모든 후보 해가 명시된 물리 제약과 출력 계약을 통과하지 못했습니다."
+            )
+        # Phase 30/47: only a selected candidate proceeds to the established
+        # dimension, plausibility and governing-equation verification suite.
+        if result.selection_decision.status == "selected":
+            suite_report = verify_result(canonical, result)
+            result.verification = merge_reports(result.verification, suite_report)
     # 강등은 아래 apply_result_gate 한 곳에서만 수행한다 (Phase 33 통합).
     model_cards = physical_model_step_cards(physical_model)
     all_steps = model_cards + result.steps
@@ -380,6 +448,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         unsupported_reason=result.unsupported_reason,
         route_decision=_route_decision_model(route_decision),
         physical_model=_physical_model_payload(physical_model.to_dict(), route_decision),
+        selection_decision=_selection_decision_model(result.selection_decision),
     )
     # 실패 응답도 "완전히 못 풂" 대신 현재 가능한 것/필요한 조건을 보여준다.
     if not response.ok and not response.steps:

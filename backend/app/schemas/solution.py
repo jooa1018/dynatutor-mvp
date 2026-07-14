@@ -97,6 +97,7 @@ class AnswerModel(BaseModel):
     numeric: float | None = None
     unit: str | None = None
     display: str | None = None
+    output_key: str | None = None
 
 
 class AnswerItemModel(BaseModel):
@@ -115,6 +116,50 @@ class VerificationReport(BaseModel):
     checks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+
+
+class CandidateValidationCheckModel(BaseModel):
+    check_id: str
+    category: str
+    status: str
+    message: str
+    observed: Any = None
+    expected: Any = None
+    absolute_error: float | None = None
+    relative_error: float | None = None
+    tolerance: float | None = None
+    evidence: list[str] = Field(default_factory=list)
+    source_equation_ids: list[str] = Field(default_factory=list)
+
+
+class CandidateSolutionModel(BaseModel):
+    candidate_id: str
+    symbolic_mapping: dict[str, str] = Field(default_factory=dict)
+    numerical_mapping: dict[str, float | str] = Field(default_factory=dict)
+    unresolved_symbols: list[str] = Field(default_factory=list)
+    domain_conditions: list[str] = Field(default_factory=list)
+    branch_information: dict[str, Any] = Field(default_factory=dict)
+    approximation_method: str | None = None
+    initial_guess: dict[str, float | str] = Field(default_factory=dict)
+    validation_checks: list[CandidateValidationCheckModel] = Field(default_factory=list)
+    rejection_reasons: list[str] = Field(default_factory=list)
+    rank_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ValidatedCandidateModel(CandidateSolutionModel):
+    accepted: bool
+    checks: list[CandidateValidationCheckModel] = Field(default_factory=list)
+
+
+class SelectionDecisionModel(BaseModel):
+    status: str
+    selected_candidate: CandidateSolutionModel | None = None
+    valid_alternatives: list[CandidateSolutionModel] = Field(default_factory=list)
+    rejected_candidates: list[ValidatedCandidateModel] = Field(default_factory=list)
+    selection_policy: str
+    explanation: str
+    tolerances: dict[str, float] = Field(default_factory=dict)
+    policy_version: str
 
 
 class ClarificationInputFieldModel(BaseModel):
@@ -157,6 +202,7 @@ class SolveResponse(BaseModel):
     clarification: ClarificationModel | None = None
     route_decision: RouteDecisionModel | None = None
     physical_model: dict[str, Any] | None = None
+    selection_decision: SelectionDecisionModel | None = None
 
 
 class FeedbackResponse(BaseModel):

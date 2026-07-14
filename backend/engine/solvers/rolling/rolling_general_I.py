@@ -49,7 +49,7 @@ class RollingEnergyGeneralSolver(BaseSolver):
         )
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic=symbolic, numeric=round(v, 6), unit="m/s", display=display),
+            answer=Answer(symbolic=symbolic, numeric=round(v, 6), unit="m/s", display=display, output_key="final_velocity"),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=used,

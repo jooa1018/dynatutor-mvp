@@ -1,6 +1,6 @@
 {
-  "schema_version": 3,
-  "source_commit": "29073c47743f814e927ee767dead86b12263f0fa",
+  "schema_version": 4,
+  "source_commit": "99b1b523b9993f95fb31deca7c3033895848cb08",
   "engine_dataclasses": {
     "CanonicalProblem": [
       "system_type",
@@ -37,7 +37,8 @@
       "unsupported_reason",
       "used_equations",
       "fbd",
-      "coordinate_guide"
+      "coordinate_guide",
+      "selection_decision"
     ],
     "VerificationReport": [
       "passed",
@@ -100,7 +101,8 @@
       "symbolic",
       "numeric",
       "unit",
-      "display"
+      "display",
+      "output_key"
     ],
     "AnswerItemModel": [
       "label",
@@ -147,7 +149,8 @@
       "unsupported_reason",
       "clarification",
       "route_decision",
-      "physical_model"
+      "physical_model",
+      "selection_decision"
     ]
   },
   "response_contracts": {
@@ -179,6 +182,7 @@
     "route_decision is additive and distinguishes select, clarify, and unsupported without changing legacy answer fields.",
     "Legacy solvers continue to consume knowns, flags, and requested_outputs through the v1 compatibility view.",
     "AnswerItem output_key disambiguates colliding display symbols without removing legacy symbol or label fields.",
-    "Clarification input_fields adds typed multi-value inputs while needs_value remains for single-value clients."
+    "Clarification input_fields adds typed multi-value inputs while needs_value remains for single-value clients.",
+    "selection_decision is an additive Phase 47 diagnostic; legacy answer and verification fields remain authoritative compatibility views."
   ]
 }

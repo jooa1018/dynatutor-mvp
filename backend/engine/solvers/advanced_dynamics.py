@@ -105,7 +105,7 @@ class CoriolisRelativeMotionSolver(BaseSolver):
             numeric = a_mag
             symbolic = "a_r=a_rel-rω², a_θ=rα+2ωv_rel"
             answers = [
-                AnswerItem(label="가속도 크기", symbol="a", numeric=round(a_mag, 6), unit="m/s²", display=f"|a| = {a_mag:.3f} m/s²", role="primary"),
+                AnswerItem(label="가속도 크기", symbol="a", numeric=round(a_mag, 6), unit="m/s²", display=f"|a| = {a_mag:.3f} m/s²", role="primary", output_key="acceleration"),
                 AnswerItem(label="코리올리 항", symbol="a_C", numeric=round(a_c, 6), unit="m/s²", display=f"a_C = {a_c:.3f} m/s²", role="component"),
                 AnswerItem(label="반경 성분", symbol="a_r", numeric=round(a_radial, 6), unit="m/s²", display=f"a_r = {a_radial:.3f} m/s²", role="component"),
                 AnswerItem(label="접선 성분", symbol="a_theta", numeric=round(a_transverse, 6), unit="m/s²", display=f"a_θ = {a_transverse:.3f} m/s²", role="component"),
@@ -117,7 +117,7 @@ class CoriolisRelativeMotionSolver(BaseSolver):
             display = f"Coriolis 가속도 a_C = 2ωv_rel = {a_c:.3f} m/s²"
             numeric = a_c
             symbolic = "a_C = 2ωv_rel"
-            answers = [AnswerItem(label="코리올리 가속도", symbol="a_C", numeric=round(a_c, 6), unit="m/s²", display=f"a_C = {a_c:.3f} m/s²", role="primary")]
+            answers = [AnswerItem(label="코리올리 가속도", symbol="a_C", numeric=round(a_c, 6), unit="m/s²", display=f"a_C = {a_c:.3f} m/s²", role="primary", output_key="acceleration")]
         steps = [
             StepCard("회전 기준계 확인", "입자가 회전하는 막대/슬롯 안에서 상대적으로 움직이면 코리올리 항이 생깁니다."),
             StepCard("전체 가속도 구조", "회전 기준계의 절대가속도는 접선항, 법선항, 코리올리항, 상대가속도의 합입니다.", r"\vec a=\vec a_O+\vec\alpha\times\vec r+\vec\omega\times(\vec\omega\times\vec r)+2\vec\omega\times\vec v_{rel}+\vec a_{rel}"),
@@ -135,7 +135,7 @@ class CoriolisRelativeMotionSolver(BaseSolver):
         attach_unit_check(verification, expected_unknown="acceleration", actual_unit="m/s²")
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic=symbolic, numeric=round(numeric, 6), unit="m/s²", display=display),
+            answer=Answer(symbolic=symbolic, numeric=round(numeric, 6), unit="m/s²", display=display, output_key="acceleration"),
             answers=answers,
             steps=steps,
             verification=verification,
@@ -180,7 +180,7 @@ class PlaneRigidBodyAccelerationSolver(BaseSolver):
         attach_unit_check(verification, expected_unknown="acceleration", actual_unit="m/s²")
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="a_B = a_A + α×r_B/A + ω×(ω×r_B/A)", numeric=round(total, 6), unit="m/s²", display=display),
+            answer=Answer(symbolic="a_B = a_A + α×r_B/A + ω×(ω×r_B/A)", numeric=round(total, 6), unit="m/s²", display=display, output_key="acceleration"),
             steps=steps,
             verification=verification,
             used_equations=["a_B=a_A+α×r+ω×(ω×r)", "a_t=αr", "a_n=ω²r"],
@@ -223,7 +223,7 @@ class MassivePulleyAtwoodSolver(BaseSolver):
         display = f"a = {a:.3f} m/s² ({direction}); α = {alpha:.3f} rad/s²; T1 = {T1:.3f} N, T2 = {T2:.3f} N"
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="a=(m2-m1)g/(m1+m2+I/R²)", numeric=round(a, 6), unit="m/s²", display=display),
+            answer=Answer(symbolic="a=(m2-m1)g/(m1+m2+I/R²)", numeric=round(a, 6), unit="m/s²", display=display, output_key="acceleration"),
             steps=steps,
             verification=verification,
             used_equations=["a=αR", "(T2-T1)R=Iα", "a=(m2-m1)g/(m1+m2+I/R²)"],
@@ -265,7 +265,7 @@ class RollingEnergyGeneralSolver(BaseSolver):
         display = f"v_G = {v:.3f} m/s; ω = {omega:.3f} rad/s"
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="v_G=sqrt(2mgh/(m+I_G/R²))", numeric=round(v, 6), unit="m/s", display=display),
+            answer=Answer(symbolic="v_G=sqrt(2mgh/(m+I_G/R²))", numeric=round(v, 6), unit="m/s", display=display, output_key="final_velocity"),
             steps=steps,
             verification=verification,
             used_equations=["mgh=1/2mv²+1/2Iω²", "v=ωR", "v=sqrt(2mgh/(m+I/R²))"],
