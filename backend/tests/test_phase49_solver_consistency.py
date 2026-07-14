@@ -8,6 +8,13 @@ from pathlib import Path
 
 import pytest
 
+from engine.models import Answer, SolverResult
+from engine.physics_core.validators import (
+    CandidateSolution,
+    CandidateSolveBatch,
+    SelectionDecision,
+    candidate_from_solver_result,
+)
 from engine.verification.consistency import (
     PRIMARY_OUTPUT_CONTRACT,
     compare_oracle_observation,
@@ -21,7 +28,12 @@ from tools.run_phase49_consistency import (
     DEFAULT_METAMORPHIC_PATH,
     DEFAULT_ORACLE_PATH,
     FIXTURE_SHA256,
+    SEMANTIC_SELECTION_EVIDENCE_SOURCE,
+    Phase49RunError,
     _case_evidence_from_paths,
+    _selection_noncontradiction_checks,
+    _solve_validated,
+    build_product_canonical,
     load_metamorphic_fixture,
     run_product_case,
     suite_verdict,
@@ -139,6 +151,160 @@ def test_six_actual_product_families_reach_phase48_observation_path(
         DEFAULT_TOLERANCE_POLICY.policy_version
     )
     assert not execution.observation.metadata["missing_equation_roles"]
+
+
+def test_incline_output_validation_is_the_semantic_selection_evidence():
+    case = _suite().by_id["p49.incline.001"]
+    execution = run_product_case(case)
+
+    generator = execution.solver_selection_evidence
+    assert generator is not None
+    assert execution.solver_selection_status == "selected"
+    assert execution.output_selection_status == "selected"
+    assert generator["status"] == "selected"
+    assert "a" in generator["selected_candidate_mapping_keys"]
+    assert "acceleration" not in generator["selected_candidate_mapping_keys"]
+    assert len(generator["semantic_value_checks"]) == 1
+    value_check = generator["semantic_value_checks"][0]
+    assert value_check["output_key"] == "acceleration"
+    assert value_check["solver_symbols"] == ["a"]
+    assert value_check["status"] == "matched"
+    assert value_check["tolerance"] == pytest.approx(
+        DEFAULT_TOLERANCE_POLICY.tolerance(
+            "absolute",
+            scale=max(abs(execution.result.answer.numeric), 1.0),
+        )
+    )
+
+    semantic = execution.result.selection_decision.selected_candidate
+    assert semantic is not None
+    assert semantic.numerical_mapping["acceleration"] == pytest.approx(
+        execution.result.answer.numeric
+    )
+    assert execution.observation.outputs[0].root_values == pytest.approx(
+        (execution.result.answer.numeric,)
+    )
+    assert execution.semantic_selection_evidence_source == (
+        SEMANTIC_SELECTION_EVIDENCE_SOURCE
+    )
+    assert execution.observation.metadata[
+        "semantic_selection_evidence_source"
+    ] == SEMANTIC_SELECTION_EVIDENCE_SOURCE
+
+
+class _ContradictingSelectionSolver:
+    name = "phase49-contradiction-test"
+    uses_prebuilt_physical_model = False
+
+    def __init__(self, result):
+        self.result = result
+
+    def solve_candidates(self, canonical):
+        return CandidateSolveBatch(
+            result=self.result,
+            candidates=[
+                candidate_from_solver_result(
+                    self.result,
+                    candidate_id="output-candidate-0",
+                    requested_outputs=canonical.requested_outputs,
+                )
+            ],
+        )
+
+
+def test_singleton_numeric_coincidence_is_not_semantic_alias_evidence():
+    value = 4.905
+    original = SelectionDecision(
+        status="selected",
+        selected_candidate=CandidateSolution(
+            candidate_id="generator-candidate-0",
+            symbolic_mapping={"unrelated": value},
+            numerical_mapping={"unrelated": value},
+        ),
+    )
+    output = SelectionDecision(
+        status="selected",
+        selected_candidate=CandidateSolution(
+            candidate_id="output-candidate-0",
+            symbolic_mapping={"acceleration": value},
+            numerical_mapping={"acceleration": value},
+        ),
+    )
+
+    assert _selection_noncontradiction_checks(
+        original,
+        output,
+        ["acceleration"],
+    ) == [
+        {
+            "output_key": "acceleration",
+            "solver_symbols": [],
+            "status": "not_comparable_without_explicit_alias",
+            "tolerance": None,
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    (
+        "solver_status",
+        "answer_output_key",
+        "generator_delta",
+        "message",
+    ),
+    [
+        (
+            "ambiguous",
+            "acceleration",
+            0.0,
+            "lower-level selection status",
+        ),
+        ("selected", "velocity", 0.0, "output validation status"),
+        (
+            "selected",
+            "acceleration",
+            1.0,
+            "contradicts output validation",
+        ),
+    ],
+)
+def test_solver_and_output_selection_must_not_contradict(
+    solver_status,
+    answer_output_key,
+    generator_delta,
+    message,
+):
+    case = _suite().by_id["p49.incline.001"]
+    canonical = build_product_canonical(case)
+    value = float(case.expected_outputs[0].numeric)
+    generator_candidate = CandidateSolution(
+        candidate_id="generator-candidate-0",
+        symbolic_mapping={"a": value + generator_delta},
+        numerical_mapping={"a": value + generator_delta},
+    )
+    original = SelectionDecision(
+        status=solver_status,
+        selected_candidate=(
+            generator_candidate if solver_status == "selected" else None
+        ),
+        valid_alternatives=(
+            [generator_candidate] if solver_status == "ambiguous" else []
+        ),
+        selection_policy="generator-explicit-constraints",
+    )
+    result = SolverResult(
+        ok=True,
+        answer=Answer(
+            numeric=value,
+            unit="m/s²",
+            output_key=answer_output_key,
+        ),
+        selection_decision=original,
+    )
+
+    with pytest.raises(Phase49RunError, match=message):
+        _solve_validated(canonical, _ContradictingSelectionSolver(result))
+    assert result.selection_decision is original
 
 
 def test_direct_only_disagreement_fails_case_and_strict_suite():

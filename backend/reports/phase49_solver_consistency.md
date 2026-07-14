@@ -4,7 +4,10 @@
 - Oracle version: phase49-oracle-v1
 - Benchmark version: phase49-benchmark-v1
 - Metamorphic version: phase49-metamorphic-v1
+- Report schema: 2
+- Report version: phase49-solver-consistency-report-v2
 - Tolerance policy: phase48-tolerance-policy-v1
+- Semantic selection evidence: p47_output_validation
 - Oracle fixture SHA-256: 9d9d26ecf70340cd7345b06c5e92ceb39d8fde429494368054e57883e6822484
 - Metamorphic fixture SHA-256: f141686129eb888207fdb8d947e1388fa07293333f63f9cf82221f49e55f6591
 - Offline only; student answers are never overwritten.

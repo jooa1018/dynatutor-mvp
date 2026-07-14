@@ -18,7 +18,8 @@ phase.
 - Oracle: `phase49-oracle-v1`
 - Benchmark: `phase49-benchmark-v1`
 - Metamorphic relations: `phase49-metamorphic-v1`
-- Report: `phase49-solver-consistency-report-v1`
+- Report schema: 2
+- Report: `phase49-solver-consistency-report-v2`
 - Tolerance policy: `phase48-tolerance-policy-v1`
 - Oracle raw SHA-256:
   `9d9d26ecf70340cd7345b06c5e92ceb39d8fde429494368054e57883e6822484`
@@ -41,9 +42,26 @@ Every fixed case executes this actual product path:
 `CanonicalProblem`
 → declared `SolverRegistry` solver
 → `solve_candidates`
-→ Phase 47 candidate validation/selection
+→ preserve the lower-level solver/generator selection summary
+→ Phase 47 output validation from actual `Answer.output_key` /
+  `AnswerItem.output_key` provenance
 → Phase 48 `verify_result`
 → typed `observation_from_solver_result`
+
+The lower-level decision and output-validation decision are retained as
+separate evidence. A present lower-level decision must already be `selected`,
+and the output-validation decision must also be `selected`; neither failure can
+be promoted by the other. The output-validation decision is installed as the
+semantic `SolverResult.selection_decision` before the consistency core reads
+roots, so the core still checks every selected root against the typed
+`Answer`/`AnswerItem` value. The report records both statuses, the preserved
+solver/generator summary, and
+`semantic_selection_evidence_source=p47_output_validation`.
+Where the central `REQUESTED_OUTPUT_SYMBOLS` contract declares an unambiguous
+symbol-to-semantic alias within the requested output set, the runner also
+requires the lower-level selected value to agree with the output-validation
+value under the Phase 48 tolerance policy. It does not infer aliases from
+symbolic/display text or accept an undeclared numeric coincidence.
 
 The Phase 48 result is retained as the prerequisite `product_verified`
 evidence. The same canonical inputs then execute

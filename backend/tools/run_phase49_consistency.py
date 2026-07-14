@@ -23,9 +23,9 @@ if str(BACKEND_ROOT) not in sys.path:
 from engine.capabilities.loader import load_capability_matrix
 from engine.model_builder import build_physical_model
 from engine.models import CanonicalProblem, Quantity, SolverResult, VerificationReport
+from engine.physics_core.answer_validators import REQUESTED_OUTPUT_SYMBOLS
 from engine.physics_core.validators import (
     ValidationContext,
-    validate_and_select,
     validate_output_candidates,
 )
 from engine.services import solve_problem
@@ -58,8 +58,24 @@ from engine.verification.types import (
 )
 
 
-REPORT_SCHEMA_VERSION = 1
-REPORT_VERSION = "phase49-solver-consistency-report-v1"
+REPORT_SCHEMA_VERSION = 2
+REPORT_VERSION = "phase49-solver-consistency-report-v2"
+SEMANTIC_SELECTION_EVIDENCE_SOURCE = "p47_output_validation"
+SELECTION_EVIDENCE_CONTRACT = {
+    "output_selection_status": "selected output decision required",
+    "semantic_selection_evidence_source": (
+        SEMANTIC_SELECTION_EVIDENCE_SOURCE
+    ),
+    "solver_selection_evidence": (
+        "preserved lower-level solver/generator decision summary"
+    ),
+    "solver_selection_status": (
+        "missing or selected; a present non-selected decision fails closed"
+    ),
+    "value_noncontradiction": (
+        "centrally declared unambiguous symbol aliases must match"
+    ),
+}
 FIXTURE_SHA256 = {
     "phase49_dynamics_oracles_v1.json": (
         "9d9d26ecf70340cd7345b06c5e92ceb39d8fde429494368054e57883e6822484"
@@ -97,6 +113,10 @@ class ProductExecution:
     observation: SolverPathObservation
     solver_id: str
     selection_status: str
+    solver_selection_status: str
+    output_selection_status: str
+    semantic_selection_evidence_source: str
+    solver_selection_evidence: Mapping[str, Any] | None
 
 
 def _finite(value: Any, name: str) -> float:
@@ -322,10 +342,143 @@ def _declared_solver(
     return solver
 
 
+def _selection_evidence_summary(
+    decision: Any | None,
+) -> dict[str, Any] | None:
+    """Snapshot lower-level selection provenance before output validation."""
+
+    if decision is None:
+        return None
+    selected = getattr(decision, "selected_candidate", None)
+    numerical_mapping = getattr(selected, "numerical_mapping", None)
+    mapping_keys = (
+        sorted(str(key) for key in numerical_mapping)
+        if isinstance(numerical_mapping, Mapping)
+        else []
+    )
+    candidate_id = getattr(selected, "candidate_id", None)
+    return {
+        "status": str(getattr(decision, "status", "missing")),
+        "selection_policy": getattr(decision, "selection_policy", None),
+        "policy_version": getattr(decision, "policy_version", None),
+        "selected_candidate_id": (
+            str(candidate_id) if candidate_id is not None else None
+        ),
+        "selected_candidate_mapping_keys": mapping_keys,
+    }
+
+
+def _selection_noncontradiction_checks(
+    original: Any | None,
+    output: Any,
+    requested_outputs: Sequence[str],
+) -> list[dict[str, Any]]:
+    """Cross-check only centrally declared symbol-to-semantic aliases."""
+
+    if original is None:
+        return []
+    original_candidate = getattr(original, "selected_candidate", None)
+    output_candidate = getattr(output, "selected_candidate", None)
+    if original_candidate is None or output_candidate is None:
+        raise Phase49RunError(
+            "selected decisions must retain both selected candidates"
+        )
+    original_mapping = getattr(original_candidate, "numerical_mapping", None)
+    output_mapping = getattr(output_candidate, "numerical_mapping", None)
+    if not isinstance(original_mapping, Mapping) or not isinstance(
+        output_mapping, Mapping
+    ):
+        raise Phase49RunError(
+            "selected decisions must retain numerical mappings"
+        )
+
+    original_by_symbol: dict[str, Any] = {}
+    for raw_symbol, value in original_mapping.items():
+        symbol = str(raw_symbol)
+        if symbol in original_by_symbol:
+            raise Phase49RunError(
+                f"lower-level selection has duplicate symbol {symbol!r}"
+            )
+        original_by_symbol[symbol] = value
+
+    semantic_keys = tuple(
+        str(key) for key in requested_outputs if str(key) != "auto"
+    )
+    checks: list[dict[str, Any]] = []
+    for output_key in semantic_keys:
+        if output_key not in output_mapping:
+            raise Phase49RunError(
+                f"output selection lacks explicit value for {output_key}"
+            )
+        explicit_aliases = REQUESTED_OUTPUT_SYMBOLS.get(output_key, set())
+        matched_symbols = []
+        for symbol in sorted(explicit_aliases & set(original_by_symbol)):
+            owners = {
+                key
+                for key in semantic_keys
+                if symbol in REQUESTED_OUTPUT_SYMBOLS.get(key, set())
+            }
+            if owners == {output_key}:
+                matched_symbols.append(symbol)
+        if not matched_symbols:
+            checks.append(
+                {
+                    "output_key": output_key,
+                    "solver_symbols": [],
+                    "status": "not_comparable_without_explicit_alias",
+                    "tolerance": None,
+                }
+            )
+            continue
+
+        semantic_value = _finite(
+            output_mapping[output_key],
+            f"output selection {output_key}",
+        )
+        solver_values = [
+            (
+                symbol,
+                _finite(
+                    original_by_symbol[symbol],
+                    f"lower-level selection {symbol}",
+                ),
+            )
+            for symbol in matched_symbols
+        ]
+        scale = max(
+            abs(semantic_value),
+            *(abs(value) for _, value in solver_values),
+            1.0,
+        )
+        tolerance = DEFAULT_TOLERANCE_POLICY.tolerance(
+            "absolute", scale=scale
+        )
+        for symbol, solver_value in solver_values:
+            if abs(solver_value - semantic_value) > tolerance:
+                raise Phase49RunError(
+                    f"lower-level selection {symbol} contradicts "
+                    f"output validation {output_key}"
+                )
+        checks.append(
+            {
+                "output_key": output_key,
+                "solver_symbols": matched_symbols,
+                "status": "matched",
+                "tolerance": tolerance,
+            }
+        )
+    return checks
+
+
 def _solve_validated(
     canonical: CanonicalProblem,
     solver: Any,
-) -> tuple[SolverResult, str]:
+) -> tuple[
+    SolverResult,
+    str,
+    str,
+    dict[str, Any] | None,
+]:
     model = build_physical_model(canonical)
     batch = (
         solver.solve_candidates(canonical, model)
@@ -338,33 +491,50 @@ def _solve_validated(
         selection_policy=f"{solver.name}:validated-candidate",
     )
     original = result.selection_decision
-    output = (
-        validate_output_candidates(batch.candidates, context)
-        if original is not None
-        else validate_and_select(batch.candidates, context)
-    )
-    if (
-        original is None
-        or (original.status == "selected" and output.status != "selected")
-    ):
-        result.selection_decision = output
-    status = str(getattr(result.selection_decision, "status", "missing"))
+    solver_evidence = _selection_evidence_summary(original)
+    solver_status = str(getattr(original, "status", "missing"))
     if not result.ok:
         raise Phase49RunError(
             f"{solver.name} failed: "
             f"{result.unsupported_reason or result.verification.errors}"
         )
-    if status != "selected":
+    if original is not None and solver_status != "selected":
         raise Phase49RunError(
-            f"{solver.name} candidate validation status is {status}"
+            f"{solver.name} lower-level selection status is {solver_status}"
         )
+
+    # This second decision is built exclusively from the actual solver batch.
+    # candidate_from_solver_result records only explicit Answer/AnswerItem
+    # provenance, so requested_outputs cannot manufacture a semantic root.
+    output = validate_output_candidates(batch.candidates, context)
+    output_status = str(getattr(output, "status", "missing"))
+    if output_status != "selected":
+        raise Phase49RunError(
+            f"{solver.name} output validation status is {output_status}"
+        )
+    semantic_checks = _selection_noncontradiction_checks(
+        original,
+        output,
+        canonical.requested_outputs,
+    )
+    if solver_evidence is not None:
+        solver_evidence["semantic_value_checks"] = semantic_checks
+    # Preserve the lower-level diagnostics for Phase 48 exactly as the product
+    # path does. Solvers without a lower-level decision use the validated output
+    # decision for that prerequisite.
+    if original is None:
+        result.selection_decision = output
     phase48 = verify_result(canonical, result, solver_id=solver.name)
     result.verification = merge_reports(result.verification, phase48)
     if not result.verification.passed:
         raise Phase49RunError(
             f"{solver.name} failed Phase 48 verification"
         )
-    return result, status
+    # observation_from_solver_result validates these semantic roots against the
+    # typed Answer/AnswerItems. The lower-level solver decision remains in the
+    # immutable summary returned alongside the result.
+    result.selection_decision = output
+    return result, solver_status, output_status, solver_evidence
 
 
 def run_product_case(
@@ -376,7 +546,12 @@ def run_product_case(
     canonical = build_product_canonical(case, options=options)
     registry = SolverRegistry()
     solver = _declared_solver(registry, case, canonical)
-    result, status = _solve_validated(canonical, solver)
+    (
+        result,
+        solver_status,
+        output_status,
+        solver_evidence,
+    ) = _solve_validated(canonical, solver)
     observation = observation_from_solver_result(
         result,
         canonical=canonical,
@@ -385,12 +560,29 @@ def run_product_case(
         solver_id=case.solver_id,
         policy=policy,
     )
+    observation = replace(
+        observation,
+        metadata={
+            **dict(observation.metadata),
+            "semantic_selection_evidence_source": (
+                SEMANTIC_SELECTION_EVIDENCE_SOURCE
+            ),
+            "solver_selection_status": solver_status,
+            "output_selection_status": output_status,
+        },
+    )
     return ProductExecution(
         canonical=canonical,
         result=result,
         observation=observation,
         solver_id=solver.name,
-        selection_status=status,
+        selection_status=output_status,
+        solver_selection_status=solver_status,
+        output_selection_status=output_status,
+        semantic_selection_evidence_source=(
+            SEMANTIC_SELECTION_EVIDENCE_SOURCE
+        ),
+        solver_selection_evidence=solver_evidence,
     )
 
 
@@ -600,6 +792,26 @@ def _assert_three_way_matches_explicit_legs(
         )
 
 
+def _product_selection_evidence(
+    product_execution: ProductExecution,
+) -> dict[str, Any]:
+    return {
+        "selection_status": product_execution.selection_status,
+        "solver_selection_status": (
+            product_execution.solver_selection_status
+        ),
+        "output_selection_status": (
+            product_execution.output_selection_status
+        ),
+        "semantic_selection_evidence_source": (
+            product_execution.semantic_selection_evidence_source
+        ),
+        "solver_selection_evidence": deepcopy(
+            product_execution.solver_selection_evidence
+        ),
+    }
+
+
 def _case_evidence_from_paths(
     case: OracleCase,
     product_execution: ProductExecution,
@@ -639,7 +851,7 @@ def _case_evidence_from_paths(
         "family": case.family,
         "solver_id": case.solver_id,
         "passed": bool(product_verification.passed and three_way.passed),
-        "selection_status": product_execution.selection_status,
+        **_product_selection_evidence(product_execution),
         "product_verified": bool(product_verification.passed),
         "product_verification": {
             "passed": bool(product_verification.passed),
@@ -982,7 +1194,7 @@ def _transformed_path_evidence(
             and expected_disagreements_observed
         ),
         "product_verified": bool(verification.passed),
-        "selection_status": product_execution.selection_status,
+        **_product_selection_evidence(product_execution),
         "explicit_legs": {
             "oracle_product": _payload(oracle_product),
             "oracle_secondary": _payload(oracle_secondary),
@@ -1570,6 +1782,9 @@ def run_suite(
         "relation_version": metamorphic["relation_version"],
         "policy_version": policy.policy_version,
         "fixture_sha256": fixture_sha256,
+        "selection_evidence_contract": deepcopy(
+            SELECTION_EVIDENCE_CONTRACT
+        ),
         "offline_only": True,
         "student_answer_overwrite": False,
         "path_roles": _path_roles_payload(),
@@ -1654,6 +1869,9 @@ def build_implemented_not_executed_report(
         "relation_version": metamorphic["relation_version"],
         "policy_version": DEFAULT_TOLERANCE_POLICY.policy_version,
         "fixture_sha256": fixture_sha256,
+        "selection_evidence_contract": deepcopy(
+            SELECTION_EVIDENCE_CONTRACT
+        ),
         "offline_only": True,
         "student_answer_overwrite": False,
         "path_roles": _path_roles_payload(),
@@ -1726,7 +1944,13 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- Oracle version: {report['oracle_version']}",
         f"- Benchmark version: {report['benchmark_version']}",
         f"- Metamorphic version: {report['relation_version']}",
+        f"- Report schema: {report['schema_version']}",
+        f"- Report version: {report['report_version']}",
         f"- Tolerance policy: {report['policy_version']}",
+        "- Semantic selection evidence: "
+        + report["selection_evidence_contract"][
+            "semantic_selection_evidence_source"
+        ],
         "- Oracle fixture SHA-256: "
         + report["fixture_sha256"]["phase49_dynamics_oracles_v1.json"],
         "- Metamorphic fixture SHA-256: "

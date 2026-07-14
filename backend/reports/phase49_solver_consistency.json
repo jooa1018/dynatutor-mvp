@@ -512,8 +512,15 @@
   },
   "policy_version": "phase48-tolerance-policy-v1",
   "relation_version": "phase49-metamorphic-v1",
-  "report_version": "phase49-solver-consistency-report-v1",
-  "schema_version": 1,
+  "report_version": "phase49-solver-consistency-report-v2",
+  "schema_version": 2,
+  "selection_evidence_contract": {
+    "output_selection_status": "selected output decision required",
+    "semantic_selection_evidence_source": "p47_output_validation",
+    "solver_selection_evidence": "preserved lower-level solver/generator decision summary",
+    "solver_selection_status": "missing or selected; a present non-selected decision fails closed",
+    "value_noncontradiction": "centrally declared unambiguous symbol aliases must match"
+  },
   "status": "implemented_not_executed",
   "student_answer_overwrite": false,
   "summary": {

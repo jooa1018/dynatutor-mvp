@@ -8,6 +8,7 @@ from tools.run_phase49_consistency import (
     DEFAULT_JSON_REPORT,
     DEFAULT_MARKDOWN_REPORT,
     FIXTURE_SHA256,
+    SEMANTIC_SELECTION_EVIDENCE_SOURCE,
     build_implemented_not_executed_report,
     render_json,
     render_markdown,
@@ -56,6 +57,12 @@ def test_full_phase49_suite_retains_all_five_fixed_case_counts(
     assert not report["disagreements"]
 
     assert all(item["product_verified"] for item in report["cases"])
+    assert all(
+        item["output_selection_status"] == "selected"
+        and item["semantic_selection_evidence_source"]
+        == SEMANTIC_SELECTION_EVIDENCE_SOURCE
+        for item in report["cases"]
+    )
     assert all(item["three_way"]["passed"] for item in report["cases"])
     assert all(
         set(item["three_way"]["legs"])
@@ -71,7 +78,14 @@ def test_full_phase49_suite_retains_all_five_fixed_case_counts(
     first_json = render_json(report)
     assert first_json == render_json(report)
     parsed = json.loads(first_json)
+    assert parsed["schema_version"] == 2
+    assert parsed["report_version"] == (
+        "phase49-solver-consistency-report-v2"
+    )
     assert parsed["policy_version"] == "phase48-tolerance-policy-v1"
+    assert parsed["selection_evidence_contract"][
+        "semantic_selection_evidence_source"
+    ] == SEMANTIC_SELECTION_EVIDENCE_SOURCE
     assert "Product-secondary direct legs" in render_markdown(report)
 
     json_path = tmp_path / "phase49.json"
