@@ -1,0 +1,2905 @@
+{
+  "schema_version": 2,
+  "oracle_version": "phase49-oracle-v1",
+  "benchmark_version": "phase49-benchmark-v1",
+  "policy_version": "phase48-tolerance-policy-v1",
+  "cases": [
+    {
+      "oracle_id": "p49.incline.001",
+      "family": "incline",
+      "problem": "A particle slides down a frictionless 12 degree incline; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 12,
+        "friction_mode": "frictionless"
+      },
+      "solver_id": "incline_no_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 2.039613686922219,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "frictionless",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.039613686922219
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*sin(12 deg)=2.039613686922219.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.002",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 18 degree incline with kinetic coefficient 0.05; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 18,
+        "friction_mode": "kinetic",
+        "mu_k": 0.05
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 2.5649634935754615,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.5649634935754615
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(18 deg)-0.05*cos(18 deg))=2.5649634935754615. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.003",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 25 degree incline with kinetic coefficient 0.12; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 25,
+        "friction_mode": "kinetic",
+        "mu_k": 0.12
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.0789796207767175,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.0789796207767175
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(25 deg)-0.12*cos(25 deg))=3.0789796207767175. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.004",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 30 degree incline with kinetic coefficient 0.2; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 30,
+        "friction_mode": "kinetic",
+        "mu_k": 0.2
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.205858157774931,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.205858157774931
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(30 deg)-0.2*cos(30 deg))=3.205858157774931. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.005",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 35 degree incline with kinetic coefficient 0.3; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 35,
+        "friction_mode": "kinetic",
+        "mu_k": 0.3
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.216020374261259,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.216020374261259
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(35 deg)-0.3*cos(35 deg))=3.216020374261259. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.006",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 40 degree incline with kinetic coefficient 0.1; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 40,
+        "friction_mode": "kinetic",
+        "mu_k": 0.1
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 5.554256852325232,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            5.554256852325232
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(40 deg)-0.1*cos(40 deg))=5.554256852325232. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.007",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 45 degree incline with kinetic coefficient 0.45; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 45,
+        "friction_mode": "kinetic",
+        "mu_k": 0.45
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.8151946378920165,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.8151946378920165
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(45 deg)-0.45*cos(45 deg))=3.8151946378920165. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.008",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 50 degree incline with kinetic coefficient 0.6; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 50,
+        "friction_mode": "kinetic",
+        "mu_k": 0.6
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.7314481163822038,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.7314481163822038
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(50 deg)-0.6*cos(50 deg))=3.7314481163822038. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.009",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 8 degree incline with kinetic coefficient 0.12; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 8,
+        "friction_mode": "kinetic",
+        "mu_k": 0.12
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 0.19954454989566534,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.19954454989566534
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(8 deg)-0.12*cos(8 deg))=0.19954454989566534. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.incline.010",
+      "family": "incline",
+      "problem": "A particle is already sliding down a 20 degree incline with kinetic coefficient 0.3638; find signed down-slope acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "gravity": 9.81,
+        "angle_deg": 20,
+        "friction_mode": "kinetic",
+        "mu_k": 0.3638
+      },
+      "solver_id": "incline_with_friction",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 0.001569284939638696,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "incline_tangent",
+          "positive_direction": "down_slope",
+          "assumptions": [
+            "kinetic_friction",
+            "constant_gravity",
+            "particle_model"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.001569284939638696
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_tangent"
+          ]
+        }
+      ],
+      "source": "Hand derivation from Newton's second law resolved along an incline.",
+      "derivation": "a=9.81*(sin(20 deg)-0.3638*cos(20 deg))=0.001569284939638696. Known kinetic motion makes the regime determinate.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.001",
+      "family": "pulley",
+      "problem": "An ideal Atwood pair has m1=1 kg and m2=3 kg; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 1,
+        "m2": 3,
+        "gravity": 9.81
+      },
+      "solver_id": "pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 4.905,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "massless_pulley",
+            "frictionless_axle"
+          ],
+          "root_count": 1,
+          "root_values": [
+            4.905
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=4.905, with I/R^2=0; independently derived auxiliary tensions T1=14.715, T2=14.715 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.002",
+      "family": "pulley",
+      "problem": "An ideal Atwood pair has m1=2 kg and m2=5 kg; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 2,
+        "m2": 5,
+        "gravity": 9.81
+      },
+      "solver_id": "pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 4.204285714285715,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "massless_pulley",
+            "frictionless_axle"
+          ],
+          "root_count": 1,
+          "root_values": [
+            4.204285714285715
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=4.204285714285715, with I/R^2=0; independently derived auxiliary tensions T1=28.028571428571432, T2=28.02857142857143 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.003",
+      "family": "pulley",
+      "problem": "An ideal Atwood pair has m1=4 kg and m2=7 kg; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 4,
+        "m2": 7,
+        "gravity": 9.81
+      },
+      "solver_id": "pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 2.6754545454545453,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "massless_pulley",
+            "frictionless_axle"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.6754545454545453
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=2.6754545454545453, with I/R^2=0; independently derived auxiliary tensions T1=49.941818181818185, T2=49.941818181818185 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.004",
+      "family": "pulley",
+      "problem": "An ideal Atwood pair has m1=1.9 kg and m2=2 kg; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 1.9,
+        "m2": 2,
+        "gravity": 9.81
+      },
+      "solver_id": "pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 0.25153846153846177,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "massless_pulley",
+            "frictionless_axle"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.25153846153846177
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=0.25153846153846177, with I/R^2=0; independently derived auxiliary tensions T1=19.11692307692308, T2=19.116923076923076 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.005",
+      "family": "pulley",
+      "problem": "An Atwood pair m1=2 kg, m2=6 kg drives a pulley with I=0.18 kg*m^2 and R=0.3 m; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 2,
+        "m2": 6,
+        "gravity": 9.81,
+        "pulley_inertia": 0.18,
+        "pulley_radius": 0.3
+      },
+      "solver_id": "massive_pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.9240000000000004,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "no_slip",
+            "frictionless_axle",
+            "rigid_pulley"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.9240000000000004
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=3.9240000000000004, with I/R^2=2; independently derived auxiliary tensions T1=27.468000000000004, T2=35.316 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.006",
+      "family": "pulley",
+      "problem": "An Atwood pair m1=3 kg, m2=8 kg drives a pulley with I=0.5 kg*m^2 and R=0.25 m; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 3,
+        "m2": 8,
+        "gravity": 9.81,
+        "pulley_inertia": 0.5,
+        "pulley_radius": 0.25
+      },
+      "solver_id": "massive_pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 2.5815789473684214,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "no_slip",
+            "frictionless_axle",
+            "rigid_pulley"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.5815789473684214
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=2.5815789473684214, with I/R^2=8; independently derived auxiliary tensions T1=37.17473684210527, T2=57.82736842105263 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.007",
+      "family": "pulley",
+      "problem": "An Atwood pair m1=5 kg, m2=9 kg drives a pulley with I=0.32 kg*m^2 and R=0.2 m; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 5,
+        "m2": 9,
+        "gravity": 9.81,
+        "pulley_inertia": 0.32,
+        "pulley_radius": 0.2
+      },
+      "solver_id": "massive_pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 1.7836363636363637,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "no_slip",
+            "frictionless_axle",
+            "rigid_pulley"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1.7836363636363637
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=1.7836363636363637, with I/R^2=7.999999999999998; independently derived auxiliary tensions T1=57.96818181818182, T2=72.23727272727274 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.008",
+      "family": "pulley",
+      "problem": "An Atwood pair m1=2 kg, m2=4 kg drives a pulley with I=0.08 kg*m^2 and R=0.1 m; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 2,
+        "m2": 4,
+        "gravity": 9.81,
+        "pulley_inertia": 0.08,
+        "pulley_radius": 0.1
+      },
+      "solver_id": "massive_pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 1.4014285714285717,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "no_slip",
+            "frictionless_axle",
+            "rigid_pulley"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1.4014285714285717
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=1.4014285714285717, with I/R^2=7.999999999999998; independently derived auxiliary tensions T1=22.422857142857143, T2=33.63428571428572 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.009",
+      "family": "pulley",
+      "problem": "An Atwood pair m1=7 kg, m2=7.2 kg drives a pulley with I=0.45 kg*m^2 and R=0.3 m; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 7,
+        "m2": 7.2,
+        "gravity": 9.81,
+        "pulley_inertia": 0.45,
+        "pulley_radius": 0.3
+      },
+      "solver_id": "massive_pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 0.1021875000000001,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "no_slip",
+            "frictionless_axle",
+            "rigid_pulley"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.1021875000000001
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=0.1021875000000001, with I/R^2=5; independently derived auxiliary tensions T1=69.3853125, T2=69.89625000000001 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.pulley.010",
+      "family": "pulley",
+      "problem": "An Atwood pair m1=1.5 kg, m2=5.5 kg drives a pulley with I=0.12 kg*m^2 and R=0.2 m; find acceleration positive with m2 down.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 1.5,
+        "m2": 5.5,
+        "gravity": 9.81,
+        "pulley_inertia": 0.12,
+        "pulley_radius": 0.2
+      },
+      "solver_id": "massive_pulley_atwood",
+      "expected_outputs": [
+        {
+          "output_key": "acceleration",
+          "numeric": 3.9240000000000004,
+          "unit": "m/s^2",
+          "sign": "positive",
+          "frame": "pulley_string",
+          "positive_direction": "mass2_down",
+          "assumptions": [
+            "massless_string",
+            "no_slip",
+            "frictionless_axle",
+            "rigid_pulley"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.9240000000000004
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "newton_second_law_string_system"
+          ]
+        }
+      ],
+      "source": "Hand derivation from two body force balances and, when applicable, pulley torque balance.",
+      "derivation": "a=(m2-m1)*9.81/(m1+m2+I/R^2)=3.9240000000000004, with I/R^2=2.999999999999999; independently derived auxiliary tensions T1=20.601000000000003, T2=32.373 N are provenance notes, not eligible outputs.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.001",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=1 kg, m2=1 kg, u1=3 m/s, u2=-1 m/s and restitution 1; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 1,
+        "m2": 1,
+        "v1_before": 3,
+        "v2_before": -1,
+        "restitution": 1
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -1,
+          "unit": "m/s",
+          "sign": "negative",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -1
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 3,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=2 and v2-v1=4 to obtain v1=-1, v2=3.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.002",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=2 kg, m2=1 kg, u1=4 m/s, u2=0 m/s and restitution 0.5; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 2,
+        "m2": 1,
+        "v1_before": 4,
+        "v2_before": 0,
+        "restitution": 0.5
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": 2,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 4,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            4
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=8 and v2-v1=2 to obtain v1=2, v2=4.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.003",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=1 kg, m2=3 kg, u1=5 m/s, u2=-2 m/s and restitution 0.8; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 1,
+        "m2": 3,
+        "v1_before": 5,
+        "v2_before": -2,
+        "restitution": 0.8
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -4.450000000000001,
+          "unit": "m/s",
+          "sign": "negative",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -4.450000000000001
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 1.1500000000000001,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1.1500000000000001
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=-1 and v2-v1=5.6000000000000005 to obtain v1=-4.450000000000001, v2=1.1500000000000001.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.004",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=4 kg, m2=2 kg, u1=3 m/s, u2=-1 m/s and restitution 1; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 4,
+        "m2": 2,
+        "v1_before": 3,
+        "v2_before": -1,
+        "restitution": 1
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": 0.3333333333333333,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.3333333333333333
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 4.333333333333333,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            4.333333333333333
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=10 and v2-v1=4 to obtain v1=0.3333333333333333, v2=4.333333333333333.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.005",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=2.5 kg, m2=1.5 kg, u1=2 m/s, u2=-4 m/s and restitution 0; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 2.5,
+        "m2": 1.5,
+        "v1_before": 2,
+        "v2_before": -4,
+        "restitution": 0
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -0.25,
+          "unit": "m/s",
+          "sign": "negative",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -0.25
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": -0.25,
+          "unit": "m/s",
+          "sign": "negative",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -0.25
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=-1 and v2-v1=0 to obtain v1=-0.25, v2=-0.25.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.006",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=5 kg, m2=2 kg, u1=3 m/s, u2=1.5 m/s and restitution 0.6; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 5,
+        "m2": 2,
+        "v1_before": 3,
+        "v2_before": 1.5,
+        "restitution": 0.6
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": 2.314285714285714,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.314285714285714
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 3.2142857142857144,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.2142857142857144
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=18 and v2-v1=0.8999999999999999 to obtain v1=2.314285714285714, v2=3.2142857142857144.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.007",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=0.5 kg, m2=2 kg, u1=8 m/s, u2=-1 m/s and restitution 0.9; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 0.5,
+        "m2": 2,
+        "v1_before": 8,
+        "v2_before": -1,
+        "restitution": 0.9
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -5.68,
+          "unit": "m/s",
+          "sign": "negative",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -5.68
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 2.42,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.42
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=2 and v2-v1=8.1 to obtain v1=-5.68, v2=2.42.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.008",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=3 kg, m2=7 kg, u1=-2 m/s, u2=-5 m/s and restitution 0.3; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 3,
+        "m2": 7,
+        "v1_before": -2,
+        "v2_before": -5,
+        "restitution": 0.3
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": -4.7299999999999995,
+          "unit": "m/s",
+          "sign": "negative",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -4.7299999999999995
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": -3.8299999999999996,
+          "unit": "m/s",
+          "sign": "negative",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -3.8299999999999996
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=-41 and v2-v1=0.8999999999999999 to obtain v1=-4.7299999999999995, v2=-3.8299999999999996.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.009",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=6 kg, m2=1 kg, u1=10 m/s, u2=0 m/s and restitution 0.75; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 6,
+        "m2": 1,
+        "v1_before": 10,
+        "v2_before": 0,
+        "restitution": 0.75
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": 7.5,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            7.5
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 15,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            15
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=60 and v2-v1=7.5 to obtain v1=7.5, v2=15.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.collision.010",
+      "family": "collision",
+      "problem": "A closing 1D collision has m1=2 kg, m2=5 kg, u1=6 m/s, u2=1 m/s and restitution 0.05; find both signed final velocities.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "m1": 2,
+        "m2": 5,
+        "v1_before": 6,
+        "v2_before": 1,
+        "restitution": 0.05
+      },
+      "solver_id": "collision_1d",
+      "expected_outputs": [
+        {
+          "output_key": "v1_after",
+          "numeric": 2.25,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.25
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        },
+        {
+          "output_key": "v2_after",
+          "numeric": 2.5,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "one_dimensional_lab",
+          "positive_direction": "right",
+          "assumptions": [
+            "one_dimensional_impact",
+            "isolated_during_impact",
+            "newton_restitution"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.5
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "linear_momentum_conservation",
+            "coefficient_of_restitution"
+          ]
+        }
+      ],
+      "source": "Hand solution of independent linear momentum conservation and Newton restitution equations.",
+      "derivation": "Solve m1*v1+m2*v2=17 and v2-v1=0.25 to obtain v1=2.25, v2=2.5.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.001",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.4 and R=0.1 m starts from rest and pure-rolls through height 0.5 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 0.5,
+        "gravity": 9.81,
+        "inertia_factor": 0.4,
+        "radius": 0.1
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 2.647100840002673,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.647100840002673
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*0.5/(1+0.4))=2.647100840002673; auxiliary omega=v/R=26.47100840002673 rad/s and I for m=1 kg is 0.004000000000000001 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.002",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.5 and R=0.2 m starts from rest and pure-rolls through height 1.2 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 1.2,
+        "gravity": 9.81,
+        "inertia_factor": 0.5,
+        "radius": 0.2
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.9618177646126025,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.9618177646126025
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*1.2/(1+0.5))=3.9618177646126025; auxiliary omega=v/R=19.80908882306301 rad/s and I for m=1 kg is 0.020000000000000004 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.003",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.4 and R=0.15 m starts from rest and pure-rolls through height 0.75 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 0.75,
+        "gravity": 9.81,
+        "inertia_factor": 0.4,
+        "radius": 0.15
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.2420231778496413,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.2420231778496413
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*0.75/(1+0.4))=3.2420231778496413; auxiliary omega=v/R=21.613487852330945 rad/s and I for m=1 kg is 0.009 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.004",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.6666666666666666 and R=0.3 m starts from rest and pure-rolls through height 2 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 2,
+        "gravity": 9.81,
+        "inertia_factor": 0.6666666666666666,
+        "radius": 0.3
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 4.852215988597376,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            4.852215988597376
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*2/(1+0.6666666666666666))=4.852215988597376; auxiliary omega=v/R=16.174053295324587 rad/s and I for m=1 kg is 0.05999999999999999 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.005",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.4 and R=0.025 m starts from rest and pure-rolls through height 0.08 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 0.08,
+        "gravity": 9.81,
+        "inertia_factor": 0.4,
+        "radius": 0.025
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 1.0588403360010692,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1.0588403360010692
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*0.08/(1+0.4))=1.0588403360010692; auxiliary omega=v/R=42.353613440042764 rad/s and I for m=1 kg is 0.00025000000000000006 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.006",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=1 and R=0.12 m starts from rest and pure-rolls through height 0.3 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 0.3,
+        "gravity": 9.81,
+        "inertia_factor": 1,
+        "radius": 0.12
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 1.7155174146594956,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1.7155174146594956
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*0.3/(1+1))=1.7155174146594956; auxiliary omega=v/R=14.295978455495797 rad/s and I for m=1 kg is 0.0144 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.007",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.25 and R=0.08 m starts from rest and pure-rolls through height 1.8 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 1.8,
+        "gravity": 9.81,
+        "inertia_factor": 0.25,
+        "radius": 0.08
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 5.315336301684024,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            5.315336301684024
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*1.8/(1+0.25))=5.315336301684024; auxiliary omega=v/R=66.4417037710503 rad/s and I for m=1 kg is 0.0016 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.008",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.5 and R=0.05 m starts from rest and pure-rolls through height 0.01 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 0.01,
+        "gravity": 9.81,
+        "inertia_factor": 0.5,
+        "radius": 0.05
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 0.3616628264005025,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.3616628264005025
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*0.01/(1+0.5))=0.3616628264005025; auxiliary omega=v/R=7.23325652801005 rad/s and I for m=1 kg is 0.0012500000000000002 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.009",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.8 and R=0.4 m starts from rest and pure-rolls through height 3 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 3,
+        "gravity": 9.81,
+        "inertia_factor": 0.8,
+        "radius": 0.4
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 5.718391382198319,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            5.718391382198319
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*3/(1+0.8))=5.718391382198319; auxiliary omega=v/R=14.295978455495796 rad/s and I for m=1 kg is 0.12800000000000003 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.rolling.010",
+      "family": "rolling",
+      "problem": "A rigid body with I/(mR^2)=0.1 and R=0.18 m starts from rest and pure-rolls through height 0.45 m; find center speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "height": 0.45,
+        "gravity": 9.81,
+        "inertia_factor": 0.1,
+        "radius": 0.18
+      },
+      "solver_id": "rolling_energy_general",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 2.8330837679750376,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "pure_rolling",
+            "no_energy_loss",
+            "starts_from_rest"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.8330837679750376
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "mechanical_energy_conservation",
+            "pure_rolling_constraint",
+            "rigid_body_inertia_model"
+          ]
+        }
+      ],
+      "source": "Hand derivation from mechanical energy conservation, rigid-body inertia, and the no-slip constraint.",
+      "derivation": "v=sqrt(2*9.81*0.45/(1+0.1))=2.8330837679750376; auxiliary omega=v/R=15.739354266527988 rad/s and I for m=1 kg is 0.00324 kg*m^2, neither is an eligible output.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.001",
+      "family": "work_energy",
+      "problem": "A 2 kg particle begins at speed 0 m/s and receives net work 20 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 2,
+        "initial_velocity": 0,
+        "net_work": 20
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 4.47213595499958,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            4.47213595499958
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(0^2+2*(20)/2)=sqrt(20)=4.47213595499958; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.002",
+      "family": "work_energy",
+      "problem": "A 5 kg particle begins at speed 3 m/s and receives net work 10 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 5,
+        "initial_velocity": 3,
+        "net_work": 10
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.605551275463989,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.605551275463989
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(3^2+2*(10)/5)=sqrt(13)=3.605551275463989; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.003",
+      "family": "work_energy",
+      "problem": "A 2 kg particle begins at speed 5 m/s and receives net work -12 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 2,
+        "initial_velocity": 5,
+        "net_work": -12
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 3.605551275463989,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3.605551275463989
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(5^2+2*(-12)/2)=sqrt(13)=3.605551275463989; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.004",
+      "family": "work_energy",
+      "problem": "A 1 kg particle begins at speed 8 m/s and receives net work -31.5 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 1,
+        "initial_velocity": 8,
+        "net_work": -31.5
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 1,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(8^2+2*(-31.5)/1)=sqrt(1)=1; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.005",
+      "family": "work_energy",
+      "problem": "A 10 kg particle begins at speed 1 m/s and receives net work 0.5 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 10,
+        "initial_velocity": 1,
+        "net_work": 0.5
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 1.0488088481701516,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1.0488088481701516
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(1^2+2*(0.5)/10)=sqrt(1.1)=1.0488088481701516; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.006",
+      "family": "work_energy",
+      "problem": "A 4 kg particle begins at speed 12 m/s and receives net work 72 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 4,
+        "initial_velocity": 12,
+        "net_work": 72
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 13.416407864998739,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            13.416407864998739
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(12^2+2*(72)/4)=sqrt(180)=13.416407864998739; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.007",
+      "family": "work_energy",
+      "problem": "A 2 kg particle begins at speed 4 m/s and receives net work -15.96 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 2,
+        "initial_velocity": 4,
+        "net_work": -15.96
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 0.19999999999999787,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.19999999999999787
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(4^2+2*(-15.96)/2)=sqrt(0.03999999999999915)=0.19999999999999787; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.008",
+      "family": "work_energy",
+      "problem": "A 3 kg particle begins at speed 2 m/s and receives net work 48 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 3,
+        "initial_velocity": 2,
+        "net_work": 48
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 6,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            6
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(2^2+2*(48)/3)=sqrt(36)=6; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.009",
+      "family": "work_energy",
+      "problem": "A 8 kg particle begins at speed 7 m/s and receives net work -20 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 8,
+        "initial_velocity": 7,
+        "net_work": -20
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 6.6332495807108,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            6.6332495807108
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(7^2+2*(-20)/8)=sqrt(44)=6.6332495807108; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.work_energy.010",
+      "family": "work_energy",
+      "problem": "A 3 kg particle begins at speed 0.5 m/s and receives net work 0.375 J; find final speed.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "mass": 3,
+        "initial_velocity": 0.5,
+        "net_work": 0.375
+      },
+      "solver_id": "work_energy_speed",
+      "expected_outputs": [
+        {
+          "output_key": "final_velocity",
+          "numeric": 0.7071067811865476,
+          "unit": "m/s",
+          "sign": "positive",
+          "frame": "path_tangent",
+          "positive_direction": "direction_of_motion",
+          "assumptions": [
+            "particle_model",
+            "net_work_known",
+            "speed_is_nonnegative"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.7071067811865476
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "work_energy_theorem"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the scalar work-energy theorem.",
+      "derivation": "v_f=sqrt(0.5^2+2*(0.375)/3)=sqrt(0.5)=0.7071067811865476; the radicand is strictly positive.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.001",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque 6 N*m and inertia 2.5 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": 6,
+        "inertia": 2.5
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": 2.4,
+          "unit": "rad/s^2",
+          "sign": "positive",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            2.4
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=6/2.5=2.4 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.002",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque -4 N*m and inertia 1.6 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": -4,
+        "inertia": 1.6
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": -2.5,
+          "unit": "rad/s^2",
+          "sign": "negative",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -2.5
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=-4/1.6=-2.5 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.003",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque 0.75 N*m and inertia 0.25 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": 0.75,
+        "inertia": 0.25
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": 3,
+          "unit": "rad/s^2",
+          "sign": "positive",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=0.75/0.25=3 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.004",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque 18 N*m and inertia 12 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": 18,
+        "inertia": 12
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": 1.5,
+          "unit": "rad/s^2",
+          "sign": "positive",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            1.5
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=18/12=1.5 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.005",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque -0.06 N*m and inertia 0.4 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": -0.06,
+        "inertia": 0.4
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": -0.15,
+          "unit": "rad/s^2",
+          "sign": "negative",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -0.15
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=-0.06/0.4=-0.15 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.006",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque 3 N*m and inertia 1 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": 3,
+        "inertia": 1
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": 3,
+          "unit": "rad/s^2",
+          "sign": "positive",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            3
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=3/1=3 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.007",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque -4 N*m and inertia 2 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": -4,
+        "inertia": 2
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": -2,
+          "unit": "rad/s^2",
+          "sign": "negative",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -2
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=-4/2=-2 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.008",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque 3.375 N*m and inertia 0.75 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": 3.375,
+        "inertia": 0.75
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": 4.5,
+          "unit": "rad/s^2",
+          "sign": "positive",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            4.5
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=3.375/0.75=4.5 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.009",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque -30 N*m and inertia 5 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": -30,
+        "inertia": 5
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": -6,
+          "unit": "rad/s^2",
+          "sign": "negative",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            -6
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=-30/5=-6 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    },
+    {
+      "oracle_id": "p49.fixed_axis_rotation.010",
+      "family": "fixed_axis_rotation",
+      "problem": "A rigid body about a fixed axis has net torque 0.004 N*m and inertia 0.2 kg*m^2; find signed angular acceleration.",
+      "expected_outcome": "solved",
+      "expected_applicability": "applicable",
+      "canonical_inputs": {
+        "torque": 0.004,
+        "inertia": 0.2
+      },
+      "solver_id": "fixed_axis_rotation",
+      "expected_outputs": [
+        {
+          "output_key": "angular_acceleration",
+          "numeric": 0.02,
+          "unit": "rad/s^2",
+          "sign": "positive",
+          "frame": "fixed_axis",
+          "positive_direction": "counterclockwise",
+          "assumptions": [
+            "fixed_axis",
+            "constant_net_torque"
+          ],
+          "root_count": 1,
+          "root_values": [
+            0.02
+          ],
+          "multiplicity": [
+            1
+          ],
+          "ambiguity": false,
+          "equation_ids": [
+            "fixed_axis_torque_balance"
+          ]
+        }
+      ],
+      "source": "Hand derivation from the fixed-axis net torque balance.",
+      "derivation": "alpha=tau/I=0.004/0.2=0.02 rad/s^2.",
+      "independence_note": "Hand-derived expectation; not generated from current engine output. Uniqueness is enforced from family, solver_id, canonical_inputs, and semantic output keys.",
+      "provenance_kind": "independent_derivation"
+    }
+  ]
+}

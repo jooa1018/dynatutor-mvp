@@ -84,31 +84,70 @@ jobs:
           --max-rss-mb 512
 
       - name: Measure PR10 hotfix head performance
+        if: github.event_name != 'pull_request'
         run: >-
           python scripts/measure_pr10_hotfix_performance.py
-          --output /tmp/pr10-head-performance.json
+          --output "$RUNNER_TEMP/pr10-head-performance.json"
           --repeats 30
           --warmups 5
 
-      - name: Measure PR10 hotfix base performance
+      - name: Measure balanced PR10 hotfix performance rounds
         if: github.event_name == 'pull_request'
         env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git worktree add /tmp/dynatutor-pr-base "$BASE_SHA"
-          cd /tmp/dynatutor-pr-base/backend
-          python "$GITHUB_WORKSPACE/backend/scripts/measure_pr10_hotfix_performance.py" \
-            --output /tmp/pr10-base-performance.json \
-            --repeats 30 \
-            --warmups 5
+          round_dir="$RUNNER_TEMP/pr10-performance-rounds"
+          head_worktree="$RUNNER_TEMP/dynatutor-pr-head"
+          base_worktree="$RUNNER_TEMP/dynatutor-pr-base"
+          mkdir -p "$round_dir"
+          git worktree add --detach "$head_worktree" "$HEAD_SHA"
+          git worktree add --detach "$base_worktree" "$BASE_SHA"
 
-      - name: Compare PR10 hotfix performance
+          for round_number in 1 2 3 4; do
+            if (( round_number % 2 == 1 )); then
+              order=(head base)
+            else
+              order=(base head)
+            fi
+            position=1
+            for revision_label in "${order[@]}"; do
+              if [[ "$revision_label" == "head" ]]; then
+                revision_sha="$HEAD_SHA"
+                revision_worktree="$head_worktree"
+              else
+                revision_sha="$BASE_SHA"
+                revision_worktree="$base_worktree"
+              fi
+              (
+                cd "$revision_worktree/backend"
+                python "$head_worktree/backend/scripts/measure_pr10_hotfix_performance.py" \
+                  --output "$round_dir/round-${round_number}-${revision_label}.json" \
+                  --repeats 60 \
+                  --warmups 10 \
+                  --include-raw-samples \
+                  --revision-label "$revision_label" \
+                  --revision-sha "$revision_sha" \
+                  --round-number "$round_number" \
+                  --position "$position"
+              )
+              position=$((position + 1))
+            done
+          done
+
+      - name: Compare pooled PR10 hotfix performance
         if: github.event_name == 'pull_request'
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: >-
-          python scripts/measure_pr10_hotfix_performance.py
-          --compare-base /tmp/pr10-base-performance.json
-          --compare-head /tmp/pr10-head-performance.json
+          python "$RUNNER_TEMP/dynatutor-pr-head/backend/scripts/measure_pr10_hotfix_performance.py"
+          --compare-round-dir "$RUNNER_TEMP/pr10-performance-rounds"
+          --expected-rounds 4
+          --expected-head-sha "$HEAD_SHA"
+          --expected-base-sha "$BASE_SHA"
           --max-regression-percent 15
+          --output "$RUNNER_TEMP/pr10-pooled-performance.json"
 
   frontend:
     runs-on: ubuntu-latest
