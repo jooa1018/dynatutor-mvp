@@ -1,0 +1,628 @@
+from __future__ import annotations
+
+"""Fail-closed contracts for independently derived Phase 49 oracle data.
+
+This module deliberately depends only on the central tolerance policy.  It does
+not import solvers, equation generators, services, candidate selection, or
+student-result types, so expected values cannot be generated from the
+implementation under test.
+"""
+
+from dataclasses import dataclass, field
+import json
+import math
+import re
+import unicodedata
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any, Mapping, Sequence
+
+from engine.verification.policy import DEFAULT_TOLERANCE_POLICY
+
+
+ORACLE_SCHEMA_VERSION = 2
+PHASE49_FAMILIES = frozenset(
+    {
+        "incline",
+        "pulley",
+        "collision",
+        "rolling",
+        "work_energy",
+        "fixed_axis_rotation",
+    }
+)
+EXPECTED_SIGNS = frozenset(
+    {"positive", "negative", "zero", "nonnegative", "nonpositive", "any"}
+)
+INDEPENDENT_PROVENANCE = "independent_derivation"
+EXPECTED_OUTCOMES = frozenset({"solved", "ambiguous", "no_valid_solution"})
+EXPECTED_APPLICABILITIES = frozenset(
+    {"applicable", "not_applicable", "undetermined"}
+)
+
+# Compact tokens are deliberately broader than exact English phrases.  NFKC,
+# case and punctuation normalization prevents spellings such as "Dyna-Tutor",
+# "ENGINE.Output" and "solver_output" from bypassing the provenance gate.
+_FORBIDDEN_PROVENANCE_COMPACT_TOKENS = (
+    "dynatutor",
+    "currentengine",
+    "implementationoutput",
+    "productsolver",
+    "productionapi",
+    "outputsnapshot",
+    "solverbaseline",
+    "engineoutput",
+    "solveroutput",
+    "productoutput",
+    "productionoutput",
+    "apiresponse",
+    "runtimeoutput",
+    "baselineoutput",
+    "systemundertest",
+    "codeundertest",
+    "softwareundertest",
+    "programundertest",
+    "systembeingtested",
+    "codebeingtested",
+    "softwarebeingtested",
+    "programbeingtested",
+)
+_NEGATED_INDEPENDENCE_ATTESTATION = re.compile(
+    r"\b(?:not|never)\s+"
+    r"(?:generated|derived|copied|captured|taken|produced|obtained|sourced|computed)\s+"
+    r"from\s+(?:the\s+)?(?:current\s+)?"
+    r"(?:dyna[\W_]*tutor|engine|solver|implementation|product|production|api|runtime|"
+    r"s[\W_]*u[\W_]*t)"
+    r"(?:[\s._-]*(?:output|response|snapshot|baseline))?\b",
+    re.IGNORECASE,
+)
+
+
+def _provenance_compact(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    return re.sub(r"[^a-z0-9]+", "", normalized)
+
+
+def _forbidden_provenance_fragments(
+    value: str,
+    *,
+    allow_negated_attestation: bool = False,
+) -> tuple[str, ...]:
+    inspected = unicodedata.normalize("NFKC", value)
+    if allow_negated_attestation:
+        inspected = _NEGATED_INDEPENDENCE_ATTESTATION.sub("", inspected)
+    compact = _provenance_compact(inspected)
+    fragments = [
+        fragment
+        for fragment in _FORBIDDEN_PROVENANCE_COMPACT_TOKENS
+        if fragment in compact
+    ]
+    if re.search(r"\bs[\W_]*u[\W_]*t\b", inspected, re.IGNORECASE):
+        fragments.append("sut")
+    return tuple(fragments)
+
+
+class OracleContractError(ValueError):
+    """Raised when oracle evidence cannot be trusted."""
+
+
+def _nonempty(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise OracleContractError(f"{name} must be a non-empty string")
+    return value.strip()
+
+
+def _strings(value: Any, name: str, *, nonempty: bool = True) -> tuple[str, ...]:
+    if not isinstance(value, (list, tuple)):
+        raise OracleContractError(f"{name} must be a list")
+    items = tuple(_nonempty(item, name) for item in value)
+    if nonempty and not items:
+        raise OracleContractError(f"{name} must not be empty")
+    if len(items) != len(set(items)):
+        raise OracleContractError(f"{name} contains duplicate values")
+    return items
+
+
+def _finite(value: Any, name: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise OracleContractError(f"{name} must be a real number")
+    number = float(value)
+    if not math.isfinite(number):
+        raise OracleContractError(f"{name} must be finite")
+    return number
+
+
+def _freeze_json(value: Any, name: str) -> Any:
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise OracleContractError(f"{name} contains a non-finite number")
+        return value
+    if isinstance(value, Mapping):
+        frozen: dict[str, Any] = {}
+        for key, item in value.items():
+            text_key = _nonempty(key, f"{name} key")
+            if text_key in frozen:
+                raise OracleContractError(f"{name} contains duplicate keys")
+            frozen[text_key] = _freeze_json(item, f"{name}.{text_key}")
+        return MappingProxyType(frozen)
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_json(item, name) for item in value)
+    raise OracleContractError(f"{name} contains unsupported value {type(value).__name__}")
+
+
+def _thaw_json(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_json(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thaw_json(item) for item in value]
+    return value
+
+
+@dataclass(frozen=True)
+class ExpectedSemanticOutput:
+    output_key: str
+    numeric: float
+    unit: str
+    sign: str
+    frame: str
+    positive_direction: str
+    assumptions: tuple[str, ...]
+    root_count: int
+    root_values: tuple[float, ...]
+    multiplicity: tuple[int, ...]
+    ambiguity: bool
+    equation_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "output_key", _nonempty(self.output_key, "output_key"))
+        object.__setattr__(self, "numeric", _finite(self.numeric, "numeric"))
+        if not isinstance(self.unit, str):
+            raise OracleContractError("unit must be a string")
+        sign = _nonempty(self.sign, "sign").lower()
+        if sign not in EXPECTED_SIGNS:
+            raise OracleContractError(f"unsupported sign {sign!r}")
+        object.__setattr__(self, "sign", sign)
+        object.__setattr__(self, "frame", _nonempty(self.frame, "frame"))
+        object.__setattr__(
+            self,
+            "positive_direction",
+            _nonempty(self.positive_direction, "positive_direction"),
+        )
+        object.__setattr__(
+            self, "assumptions", _strings(self.assumptions, "assumptions", nonempty=False)
+        )
+        if isinstance(self.root_count, bool) or not isinstance(self.root_count, int):
+            raise OracleContractError("root_count must be an integer")
+        if self.root_count < 1:
+            raise OracleContractError("root_count must be at least one")
+        if not isinstance(self.root_values, (list, tuple)):
+            raise OracleContractError("root_values must be a list")
+        root_values = tuple(
+            _finite(value, f"root_values[{index}]")
+            for index, value in enumerate(self.root_values)
+        )
+        if len(root_values) != self.root_count:
+            raise OracleContractError("root_values length must equal root_count")
+        for left_index, left in enumerate(root_values):
+            for right in root_values[left_index + 1 :]:
+                separation = abs(left - right) / max(abs(left), abs(right), 1.0)
+                if separation <= DEFAULT_TOLERANCE_POLICY.root_separation_tol:
+                    raise OracleContractError(
+                        "root_values must contain distinct roots under the central "
+                        "root-separation policy; repeated roots use multiplicity"
+                    )
+        object.__setattr__(self, "root_values", root_values)
+        if not isinstance(self.multiplicity, (list, tuple)):
+            raise OracleContractError("multiplicity must be a list")
+        multiplicity = tuple(self.multiplicity)
+        if len(multiplicity) != self.root_count:
+            raise OracleContractError("multiplicity length must equal root_count")
+        if any(
+            isinstance(item, bool) or not isinstance(item, int) or item < 1
+            for item in multiplicity
+        ):
+            raise OracleContractError("multiplicity values must be positive integers")
+        object.__setattr__(self, "multiplicity", multiplicity)
+        if not isinstance(self.ambiguity, bool):
+            raise OracleContractError("ambiguity must be boolean")
+        object.__setattr__(
+            self, "equation_ids", _strings(self.equation_ids, "equation_ids")
+        )
+        number = self.numeric
+        if not any(number == root for root in root_values):
+            raise OracleContractError("numeric must identify one value in root_values")
+        if sign == "positive" and not number > 0:
+            raise OracleContractError("positive sign conflicts with numeric value")
+        if sign == "negative" and not number < 0:
+            raise OracleContractError("negative sign conflicts with numeric value")
+        if sign == "zero" and number != 0:
+            raise OracleContractError("zero sign conflicts with numeric value")
+        if sign == "nonnegative" and number < 0:
+            raise OracleContractError("nonnegative sign conflicts with numeric value")
+        if sign == "nonpositive" and number > 0:
+            raise OracleContractError("nonpositive sign conflicts with numeric value")
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> "ExpectedSemanticOutput":
+        required = {
+            "output_key",
+            "numeric",
+            "unit",
+            "sign",
+            "frame",
+            "positive_direction",
+            "assumptions",
+            "root_count",
+            "root_values",
+            "multiplicity",
+            "ambiguity",
+            "equation_ids",
+        }
+        if not isinstance(raw, Mapping) or set(raw) != required:
+            raise OracleContractError(
+                f"expected output fields must be exactly {sorted(required)}"
+            )
+        return cls(**dict(raw))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "output_key": self.output_key,
+            "numeric": self.numeric,
+            "unit": self.unit,
+            "sign": self.sign,
+            "frame": self.frame,
+            "positive_direction": self.positive_direction,
+            "assumptions": list(self.assumptions),
+            "root_count": self.root_count,
+            "root_values": list(self.root_values),
+            "multiplicity": list(self.multiplicity),
+            "ambiguity": self.ambiguity,
+            "equation_ids": list(self.equation_ids),
+        }
+
+
+@dataclass(frozen=True)
+class OracleCase:
+    oracle_id: str
+    family: str
+    problem: str
+    canonical_inputs: Mapping[str, Any]
+    solver_id: str
+    expected_outputs: tuple[ExpectedSemanticOutput, ...]
+    source: str
+    derivation: str
+    independence_note: str
+    provenance_kind: str
+    expected_outcome: str
+    expected_applicability: str
+    oracle_version: str
+    benchmark_version: str
+    policy_version: str
+    _output_by_key: Mapping[str, ExpectedSemanticOutput] = field(
+        init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "oracle_id", _nonempty(self.oracle_id, "oracle_id"))
+        family = _nonempty(self.family, "family")
+        if family not in PHASE49_FAMILIES:
+            raise OracleContractError(f"unsupported oracle family {family!r}")
+        object.__setattr__(self, "family", family)
+        object.__setattr__(self, "problem", _nonempty(self.problem, "problem"))
+        if not isinstance(self.canonical_inputs, Mapping) or not self.canonical_inputs:
+            raise OracleContractError("canonical_inputs must be a non-empty object")
+        object.__setattr__(
+            self,
+            "canonical_inputs",
+            _freeze_json(self.canonical_inputs, "canonical_inputs"),
+        )
+        object.__setattr__(self, "solver_id", _nonempty(self.solver_id, "solver_id"))
+        outcome = _nonempty(self.expected_outcome, "expected_outcome").lower()
+        if outcome not in EXPECTED_OUTCOMES:
+            raise OracleContractError(f"unsupported expected_outcome {outcome!r}")
+        applicability = _nonempty(
+            self.expected_applicability, "expected_applicability"
+        ).lower()
+        if applicability not in EXPECTED_APPLICABILITIES:
+            raise OracleContractError(
+                f"unsupported expected_applicability {applicability!r}"
+            )
+        object.__setattr__(self, "expected_outcome", outcome)
+        object.__setattr__(self, "expected_applicability", applicability)
+        outputs = tuple(self.expected_outputs)
+        if not all(isinstance(item, ExpectedSemanticOutput) for item in outputs):
+            raise OracleContractError("expected_outputs must contain typed outputs")
+        if outcome == "no_valid_solution":
+            if outputs:
+                raise OracleContractError(
+                    "no_valid_solution must have empty expected_outputs"
+                )
+        else:
+            if applicability != "applicable":
+                raise OracleContractError(
+                    "solved or ambiguous outcomes must be applicable"
+                )
+            if not outputs:
+                raise OracleContractError(
+                    "solved or ambiguous outcomes require typed outputs"
+                )
+            if outcome == "ambiguous" and any(
+                not item.ambiguity or item.root_count < 2 for item in outputs
+            ):
+                raise OracleContractError(
+                    "ambiguous outcome requires complete multi-root outputs"
+                )
+            if outcome == "solved" and any(item.ambiguity for item in outputs):
+                raise OracleContractError(
+                    "solved outcome cannot mark outputs ambiguous"
+                )
+        keys = [item.output_key for item in outputs]
+        if len(keys) != len(set(keys)):
+            raise OracleContractError("expected_outputs contains duplicate output_key")
+        object.__setattr__(self, "expected_outputs", outputs)
+        object.__setattr__(
+            self, "_output_by_key", MappingProxyType({item.output_key: item for item in outputs})
+        )
+        for name in (
+            "source",
+            "derivation",
+            "independence_note",
+            "oracle_version",
+            "benchmark_version",
+            "policy_version",
+        ):
+            object.__setattr__(self, name, _nonempty(getattr(self, name), name))
+        provenance = _nonempty(self.provenance_kind, "provenance_kind")
+        if provenance != INDEPENDENT_PROVENANCE:
+            raise OracleContractError(
+                f"provenance_kind must be {INDEPENDENT_PROVENANCE!r}"
+            )
+        object.__setattr__(self, "provenance_kind", provenance)
+        if _NEGATED_INDEPENDENCE_ATTESTATION.search(self.independence_note) is None:
+            raise OracleContractError(
+                "independence_note must explicitly attest that expectations were "
+                "not generated or copied from implementation output"
+            )
+        for name, allow_negated_attestation in (
+            ("source", False),
+            ("derivation", False),
+            ("independence_note", True),
+        ):
+            forbidden = _forbidden_provenance_fragments(
+                getattr(self, name),
+                allow_negated_attestation=allow_negated_attestation,
+            )
+            if forbidden:
+                raise OracleContractError(
+                    f"oracle {name} references implementation output: "
+                    + ", ".join(forbidden)
+                )
+        if self.policy_version != DEFAULT_TOLERANCE_POLICY.policy_version:
+            raise OracleContractError(
+                "oracle policy_version does not match the central policy"
+            )
+
+    @property
+    def output_by_key(self) -> Mapping[str, ExpectedSemanticOutput]:
+        return self._output_by_key
+
+    @classmethod
+    def from_dict(
+        cls,
+        raw: Mapping[str, Any],
+        *,
+        oracle_version: str,
+        benchmark_version: str,
+        policy_version: str,
+    ) -> "OracleCase":
+        required = {
+            "oracle_id",
+            "family",
+            "problem",
+            "canonical_inputs",
+            "solver_id",
+            "expected_outputs",
+            "source",
+            "derivation",
+            "independence_note",
+            "provenance_kind",
+            "expected_outcome",
+            "expected_applicability",
+        }
+        optional_versions = {"oracle_version", "benchmark_version", "policy_version"}
+        if not isinstance(raw, Mapping) or not required <= set(raw):
+            missing = sorted(required - set(raw if isinstance(raw, Mapping) else {}))
+            raise OracleContractError(f"oracle case missing fields: {missing}")
+        unknown = set(raw) - required - optional_versions
+        if unknown:
+            raise OracleContractError(f"oracle case has unknown fields: {sorted(unknown)}")
+        outputs_raw = raw["expected_outputs"]
+        if not isinstance(outputs_raw, list):
+            raise OracleContractError("expected_outputs must be a list")
+        return cls(
+            oracle_id=raw["oracle_id"],
+            family=raw["family"],
+            problem=raw["problem"],
+            canonical_inputs=raw["canonical_inputs"],
+            solver_id=raw["solver_id"],
+            expected_outputs=tuple(
+                ExpectedSemanticOutput.from_dict(item) for item in outputs_raw
+            ),
+            source=raw["source"],
+            derivation=raw["derivation"],
+            independence_note=raw["independence_note"],
+            provenance_kind=raw["provenance_kind"],
+            expected_outcome=raw["expected_outcome"],
+            expected_applicability=raw["expected_applicability"],
+            oracle_version=raw.get("oracle_version", oracle_version),
+            benchmark_version=raw.get("benchmark_version", benchmark_version),
+            policy_version=raw.get("policy_version", policy_version),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "oracle_id": self.oracle_id,
+            "family": self.family,
+            "problem": self.problem,
+            "canonical_inputs": _thaw_json(self.canonical_inputs),
+            "solver_id": self.solver_id,
+            "expected_outputs": [item.to_dict() for item in self.expected_outputs],
+            "source": self.source,
+            "derivation": self.derivation,
+            "independence_note": self.independence_note,
+            "provenance_kind": self.provenance_kind,
+            "expected_outcome": self.expected_outcome,
+            "expected_applicability": self.expected_applicability,
+            "oracle_version": self.oracle_version,
+            "benchmark_version": self.benchmark_version,
+            "policy_version": self.policy_version,
+        }
+
+
+@dataclass(frozen=True)
+class OracleSuite:
+    oracle_version: str
+    benchmark_version: str
+    policy_version: str
+    cases: tuple[OracleCase, ...]
+    _by_id: Mapping[str, OracleCase] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        for name in ("oracle_version", "benchmark_version", "policy_version"):
+            object.__setattr__(self, name, _nonempty(getattr(self, name), name))
+        if self.policy_version != DEFAULT_TOLERANCE_POLICY.policy_version:
+            raise OracleContractError("suite policy_version does not match central policy")
+        cases = tuple(self.cases)
+        ids = [case.oracle_id for case in cases]
+        if len(ids) != len(set(ids)):
+            raise OracleContractError("oracle suite contains duplicate oracle_id")
+        signatures: set[str] = set()
+        for case in cases:
+            if case.oracle_version != self.oracle_version:
+                raise OracleContractError(f"{case.oracle_id} oracle_version mismatch")
+            if case.benchmark_version != self.benchmark_version:
+                raise OracleContractError(f"{case.oracle_id} benchmark_version mismatch")
+            if case.policy_version != self.policy_version:
+                raise OracleContractError(f"{case.oracle_id} policy_version mismatch")
+            signature = json.dumps(
+                {
+                    "family": case.family,
+                    "solver_id": case.solver_id,
+                    "canonical_inputs": _thaw_json(case.canonical_inputs),
+                    "outputs": sorted(case.output_by_key),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            if signature in signatures:
+                raise OracleContractError("oracle suite contains duplicate eligible case")
+            signatures.add(signature)
+        object.__setattr__(self, "cases", cases)
+        object.__setattr__(
+            self, "_by_id", MappingProxyType({case.oracle_id: case for case in cases})
+        )
+
+    @property
+    def by_id(self) -> Mapping[str, OracleCase]:
+        return self._by_id
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": ORACLE_SCHEMA_VERSION,
+            "oracle_version": self.oracle_version,
+            "benchmark_version": self.benchmark_version,
+            "policy_version": self.policy_version,
+            "cases": [case.to_dict() for case in self.cases],
+        }
+
+
+def load_oracle_suite(
+    source: str | Path | Mapping[str, Any],
+    *,
+    minimum_cases: int = 0,
+    minimum_per_family: Mapping[str, int] | None = None,
+    eligible_families: Sequence[str] | None = None,
+) -> OracleSuite:
+    """Load and validate an oracle suite without touching production result paths."""
+    if isinstance(source, Mapping):
+        raw = dict(source)
+    else:
+        path = Path(source)
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise OracleContractError(f"cannot load oracle suite at {path}: {exc}") from exc
+    required = {
+        "schema_version",
+        "oracle_version",
+        "benchmark_version",
+        "policy_version",
+        "cases",
+    }
+    if not isinstance(raw, dict) or set(raw) != required:
+        raise OracleContractError(f"oracle suite fields must be exactly {sorted(required)}")
+    if raw["schema_version"] != ORACLE_SCHEMA_VERSION:
+        raise OracleContractError(
+            f"oracle schema_version must be {ORACLE_SCHEMA_VERSION}"
+        )
+    for name in ("minimum_cases",):
+        value = locals()[name]
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise OracleContractError(f"{name} must be a non-negative integer")
+    cases_raw = raw["cases"]
+    if not isinstance(cases_raw, list):
+        raise OracleContractError("cases must be a list")
+    suite = OracleSuite(
+        oracle_version=raw["oracle_version"],
+        benchmark_version=raw["benchmark_version"],
+        policy_version=raw["policy_version"],
+        cases=tuple(
+            OracleCase.from_dict(
+                item,
+                oracle_version=raw["oracle_version"],
+                benchmark_version=raw["benchmark_version"],
+                policy_version=raw["policy_version"],
+            )
+            for item in cases_raw
+        ),
+    )
+    eligible = set(eligible_families or PHASE49_FAMILIES)
+    unknown_eligible = eligible - PHASE49_FAMILIES
+    if unknown_eligible:
+        raise OracleContractError(
+            f"unknown eligible families: {sorted(unknown_eligible)}"
+        )
+    selected = [case for case in suite.cases if case.family in eligible]
+    if len(selected) < minimum_cases:
+        raise OracleContractError(
+            f"eligible oracle count {len(selected)} is below required {minimum_cases}"
+        )
+    if minimum_per_family is not None:
+        for family, minimum in minimum_per_family.items():
+            if family not in PHASE49_FAMILIES:
+                raise OracleContractError(f"unknown minimum family {family!r}")
+            if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum < 0:
+                raise OracleContractError("family minimums must be non-negative integers")
+            count = sum(case.family == family for case in selected)
+            if count < minimum:
+                raise OracleContractError(
+                    f"{family} oracle count {count} is below required {minimum}"
+                )
+    return suite
+
+
+__all__ = [
+    "EXPECTED_APPLICABILITIES",
+    "EXPECTED_OUTCOMES",
+    "EXPECTED_SIGNS",
+    "INDEPENDENT_PROVENANCE",
+    "ORACLE_SCHEMA_VERSION",
+    "PHASE49_FAMILIES",
+    "ExpectedSemanticOutput",
+    "OracleCase",
+    "OracleContractError",
+    "OracleSuite",
+    "load_oracle_suite",
+]
