@@ -58,7 +58,9 @@ import it.
 `phase50-numeric-safety-v1` centralizes the numeric warning and failure limits.
 Energy and analytic comparisons use a combined absolute-plus-relative
 tolerance computed from the recorded reference scale; constraints use an
-absolute residual tolerance because their target value is zero.
+absolute residual tolerance because their target value is zero. Damped-system
+energy checks compare each sample with the running minimum, so individually
+small increases cannot accumulate into an undetected energy gain.
 The implementation fails closed for an invalid spec, unsupported model,
 unavailable SciPy runtime, singular or ill-conditioned mass matrix,
 `solve_ivp` failure, non-finite values, and runaway state magnitude. Events are

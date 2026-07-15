@@ -370,6 +370,44 @@ def test_phase50_large_finite_energy_drift_is_an_explicit_warning():
     assert "energy_drift_exceeds_policy" in result.warnings
 
 
+def test_phase50_damped_energy_rejects_cumulative_subthreshold_increases():
+    case, system = _built_smoke_system()
+    damped_spec = replace(
+        case.spec,
+        parameters={**dict(case.spec.parameters), "c": 0.8},
+    )
+    damped_system = build_sympy_mechanics_system(
+        damped_spec,
+        build_numeric_typed_model(damped_spec),
+    )
+    position = damped_system.coordinate_symbols[0]
+    increasing_energy = replace(damped_system, total_energy=position)
+    states = [
+        np.linspace(1.0, 1.0001, len(damped_spec.evaluation_grid)),
+        np.zeros(len(damped_spec.evaluation_grid)),
+    ]
+
+    result = run_numeric_system(
+        damped_spec,
+        increasing_energy,
+        np_module=np,
+        solve_ivp_impl=lambda *args, **kwargs: _fake_solution(
+            damped_spec,
+            states=states,
+        ),
+        scipy_version="controlled",
+    )
+
+    assert result.invariant_drift["max_step_increase"] < (
+        result.invariant_drift["combined_tolerance"]
+    )
+    assert result.invariant_drift["max_upward_excursion"] > (
+        result.invariant_drift["combined_tolerance"]
+    )
+    assert result.invariant_drift["passed"] is False
+    assert "damped_energy_increase_exceeds_policy" in result.warnings
+
+
 def test_phase50_solver_reported_failure_is_not_a_trajectory():
     case, system = _built_smoke_system()
     result = run_numeric_system(

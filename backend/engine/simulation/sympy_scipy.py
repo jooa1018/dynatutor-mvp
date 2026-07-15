@@ -740,12 +740,30 @@ def _invariant_diagnostics(
             if len(increments)
             else 0.0
         )
+        with np.errstate(over="ignore", invalid="ignore"):
+            upward_excursions = energy - np.minimum.accumulate(energy)
+        if not np.all(np.isfinite(upward_excursions)):
+            raise _NonfiniteNumericError(
+                "energy upward excursions became non-finite"
+            )
+        max_upward_excursion = max(
+            _finite_scalar(
+                np.max(upward_excursions),
+                "maximum energy upward excursion",
+            ),
+            0.0,
+        )
         relative_increase = _finite_scalar(
             max_increase
             / max(scale, policy.energy_absolute_drift_warning),
             "relative energy step increase",
         )
-        if max_increase > combined_tolerance:
+        relative_upward_excursion = _finite_scalar(
+            max_upward_excursion
+            / max(scale, policy.energy_absolute_drift_warning),
+            "relative energy upward excursion",
+        )
+        if max_upward_excursion > combined_tolerance:
             warnings.append("damped_energy_increase_exceeds_policy")
         return (
             {
@@ -757,9 +775,11 @@ def _invariant_diagnostics(
                 "relative_drift_from_initial": relative_drift,
                 "max_step_increase": max_increase,
                 "relative_step_increase": relative_increase,
+                "max_upward_excursion": max_upward_excursion,
+                "relative_upward_excursion": relative_upward_excursion,
                 "reference_scale": scale,
                 "combined_tolerance": combined_tolerance,
-                "passed": max_increase <= combined_tolerance,
+                "passed": max_upward_excursion <= combined_tolerance,
             },
             warnings,
         )
