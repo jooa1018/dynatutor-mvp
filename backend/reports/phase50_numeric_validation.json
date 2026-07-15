@@ -7,6 +7,7 @@
         "applicable": true,
         "comparison_tolerance": 0.00014000000000000001,
         "expected_large_angle_difference": false,
+        "max_abs_angle": 0.04,
         "max_abs_error": 5.572178238964862e-05,
         "observed_period": 1.7944601860845701,
         "passed": true,
@@ -38,6 +39,7 @@
         "max_abs_violation": 1.1102230246251565e-16,
         "passed": true
       },
+      "equilibrium_max_abs": 0.0,
       "errors": [],
       "events": {
         "theta_downward_zero": {
@@ -68,20 +70,26 @@
         "rtol": 1e-10
       },
       "invariant_drift": {
-        "combined_tolerance": 9.802163046344195e-05,
+        "combined_tolerance": 7.856953655807453e-08,
         "expected_behavior": "conserved",
-        "final": -9.802153046344195,
-        "initial": -9.802153046344193,
+        "final": 0.007846953655805677,
+        "initial": 0.007846953655807454,
         "invariant": "mechanical_energy",
         "max_abs_drift": 1.7763568394002505e-15,
         "passed": true,
-        "reference_scale": 9.802153046344195,
-        "relative_drift": 1.8122108795911521e-16
+        "reference_scale": 0.007846953655807454,
+        "relative_drift": 2.2637534479199913e-13
       },
       "model_id": "simple_pendulum",
       "model_version": "phase50-simple-pendulum-v1",
       "offline_only": true,
       "passed": true,
+      "requirements": {
+        "analytic_agreement": true,
+        "equilibrium_hold": false,
+        "event_id": "theta_downward_zero",
+        "large_angle_difference": false
+      },
       "result_schema_version": 1,
       "runtime_versions": {
         "numpy": "2.3.5",
@@ -548,6 +556,7 @@
         "applicable": false,
         "comparison_tolerance": 0.0011,
         "expected_large_angle_difference": true,
+        "max_abs_angle": 1.0,
         "max_abs_error": 1.520079207671172,
         "observed_period": 1.9133028927101972,
         "passed": false,
@@ -579,6 +588,7 @@
         "max_abs_violation": 1.1102230246251565e-16,
         "passed": true
       },
+      "equilibrium_max_abs": 0.0,
       "errors": [],
       "events": {},
       "final_state": {
@@ -596,20 +606,26 @@
         "rtol": 1e-10
       },
       "invariant_drift": {
-        "combined_tolerance": 5.300375620566477e-05,
+        "combined_tolerance": 4.5096443794335716e-05,
         "expected_behavior": "conserved",
-        "final": -5.3003656205664695,
-        "initial": -5.300365620566452,
+        "final": 4.509634379433531,
+        "initial": 4.509634379433549,
         "invariant": "mechanical_energy",
         "max_abs_drift": 2.4868995751603507e-14,
         "passed": true,
-        "reference_scale": 5.300365620566477,
-        "relative_drift": 4.691939675841765e-15
+        "reference_scale": 4.509634379433571,
+        "relative_drift": 5.514636810695762e-15
       },
       "model_id": "simple_pendulum",
       "model_version": "phase50-simple-pendulum-v1",
       "offline_only": true,
       "passed": true,
+      "requirements": {
+        "analytic_agreement": false,
+        "equilibrium_hold": false,
+        "event_id": null,
+        "large_angle_difference": true
+      },
       "result_schema_version": 1,
       "runtime_versions": {
         "numpy": "2.3.5",
@@ -1468,6 +1484,7 @@
         "applicable": true,
         "comparison_tolerance": 0.0001,
         "expected_large_angle_difference": false,
+        "max_abs_angle": 0.0,
         "max_abs_error": 0.0,
         "observed_period": null,
         "passed": true,
@@ -1499,6 +1516,7 @@
         "max_abs_violation": 0.0,
         "passed": true
       },
+      "equilibrium_max_abs": 0.0,
       "errors": [],
       "events": {},
       "final_state": {
@@ -1516,20 +1534,26 @@
         "rtol": 1e-10
       },
       "invariant_drift": {
-        "combined_tolerance": 9.81001e-05,
+        "combined_tolerance": 1e-10,
         "expected_behavior": "conserved",
-        "final": -9.81,
-        "initial": -9.81,
+        "final": 0.0,
+        "initial": 0.0,
         "invariant": "mechanical_energy",
         "max_abs_drift": 0.0,
         "passed": true,
-        "reference_scale": 9.81,
+        "reference_scale": 0.0,
         "relative_drift": 0.0
       },
       "model_id": "simple_pendulum",
       "model_version": "phase50-simple-pendulum-v1",
       "offline_only": true,
       "passed": true,
+      "requirements": {
+        "analytic_agreement": true,
+        "equilibrium_hold": true,
+        "event_id": null,
+        "large_angle_difference": false
+      },
       "result_schema_version": 1,
       "runtime_versions": {
         "numpy": "2.3.5",
@@ -1812,6 +1836,7 @@
         "max_abs_violation": 0.0,
         "passed": true
       },
+      "equilibrium_max_abs": 0.0,
       "errors": [],
       "events": {},
       "final_state": {
@@ -1843,6 +1868,12 @@
       "model_version": "phase50-mass-spring-damper-v1",
       "offline_only": true,
       "passed": true,
+      "requirements": {
+        "analytic_agreement": true,
+        "equilibrium_hold": false,
+        "event_id": null,
+        "large_angle_difference": false
+      },
       "result_schema_version": 1,
       "runtime_versions": {
         "numpy": "2.3.5",
@@ -2325,6 +2356,7 @@
         "max_abs_violation": 0.0,
         "passed": true
       },
+      "equilibrium_max_abs": 0.0,
       "errors": [],
       "events": {},
       "final_state": {
@@ -2358,6 +2390,12 @@
       "model_version": "phase50-mass-spring-damper-v1",
       "offline_only": true,
       "passed": true,
+      "requirements": {
+        "analytic_agreement": true,
+        "equilibrium_hold": false,
+        "event_id": null,
+        "large_angle_difference": false
+      },
       "result_schema_version": 1,
       "runtime_versions": {
         "numpy": "2.3.5",
@@ -2940,6 +2978,7 @@
         "max_abs_violation": 0.0,
         "passed": true
       },
+      "equilibrium_max_abs": 0.0,
       "errors": [],
       "events": {},
       "final_state": {
@@ -2973,6 +3012,12 @@
       "model_version": "phase50-mass-spring-damper-v1",
       "offline_only": true,
       "passed": true,
+      "requirements": {
+        "analytic_agreement": true,
+        "equilibrium_hold": false,
+        "event_id": null,
+        "large_angle_difference": false
+      },
       "result_schema_version": 1,
       "runtime_versions": {
         "numpy": "2.3.5",
@@ -3455,6 +3500,7 @@
         "max_abs_violation": 0.0,
         "passed": true
       },
+      "equilibrium_max_abs": 0.0,
       "errors": [],
       "events": {},
       "final_state": {
@@ -3488,6 +3534,12 @@
       "model_version": "phase50-mass-spring-damper-v1",
       "offline_only": true,
       "passed": true,
+      "requirements": {
+        "analytic_agreement": true,
+        "equilibrium_hold": false,
+        "event_id": null,
+        "large_angle_difference": false
+      },
       "result_schema_version": 1,
       "runtime_versions": {
         "numpy": "2.3.5",
@@ -3941,8 +3993,9 @@
     }
   ],
   "environment": {
-    "platform": "Linux-6.17.0-1018-azure-x86_64-with-glibc2.39",
-    "python": "3.11.15"
+    "machine": "x86_64",
+    "python": "3.11.15",
+    "system": "Linux"
   },
   "passed": true,
   "report_id": "phase50-sympy-scipy-numeric-validation-v1",
