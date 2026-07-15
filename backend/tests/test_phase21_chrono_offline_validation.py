@@ -46,14 +46,41 @@ def test_phase21_chrono_simulators_safe_without_pychrono():
         simulate_collision_restitution(m1=2, m2=3, v1=4, v2=0, restitution=1.0),
         simulate_massive_pulley(m1=2, m2=5, inertia=0.12, radius=0.3),
     ]
-    assert all(v.status in {"skipped", "manual_required"} for v in values)
-    assert all(v.source in {"chrono_unavailable", "chrono_available_manual_run_required"} for v in values)
+    assert all(v.status in {"passed", "failed", "skipped", "error"} for v in values)
+    assert all("manual_required" not in json.dumps(v.to_dict()) for v in values)
+    assert all(
+        {
+            "case_id",
+            "status",
+            "observable",
+            "value",
+            "unit",
+            "chrono_version",
+            "solver",
+            "contact_method",
+            "time_step",
+            "duration",
+            "initial_conditions",
+            "final_state",
+            "constraint_errors",
+            "invariant_errors",
+            "warnings",
+            "artifacts",
+        } <= set(v.to_dict())
+        for v in values
+    )
 
 
 def test_phase21_run_all_validation_script_outputs_json():
     backend = Path(__file__).resolve().parents[1]
     proc = subprocess.run(
-        [sys.executable, "tools/chrono_validation/run_all_validations.py", "--strict"],
+        [
+            sys.executable,
+            "tools/chrono_validation/run_all_validations.py",
+            "--mode",
+            "analytic",
+            "--strict",
+        ],
         cwd=backend,
         capture_output=True,
         text=True,
