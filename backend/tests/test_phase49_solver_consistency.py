@@ -169,12 +169,7 @@ def test_incline_output_validation_is_the_semantic_selection_evidence():
     assert value_check["output_key"] == "acceleration"
     assert value_check["solver_symbols"] == ["a"]
     assert value_check["status"] == "matched"
-    assert value_check["tolerance"] == pytest.approx(
-        DEFAULT_TOLERANCE_POLICY.tolerance(
-            "absolute",
-            scale=max(abs(execution.result.answer.numeric), 1.0),
-        )
-    )
+    assert value_check["tolerance"] is not None
 
     semantic = execution.result.selection_decision.selected_candidate
     assert semantic is not None
@@ -190,6 +185,40 @@ def test_incline_output_validation_is_the_semantic_selection_evidence():
     assert execution.observation.metadata[
         "semantic_selection_evidence_source"
     ] == SEMANTIC_SELECTION_EVIDENCE_SOURCE
+
+
+def test_noncontradiction_tolerance_uses_both_compared_magnitudes():
+    solver_value = 2.0001
+    semantic_value = 2.0
+    original = SelectionDecision(
+        status="selected",
+        selected_candidate=CandidateSolution(
+            candidate_id="generator-candidate-0",
+            symbolic_mapping={"a": solver_value},
+            numerical_mapping={"a": solver_value},
+        ),
+    )
+    output = SelectionDecision(
+        status="selected",
+        selected_candidate=CandidateSolution(
+            candidate_id="output-candidate-0",
+            symbolic_mapping={"acceleration": semantic_value},
+            numerical_mapping={"acceleration": semantic_value},
+        ),
+    )
+
+    [value_check] = _selection_noncontradiction_checks(
+        original,
+        output,
+        ["acceleration"],
+    )
+    scale = max(abs(solver_value), abs(semantic_value), 1.0)
+
+    assert value_check["status"] == "matched"
+    assert value_check["solver_symbols"] == ["a"]
+    assert value_check["tolerance"] == (
+        DEFAULT_TOLERANCE_POLICY.tolerance("absolute", scale=scale)
+    )
 
 
 class _ContradictingSelectionSolver:
