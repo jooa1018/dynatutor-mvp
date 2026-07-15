@@ -2381,10 +2381,12 @@
         "invariant": "mechanical_energy",
         "max_abs_drift_from_initial": 0.4184996936921529,
         "max_step_increase": 0.0,
+        "max_upward_excursion": 0.0,
         "passed": true,
         "reference_scale": 0.425,
         "relative_drift_from_initial": 0.9847051616285951,
-        "relative_step_increase": 0.0
+        "relative_step_increase": 0.0,
+        "relative_upward_excursion": 0.0
       },
       "model_id": "mass_spring_damper",
       "model_version": "phase50-mass-spring-damper-v1",
@@ -3003,10 +3005,12 @@
         "invariant": "mechanical_energy",
         "max_abs_drift_from_initial": 0.1299971764924663,
         "max_step_increase": 0.0,
+        "max_upward_excursion": 0.0,
         "passed": true,
         "reference_scale": 0.13,
         "relative_drift_from_initial": 0.9999782807112793,
-        "relative_step_increase": 0.0
+        "relative_step_increase": 0.0,
+        "relative_upward_excursion": 0.0
       },
       "model_id": "mass_spring_damper",
       "model_version": "phase50-mass-spring-damper-v1",
@@ -3525,10 +3529,12 @@
         "invariant": "mechanical_energy",
         "max_abs_drift_from_initial": 0.13590868617026738,
         "max_step_increase": 0.0,
+        "max_upward_excursion": 0.0,
         "passed": true,
         "reference_scale": 0.13625,
         "relative_drift_from_initial": 0.9974949443689348,
-        "relative_step_increase": 0.0
+        "relative_step_increase": 0.0,
+        "relative_upward_excursion": 0.0
       },
       "model_id": "mass_spring_damper",
       "model_version": "phase50-mass-spring-damper-v1",
