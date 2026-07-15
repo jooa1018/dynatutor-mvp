@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: phase50-wip-${{ github.ref }}
@@ -71,6 +71,22 @@ jobs:
             "$RUNNER_TEMP/phase50_numeric_validation.json"
           cmp reports/phase50_numeric_validation.md \
             "$RUNNER_TEMP/phase50_numeric_validation.md"
+
+      - name: Preserve generated runtime reports on the WIP branch
+        if: >-
+          github.event_name == 'push' &&
+          github.ref == 'refs/heads/codex/phase47-54-engine-completion'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add reports/phase50_numeric_validation.json \
+            reports/phase50_numeric_validation.md
+          if git diff --cached --quiet; then
+            echo "Runtime reports are already current."
+            exit 0
+          fi
+          git commit -m "wip(phase50): preserve generated runtime reports"
+          git push origin HEAD:codex/phase47-54-engine-completion
 
       - name: Upload runtime report artifact
         uses: actions/upload-artifact@v4
