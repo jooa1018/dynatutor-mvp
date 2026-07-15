@@ -4,14 +4,15 @@
 - Suite: `phase50-numeric-validation-suite-v1`
 - Status: **passed**
 - Passed: `true`
-- Cases: 6/6 passed
-- SciPy trajectories: 6/6
+- Cases: 7/7 passed
+- SciPy trajectories: 7/7
 - Offline only / answer overwrite / PyDy required: true / false / false
 
 | Case | Model | Status | Samples | Analytic | Energy | Constraint |
 |---|---|---:|---:|---:|---:|---:|
 | pendulum_small_angle_accuracy | simple_pendulum | completed | 401 | true | true | true |
 | pendulum_large_angle_expected_difference | simple_pendulum | completed | 801 | true | true | true |
+| pendulum_equilibrium_hold | simple_pendulum | completed | 201 | true | true | true |
 | spring_undamped_accuracy | mass_spring_damper | completed | 401 | true | true | true |
 | spring_underdamped_accuracy | mass_spring_damper | completed | 501 | true | true | true |
 | spring_critical_accuracy | mass_spring_damper | completed | 401 | true | true | true |
