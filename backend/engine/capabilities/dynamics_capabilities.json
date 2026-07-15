@@ -1707,5 +1707,66 @@
     }
   ],
   "source_ref": "codex/fix-physics-audit",
-  "verification_policy_version": "phase48-tolerance-policy-v1"
+  "verification_policy_version": "phase48-tolerance-policy-v1",
+  "solver_path_roles": {
+    "incline": {
+      "student_answer_path": [
+        "incline_no_friction",
+        "incline_with_friction"
+      ],
+      "secondary_analytic_path": "phase49.secondary.incline",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    },
+    "pulley": {
+      "student_answer_path": [
+        "pulley_atwood",
+        "pulley_table_hanging",
+        "pulley_incline_hanging",
+        "massive_pulley_atwood"
+      ],
+      "secondary_analytic_path": "phase49.secondary.pulley",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    },
+    "collision": {
+      "student_answer_path": [
+        "collision_1d"
+      ],
+      "secondary_analytic_path": "phase49.secondary.collision",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    },
+    "rolling": {
+      "student_answer_path": [
+        "pure_rolling_energy",
+        "rolling_energy_general"
+      ],
+      "secondary_analytic_path": "phase49.secondary.rolling",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    },
+    "work_energy": {
+      "student_answer_path": [
+        "work_energy_speed"
+      ],
+      "secondary_analytic_path": "phase49.secondary.work_energy",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    },
+    "fixed_axis_rotation": {
+      "student_answer_path": [
+        "fixed_axis_rotation"
+      ],
+      "secondary_analytic_path": "phase49.secondary.fixed_axis_rotation",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    }
+  }
 }
