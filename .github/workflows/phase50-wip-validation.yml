@@ -1,0 +1,82 @@
+name: Phase 50 WIP numeric validation
+
+on:
+  push:
+    branches:
+      - codex/phase47-54-engine-completion
+    paths:
+      - "backend/engine/simulation/**"
+      - "backend/tests/test_phase50_*.py"
+      - "backend/tools/run_phase50_numeric_validation.py"
+      - "backend/reports/phase50_numeric_validation.*"
+      - "docs/PHASE50_INTEGRATION_NOTES.md"
+      - ".github/workflows/phase50-wip-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase50-wip-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  numeric-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out exact revision
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Compile Phase 50 modules
+        run: >-
+          python -m compileall -q
+          engine/simulation
+          tools/run_phase50_numeric_validation.py
+          tests/test_phase50_numeric_simulation.py
+          tests/test_phase50_numeric_accuracy.py
+          tests/test_phase50_offline_contract.py
+
+      - name: Run Phase 50 focused tests
+        run: >-
+          python -m pytest -q -o addopts=
+          tests/test_phase50_numeric_simulation.py
+          tests/test_phase50_numeric_accuracy.py
+          tests/test_phase50_offline_contract.py
+
+      - name: Generate runtime reports
+        run: python tools/run_phase50_numeric_validation.py
+
+      - name: Verify deterministic report bytes
+        run: |
+          python tools/run_phase50_numeric_validation.py \
+            --json-report "$RUNNER_TEMP/phase50_numeric_validation.json" \
+            --markdown-report "$RUNNER_TEMP/phase50_numeric_validation.md"
+          cmp reports/phase50_numeric_validation.json \
+            "$RUNNER_TEMP/phase50_numeric_validation.json"
+          cmp reports/phase50_numeric_validation.md \
+            "$RUNNER_TEMP/phase50_numeric_validation.md"
+
+      - name: Upload runtime report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase50-runtime-report-${{ github.sha }}
+          path: |
+            backend/reports/phase50_numeric_validation.json
+            backend/reports/phase50_numeric_validation.md
+          if-no-files-found: error
