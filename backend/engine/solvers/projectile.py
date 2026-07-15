@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import math
 import sympy as sp
 
@@ -18,6 +19,25 @@ from engine.solvers.base import BaseSolver, SolverMatch
 # Reuse an assumption-free symbol so repeated solves can reuse SymPy's cached
 # expression graph without hiding non-real algebraic branches.
 _RAW_FLIGHT_TIME = sp.Symbol("_projectile_flight_time")
+_ROOT_SOLVE_DEPENDENCY = sp.solve
+
+
+@lru_cache(maxsize=256, typed=True)
+def _projectile_height_roots(
+    y0: float,
+    vy: float,
+    g: float,
+    y_target: float,
+) -> tuple[sp.Expr, ...]:
+    equation = sp.Eq(
+        y0
+        + vy * _RAW_FLIGHT_TIME
+        - sp.Rational(1, 2) * g * _RAW_FLIGHT_TIME**2,
+        y_target,
+    )
+    # Preserve SymPy's root order and exact expression objects.  Only this
+    # immutable algebraic root tuple is shared; downstream evidence is rebuilt.
+    return tuple(sp.solve(equation, _RAW_FLIGHT_TIME))
 
 
 def can_solve_flight_time_without_speed(c: CanonicalProblem) -> bool:
@@ -177,15 +197,16 @@ class ProjectileMotionSolver(BaseSolver):
         t_sym = sp.symbols("t", real=True)
 
         def times_for_height(y_target: float) -> list[sp.Expr]:
-            equation = sp.Eq(
-                y0
-                + vy * _RAW_FLIGHT_TIME
-                - sp.Rational(1, 2) * g * _RAW_FLIGHT_TIME**2,
-                y_target,
+            # Return a fresh list so candidate and branch evidence remains
+            # per-solve even when the immutable algebraic roots are reused.
+            # A replaced solve callable is a different dependency and must not
+            # reuse roots produced by the original dependency.
+            solve_roots = (
+                _projectile_height_roots
+                if sp.solve is _ROOT_SOLVE_DEPENDENCY
+                else _projectile_height_roots.__wrapped__
             )
-            # Preserve every algebraic branch.  Real/finite/event constraints
-            # belong to the common candidate validator below.
-            return list(sp.solve(equation, _RAW_FLIGHT_TIME))
+            return list(solve_roots(y0, vy, g, y_target))
 
         steps = [
             StepCard("기본 방정식", "포물선 운동은 x(t), y(t)를 직접 세워서 풉니다.", r"x=x_0+v_0\cos\theta\,t,\quad y=y_0+v_0\sin\theta\,t-\frac12gt^2"),
