@@ -94,6 +94,23 @@ PHASE51_EXTERNAL_PATHS_BY_FAMILY = MappingProxyType(
 )
 
 
+class _FrozenDict(dict):
+    """JSON-serializable immutable dictionary for nested capability roles."""
+
+    @staticmethod
+    def _immutable(*args: Any, **kwargs: Any) -> None:
+        raise TypeError("capability role mappings are immutable")
+
+    __setitem__ = _immutable
+    __delitem__ = _immutable
+    clear = _immutable
+    pop = _immutable
+    popitem = _immutable
+    setdefault = _immutable
+    update = _immutable
+    __ior__ = _immutable
+
+
 class CapabilityConfigError(ValueError):
     pass
 
@@ -261,7 +278,7 @@ def _validate_solver_path_roles(
                 "secondary_analytic_path": secondary,
                 "numeric_validation_path": None,
                 "external_validation_path": (
-                    MappingProxyType(expected_external)
+                    _FrozenDict(expected_external)
                     if expected_external
                     else None
                 ),

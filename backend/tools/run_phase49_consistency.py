@@ -1563,8 +1563,14 @@ def _path_roles_payload() -> dict[str, Any]:
         raw = matrix.path_roles_for_family(family)
         if raw is None:
             raise Phase49RunError(f"missing path roles for {family}")
+        # This payload is versioned Phase 49 evidence. Later optional engines
+        # must not rewrite the already accepted Phase 49 report snapshot.
         payload[family] = {
-            key: list(value) if isinstance(value, tuple) else value
+            key: (
+                None
+                if key == "external_validation_path"
+                else list(value) if isinstance(value, tuple) else value
+            )
             for key, value in raw.items()
         }
     return payload

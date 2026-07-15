@@ -2,6 +2,17 @@ name: Phase 51 PyChrono validation
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/phase51-pychrono-validation.yml"
+      - "backend/environment-phase51-chrono.yml"
+      - "backend/tools/chrono_validation/**"
+      - "backend/engine/capabilities/**"
+      - "backend/tests/test_phase51_*.py"
+      - "backend/tests/test_phase42_baseline_contracts.py"
+      - "docs/PHASE51_PYCHRONO_INTEGRATION_NOTES.md"
   push:
     branches:
       - codex/phase47-54-engine-completion

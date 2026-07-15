@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import pytest
 from engine.capabilities.loader import (
+    PHASE51_EXTERNAL_PATHS_BY_FAMILY,
     SOLVER_PATH_FAMILIES, SOLVER_PATH_ROLE_KEYS, CapabilityConfigError,
     load_capability_matrix,
 )
@@ -223,7 +224,11 @@ def test_accepted_capability_matrix_has_exact_phase49_roles():
         assert roles["student_answer_path"]
         assert roles["secondary_analytic_path"] == f"phase49.secondary.{family}"
         assert roles["numeric_validation_path"] is None
-        assert roles["external_validation_path"] is None
+        expected_external = dict(PHASE51_EXTERNAL_PATHS_BY_FAMILY[family])
+        if expected_external:
+            assert dict(roles["external_validation_path"]) == expected_external
+        else:
+            assert roles["external_validation_path"] is None
         assert roles["fallback_path"] is None
 def test_roleless_legacy_capability_fixture_remains_compatible(tmp_path):
     raw = {
