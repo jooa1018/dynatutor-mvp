@@ -8,6 +8,7 @@ import sympy as sp
 from engine.simulation.contracts import (
     DEFAULT_NUMERIC_SAFETY_POLICY,
     NUMERIC_POLICY_VERSION,
+    NumericEventSpec,
     NumericSafetyPolicy,
     NumericSimulationResult,
     NumericSimulationSpec,
@@ -170,6 +171,9 @@ def validate_simulation_spec(
 
     event_ids: set[str] = set()
     for event in spec.events:
+        if not isinstance(event, NumericEventSpec):
+            errors.append("events must contain NumericEventSpec values")
+            continue
         if not event.event_id.strip():
             errors.append("event_id must be non-empty")
         elif event.event_id in event_ids:
@@ -337,7 +341,12 @@ def run_numeric_system(
             raise _NonfiniteNumericError(
                 "mass matrix or forcing became non-finite"
             )
-        condition = float(np.linalg.cond(mass))
+        try:
+            condition = float(np.linalg.cond(mass))
+        except np.linalg.LinAlgError as exc:
+            raise _SingularMassMatrixError(
+                f"mass matrix conditioning failed: {exc}"
+            ) from exc
         condition_numbers.append(condition)
         if (
             not math.isfinite(condition)
@@ -563,8 +572,7 @@ def run_numeric_system(
     analytic_warnings: list[str] = []
     if (
         analytic_error.get("applicable")
-        and float(analytic_error.get("max_abs_error", 0.0))
-        > policy.analytic_absolute_warning
+        and not bool(analytic_error.get("passed"))
     ):
         analytic_warnings.append("analytic_error_exceeds_policy")
 
@@ -656,6 +664,27 @@ def _as_finite_series(value, count: int, np, label: str) -> list[float]:
     return [float(item) for item in array]
 
 
+def _finite_scalar(value: Any, label: str) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise _NonfiniteNumericError(
+            f"{label} is not a finite numeric value"
+        ) from exc
+    if not math.isfinite(numeric):
+        raise _NonfiniteNumericError(f"{label} became non-finite")
+    return numeric
+
+
+def _finite_rms(values, np, label: str) -> float:
+    absolute_max = _finite_scalar(np.max(np.abs(values)), f"{label} maximum")
+    if absolute_max == 0.0:
+        return 0.0
+    normalized = values / absolute_max
+    rms = absolute_max * math.sqrt(float(np.mean(normalized**2)))
+    return _finite_scalar(rms, f"{label} RMS")
+
+
 def _invariant_diagnostics(
     spec: NumericSimulationSpec,
     energy_values: list[float],
@@ -665,22 +694,46 @@ def _invariant_diagnostics(
     energy = np.asarray(energy_values, dtype=float)
     initial = float(energy[0])
     final = float(energy[-1])
-    scale = max(float(np.max(np.abs(energy))), abs(initial), 1.0)
-    max_abs_drift = float(np.max(np.abs(energy - initial)))
-    relative_drift = max_abs_drift / scale
+    scale = _finite_scalar(
+        max(float(np.max(np.abs(energy))), abs(initial)),
+        "energy reference scale",
+    )
+    drift = energy - initial
+    if not np.all(np.isfinite(drift)):
+        raise _NonfiniteNumericError("energy drift became non-finite")
+    max_abs_drift = _finite_scalar(
+        np.max(np.abs(drift)),
+        "maximum energy drift",
+    )
+    combined_tolerance = _finite_scalar(
+        policy.energy_absolute_drift_warning
+        + policy.energy_relative_drift_warning * scale,
+        "energy comparison tolerance",
+    )
+    relative_drift = _finite_scalar(
+        max_abs_drift
+        / max(scale, policy.energy_absolute_drift_warning),
+        "relative energy drift",
+    )
     warnings: list[str] = []
     if (
         spec.model_id == "mass_spring_damper"
         and float(spec.parameters["c"]) > 0.0
     ):
         increments = np.diff(energy)
+        if not np.all(np.isfinite(increments)):
+            raise _NonfiniteNumericError("energy increments became non-finite")
         max_increase = (
-            max(float(np.max(increments)), 0.0)
+            max(_finite_scalar(np.max(increments), "energy step increase"), 0.0)
             if len(increments)
             else 0.0
         )
-        relative_increase = max_increase / scale
-        if relative_increase > policy.energy_relative_drift_warning:
+        relative_increase = _finite_scalar(
+            max_increase
+            / max(scale, policy.energy_absolute_drift_warning),
+            "relative energy step increase",
+        )
+        if max_increase > combined_tolerance:
             warnings.append("damped_energy_increase_exceeds_policy")
         return (
             {
@@ -692,14 +745,13 @@ def _invariant_diagnostics(
                 "relative_drift_from_initial": relative_drift,
                 "max_step_increase": max_increase,
                 "relative_step_increase": relative_increase,
-                "passed": (
-                    relative_increase
-                    <= policy.energy_relative_drift_warning
-                ),
+                "reference_scale": scale,
+                "combined_tolerance": combined_tolerance,
+                "passed": max_increase <= combined_tolerance,
             },
             warnings,
         )
-    if relative_drift > policy.energy_relative_drift_warning:
+    if max_abs_drift > combined_tolerance:
         warnings.append("energy_drift_exceeds_policy")
     return (
         {
@@ -709,7 +761,9 @@ def _invariant_diagnostics(
             "final": final,
             "max_abs_drift": max_abs_drift,
             "relative_drift": relative_drift,
-            "passed": relative_drift <= policy.energy_relative_drift_warning,
+            "reference_scale": scale,
+            "combined_tolerance": combined_tolerance,
+            "passed": max_abs_drift <= combined_tolerance,
         },
         warnings,
     )
@@ -774,16 +828,67 @@ def _analytic_diagnostics(
     if spec.model_id == "simple_pendulum":
         length = float(spec.parameters["L"])
         gravity = float(spec.parameters["g"])
-        omega = math.sqrt(gravity / length)
+        omega = _finite_scalar(
+            math.sqrt(gravity / length),
+            "pendulum analytic angular frequency",
+        )
+        if omega == 0.0:
+            raise _NonfiniteNumericError(
+                "pendulum analytic angular frequency underflowed to zero"
+            )
         analytic = (
             initial_position * np.cos(omega * relative_time)
             + (initial_speed / omega) * np.sin(omega * relative_time)
         )
-        error = position - analytic
-        analytic_period = 2.0 * math.pi / omega
+        analytic = np.asarray(
+            _as_finite_series(
+                analytic,
+                len(time_values),
+                np,
+                "pendulum analytic reference",
+            ),
+            dtype=float,
+        )
+        error = np.asarray(
+            _as_finite_series(
+                position - analytic,
+                len(time_values),
+                np,
+                "pendulum analytic error",
+            ),
+            dtype=float,
+        )
+        max_abs_error = _finite_scalar(
+            np.max(np.abs(error)),
+            "pendulum maximum analytic error",
+        )
+        reference_scale = _finite_scalar(
+            max(
+                float(np.max(np.abs(analytic))),
+                float(np.max(np.abs(position))),
+            ),
+            "pendulum analytic reference scale",
+        )
+        comparison_tolerance = _finite_scalar(
+            policy.analytic_absolute_warning
+            + policy.analytic_relative_warning * reference_scale,
+            "pendulum analytic comparison tolerance",
+        )
+        analytic_period = _finite_scalar(
+            2.0 * math.pi / omega,
+            "pendulum analytic period",
+        )
         observed_period = _estimate_period(time_values, position)
+        if observed_period is not None:
+            observed_period = _finite_scalar(
+                observed_period,
+                "pendulum observed period",
+            )
         period_relative_error = (
-            abs(observed_period - analytic_period) / analytic_period
+            _finite_scalar(
+                abs(observed_period - analytic_period) / analytic_period,
+                "pendulum period relative error",
+            )
             if observed_period is not None
             else None
         )
@@ -794,8 +899,11 @@ def _analytic_diagnostics(
             "reference": "small_angle_linearized_pendulum",
             "applicable": small_angle,
             "expected_large_angle_difference": not small_angle,
-            "max_abs_error": float(np.max(np.abs(error))),
-            "rms_error": float(np.sqrt(np.mean(error**2))),
+            "max_abs_error": max_abs_error,
+            "rms_error": _finite_rms(error, np, "pendulum analytic error"),
+            "reference_scale": reference_scale,
+            "comparison_tolerance": comparison_tolerance,
+            "passed": max_abs_error <= comparison_tolerance,
             "analytic_period": analytic_period,
             "observed_period": observed_period,
             "period_relative_error": period_relative_error,
@@ -805,24 +913,73 @@ def _analytic_diagnostics(
     mass = float(spec.parameters["m"])
     stiffness = float(spec.parameters["k"])
     damping = float(spec.parameters["c"])
-    analytic, regime = _mass_spring_analytic(
-        relative_time,
-        initial_position,
-        initial_speed,
-        mass,
-        stiffness,
-        damping,
-        np,
+    try:
+        analytic, regime = _mass_spring_analytic(
+            relative_time,
+            initial_position,
+            initial_speed,
+            mass,
+            stiffness,
+            damping,
+            np,
+        )
+    except ArithmeticError as exc:
+        raise _NonfiniteNumericError(
+            f"mass-spring analytic reference became non-finite: {exc}"
+        ) from exc
+    analytic = np.asarray(
+        _as_finite_series(
+            analytic,
+            len(time_values),
+            np,
+            "mass-spring analytic reference",
+        ),
+        dtype=float,
     )
-    error = position - analytic
+    error = np.asarray(
+        _as_finite_series(
+            position - analytic,
+            len(time_values),
+            np,
+            "mass-spring analytic error",
+        ),
+        dtype=float,
+    )
+    max_abs_error = _finite_scalar(
+        np.max(np.abs(error)),
+        "mass-spring maximum analytic error",
+    )
+    reference_scale = _finite_scalar(
+        max(
+            float(np.max(np.abs(analytic))),
+            float(np.max(np.abs(position))),
+        ),
+        "mass-spring analytic reference scale",
+    )
+    comparison_tolerance = _finite_scalar(
+        policy.analytic_absolute_warning
+        + policy.analytic_relative_warning * reference_scale,
+        "mass-spring analytic comparison tolerance",
+    )
+    natural_frequency = _finite_scalar(
+        math.sqrt(stiffness / mass),
+        "mass-spring natural angular frequency",
+    )
+    damping_ratio = _finite_scalar(
+        damping / (2.0 * math.sqrt(stiffness * mass)),
+        "mass-spring damping ratio",
+    )
     return {
         "reference": "homogeneous_mass_spring_damper",
         "applicable": True,
         "damping_regime": regime,
-        "max_abs_error": float(np.max(np.abs(error))),
-        "rms_error": float(np.sqrt(np.mean(error**2))),
-        "natural_angular_frequency": math.sqrt(stiffness / mass),
-        "damping_ratio": damping / (2.0 * math.sqrt(stiffness * mass)),
+        "max_abs_error": max_abs_error,
+        "rms_error": _finite_rms(error, np, "mass-spring analytic error"),
+        "reference_scale": reference_scale,
+        "comparison_tolerance": comparison_tolerance,
+        "passed": max_abs_error <= comparison_tolerance,
+        "natural_angular_frequency": natural_frequency,
+        "damping_ratio": damping_ratio,
     }
 
 
@@ -868,6 +1025,8 @@ def _mass_spring_analytic(
 
 
 def _estimate_period(time_values, values) -> float | None:
+    if len(values) < 2 or max(abs(float(value)) for value in values) == 0.0:
+        return None
     crossings: list[float] = []
     for index in range(len(values) - 1):
         left = float(values[index])

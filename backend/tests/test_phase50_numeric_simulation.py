@@ -8,7 +8,10 @@ import numpy as np
 import pytest
 import sympy as sp
 
-from engine.simulation.contracts import SimulationStatus
+from engine.simulation.contracts import (
+    DEFAULT_NUMERIC_SAFETY_POLICY,
+    SimulationStatus,
+)
 from engine.simulation.scenarios import (
     evaluate_validation_case,
     smoke_validation_cases,
@@ -128,6 +131,16 @@ def test_phase50_missing_scipy_is_an_explicit_dependency_failure(monkeypatch):
     )
 
 
+def test_phase50_malformed_event_values_fail_as_an_invalid_spec():
+    case = smoke_validation_cases()[0]
+    malformed = replace(case.spec, events=({"event_id": "not-typed"},))
+
+    result = simulate_numeric(malformed)
+
+    assert result.status == SimulationStatus.INVALID_SPEC
+    assert result.errors == ("events must contain NumericEventSpec values",)
+
+
 def _built_smoke_system():
     case = smoke_validation_cases()[1]
     typed_model = build_numeric_typed_model(case.spec)
@@ -217,6 +230,54 @@ def test_phase50_nonfinite_observable_cannot_escape_postprocessing():
     assert result.errors == ("observable bad became non-finite",)
 
 
+def test_phase50_analytic_overflow_is_a_nonfinite_failure():
+    case, _system = _built_smoke_system()
+    overflow_spec = replace(
+        case.spec,
+        parameters={"m": 1.5, "k": 12.0, "c": 1.0e308},
+    )
+    typed_model = build_numeric_typed_model(overflow_spec)
+    system = build_sympy_mechanics_system(overflow_spec, typed_model)
+
+    result = run_numeric_system(
+        overflow_spec,
+        system,
+        np_module=np,
+        solve_ivp_impl=lambda *args, **kwargs: _fake_solution(overflow_spec),
+        scipy_version="controlled",
+    )
+
+    assert result.status == SimulationStatus.NONFINITE_OUTPUT
+    assert "analytic reference" in result.errors[0]
+
+
+def test_phase50_energy_drift_overflow_is_a_nonfinite_failure():
+    case, system = _built_smoke_system()
+    position = system.coordinate_symbols[0]
+    overflow_energy = replace(
+        system,
+        total_energy=sp.Float("1e308") * position,
+    )
+    states = [
+        [(-1.0 if index % 2 else 1.0) for index in range(51)],
+        [0.0] * 51,
+    ]
+
+    result = run_numeric_system(
+        case.spec,
+        overflow_energy,
+        np_module=np,
+        solve_ivp_impl=lambda *args, **kwargs: _fake_solution(
+            case.spec,
+            states=states,
+        ),
+        scipy_version="controlled",
+    )
+
+    assert result.status == SimulationStatus.NONFINITE_OUTPUT
+    assert result.errors == ("energy drift became non-finite",)
+
+
 def test_phase50_solver_reported_failure_is_not_a_trajectory():
     case, system = _built_smoke_system()
     result = run_numeric_system(
@@ -232,3 +293,20 @@ def test_phase50_solver_reported_failure_is_not_a_trajectory():
 
     assert result.status == SimulationStatus.INTEGRATION_FAILED
     assert result.trajectory is None
+
+
+def test_phase50_accuracy_thresholds_are_absolute_plus_relative():
+    case = smoke_validation_cases()[0]
+    result = simulate_numeric(case.spec)
+    analytic = result.analytic_error
+    energy = result.invariant_drift
+    policy = DEFAULT_NUMERIC_SAFETY_POLICY
+
+    assert analytic["comparison_tolerance"] == pytest.approx(
+        policy.analytic_absolute_warning
+        + policy.analytic_relative_warning * analytic["reference_scale"]
+    )
+    assert energy["combined_tolerance"] == pytest.approx(
+        policy.energy_absolute_drift_warning
+        + policy.energy_relative_drift_warning * energy["reference_scale"]
+    )

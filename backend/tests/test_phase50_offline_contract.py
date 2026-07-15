@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -69,3 +70,19 @@ def test_phase50_has_no_network_or_generated_report_in_fast_path():
     assert "urllib." not in sources
     assert "backend/reports" not in sources
     assert "subprocess" not in sources
+
+
+def test_phase50_committed_report_is_runtime_generated_and_passed():
+    report = json.loads(
+        (
+            BACKEND_ROOT / "reports" / "phase50_numeric_validation.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    assert report["status"] == "passed"
+    assert report["passed"] is True
+    assert report["summary"]["case_count"] == 7
+    assert report["summary"]["passed_count"] == 7
+    assert report["summary"]["scipy_trajectory_count"] == 7
+    assert report["summary"]["offline_only"] is True
+    assert report["summary"]["student_answer_overwrite"] is False

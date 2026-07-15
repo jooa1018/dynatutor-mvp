@@ -39,8 +39,8 @@ import it.
 - Convention: `theta` is measured counterclockwise from the downward vertical.
 - Derived equation: `m L^2 theta_ddot + m g L sin(theta) = 0`.
 - Diagnostics: mechanical-energy conservation, fixed-length constraint,
-  small-angle analytic trajectory and period, and an explicit large-angle
-  difference check.
+  small-angle analytic trajectory and period, an explicit large-angle
+  difference check, and direct integration of the zero equilibrium state.
 
 ### Mass-spring-damper
 
@@ -55,6 +55,9 @@ import it.
 ## Safety policy
 
 `phase50-numeric-safety-v1` centralizes the numeric warning and failure limits.
+Energy and analytic comparisons use a combined absolute-plus-relative
+tolerance computed from the recorded reference scale; constraints use an
+absolute residual tolerance because their target value is zero.
 The implementation fails closed for an invalid spec, unsupported model,
 unavailable SciPy runtime, singular or ill-conditioned mass matrix,
 `solve_ivp` failure, non-finite values, and runaway state magnitude. Events are
@@ -71,10 +74,10 @@ infinity in the generated report.
   models, symbolic equation checks, invalid-input checks, dependency failure,
   singular-matrix failure, integration failure, non-finite output, runaway
   output, event handling, and production-path isolation.
-- Benchmark regression runs six longer accuracy trajectories: small- and
-  large-angle pendulums plus undamped, underdamped, critical, and overdamped
-  spring systems.
-- `backend/tools/run_phase50_numeric_validation.py` runs the six-case accuracy
+- Benchmark regression runs seven longer accuracy trajectories: small-angle,
+  large-angle, and equilibrium pendulums plus undamped, underdamped, critical,
+  and overdamped spring systems.
+- `backend/tools/run_phase50_numeric_validation.py` runs the seven-case accuracy
   suite and atomically writes deterministic JSON and Markdown reports without
   timestamps or manually entered result counts.
 
@@ -90,7 +93,7 @@ condition, model versions, schema versions, and safety-policy version.
 - Suite: `phase50-numeric-validation-suite-v1`
 - Spec/result schema: `1` / `1`
 
-Acceptance requires all six runtime cases to pass, at least two actual SciPy
+Acceptance requires all seven runtime cases to pass, at least two actual SciPy
 trajectories, both primary models, energy and constraint diagnostics, the
 applicable analytic comparisons, the intentional large-angle disagreement,
 offline-only evidence, no answer overwrite, and byte-identical JSON/Markdown

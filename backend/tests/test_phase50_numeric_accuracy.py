@@ -32,10 +32,14 @@ def test_phase50_accuracy_and_invariant_contracts(case):
     assert verdict["passed"], result.to_dict()
     assert result.invariant_drift["passed"] is True
     assert result.constraint_violation["passed"] is True
+    assert result.analytic_error["comparison_tolerance"] > 0.0
     if case.require_analytic_agreement:
         assert verdict["analytic_agreement"] is True
     if case.require_large_angle_difference:
         assert verdict["large_angle_difference"] is True
+    if case.require_equilibrium_hold:
+        assert verdict["equilibrium_max_abs"] == 0.0
+        assert result.analytic_error["observed_period"] is None
 
 
 def test_phase50_damped_regimes_and_energy_direction_are_all_covered():
@@ -61,12 +65,12 @@ def test_phase50_runtime_report_is_passed_complete_and_deterministic(tmp_path):
     assert report["report_id"] == REPORT_ID
     assert report["status"] == "passed"
     assert report["passed"] is True
-    assert report["summary"]["case_count"] == 6
-    assert report["summary"]["passed_count"] == 6
-    assert report["summary"]["scipy_trajectory_count"] == 6
+    assert report["summary"]["case_count"] == 7
+    assert report["summary"]["passed_count"] == 7
+    assert report["summary"]["scipy_trajectory_count"] == 7
     assert report["summary"]["model_counts"] == {
         "mass_spring_damper": 4,
-        "simple_pendulum": 2,
+        "simple_pendulum": 3,
     }
     assert report["summary"]["offline_only"] is True
     assert report["summary"]["student_answer_overwrite"] is False

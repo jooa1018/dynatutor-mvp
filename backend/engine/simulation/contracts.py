@@ -35,9 +35,12 @@ SUCCESS_STATUSES = frozenset(
 @dataclass(frozen=True)
 class NumericSafetyPolicy:
     policy_version: str = NUMERIC_POLICY_VERSION
+    energy_absolute_drift_warning: float = 1e-10
     energy_relative_drift_warning: float = 1e-5
     constraint_absolute_warning: float = 1e-8
     analytic_absolute_warning: float = 1e-4
+    analytic_relative_warning: float = 1e-3
+    equilibrium_absolute_warning: float = 1e-12
     runaway_absolute_limit: float = 1e6
     singular_condition_threshold: float = 1e14
     stiffness_ratio_warning: float = 100.0
@@ -136,7 +139,12 @@ class NumericSimulationSpec:
             "rtol": _finite_or_none(self.rtol),
             "atol": _finite_or_none(self.atol),
             "max_step": _finite_or_none(self.max_step),
-            "events": [event.to_dict() for event in self.events],
+            "events": [
+                event.to_dict()
+                if isinstance(event, NumericEventSpec)
+                else {"invalid_event_type": type(event).__name__}
+                for event in self.events
+            ],
             "random_seed": self.random_seed,
             "safety_policy_version": self.safety_policy_version,
         }

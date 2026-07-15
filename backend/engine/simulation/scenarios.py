@@ -24,6 +24,7 @@ class NumericValidationCase:
     spec: NumericSimulationSpec
     require_analytic_agreement: bool = True
     require_large_angle_difference: bool = False
+    require_equilibrium_hold: bool = False
     required_event_id: str | None = None
 
 
@@ -158,6 +159,16 @@ def accuracy_validation_cases() -> tuple[NumericValidationCase, ...]:
             require_large_angle_difference=True,
         ),
         NumericValidationCase(
+            case_id="pendulum_equilibrium_hold",
+            spec=_pendulum_spec(
+                theta=0.0,
+                theta_dot=0.0,
+                end=2.0,
+                samples=201,
+            ),
+            require_equilibrium_hold=True,
+        ),
+        NumericValidationCase(
             case_id="spring_undamped_accuracy",
             spec=_spring_spec(
                 case_seed=5003,
@@ -222,20 +233,39 @@ def evaluate_validation_case(
     max_abs_error = analytic_error.get("max_abs_error")
     analytic_agreement = (
         bool(analytic_error.get("applicable"))
-        and isinstance(max_abs_error, (int, float))
-        and float(max_abs_error) <= policy.analytic_absolute_warning
+        and analytic_error.get("passed") is True
     )
     large_angle_difference = (
         bool(analytic_error.get("expected_large_angle_difference"))
         and not bool(analytic_error.get("applicable"))
         and isinstance(max_abs_error, (int, float))
-        and float(max_abs_error) > policy.analytic_absolute_warning
+        and isinstance(
+            analytic_error.get("comparison_tolerance"),
+            (int, float),
+        )
+        and float(max_abs_error)
+        > float(analytic_error["comparison_tolerance"])
     )
     event_passed = True
     if case.required_event_id is not None:
         event_passed = (
             int(result.events.get(case.required_event_id, {}).get("count", 0))
             >= 1
+        )
+    equilibrium_max_abs = 0.0
+    equilibrium_passed = True
+    if case.require_equilibrium_hold:
+        equilibrium_values = (
+            value
+            for values in trajectory.states.values()
+            for value in values
+        ) if trajectory is not None else ()
+        equilibrium_max_abs = max(
+            (abs(float(value)) for value in equilibrium_values),
+            default=float("inf"),
+        )
+        equilibrium_passed = (
+            equilibrium_max_abs <= policy.equilibrium_absolute_warning
         )
     checks = {
         "simulation_completed": result.passed,
@@ -255,6 +285,7 @@ def evaluate_validation_case(
             else True
         ),
         "required_event_observed": event_passed,
+        "equilibrium_hold": equilibrium_passed,
         "offline_only": (
             result.solver_diagnostics.get("offline_only") is True
         ),
@@ -267,6 +298,7 @@ def evaluate_validation_case(
         "checks": checks,
         "analytic_agreement": analytic_agreement,
         "large_angle_difference": large_angle_difference,
+        "equilibrium_max_abs": equilibrium_max_abs,
     }
 
 

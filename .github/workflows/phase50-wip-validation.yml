@@ -52,15 +52,15 @@ jobs:
           tests/test_phase50_numeric_accuracy.py
           tests/test_phase50_offline_contract.py
 
+      - name: Generate runtime reports
+        run: python tools/run_phase50_numeric_validation.py
+
       - name: Run Phase 50 focused tests
         run: >-
           python -m pytest -q -o addopts=
           tests/test_phase50_numeric_simulation.py
           tests/test_phase50_numeric_accuracy.py
           tests/test_phase50_offline_contract.py
-
-      - name: Generate runtime reports
-        run: python tools/run_phase50_numeric_validation.py
 
       - name: Verify deterministic report bytes
         run: |
