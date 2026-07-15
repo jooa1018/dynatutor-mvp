@@ -174,21 +174,31 @@ def validate_simulation_spec(
         if not isinstance(event, NumericEventSpec):
             errors.append("events must contain NumericEventSpec values")
             continue
-        if not event.event_id.strip():
-            errors.append("event_id must be non-empty")
-        elif event.event_id in event_ids:
-            errors.append(f"duplicate event_id: {event.event_id!r}")
-        event_ids.add(event.event_id)
-        if event.state_variable not in contract.state_variables:
+        if not isinstance(event.event_id, str) or not event.event_id.strip():
+            errors.append("event_id must be a non-empty string")
+        else:
+            if event.event_id in event_ids:
+                errors.append(f"duplicate event_id: {event.event_id!r}")
+            event_ids.add(event.event_id)
+        if not isinstance(event.state_variable, str):
+            errors.append("event state_variable must be a string")
+        elif event.state_variable not in contract.state_variables:
             errors.append(
                 f"event {event.event_id!r} references unknown state variable"
             )
         if not _is_finite_number(event.threshold):
             errors.append(f"event {event.event_id!r} threshold must be finite")
-        if event.direction not in {-1, 0, 1}:
+        if (
+            isinstance(event.direction, bool)
+            or not isinstance(event.direction, int)
+            or event.direction not in {-1, 0, 1}
+        ):
             errors.append(
-                f"event {event.event_id!r} direction must be -1, 0, or 1"
+                f"event {event.event_id!r} direction must be the integer "
+                "-1, 0, or 1"
             )
+        if not isinstance(event.terminal, bool):
+            errors.append(f"event {event.event_id!r} terminal must be boolean")
     return tuple(errors)
 
 
@@ -698,7 +708,8 @@ def _invariant_diagnostics(
         max(float(np.max(np.abs(energy))), abs(initial)),
         "energy reference scale",
     )
-    drift = energy - initial
+    with np.errstate(over="ignore", invalid="ignore"):
+        drift = energy - initial
     if not np.all(np.isfinite(drift)):
         raise _NonfiniteNumericError("energy drift became non-finite")
     max_abs_drift = _finite_scalar(
@@ -720,7 +731,8 @@ def _invariant_diagnostics(
         spec.model_id == "mass_spring_damper"
         and float(spec.parameters["c"]) > 0.0
     ):
-        increments = np.diff(energy)
+        with np.errstate(over="ignore", invalid="ignore"):
+            increments = np.diff(energy)
         if not np.all(np.isfinite(increments)):
             raise _NonfiniteNumericError("energy increments became non-finite")
         max_increase = (
@@ -836,10 +848,11 @@ def _analytic_diagnostics(
             raise _NonfiniteNumericError(
                 "pendulum analytic angular frequency underflowed to zero"
             )
-        analytic = (
-            initial_position * np.cos(omega * relative_time)
-            + (initial_speed / omega) * np.sin(omega * relative_time)
-        )
+        with np.errstate(over="ignore", invalid="ignore"):
+            analytic = (
+                initial_position * np.cos(omega * relative_time)
+                + (initial_speed / omega) * np.sin(omega * relative_time)
+            )
         analytic = np.asarray(
             _as_finite_series(
                 analytic,
@@ -892,9 +905,11 @@ def _analytic_diagnostics(
             if observed_period is not None
             else None
         )
-        small_angle = (
-            abs(initial_position) <= policy.pendulum_small_angle_limit_rad
+        max_abs_angle = _finite_scalar(
+            np.max(np.abs(position)),
+            "pendulum maximum trajectory angle",
         )
+        small_angle = max_abs_angle <= policy.pendulum_small_angle_limit_rad
         return {
             "reference": "small_angle_linearized_pendulum",
             "applicable": small_angle,
@@ -908,21 +923,28 @@ def _analytic_diagnostics(
             "observed_period": observed_period,
             "period_relative_error": period_relative_error,
             "angle_limit_rad": policy.pendulum_small_angle_limit_rad,
+            "max_abs_angle": max_abs_angle,
         }
 
     mass = float(spec.parameters["m"])
     stiffness = float(spec.parameters["k"])
     damping = float(spec.parameters["c"])
     try:
-        analytic, regime = _mass_spring_analytic(
-            relative_time,
-            initial_position,
-            initial_speed,
-            mass,
-            stiffness,
-            damping,
-            np,
-        )
+        with np.errstate(
+            divide="ignore",
+            invalid="ignore",
+            over="ignore",
+            under="ignore",
+        ):
+            analytic, regime = _mass_spring_analytic(
+                relative_time,
+                initial_position,
+                initial_speed,
+                mass,
+                stiffness,
+                damping,
+                np,
+            )
     except ArithmeticError as exc:
         raise _NonfiniteNumericError(
             f"mass-spring analytic reference became non-finite: {exc}"

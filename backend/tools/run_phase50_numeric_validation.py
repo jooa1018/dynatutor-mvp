@@ -54,6 +54,13 @@ def _case_record(case: NumericValidationCase) -> dict[str, Any]:
         "status": result.status,
         "passed": bool(verdict["passed"]),
         "checks": verdict["checks"],
+        "requirements": {
+            "analytic_agreement": case.require_analytic_agreement,
+            "large_angle_difference": case.require_large_angle_difference,
+            "equilibrium_hold": case.require_equilibrium_hold,
+            "event_id": case.required_event_id,
+        },
+        "equilibrium_max_abs": verdict["equilibrium_max_abs"],
         "spec": case.spec.to_dict(),
         "result_schema_version": result.schema_version,
         "safety_policy_version": result.safety_policy_version,
@@ -138,7 +145,8 @@ def build_report(
         },
         "environment": {
             "python": platform.python_version(),
-            "platform": platform.platform(),
+            "system": platform.system(),
+            "machine": platform.machine(),
         },
         "cases": records,
     }

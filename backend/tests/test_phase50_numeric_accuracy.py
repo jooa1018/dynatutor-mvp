@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 
 import pytest
 
@@ -56,6 +57,27 @@ def test_phase50_damped_regimes_and_energy_direction_are_all_covered():
         assert result.invariant_drift["passed"] is True
         if float(result.solver_diagnostics["spec"]["parameters"]["c"]) > 0.0:
             assert result.invariant_drift["expected_behavior"] == "nonincreasing"
+
+
+def test_phase50_pendulum_energy_scale_is_equilibrium_zero_and_shift_invariant():
+    small_angle, _large_angle, equilibrium = accuracy_validation_cases()[:3]
+    small_result = simulate_numeric(small_angle.spec)
+    equilibrium_result = simulate_numeric(equilibrium.spec)
+    expected_excitation = (
+        float(small_angle.spec.parameters["m"])
+        * float(small_angle.spec.parameters["g"])
+        * float(small_angle.spec.parameters["L"])
+        * (1.0 - math.cos(float(small_angle.spec.initial_state[0])))
+    )
+
+    assert small_result.invariant_drift["initial"] == pytest.approx(
+        expected_excitation
+    )
+    assert small_result.invariant_drift["reference_scale"] == pytest.approx(
+        expected_excitation
+    )
+    assert equilibrium_result.invariant_drift["initial"] == 0.0
+    assert equilibrium_result.invariant_drift["reference_scale"] == 0.0
 
 
 def test_phase50_runtime_report_is_passed_complete_and_deterministic(tmp_path):

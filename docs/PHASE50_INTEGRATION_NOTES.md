@@ -38,7 +38,8 @@ import it.
 - Parameters: mass `m`, length `L`, and gravity `g` with explicit SI units.
 - Convention: `theta` is measured counterclockwise from the downward vertical.
 - Derived equation: `m L^2 theta_ddot + m g L sin(theta) = 0`.
-- Diagnostics: mechanical-energy conservation, fixed-length constraint,
+- Diagnostics: mechanical-energy conservation with zero energy at the downward
+  equilibrium, fixed-length constraint,
   small-angle analytic trajectory and period, an explicit large-angle
   difference check, and direct integration of the zero equilibrium state.
 

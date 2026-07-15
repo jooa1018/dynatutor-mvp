@@ -341,7 +341,8 @@ def _derive_simple_pendulum(
     }
     mass_matrix = sp.Matrix(method.mass_matrix).subs(substitutions)
     forcing = sp.Matrix(method.forcing).subs(substitutions)
-    energy = (kinetic + potential).subs(substitutions)
+    physical_energy = (kinetic + potential).subs(substitutions)
+    energy = sp.simplify(physical_energy + m * gravity * length)
     length_residual = (
         (length * sp.sin(theta)) ** 2
         + (-length * sp.cos(theta)) ** 2
@@ -376,6 +377,7 @@ def _derive_simple_pendulum(
             "engine": "sympy.physics.mechanics.LagrangesMethod",
             "coordinate_convention": "theta from downward vertical, CCW positive",
             "derivation": "typed model -> Lagrangian -> mass matrix and forcing",
+            "energy_reference": "zero at theta=0 equilibrium",
         },
     )
 

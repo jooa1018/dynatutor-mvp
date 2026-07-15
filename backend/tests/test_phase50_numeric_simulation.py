@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -10,6 +11,7 @@ import sympy as sp
 
 from engine.simulation.contracts import (
     DEFAULT_NUMERIC_SAFETY_POLICY,
+    NumericEventSpec,
     SimulationStatus,
 )
 from engine.simulation.scenarios import (
@@ -98,6 +100,7 @@ def test_phase50_invalid_specs_fail_closed_before_numeric_execution():
     invalid = replace(
         case.spec,
         parameters={"m": 1.0, "L": 0.0, "g": 9.81},
+        initial_state=(float("nan"), 0.0),
         evaluation_grid=(0.0, 0.5, 0.4, 1.0),
         rtol=-1.0,
     )
@@ -108,6 +111,7 @@ def test_phase50_invalid_specs_fail_closed_before_numeric_execution():
     assert any("positive" in error for error in errors)
     assert any("strictly increasing" in error for error in errors)
     assert any("rtol" in error for error in errors)
+    assert any("initial_state[0]" in error for error in errors)
     assert result.status == SimulationStatus.INVALID_SPEC
     assert not result.passed
     assert result.trajectory is None
@@ -139,6 +143,69 @@ def test_phase50_malformed_event_values_fail_as_an_invalid_spec():
 
     assert result.status == SimulationStatus.INVALID_SPEC
     assert result.errors == ("events must contain NumericEventSpec values",)
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        NumericEventSpec(None, "theta"),
+        NumericEventSpec("bad-state", ["theta"]),
+        NumericEventSpec("bool-direction", "theta", direction=True),
+        NumericEventSpec("string-terminal", "theta", terminal="false"),
+    ],
+    ids=[
+        "event-id-type",
+        "state-variable-type",
+        "direction-bool",
+        "terminal-string",
+    ],
+)
+def test_phase50_malformed_typed_event_fields_fail_closed(event):
+    case = smoke_validation_cases()[0]
+    malformed = replace(case.spec, events=(event,))
+
+    result = simulate_numeric(malformed)
+
+    assert result.status == SimulationStatus.INVALID_SPEC
+    assert result.errors
+
+
+def test_phase50_numeric_core_runs_when_pydy_is_unavailable(monkeypatch):
+    case = smoke_validation_cases()[1]
+    monkeypatch.setitem(sys.modules, "pydy", None)
+
+    result = simulate_numeric(case.spec)
+
+    assert result.passed, result.to_dict()
+    assert result.solver_diagnostics["scipy_version"] != "unknown"
+
+
+def test_phase50_stiff_parameter_ratio_is_reported_without_hiding_result():
+    case = smoke_validation_cases()[1]
+    stiff = replace(
+        case.spec,
+        parameters={"m": 1.0, "k": 1.0, "c": 20.0},
+    )
+
+    result = simulate_numeric(stiff)
+
+    assert result.status == SimulationStatus.COMPLETED_WITH_WARNINGS
+    assert result.solver_diagnostics["stiffness_ratio"] == pytest.approx(400.0)
+    assert "stiffness_warning_parameter_ratio" in result.warnings
+
+
+def test_phase50_small_angle_applicability_uses_the_integrated_trajectory():
+    case = smoke_validation_cases()[0]
+    high_speed = replace(case.spec, initial_state=(0.0, 2.0), events=())
+
+    result = simulate_numeric(high_speed)
+
+    assert result.passed, result.to_dict()
+    assert result.analytic_error["max_abs_angle"] > (
+        DEFAULT_NUMERIC_SAFETY_POLICY.pendulum_small_angle_limit_rad
+    )
+    assert result.analytic_error["applicable"] is False
+    assert result.analytic_error["expected_large_angle_difference"] is True
 
 
 def _built_smoke_system():
@@ -276,6 +343,31 @@ def test_phase50_energy_drift_overflow_is_a_nonfinite_failure():
 
     assert result.status == SimulationStatus.NONFINITE_OUTPUT
     assert result.errors == ("energy drift became non-finite",)
+
+
+def test_phase50_large_finite_energy_drift_is_an_explicit_warning():
+    case, system = _built_smoke_system()
+    position = system.coordinate_symbols[0]
+    drifting_energy = replace(system, total_energy=position)
+    states = [
+        [(-1.0 if index % 2 else 1.0) for index in range(51)],
+        [0.0] * 51,
+    ]
+
+    result = run_numeric_system(
+        case.spec,
+        drifting_energy,
+        np_module=np,
+        solve_ivp_impl=lambda *args, **kwargs: _fake_solution(
+            case.spec,
+            states=states,
+        ),
+        scipy_version="controlled",
+    )
+
+    assert result.status == SimulationStatus.COMPLETED_WITH_WARNINGS
+    assert result.invariant_drift["passed"] is False
+    assert "energy_drift_exceeds_policy" in result.warnings
 
 
 def test_phase50_solver_reported_failure_is_not_a_trajectory():
