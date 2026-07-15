@@ -1,0 +1,146 @@
+name: Phase 49 performance profile
+
+on:
+  push:
+    branches:
+      - codex/phase47-54-engine-completion
+    paths:
+      - .github/workflows/phase49-performance-profile.yml
+      - backend/scripts/profile_phase49_performance.py
+      - backend/scripts/analyze_phase49_performance_profile.py
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HEAD_SHA: b38fe37e4021f8f79209efab52a1fbb6388eee93
+      BASE_SHA: 99b1b523b9993f95fb31deca7c3033895848cb08
+      HEAD_WORKTREE: ${{ runner.temp }}/dynatutor-head
+      BASE_WORKTREE: ${{ runner.temp }}/dynatutor-base
+      RAW_DIR: ${{ runner.temp }}/phase49-profile/raw
+      ANALYSIS_DIR: ${{ runner.temp }}/phase49-profile/analysis
+      PROF_DIR: ${{ runner.temp }}/phase49-profile/cprofile
+
+    steps:
+      - name: Checkout profiling instrumentation
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        run: python -m pip install -r backend/requirements-lock.txt
+
+      - name: Create exact candidate and base worktrees
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${HEAD_SHA}^{commit}"
+          git cat-file -e "${BASE_SHA}^{commit}"
+          git worktree add --detach "$HEAD_WORKTREE" "$HEAD_SHA"
+          git worktree add --detach "$BASE_WORKTREE" "$BASE_SHA"
+          echo "candidate=$(git -C "$HEAD_WORKTREE" rev-parse HEAD)"
+          echo "base=$(git -C "$BASE_WORKTREE" rev-parse HEAD)"
+
+      - name: Run four alternating raw-sample rounds
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RAW_DIR"
+          PROFILE_SCRIPT="$GITHUB_WORKSPACE/backend/scripts/profile_phase49_performance.py"
+
+          for round in 1 2 3 4; do
+            if (( round % 2 == 1 )); then
+              order="head-then-base"
+              labels=(head base)
+            else
+              order="base-then-head"
+              labels=(base head)
+            fi
+
+            for label in "${labels[@]}"; do
+              if [[ "$label" == "head" ]]; then
+                root="$HEAD_WORKTREE"
+              else
+                root="$BASE_WORKTREE"
+              fi
+              (
+                cd "$root/backend"
+                python "$PROFILE_SCRIPT" \
+                  --output "$RAW_DIR/round-${round}-${label}.json" \
+                  --repeats 60 \
+                  --warmups 10 \
+                  --label "$label" \
+                  --round "$round" \
+                  --order "$order"
+              )
+            done
+          done
+
+      - name: Analyze raw samples without enforcing the gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python backend/scripts/analyze_phase49_performance_profile.py \
+            --input-dir "$RAW_DIR" \
+            --output "$ANALYSIS_DIR/summary.json" \
+            --markdown-output "$ANALYSIS_DIR/summary.md" \
+            --expected-rounds 4
+          cat "$ANALYSIS_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Capture bounded cProfile summaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$PROF_DIR"
+          BENCHMARK_SCRIPT="$GITHUB_WORKSPACE/backend/scripts/measure_pr10_hotfix_performance.py"
+
+          for label in head base; do
+            if [[ "$label" == "head" ]]; then
+              root="$HEAD_WORKTREE"
+            else
+              root="$BASE_WORKTREE"
+            fi
+            (
+              cd "$root/backend"
+              python -m cProfile \
+                -o "$PROF_DIR/${label}.prof" \
+                "$BENCHMARK_SCRIPT" \
+                --output "$PROF_DIR/${label}-benchmark.json" \
+                --repeats 30 \
+                --warmups 5
+            )
+            python -c \
+              'import pstats, sys; print("=== " + sys.argv[2] + " top cumulative ==="); pstats.Stats(sys.argv[1]).strip_dirs().sort_stats("cumulative").print_stats(40)' \
+              "$PROF_DIR/${label}.prof" "$label"
+          done
+
+      - name: Upload raw samples and analysis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase49-performance-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/phase49-profile/raw
+            ${{ runner.temp }}/phase49-profile/analysis
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload cProfile artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase49-cprofile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/phase49-profile/cprofile
+          if-no-files-found: warn
+          retention-days: 14
