@@ -19,11 +19,6 @@ jobs:
     env:
       HEAD_SHA: b38fe37e4021f8f79209efab52a1fbb6388eee93
       BASE_SHA: 99b1b523b9993f95fb31deca7c3033895848cb08
-      HEAD_WORKTREE: ${{ runner.temp }}/dynatutor-head
-      BASE_WORKTREE: ${{ runner.temp }}/dynatutor-base
-      RAW_DIR: ${{ runner.temp }}/phase49-profile/raw
-      ANALYSIS_DIR: ${{ runner.temp }}/phase49-profile/analysis
-      PROF_DIR: ${{ runner.temp }}/phase49-profile/cprofile
 
     steps:
       - name: Checkout profiling instrumentation
@@ -40,6 +35,18 @@ jobs:
 
       - name: Install locked backend dependencies
         run: python -m pip install -r backend/requirements-lock.txt
+
+      - name: Configure runner-temporary paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "HEAD_WORKTREE=$RUNNER_TEMP/dynatutor-head"
+            echo "BASE_WORKTREE=$RUNNER_TEMP/dynatutor-base"
+            echo "RAW_DIR=$RUNNER_TEMP/phase49-profile/raw"
+            echo "ANALYSIS_DIR=$RUNNER_TEMP/phase49-profile/analysis"
+            echo "PROF_DIR=$RUNNER_TEMP/phase49-profile/cprofile"
+          } >> "$GITHUB_ENV"
 
       - name: Create exact candidate and base worktrees
         shell: bash
