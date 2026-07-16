@@ -350,7 +350,30 @@ def test_cli_validate_detects_performance_artifact_tamper(tmp_path: Path):
 
 
 @pytest.mark.unit
-def test_nightly_external_pooled_evidence_accepts_only_successful_pull_request_release_step():
+def test_nightly_marker_push_is_opt_in_and_confined_to_nightly_job():
+    repository_root = Path(__file__).resolve().parents[2]
+    workflow = (
+        repository_root / ".github" / "workflows" / "phase52-quality.yml"
+    ).read_text(encoding="utf-8")
+    nightly_condition = workflow.split("  nightly:\n", 1)[1].split(
+        "    runs-on:", 1
+    )[0]
+    normalized_condition = " ".join(nightly_condition.split())
+    expected_condition = (
+        "if: >- github.event_name == 'schedule' || "
+        "(github.event_name == 'workflow_dispatch' && "
+        "inputs.tier == 'nightly') || "
+        "(github.event_name == 'push' && contains("
+        "github.event.head_commit.message, '[phase52-nightly]'))"
+    )
+
+    assert workflow.count("[phase52-nightly]") == 1
+    assert normalized_condition == expected_condition
+    assert normalized_condition.count("github.event_name == 'push'") == 1
+
+
+@pytest.mark.unit
+def test_nightly_external_pooled_evidence_accepts_only_successful_release_step():
     repository_root = Path(__file__).resolve().parents[2]
     workflow = (
         repository_root / ".github" / "workflows" / "phase52-quality.yml"
@@ -358,10 +381,52 @@ def test_nightly_external_pooled_evidence_accepts_only_successful_pull_request_r
     evidence_block = workflow.split(
         "- name: Verify external Release exact-HEAD pooled gate evidence", 1
     )[1].split("- name: Render the same evidence twice", 1)[0]
-    assert "head_sha=${PHASE52_SHA}" in evidence_block
-    assert '.event == "pull_request"' in evidence_block
-    assert '.conclusion == "success"' in evidence_block
-    assert '.name == "test"' in evidence_block
-    assert '.name == "Compare pooled PR10 hotfix performance"' in evidence_block
+    stripped_lines = [line.strip() for line in evidence_block.splitlines()]
+    normalized_evidence = " ".join(evidence_block.split())
+    loop_start = stripped_lines.index("for attempt in $(seq 1 40); do")
+    loop_end = stripped_lines.index("done", loop_start)
+    success_guard = stripped_lines.index('if test -n "$release_run_id"; then')
+    sleep_guard = stripped_lines.index('if test "$attempt" -lt 40; then')
+
+    assert 'release_run_id=""' in evidence_block
+    assert evidence_block.count("for attempt in $(seq 1 40); do") == 1
+    assert 'if test -n "$release_run_id"; then' in evidence_block
+    assert stripped_lines[success_guard : success_guard + 3] == [
+        'if test -n "$release_run_id"; then',
+        "break",
+        "fi",
+    ]
+    assert loop_start < sleep_guard < loop_end
+    assert stripped_lines[loop_end + 1] == 'test -n "$release_run_id"'
+    assert stripped_lines.count('test -n "$release_run_id"') == 1
+    assert stripped_lines.count("sleep 30") == 1
+    assert stripped_lines[sleep_guard : sleep_guard + 3] == [
+        'if test "$attempt" -lt 40; then',
+        "sleep 30",
+        "fi",
+    ]
+    assert evidence_block.count(
+        "actions/workflows/backend-tests.yml/runs?"
+        "head_sha=${PHASE52_SHA}&per_page=20"
+    ) == 1
+    assert evidence_block.count(".head_sha == $expected_sha") == 1
+    assert (
+        'select(.head_sha == $expected_sha and .event == "pull_request" '
+        'and .status == "completed" and .conclusion == "success")'
+    ) in normalized_evidence
+    assert evidence_block.count('.conclusion == "success"') == 3
+    assert evidence_block.count("| first | .id // empty") == 1
+    assert evidence_block.count(
+        '.jobs[] | select(.name == "test" and '
+        '.conclusion == "success")'
+    ) == 1
+    assert (
+        'select(.name == "Compare pooled PR10 hotfix performance" and '
+        '.conclusion == "success")'
+    ) in normalized_evidence
+    assert evidence_block.count(
+        '.name == "Compare pooled PR10 hotfix performance"'
+    ) == 1
+    assert 'test "$pooled_step_count" = "1"' in evidence_block
     assert "workflow_dispatch" not in evidence_block
     assert '.event == "push"' not in evidence_block

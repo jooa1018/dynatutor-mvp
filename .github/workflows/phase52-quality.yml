@@ -209,7 +209,11 @@ jobs:
           retention-days: 30
 
   nightly:
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'nightly')
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.tier == 'nightly') ||
+      (github.event_name == 'push' &&
+      contains(github.event.head_commit.message, '[phase52-nightly]'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:
@@ -300,11 +304,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release_runs="$(gh api \
-            "repos/${GITHUB_REPOSITORY}/actions/workflows/backend-tests.yml/runs?head_sha=${PHASE52_SHA}&status=success&per_page=20")"
-          release_run_id="$(jq -r --arg expected_sha "$PHASE52_SHA" \
-            '[.workflow_runs[] | select(.head_sha == $expected_sha and .event == "pull_request" and .conclusion == "success")] | first | .id // empty' \
-            <<<"$release_runs")"
+          release_run_id=""
+          for attempt in $(seq 1 40); do
+            release_runs="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/backend-tests.yml/runs?head_sha=${PHASE52_SHA}&per_page=20")"
+            release_run_id="$(jq -r --arg expected_sha "$PHASE52_SHA" \
+              '[.workflow_runs[] | select(.head_sha == $expected_sha and
+                .event == "pull_request" and .status == "completed" and
+                .conclusion == "success")] | first | .id // empty' \
+              <<<"$release_runs")"
+            if test -n "$release_run_id"; then
+              break
+            fi
+            if test "$attempt" -lt 40; then
+              sleep 30
+            fi
+          done
           test -n "$release_run_id"
           pooled_step_count="$(gh api \
             "repos/${GITHUB_REPOSITORY}/actions/runs/${release_run_id}/jobs?filter=latest&per_page=100" \

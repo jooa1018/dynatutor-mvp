@@ -1270,7 +1270,10 @@ def compare(args: argparse.Namespace) -> dict[str, Any]:
     if recursive_candidates:
         reasons.append("candidate frontier contains a recursive target")
     if len(rigid_winners) != 1:
-        reasons.append("exactly one rigid-body candidate did not meet the fixed threshold")
+        reasons.append(
+            "the requirement for exactly one rigid-body candidate to meet "
+            "the fixed threshold was not satisfied"
+        )
     if len(rigid_winners) == 1:
         winner = rigid_winners[0]
         winner_result = next(

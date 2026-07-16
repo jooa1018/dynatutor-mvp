@@ -472,6 +472,11 @@ def test_no_positive_total_regression_is_inconclusive(tmp_path: Path, head_ms: f
     result = profiler.compare(_compare_args(evidence, tmp_path / "out.json"))
     assert result["verdict"] == "INCONCLUSIVE"
     assert result["selected_candidate"] is None
+    assert (
+        "the requirement for exactly one rigid-body candidate to meet "
+        "the fixed threshold was not satisfied"
+        in result["reasons"]
+    )
 
 
 def test_preloaded_engine_module_is_rejected(monkeypatch: pytest.MonkeyPatch):
