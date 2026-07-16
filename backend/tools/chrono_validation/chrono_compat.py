@@ -110,9 +110,13 @@ class ChronoAdapter:
         *,
         gravity: tuple[float, float, float],
         max_iterations: int = 200,
+        sharpness_lambda: float = 1.0,
     ) -> tuple[Any, str]:
-        if isinstance(max_iterations, bool) or int(max_iterations) <= 0:
-            raise ChronoCompatibilityError("solver max_iterations must be positive")
+        validated_max_iterations = _positive_int(
+            max_iterations,
+            name="solver max_iterations",
+        )
+        validated_sharpness_lambda = _solver_sharpness_lambda(sharpness_lambda)
         system = self._attribute("ChSystemNSC")()
         self._configure_bullet_collision(system)
         gravity_vector = self.vector(*gravity)
@@ -121,7 +125,11 @@ class ChronoAdapter:
             ("SetGravitationalAcceleration", "Set_G_acc", "SetGravity"),
             gravity_vector,
         )
-        solver = self._configure_psor(system, max_iterations=int(max_iterations))
+        solver = self._configure_psor(
+            system,
+            max_iterations=validated_max_iterations,
+            sharpness_lambda=validated_sharpness_lambda,
+        )
         if hasattr(system, "SetMinBounceSpeed"):
             system.SetMinBounceSpeed(0.0)
         return system, solver
@@ -155,7 +163,18 @@ class ChronoAdapter:
                 "PyChrono did not create the requested BULLET collision system"
             )
 
-    def _configure_psor(self, system: Any, *, max_iterations: int) -> str:
+    def _configure_psor(
+        self,
+        system: Any,
+        *,
+        max_iterations: int,
+        sharpness_lambda: float = 1.0,
+    ) -> str:
+        validated_max_iterations = _positive_int(
+            max_iterations,
+            name="solver max_iterations",
+        )
+        validated_sharpness_lambda = _solver_sharpness_lambda(sharpness_lambda)
         holder = self._attribute("ChSolver")
         candidates: list[Any] = []
         type_holder = getattr(holder, "Type", None)
@@ -182,11 +201,17 @@ class ChronoAdapter:
         self._call(
             iterative,
             ("SetMaxIterations", "SetMaxIters"),
-            int(max_iterations),
+            validated_max_iterations,
+        )
+        self._call(
+            iterative,
+            ("SetSharpnessLambda",),
+            validated_sharpness_lambda,
         )
         return (
             f"{type(solver).__name__}:PSOR:"
-            f"max_iterations={int(max_iterations)}"
+            f"max_iterations={validated_max_iterations}:"
+            f"sharpness_lambda={validated_sharpness_lambda!r}"
         )
 
     def contact_material_nsc(self, *, friction: float, restitution: float = 0.0) -> Any:
@@ -482,6 +507,21 @@ def _finite(value: Any, *, name: str) -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
         raise ChronoCompatibilityError(f"{name} is not finite")
+    return parsed
+
+
+def _positive_int(value: Any, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ChronoCompatibilityError(f"{name} must be a positive int")
+    return value
+
+
+def _solver_sharpness_lambda(value: Any) -> float:
+    parsed = _finite(value, name="solver sharpness_lambda")
+    if not 0.0 < parsed <= 1.0:
+        raise ChronoCompatibilityError(
+            "solver sharpness_lambda must be greater than 0 and at most 1.0"
+        )
     return parsed
 
 

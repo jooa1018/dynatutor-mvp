@@ -48,6 +48,81 @@ def _missing_import(name: str):
     )
 
 
+class _SpyVector:
+    def __init__(self, x: float, y: float, z: float):
+        self.values = (x, y, z)
+
+
+class _SpyIterativeSolver:
+    def __init__(self):
+        self.max_iterations_calls: list[int] = []
+        self.sharpness_lambda_calls: list[float] = []
+
+    def AsIterative(self):
+        return self
+
+    def SetMaxIterations(self, value: int):
+        self.max_iterations_calls.append(value)
+
+    def SetSharpnessLambda(self, value: float):
+        self.sharpness_lambda_calls.append(value)
+
+
+class _SpySolverType:
+    PSOR = object()
+
+
+class _SpySolverHolder:
+    Type = _SpySolverType
+
+
+class _SpyCollisionType:
+    BULLET = object()
+
+
+class _SpyCollisionHolder:
+    Type = _SpyCollisionType
+
+
+def _spy_chrono_adapter():
+    state = {"systems": []}
+
+    class _SpyNscSystem:
+        def __init__(self):
+            self.solver = _SpyIterativeSolver()
+            self.collision_system = object()
+            self.collision_system_type = None
+            self.solver_type = None
+            self.gravity = None
+            self.min_bounce_speed = None
+            state["systems"].append(self)
+
+        def SetCollisionSystemType(self, value):
+            self.collision_system_type = value
+
+        def GetCollisionSystem(self):
+            return self.collision_system
+
+        def SetGravitationalAcceleration(self, value):
+            self.gravity = value
+
+        def SetSolverType(self, value):
+            self.solver_type = value
+
+        def GetSolver(self):
+            return self.solver
+
+        def SetMinBounceSpeed(self, value):
+            self.min_bounce_speed = value
+
+    module = type("_SpyChronoModule", (), {})()
+    module.ChSystemNSC = _SpyNscSystem
+    module.ChVector3d = _SpyVector
+    module.ChSolver = _SpySolverHolder
+    module.ChCollisionSystem = _SpyCollisionHolder
+    return chrono_compat.ChronoAdapter(module), state
+
+
 @pytest.mark.unit
 def test_phase51_result_contract_is_finite_versioned_and_complete():
     result = ChronoResult(
@@ -60,7 +135,7 @@ def test_phase51_result_contract_is_finite_versioned_and_complete():
         abs_error=0.05,
         relative_error=1.0 / 24.0,
         chrono_version="10.0.0",
-        solver="ChSolverPSOR:PSOR:max_iterations=200",
+        solver="ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=1.0",
         contact_method="NSC:Coulomb",
         time_step=0.001,
         duration=0.5,
@@ -81,6 +156,99 @@ def test_phase51_result_contract_is_finite_versioned_and_complete():
     encoded = json.dumps(payload, sort_keys=True, allow_nan=False)
     assert '"status": "passed"' in encoded
     assert CHRONO_STATUSES == {"passed", "failed", "skipped", "error"}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("sharpness_kwargs", "expected_sharpness", "expected_solver_name"),
+    [
+        pytest.param(
+            {"sharpness_lambda": 0.9},
+            0.9,
+            "_SpyIterativeSolver:PSOR:max_iterations=200:sharpness_lambda=0.9",
+            id="explicit-disk",
+        ),
+        pytest.param(
+            {},
+            1.0,
+            "_SpyIterativeSolver:PSOR:max_iterations=200:sharpness_lambda=1.0",
+            id="default",
+        ),
+    ],
+)
+def test_phase51_nsc_system_applies_and_records_psor_settings(
+    sharpness_kwargs,
+    expected_sharpness,
+    expected_solver_name,
+):
+    adapter, state = _spy_chrono_adapter()
+
+    system, solver_name = adapter.new_nsc_system(
+        gravity=(0.0, -9.81, 0.0),
+        max_iterations=200,
+        **sharpness_kwargs,
+    )
+
+    assert state["systems"] == [system]
+    assert system.solver.max_iterations_calls == [200]
+    assert system.solver.sharpness_lambda_calls == [expected_sharpness]
+    assert solver_name == expected_solver_name
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "max_iterations",
+    [
+        pytest.param(True, id="bool"),
+        pytest.param(0, id="zero"),
+        pytest.param(-1, id="negative"),
+        pytest.param(200.0, id="float"),
+        pytest.param("200", id="string"),
+        pytest.param(math.nan, id="nan"),
+        pytest.param(math.inf, id="positive-infinity"),
+        pytest.param(-math.inf, id="negative-infinity"),
+    ],
+)
+def test_phase51_nsc_system_rejects_invalid_max_iterations_before_creation(
+    max_iterations,
+):
+    adapter, state = _spy_chrono_adapter()
+
+    with pytest.raises(chrono_compat.ChronoCompatibilityError):
+        adapter.new_nsc_system(
+            gravity=(0.0, -9.81, 0.0),
+            max_iterations=max_iterations,
+        )
+
+    assert state["systems"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "sharpness_lambda",
+    [
+        pytest.param(True, id="bool"),
+        pytest.param(math.nan, id="nan"),
+        pytest.param(math.inf, id="positive-infinity"),
+        pytest.param(-math.inf, id="negative-infinity"),
+        pytest.param(0.0, id="zero"),
+        pytest.param(-0.1, id="negative"),
+        pytest.param(1.000001, id="greater-than-one"),
+    ],
+)
+def test_phase51_nsc_system_rejects_invalid_sharpness_before_creation(
+    sharpness_lambda,
+):
+    adapter, state = _spy_chrono_adapter()
+
+    with pytest.raises(chrono_compat.ChronoCompatibilityError):
+        adapter.new_nsc_system(
+            gravity=(0.0, -9.81, 0.0),
+            max_iterations=200,
+            sharpness_lambda=sharpness_lambda,
+        )
+
+    assert state["systems"] == []
 
 
 @pytest.mark.unit
@@ -218,8 +386,16 @@ def test_phase51_real_pychrono_scenes_when_dependency_is_available():
     assert results[1].time_step == DEFAULT_CHRONO_POLICY.rolling_step_s
     assert results[1].initial_conditions["time_step_s"] == results[1].time_step
     assert results[0].initial_conditions["solver_max_iterations"] == 200
-    assert results[1].initial_conditions["solver_max_iterations"] == 1000
-    assert results[1].solver.endswith("max_iterations=1000")
+    assert results[1].initial_conditions["solver_max_iterations"] == 200
+    assert results[0].initial_conditions["solver_sharpness_lambda"] == 1.0
+    assert results[1].initial_conditions["solver_sharpness_lambda"] == 0.9
+    for index in (0, 2, 3, 4, 5):
+        assert results[index].solver.endswith(
+            "max_iterations=200:sharpness_lambda=1.0"
+        )
+    assert results[1].solver.endswith(
+        "max_iterations=200:sharpness_lambda=0.9"
+    )
     assert results[1].final_state["planar_guide"] == "ChLinkMatePlanar"
     assert results[1].artifacts[0]["planar_guide_count"] == 1
     assert results[1].constraint_errors["collision_geometry"] == pytest.approx(
