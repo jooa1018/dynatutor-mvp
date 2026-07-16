@@ -78,6 +78,10 @@ def _artifact(round_number: int, label: str, case_id: str, position: int):
             "unprofiled_total_seconds": unprofiled_ms * 500 / 1000.0,
             "unprofiled_ms_per_product_solve": unprofiled_ms,
             "response_sha256": ("a" if label == "base" else "b") * 64,
+            "semantic_component_sha256": {
+                name: ("c" if label == "base" else "d") * 64
+                for name in profiler.SEMANTIC_COMPONENTS
+            },
             "check_ids": ["answer_consistency", "dimension"],
         },
         "targets": targets,
@@ -186,7 +190,10 @@ def test_same_ref_semantics_must_match_across_rounds(tmp_path: Path):
     payload["measurement"]["response_sha256"] = "c" * 64
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(profiler.ProfileDataError, match="same-ref"):
+    with pytest.raises(
+        profiler.ProfileDataError,
+        match=r"same-ref response hash changed.*head/rigid_body/round-4/components-overall",
+    ):
         profiler.compare(_compare_args(evidence, tmp_path / "out.json"))
 
 
@@ -200,6 +207,39 @@ def test_same_ref_target_identity_must_match_across_evidence(tmp_path: Path):
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(profiler.ProfileDataError, match="target identity"):
+        profiler.compare(_compare_args(evidence, tmp_path / "out.json"))
+
+
+def test_same_ref_hash_error_names_only_changed_semantic_components(tmp_path: Path):
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    _write_evidence(evidence)
+    path = evidence / "round-4-base-projectile.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["measurement"]["response_sha256"] = "e" * 64
+    payload["measurement"]["semantic_component_sha256"]["route"] = "f" * 64
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        profiler.ProfileDataError,
+        match=r"base/projectile/round-4/components-route",
+    ):
+        profiler.compare(_compare_args(evidence, tmp_path / "out.json"))
+
+
+def test_same_ref_check_id_change_is_reported_before_overall_hash(tmp_path: Path):
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    _write_evidence(evidence)
+    path = evidence / "round-4-head-rigid_body.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["measurement"]["check_ids"].append("new_check")
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(
+        profiler.ProfileDataError,
+        match=r"check IDs changed.*head/rigid_body/round-4",
+    ):
         profiler.compare(_compare_args(evidence, tmp_path / "out.json"))
 
 

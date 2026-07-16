@@ -36,6 +36,14 @@ REVISION_LABELS = ("base", "head")
 CASE_IDS = ("rigid_body", "projectile")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 HASH_RE = re.compile(r"^[0-9a-f]{64}$")
+SEMANTIC_COMPONENTS = (
+    "answers",
+    "ok",
+    "route",
+    "selected_solver",
+    "selection",
+    "verification",
+)
 
 PROJECTILE = (
     "지면에서 초속도 20m/s, 발사각 60도로 발사해 "
@@ -335,7 +343,20 @@ def _model_value(value: Any, name: str, default: Any = None) -> Any:
     return getattr(value, name, default)
 
 
-def _semantic_fingerprint(response: Any) -> tuple[str, tuple[str, ...]]:
+def _canonical_sha256(value: Any) -> str:
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _semantic_fingerprint(
+    response: Any,
+) -> tuple[str, tuple[str, ...], dict[str, str]]:
     verification = _model_value(response, "verification")
     structured = _model_value(verification, "structured_checks", []) or []
     checks = []
@@ -388,15 +409,11 @@ def _semantic_fingerprint(response: Any) -> tuple[str, tuple[str, ...]]:
             "selected_candidate_id": _model_value(selected_candidate, "candidate_id"),
         },
     }
-    encoded = json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
     check_ids = tuple(sorted({str(item["check_id"]) for item in checks}))
-    return hashlib.sha256(encoded).hexdigest(), check_ids
+    component_hashes = {
+        name: _canonical_sha256(payload[name]) for name in SEMANTIC_COMPONENTS
+    }
+    return _canonical_sha256(payload), check_ids, component_hashes
 
 
 def _checked_solve(solve_problem: Any, case_text: str) -> Any:
@@ -601,31 +618,41 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
     _validate_loaded_engine_modules(backend_root)
 
     unprofiled_hashes: set[str] = set()
+    unprofiled_components: set[tuple[tuple[str, str], ...]] = set()
     unprofiled_total = 0.0
     for _ in range(repeats):
         unprofiled_start = time.perf_counter()
         response = _checked_solve(solve_problem, case_text)
         unprofiled_total += time.perf_counter() - unprofiled_start
-        fingerprint, _ = _semantic_fingerprint(response)
+        fingerprint, _, component_hashes = _semantic_fingerprint(response)
         unprofiled_hashes.add(fingerprint)
-    if len(unprofiled_hashes) != 1:
+        unprofiled_components.add(tuple(sorted(component_hashes.items())))
+    if len(unprofiled_hashes) != 1 or len(unprofiled_components) != 1:
         raise ProfileDataError("unprofiled responses are not semantically stable")
 
     profiler = cProfile.Profile()
     measured_hashes: set[str] = set()
     check_ids_seen: set[tuple[str, ...]] = set()
+    measured_components: set[tuple[tuple[str, str], ...]] = set()
     profiled_total = 0.0
     for _ in range(repeats):
         profiled_start = time.perf_counter()
         response = profiler.runcall(_checked_solve, solve_problem, case_text)
         profiled_total += time.perf_counter() - profiled_start
-        fingerprint, check_ids = _semantic_fingerprint(response)
+        fingerprint, check_ids, component_hashes = _semantic_fingerprint(response)
         measured_hashes.add(fingerprint)
         check_ids_seen.add(check_ids)
-    if len(measured_hashes) != 1 or len(check_ids_seen) != 1:
+        measured_components.add(tuple(sorted(component_hashes.items())))
+    if (
+        len(measured_hashes) != 1
+        or len(check_ids_seen) != 1
+        or len(measured_components) != 1
+    ):
         raise ProfileDataError("measured responses are not semantically stable")
     if measured_hashes != unprofiled_hashes:
         raise ProfileDataError("profiled and unprofiled response hashes differ")
+    if measured_components != unprofiled_components:
+        raise ProfileDataError("profiled and unprofiled semantic components differ")
     _validate_loaded_engine_modules(backend_root)
 
     stats = pstats.Stats(profiler)
@@ -654,6 +681,7 @@ def collect(args: argparse.Namespace) -> dict[str, Any]:
             * 1000.0
             / repeats,
             "response_sha256": next(iter(measured_hashes)),
+            "semantic_component_sha256": dict(next(iter(measured_components))),
             "check_ids": list(next(iter(check_ids_seen))),
         },
         "targets": _target_evidence(resolved, stats, repeats),
@@ -684,6 +712,7 @@ MEASUREMENT_KEYS = {
     "unprofiled_total_seconds",
     "unprofiled_ms_per_product_solve",
     "response_sha256",
+    "semantic_component_sha256",
     "check_ids",
 }
 TARGET_KEYS = {
@@ -777,6 +806,17 @@ def _validate_artifact(payload: Any) -> dict[str, Any]:
         measurement["response_sha256"]
     ):
         raise ProfileDataError("invalid response fingerprint")
+    component_hashes = measurement["semantic_component_sha256"]
+    if (
+        not isinstance(component_hashes, dict)
+        or tuple(sorted(component_hashes)) != SEMANTIC_COMPONENTS
+        or any(
+            not isinstance(component_hashes[name], str)
+            or not HASH_RE.fullmatch(component_hashes[name])
+            for name in SEMANTIC_COMPONENTS
+        )
+    ):
+        raise ProfileDataError("invalid semantic component fingerprints")
     check_ids = measurement["check_ids"]
     if (
         not isinstance(check_ids, list)
@@ -1062,7 +1102,9 @@ def compare(args: argparse.Namespace) -> dict[str, Any]:
         raise ProfileDataError("round/revision/case evidence is incomplete")
 
     head_first = 0
-    stability: dict[tuple[str, str], tuple[str, tuple[str, ...]]] = {}
+    stability: dict[
+        tuple[str, str], tuple[str, tuple[str, ...], tuple[tuple[str, str], ...]]
+    ] = {}
     target_identity_stability: dict[tuple[str, str], tuple[Any, ...]] = {}
     for round_number in range(1, expected_rounds + 1):
         positions: dict[str, int] = {}
@@ -1087,10 +1129,36 @@ def compare(args: argparse.Namespace) -> dict[str, Any]:
                 marker = (
                     artifact["measurement"]["response_sha256"],
                     tuple(artifact["measurement"]["check_ids"]),
+                    tuple(
+                        sorted(
+                            artifact["measurement"][
+                                "semantic_component_sha256"
+                            ].items()
+                        )
+                    ),
                 )
                 stable_key = (label, case_id)
-                if stable_key in stability and stability[stable_key] != marker:
-                    raise ProfileDataError("same-ref response semantics changed across rounds")
+                if stable_key in stability:
+                    previous_hash, previous_check_ids, previous_components = stability[
+                        stable_key
+                    ]
+                    if previous_check_ids != marker[1]:
+                        raise ProfileDataError(
+                            "same-ref check IDs changed across rounds: "
+                            f"{label}/{case_id}/round-{round_number}"
+                        )
+                    if previous_hash != marker[0]:
+                        current_components = dict(marker[2])
+                        changed_components = [
+                            name
+                            for name, component_hash in previous_components
+                            if current_components[name] != component_hash
+                        ]
+                        component_text = ",".join(changed_components) or "overall"
+                        raise ProfileDataError(
+                            "same-ref response hash changed across rounds: "
+                            f"{label}/{case_id}/round-{round_number}/components-{component_text}"
+                        )
                 stability[stable_key] = marker
                 for target in artifact["targets"]:
                     presence = (

@@ -112,6 +112,7 @@ jobs:
             --out "$RUNNER_TEMP/phase52-rigid-profile/comparison.json"
 
       - name: Upload volatile diagnostic evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: phase52-rigid-profile-${{ env.HEAD_SHA }}
