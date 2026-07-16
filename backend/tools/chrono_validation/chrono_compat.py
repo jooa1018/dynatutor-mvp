@@ -175,39 +175,18 @@ class ChronoAdapter:
             name="solver max_iterations",
         )
         validated_sharpness_lambda = _solver_sharpness_lambda(sharpness_lambda)
-        holder = self._attribute("ChSolver")
-        candidates: list[Any] = []
-        type_holder = getattr(holder, "Type", None)
-        if type_holder is not None:
-            candidates.extend(
-                getattr(type_holder, name, None)
-                for name in ("PSOR", "Type_PSOR")
-            )
-        candidates.extend(
-            getattr(holder, name, None)
-            for name in ("Type_PSOR", "PSOR")
-        )
-        psor = next((item for item in candidates if item is not None), None)
-        if psor is None:
-            raise ChronoCompatibilityError("PyChrono does not expose the PSOR solver enum")
-        self._call(system, ("SetSolverType",), psor)
-        solver = self._call(system, ("GetSolver",))
-        iterative = solver
-        as_iterative = getattr(solver, "AsIterative", None)
-        if callable(as_iterative):
-            candidate = as_iterative()
-            if candidate is not None:
-                iterative = candidate
+        solver = self._attribute("ChSolverPSOR")()
         self._call(
-            iterative,
+            solver,
             ("SetMaxIterations", "SetMaxIters"),
             validated_max_iterations,
         )
         self._call(
-            iterative,
+            solver,
             ("SetSharpnessLambda",),
             validated_sharpness_lambda,
         )
+        self._call(system, ("SetSolver",), solver)
         return (
             f"{type(solver).__name__}:PSOR:"
             f"max_iterations={validated_max_iterations}:"

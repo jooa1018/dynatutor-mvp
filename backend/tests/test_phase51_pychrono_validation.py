@@ -53,19 +53,17 @@ class _SpyVector:
         self.values = (x, y, z)
 
 
-class _SpyIterativeSolver:
+class _SpyBaseIterativeSolver:
     def __init__(self):
         self.max_iterations_calls: list[int] = []
-        self.sharpness_lambda_calls: list[float] = []
+        self.as_iterative_calls = 0
 
     def AsIterative(self):
+        self.as_iterative_calls += 1
         return self
 
     def SetMaxIterations(self, value: int):
         self.max_iterations_calls.append(value)
-
-    def SetSharpnessLambda(self, value: float):
-        self.sharpness_lambda_calls.append(value)
 
 
 class _SpySolverType:
@@ -84,17 +82,38 @@ class _SpyCollisionHolder:
     Type = _SpyCollisionType
 
 
-def _spy_chrono_adapter():
-    state = {"systems": []}
+def _spy_chrono_adapter(
+    *,
+    expose_concrete_solver: bool = True,
+    expose_set_solver: bool = True,
+):
+    state = {"systems": [], "solvers": []}
+
+    class _SpyPsorSolver:
+        def __init__(self):
+            self.max_iterations_calls: list[int] = []
+            self.sharpness_lambda_calls: list[float] = []
+            state["solvers"].append(self)
+
+        def SetMaxIterations(self, value: int):
+            self.max_iterations_calls.append(value)
+
+        def SetSharpnessLambda(self, value: float):
+            self.sharpness_lambda_calls.append(value)
 
     class _SpyNscSystem:
         def __init__(self):
-            self.solver = _SpyIterativeSolver()
+            self.base_solver = _SpyBaseIterativeSolver()
             self.collision_system = object()
             self.collision_system_type = None
-            self.solver_type = None
+            self.solver_type_calls = []
+            self.get_solver_calls = 0
+            self.set_solver_calls = []
+            self.attached_solver = None
             self.gravity = None
             self.min_bounce_speed = None
+            if not expose_set_solver:
+                self.SetSolver = None
             state["systems"].append(self)
 
         def SetCollisionSystemType(self, value):
@@ -107,19 +126,27 @@ def _spy_chrono_adapter():
             self.gravity = value
 
         def SetSolverType(self, value):
-            self.solver_type = value
+            self.solver_type_calls.append(value)
 
         def GetSolver(self):
-            return self.solver
+            self.get_solver_calls += 1
+            return self.base_solver
+
+        def SetSolver(self, value):
+            self.set_solver_calls.append(value)
+            self.attached_solver = value
 
         def SetMinBounceSpeed(self, value):
             self.min_bounce_speed = value
 
     module = type("_SpyChronoModule", (), {})()
+    module.__version__ = "9.0.1"
     module.ChSystemNSC = _SpyNscSystem
     module.ChVector3d = _SpyVector
     module.ChSolver = _SpySolverHolder
     module.ChCollisionSystem = _SpyCollisionHolder
+    if expose_concrete_solver:
+        module.ChSolverPSOR = _SpyPsorSolver
     return chrono_compat.ChronoAdapter(module), state
 
 
@@ -165,13 +192,13 @@ def test_phase51_result_contract_is_finite_versioned_and_complete():
         pytest.param(
             {"sharpness_lambda": 0.9},
             0.9,
-            "_SpyIterativeSolver:PSOR:max_iterations=200:sharpness_lambda=0.9",
+            "_SpyPsorSolver:PSOR:max_iterations=200:sharpness_lambda=0.9",
             id="explicit-disk",
         ),
         pytest.param(
             {},
             1.0,
-            "_SpyIterativeSolver:PSOR:max_iterations=200:sharpness_lambda=1.0",
+            "_SpyPsorSolver:PSOR:max_iterations=200:sharpness_lambda=1.0",
             id="default",
         ),
     ],
@@ -190,9 +217,56 @@ def test_phase51_nsc_system_applies_and_records_psor_settings(
     )
 
     assert state["systems"] == [system]
-    assert system.solver.max_iterations_calls == [200]
-    assert system.solver.sharpness_lambda_calls == [expected_sharpness]
+    assert state["solvers"] == [system.attached_solver]
+    concrete_solver = state["solvers"][0]
+    assert system.set_solver_calls == [concrete_solver]
+    assert concrete_solver.max_iterations_calls == [200]
+    assert concrete_solver.sharpness_lambda_calls == [expected_sharpness]
+    assert system.solver_type_calls == []
+    assert system.get_solver_calls == 0
+    assert system.base_solver.as_iterative_calls == 0
+    assert system.base_solver.max_iterations_calls == []
     assert solver_name == expected_solver_name
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("adapter_kwargs", "missing_api", "constructed_solver_count"),
+    [
+        pytest.param(
+            {"expose_concrete_solver": False},
+            "ChSolverPSOR",
+            0,
+            id="missing-concrete-solver",
+        ),
+        pytest.param(
+            {"expose_set_solver": False},
+            "SetSolver",
+            1,
+            id="missing-system-setter",
+        ),
+    ],
+)
+def test_phase51_nsc_system_fails_closed_without_concrete_solver_path(
+    adapter_kwargs,
+    missing_api,
+    constructed_solver_count,
+):
+    adapter, state = _spy_chrono_adapter(**adapter_kwargs)
+
+    with pytest.raises(
+        chrono_compat.ChronoCompatibilityError,
+        match=missing_api,
+    ):
+        adapter.new_nsc_system(
+            gravity=(0.0, -9.81, 0.0),
+            max_iterations=200,
+            sharpness_lambda=0.9,
+        )
+
+    assert len(state["systems"]) == 1
+    assert len(state["solvers"]) == constructed_solver_count
+    assert state["systems"][0].attached_solver is None
 
 
 @pytest.mark.unit
