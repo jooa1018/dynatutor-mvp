@@ -223,22 +223,26 @@ class ChronoAdapter:
         material: Any,
     ) -> Any:
         body = self._attribute("ChBody")()
+        shape = self._attribute("ChCollisionShapeCylinder")(
+            material,
+            float(radius),
+            float(height),
+        )
+        attached = self._call(body, ("AddCollisionShape",), shape)
+        if attached is False:
+            raise ChronoCompatibilityError("ChBody.AddCollisionShape returned false")
+
         model = self._call(body, ("GetCollisionModel",))
+        if model is None:
+            raise ChronoCompatibilityError(
+                "ChBody did not create a collision model for its cylinder shape"
+            )
         self._call(model, ("Clear",))
         self._call(model, ("SetEnvelope",), COLLISION_ENVELOPE_M)
         self._call(model, ("SetSafeMargin",), COLLISION_SAFE_MARGIN_M)
-        endpoint_1 = self.vector(0.0, 0.0, -float(height) / 2.0)
-        endpoint_2 = self.vector(0.0, 0.0, float(height) / 2.0)
-        added = self._call(
-            model,
-            ("AddCylinder",),
-            material,
-            float(radius),
-            endpoint_1,
-            endpoint_2,
-        )
+        added = self._call(model, ("AddShape",), shape)
         if added is False:
-            raise ChronoCompatibilityError("ChCollisionModel.AddCylinder returned false")
+            raise ChronoCompatibilityError("ChCollisionModel.AddShape returned false")
 
         mass = float(density) * math.pi * float(radius) ** 2 * float(height)
         transverse_inertia = (
