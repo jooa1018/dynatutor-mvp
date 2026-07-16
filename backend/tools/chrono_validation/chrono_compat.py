@@ -238,6 +238,25 @@ class ChronoAdapter:
         self._enable_collision(body)
         return body
 
+    def new_planar_guide(self, body: Any, reference: Any) -> Any:
+        guide = self._attribute("ChLinkMatePlanar")()
+        origin = self.vector(0.0, 0.0, 0.0)
+        normal = self.vector(0.0, 0.0, 1.0)
+        initialized = self._call(
+            guide,
+            ("Initialize",),
+            body,
+            reference,
+            False,
+            origin,
+            origin,
+            normal,
+            normal,
+        )
+        if initialized is False:
+            raise ChronoCompatibilityError("ChLinkMatePlanar.Initialize returned false")
+        return guide
+
     def _enable_collision(self, body: Any) -> None:
         self._call(body, ("EnableCollision", "SetCollide"), True)
         enabled = getattr(body, "IsCollisionEnabled", None)

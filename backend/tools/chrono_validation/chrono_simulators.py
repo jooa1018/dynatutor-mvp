@@ -117,6 +117,10 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
     adapter.set_position(rolling_body, (0.0, radius, 0.0))
     adapter.set_linear_velocity(rolling_body, (0.0, 0.0, 0.0))
     adapter.add(system, rolling_body)
+    planar_guide = None
+    if body_key == "disk":
+        planar_guide = adapter.new_planar_guide(rolling_body, ground)
+        adapter.add(system, planar_guide)
 
     initial_position = adapter.position(rolling_body)
     positions: list[tuple[float, float, float]] = [initial_position]
@@ -204,6 +208,11 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
             "principal_inertia_kg_m2": inertias,
             "inertia_ratio_I_over_mR2": inertia_ratio,
             "target_reached": reached_target,
+            "planar_guide": (
+                type(planar_guide).__name__
+                if planar_guide is not None
+                else None
+            ),
         },
         constraint_errors={
             "signed_no_slip_abs_m_s": signed_no_slip,
@@ -233,12 +242,18 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
                 "kind": "in_memory_trajectory_summary",
                 "sample_count": len(positions),
                 "target_distance_m": target_distance,
+                "planar_guide_count": 1 if planar_guide is not None else 0,
             },
         ),
         modeling_assumptions=(
             "The incline is represented in a ramp-fixed frame by resolving gravity into tangent and normal components.",
             "The body starts from rest in geometric contact with a fixed rigid plane.",
             "Static Coulomb contact supplies the rolling constraint; no analytic velocity is prescribed.",
+            (
+                "The disk uses a ChLinkMatePlanar guide that constrains only out-of-plane translation and tilt; in-plane translation, normal contact, and rotation about the disk axis remain engine-solved."
+                if planar_guide is not None
+                else "The sphere is fully unconstrained apart from rigid contact with the plane."
+            ),
         ),
     )
 
@@ -763,8 +778,27 @@ def _simulate_massive_pulley(adapter: ChronoAdapter, initial: Mapping[str, Any])
     adapter.add(system, gear_2)
 
     step = policy.pulley_step_s
+    previous_time = adapter.time(system)
+    previous_w1 = adapter.shaft_speed(shaft_1)
+    previous_w2 = adapter.shaft_speed(shaft_2)
+    gravitational_work = 0.0
+    work_sample_count = 0
     while adapter.time(system) + step / 2.0 <= policy.pulley_duration_s:
         adapter.step(system, step)
+        current_time = adapter.time(system)
+        current_w1 = adapter.shaft_speed(shaft_1)
+        current_w2 = adapter.shaft_speed(shaft_2)
+        delta_time = current_time - previous_time
+        if delta_time <= 0.0:
+            raise ValueError("PyChrono shaft time did not advance")
+        gravitational_work += (
+            tau1 * 0.5 * (previous_w1 + current_w1) * delta_time
+            + tau2 * 0.5 * (previous_w2 + current_w2) * delta_time
+        )
+        previous_time = current_time
+        previous_w1 = current_w1
+        previous_w2 = current_w2
+        work_sample_count += 1
 
     elapsed = adapter.time(system)
     q1 = adapter.shaft_position(shaft_1)
@@ -810,7 +844,7 @@ def _simulate_massive_pulley(adapter: ChronoAdapter, initial: Mapping[str, Any])
         position_constraint_2,
     )
 
-    gravitational_work = tau1 * q1 + tau2 * q2
+    coordinate_gravitational_work = tau1 * q1 + tau2 * q2
     kinetic_energy = (
         0.5 * m1 * radius * radius * w1 * w1
         + 0.5 * m2 * radius * radius * w2 * w2
@@ -820,6 +854,7 @@ def _simulate_massive_pulley(adapter: ChronoAdapter, initial: Mapping[str, Any])
         abs(gravitational_work),
         1e-12,
     )
+    coordinate_integration_bias = coordinate_gravitational_work - gravitational_work
     tension_1 = abs(reaction_1) / radius
     tension_2 = abs(reaction_2) / radius
     tension_difference = abs(tension_2 - tension_1)
@@ -902,6 +937,10 @@ def _simulate_massive_pulley(adapter: ChronoAdapter, initial: Mapping[str, Any])
             "mass_2_free_body_relative": free_body_residual_2,
             "acceleration_state_consistency_abs_m_s2": acceleration_consistency,
             "gravitational_work_J": gravitational_work,
+            "coordinate_gravitational_work_J": coordinate_gravitational_work,
+            "coordinate_integration_bias_J": coordinate_integration_bias,
+            "work_quadrature": "trapezoidal_from_engine_shaft_speeds",
+            "work_sample_count": work_sample_count,
             "kinetic_energy_J": kinetic_energy,
             "checks": checks,
         },
@@ -919,6 +958,7 @@ def _simulate_massive_pulley(adapter: ChronoAdapter, initial: Mapping[str, Any])
             "Each translating mass is mapped to a shaft inertia m*R^2 and an absolute gravity load m*g*R.",
             "Two signed ChShaftsGear constraints impose w_mass1=w_pulley and w_mass2=-w_pulley.",
             "Acceleration is measured from stepped shaft state; tension is measured from gear reactions; the analytic target is comparison-only.",
+            "Applied-load work is integrated by trapezoidal quadrature over consecutive engine shaft-speed states; the raw coordinate work and semi-implicit integration bias are reported separately.",
         ),
     )
 
