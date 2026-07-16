@@ -83,6 +83,7 @@ class ChronoAdapter:
             return installed_pychrono_version(self.chrono)
         except PyChronoEvidenceError:
             return "unknown"
+
     def vector(self, x: float, y: float, z: float) -> Any:
         cls = self._attribute("ChVector3d", "ChVectorD")
         return cls(float(x), float(y), float(z))
@@ -102,6 +103,7 @@ class ChronoAdapter:
 
     def new_nsc_system(self, *, gravity: tuple[float, float, float]) -> tuple[Any, str]:
         system = self._attribute("ChSystemNSC")()
+        self._configure_bullet_collision(system)
         gravity_vector = self.vector(*gravity)
         self._call(
             system,
@@ -112,6 +114,35 @@ class ChronoAdapter:
         if hasattr(system, "SetMinBounceSpeed"):
             system.SetMinBounceSpeed(0.0)
         return system, solver
+
+    def _configure_bullet_collision(self, system: Any) -> None:
+        holder = self._attribute("ChCollisionSystem")
+        candidates: list[Any] = []
+        type_holder = getattr(holder, "Type", None)
+        if type_holder is not None:
+            candidates.extend(
+                getattr(type_holder, name, None)
+                for name in ("BULLET", "Type_BULLET")
+            )
+        candidates.extend(
+            getattr(holder, name, None)
+            for name in ("Type_BULLET", "BULLET")
+        )
+        candidates.extend(
+            getattr(self.chrono, name, None)
+            for name in ("ChCollisionSystemType_BULLET", "ChCollisionSystem_BULLET")
+        )
+        bullet = next((item for item in candidates if item is not None), None)
+        if bullet is None:
+            raise ChronoCompatibilityError(
+                "PyChrono does not expose the BULLET collision-system enum"
+            )
+        self._call(system, ("SetCollisionSystemType",), bullet)
+        collision_system = self._call(system, ("GetCollisionSystem",))
+        if collision_system is None:
+            raise ChronoCompatibilityError(
+                "PyChrono did not create the requested BULLET collision system"
+            )
 
     def _configure_psor(self, system: Any) -> str:
         holder = self._attribute("ChSolver")
@@ -164,16 +195,20 @@ class ChronoAdapter:
     ) -> Any:
         cls = self._attribute("ChBodyEasyBox")
         try:
-            return cls(size_x, size_y, size_z, density, False, True, material)
+            body = cls(size_x, size_y, size_z, density, False, True, material)
         except TypeError:
-            return cls(size_x, size_y, size_z, density, material)
+            body = cls(size_x, size_y, size_z, density, material)
+        self._enable_collision(body)
+        return body
 
     def easy_sphere(self, *, radius: float, density: float, material: Any) -> Any:
         cls = self._attribute("ChBodyEasySphere")
         try:
-            return cls(radius, density, False, True, material)
+            body = cls(radius, density, False, True, material)
         except TypeError:
-            return cls(radius, density, material)
+            body = cls(radius, density, material)
+        self._enable_collision(body)
+        return body
 
     def easy_cylinder_z(
         self,
@@ -185,20 +220,31 @@ class ChronoAdapter:
     ) -> Any:
         cls = self._attribute("ChBodyEasyCylinder")
         axis = self._axis_z()
+        body = None
         if axis is not None:
             try:
-                return cls(axis, radius, height, density, False, True, material)
+                body = cls(axis, radius, height, density, False, True, material)
             except TypeError:
                 try:
-                    return cls(axis, radius, height, density, material)
+                    body = cls(axis, radius, height, density, material)
                 except TypeError:
-                    pass
-        try:
-            body = cls(radius, height, density, False, True, material)
-        except TypeError:
-            body = cls(radius, height, density, material)
-        self._call(body, ("SetRot",), self._quat_from_angle_x(math.pi / 2.0))
+                    body = None
+        if body is None:
+            try:
+                body = cls(radius, height, density, False, True, material)
+            except TypeError:
+                body = cls(radius, height, density, material)
+            self._call(body, ("SetRot",), self._quat_from_angle_x(math.pi / 2.0))
+        self._enable_collision(body)
         return body
+
+    def _enable_collision(self, body: Any) -> None:
+        self._call(body, ("EnableCollision", "SetCollide"), True)
+        enabled = getattr(body, "IsCollisionEnabled", None)
+        if callable(enabled) and not bool(enabled()):
+            raise ChronoCompatibilityError(
+                f"{type(body).__name__} did not enable its collision model"
+            )
 
     def _axis_z(self) -> Any | None:
         value = getattr(self.chrono, "ChAxis_Z", None)
@@ -223,12 +269,23 @@ class ChronoAdapter:
         return cls(math.cos(half), math.sin(half), 0.0, 0.0)
 
     def add(self, system: Any, item: Any, *, shaft: bool = False) -> None:
-        if shaft:
-            method = getattr(system, "AddShaft", None)
-            if callable(method):
+        if not shaft:
+            self._call(system, ("Add", "AddBody"), item)
+            return
+        type_errors: list[str] = []
+        for name in ("Add", "AddShaft"):
+            method = getattr(system, name, None)
+            if not callable(method):
+                continue
+            try:
                 method(item)
                 return
-        self._call(system, ("Add", "AddBody"), item)
+            except TypeError as exc:
+                type_errors.append(f"{name}: {exc}")
+        detail = "; ".join(type_errors) or "neither Add nor AddShaft is callable"
+        raise ChronoCompatibilityError(
+            f"cannot attach {type(item).__name__} shaft to the Chrono system: {detail}"
+        )
 
     def set_fixed(self, body: Any, fixed: bool) -> None:
         self._call(body, ("SetFixed", "SetBodyFixed"), bool(fixed))
