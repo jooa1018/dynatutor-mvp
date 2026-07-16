@@ -343,15 +343,18 @@ def _model_value(value: Any, name: str, default: Any = None) -> Any:
     return getattr(value, name, default)
 
 
-def _canonical_sha256(value: Any) -> str:
-    encoded = json.dumps(
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
         value,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    )
+
+
+def _canonical_sha256(value: Any) -> str:
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _semantic_fingerprint(
@@ -375,6 +378,7 @@ def _semantic_fingerprint(
                 ),
             }
         )
+    checks.sort(key=_canonical_json)
     answers = []
     for answer in _model_value(response, "answers", []) or []:
         answers.append(

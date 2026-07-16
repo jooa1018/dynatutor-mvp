@@ -14,6 +14,102 @@ BASE_SHA = "1" * 40
 HEAD_SHA = "2" * 40
 
 
+def _response_with_checks(checks: list[dict[str, object]]):
+    return {
+        "ok": True,
+        "answers": [],
+        "verification": {
+            "passed": True,
+            "policy_version": "test-policy-v1",
+            "structured_checks": checks,
+        },
+    }
+
+
+def _structured_check(
+    check_id: str,
+    *,
+    status: str = "pass",
+    source_equation_ids: list[str] | None = None,
+):
+    return {
+        "check_id": check_id,
+        "category": "test",
+        "status": status,
+        "applicability": "applicable",
+        "absolute_error": 0.0,
+        "relative_error": 0.0,
+        "tolerance": 1e-9,
+        "source_equation_ids": source_equation_ids or ["eq-1"],
+    }
+
+
+def test_semantic_fingerprint_treats_structured_checks_as_a_multiset():
+    first_check = _structured_check("first")
+    second_check = _structured_check("second")
+
+    first_hash, first_ids, first_components = profiler._semantic_fingerprint(
+        _response_with_checks([first_check, second_check])
+    )
+    second_hash, second_ids, second_components = profiler._semantic_fingerprint(
+        _response_with_checks([second_check, first_check])
+    )
+
+    assert first_hash == second_hash
+    assert first_components["verification"] == second_components["verification"]
+    assert first_ids == second_ids == ("first", "second")
+
+
+def test_semantic_fingerprint_detects_projected_check_field_changes():
+    baseline = _structured_check("field-change")
+    changed = {**baseline, "status": "fail"}
+
+    baseline_hash, _, baseline_components = profiler._semantic_fingerprint(
+        _response_with_checks([baseline])
+    )
+    changed_hash, _, changed_components = profiler._semantic_fingerprint(
+        _response_with_checks([changed])
+    )
+
+    assert baseline_hash != changed_hash
+    assert baseline_components["verification"] != changed_components["verification"]
+
+
+def test_semantic_fingerprint_detects_check_multiplicity_changes():
+    check = _structured_check("duplicate")
+
+    single_hash, single_ids, single_components = profiler._semantic_fingerprint(
+        _response_with_checks([check])
+    )
+    duplicate_result = profiler._semantic_fingerprint(
+        _response_with_checks([check, check])
+    )
+    duplicate_hash, duplicate_ids, duplicate_components = duplicate_result
+
+    assert single_hash != duplicate_hash
+    assert single_components["verification"] != duplicate_components["verification"]
+    assert single_ids == duplicate_ids == ("duplicate",)
+
+
+def test_semantic_fingerprint_preserves_source_equation_id_order():
+    baseline = _structured_check(
+        "equation-order", source_equation_ids=["eq-1", "eq-2"]
+    )
+    changed = _structured_check(
+        "equation-order", source_equation_ids=["eq-2", "eq-1"]
+    )
+
+    baseline_hash, _, baseline_components = profiler._semantic_fingerprint(
+        _response_with_checks([baseline])
+    )
+    changed_hash, _, changed_components = profiler._semantic_fingerprint(
+        _response_with_checks([changed])
+    )
+
+    assert baseline_hash != changed_hash
+    assert baseline_components["verification"] != changed_components["verification"]
+
+
 def _target(target_id: str, *, label: str, self_ms: float = 0.0):
     spec = next(item for item in profiler.TARGET_MANIFEST if item["target_id"] == target_id)
     present = label == "head"
