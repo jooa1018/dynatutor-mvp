@@ -11,7 +11,9 @@ on:
       - "backend/tools/chrono_validation/**"
       - "backend/engine/capabilities/**"
       - "backend/tests/test_phase51_*.py"
+      - "backend/tests/test_phase21_chrono_offline_validation.py"
       - "backend/tests/test_phase42_baseline_contracts.py"
+      - "backend/tests/test_phase49_consistency_contracts.py"
       - "docs/PHASE51_PYCHRONO_INTEGRATION_NOTES.md"
   push:
     branches:
@@ -22,7 +24,9 @@ on:
       - "backend/tools/chrono_validation/**"
       - "backend/engine/capabilities/**"
       - "backend/tests/test_phase51_*.py"
+      - "backend/tests/test_phase21_chrono_offline_validation.py"
       - "backend/tests/test_phase42_baseline_contracts.py"
+      - "backend/tests/test_phase49_consistency_contracts.py"
       - "docs/PHASE51_PYCHRONO_INTEGRATION_NOTES.md"
 
 permissions:
@@ -43,6 +47,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact work branch HEAD
+        run: |
+          expected_sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual_sha="$(git rev-parse HEAD)"
+          printf 'Expected checkout SHA: %s\nActual checkout SHA: %s\n' "$expected_sha" "$actual_sha"
+          test "$actual_sha" = "$expected_sha"
 
       - uses: mamba-org/setup-micromamba@v2
         with:
@@ -57,25 +69,35 @@ jobs:
           python -m pip install -r backend/requirements.txt
 
       - name: Verify pinned real PyChrono environment
+        working-directory: backend
         run: |
-          python - <<'PY'
-          import pychrono as chrono
-          version = getattr(chrono, "__version__", None)
-          if version is None and hasattr(chrono, "GetChronoVersion"):
-              version = chrono.GetChronoVersion()
-          print("PyChrono version:", version)
-          print("System class:", chrono.ChSystemNSC)
-          assert str(version).startswith("9.0")
-          PY
+          python -m tools.chrono_validation.version_evidence \
+            --expected-package projectchrono::pychrono \
+            --expected-version 9.0.1 \
+            --expected-build py312hf1de3a3_6463 \
+            --expected-channel projectchrono \
+            --expected-python 3.12
 
       - name: Compile Phase 51 sources
         run: |
-          python -m compileall -q             backend/tools/chrono_validation             backend/tests/test_phase51_pychrono_validation.py             backend/tests/test_phase51_runner.py             backend/tests/test_phase51_capability_contract.py
+          python -m compileall -q \
+            backend/tools/chrono_validation \
+            backend/tests/test_phase51_version_evidence.py \
+            backend/tests/test_phase51_pychrono_validation.py \
+            backend/tests/test_phase51_runner.py \
+            backend/tests/test_phase51_capability_contract.py
 
       - name: Run focused contracts and real scenes
         working-directory: backend
         run: |
-          pytest -q             tests/test_phase51_pychrono_validation.py             tests/test_phase51_runner.py             tests/test_phase51_capability_contract.py             tests/test_phase42_baseline_contracts.py
+          pytest -q \
+            tests/test_phase51_version_evidence.py \
+            tests/test_phase51_pychrono_validation.py \
+            tests/test_phase51_runner.py \
+            tests/test_phase51_capability_contract.py \
+            tests/test_phase21_chrono_offline_validation.py \
+            tests/test_phase42_baseline_contracts.py \
+            tests/test_phase49_consistency_contracts.py
 
       - name: Generate strict deterministic reports twice
         working-directory: backend
@@ -100,6 +122,7 @@ jobs:
           }
           assert report["summary"]["passed_cases"] == 6
           assert report["product_answer_overwrite"] is False
+          assert report["environment"]["chrono_versions"] == ["9.0.1"]
           PY
 
       - name: Upload Phase 51 evidence

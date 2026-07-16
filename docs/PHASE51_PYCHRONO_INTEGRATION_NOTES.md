@@ -35,8 +35,19 @@ PyChrono 9.0.1 / Python 3.12 build used for acceptance.
 micromamba create -f backend/environment-phase51-chrono.yml
 micromamba activate dynatutor-phase51-chrono
 python -m pip install -r backend/requirements.txt
-python -c "import pychrono as chrono; print(chrono.GetChronoVersion()); print(chrono.ChSystemNSC)"
+python backend/tools/chrono_validation/version_evidence.py \
+  --expected-package projectchrono::pychrono \
+  --expected-version 9.0.1 \
+  --expected-build py312hf1de3a3_6463 \
+  --expected-channel projectchrono \
+  --expected-python 3.12
 ```
+
+The verifier reads the active environment's installed `conda-meta` package
+record. Module version evidence is preferred when present; when it is absent,
+the installed package name, exact version, build, channel/source, Python runtime,
+import result, and `ChSystemNSC` API provide the evidence. Missing, malformed,
+ambiguous, mismatched, or contradictory evidence fails closed.
 
 The compatibility adapter uses the documented Chrono 9/10 names and the
 corresponding Chrono 8 aliases. An unknown API is an error, not an analytic

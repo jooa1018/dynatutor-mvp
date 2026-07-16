@@ -6,6 +6,11 @@ import math
 from types import ModuleType
 from typing import Any, Iterable
 
+try:
+    from .version_evidence import PyChronoEvidenceError, installed_pychrono_version
+except ImportError:  # direct script execution from tools/chrono_validation
+    from version_evidence import PyChronoEvidenceError, installed_pychrono_version
+
 
 class ChronoCompatibilityError(RuntimeError):
     pass
@@ -74,18 +79,10 @@ class ChronoAdapter:
 
     @property
     def version(self) -> str:
-        raw = getattr(self.chrono, "__version__", None)
-        if raw:
-            return str(raw)
-        for name in ("GetChronoVersion", "GetVersion"):
-            fn = getattr(self.chrono, name, None)
-            if callable(fn):
-                value = fn()
-                if value:
-                    return str(value)
-        raw = getattr(self.chrono, "CHRONO_VERSION", None)
-        return str(raw) if raw else "unknown"
-
+        try:
+            return installed_pychrono_version(self.chrono)
+        except PyChronoEvidenceError:
+            return "unknown"
     def vector(self, x: float, y: float, z: float) -> Any:
         cls = self._attribute("ChVector3d", "ChVectorD")
         return cls(float(x), float(y), float(z))
