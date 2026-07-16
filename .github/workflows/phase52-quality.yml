@@ -1,0 +1,356 @@
+name: Phase 52 observability quality
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/phase52-quality.yml"
+      - "backend/engine/observability/**"
+      - "backend/tools/run_phase52_observability.py"
+      - "backend/tests/test_phase52_*.py"
+      - "docs/PHASE52_CROSS_ENGINE_OBSERVABILITY.md"
+      - "phase52_cross_engine_ci_performance_observability.md"
+  push:
+    branches:
+      - codex/phase47-54-engine-completion
+    paths:
+      - ".github/workflows/phase52-quality.yml"
+      - "backend/engine/observability/**"
+      - "backend/tools/run_phase52_observability.py"
+      - "backend/tests/test_phase52_*.py"
+      - "docs/PHASE52_CROSS_ENGINE_OBSERVABILITY.md"
+      - "phase52_cross_engine_ci_performance_observability.md"
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: Targeted Phase 52 tier
+        required: true
+        default: extended
+        type: choice
+        options:
+          - fast
+          - extended
+          - nightly
+  schedule:
+    - cron: "17 18 * * *"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: phase52-quality-${{ github.event.pull_request.number || github.ref }}-${{ inputs.tier || 'pr' }}
+  cancel-in-progress: false
+
+env:
+  PYTHONPATH: backend
+  PHASE52_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  fast:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'fast')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.PHASE52_SHA }}
+
+      - name: Verify exact work branch HEAD
+        run: |
+          actual_sha="$(git rev-parse HEAD)"
+          printf 'Expected checkout SHA: %s\nActual checkout SHA: %s\n' "$PHASE52_SHA" "$actual_sha"
+          test "$actual_sha" = "$PHASE52_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements-lock.txt
+
+      - name: Compile Phase 52 reporting sources
+        run: >-
+          python -m compileall -q
+          backend/engine/observability
+          backend/tools/run_phase52_observability.py
+          backend/tests/test_phase52_cross_engine_report.py
+          backend/tests/test_phase52_runner.py
+
+      - name: Run focused report, parser, route, solver, validator, golden, and API contracts
+        working-directory: backend
+        run: >-
+          python -m pytest -q -o addopts=
+          tests/test_phase52_observability_contracts.py
+          tests/test_phase52_pipeline_trace.py
+          tests/test_phase52_cross_engine_report.py
+          tests/test_phase52_runner.py
+          tests/test_phase8_5_korean_parser.py
+          tests/test_mvp_solvers.py
+          tests/test_phase42_baseline_contracts.py
+
+      - name: Collect and machine-validate fast evidence
+        working-directory: backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/phase52-fast"
+          python tools/run_phase52_observability.py collect \
+            --source-commit "$PHASE52_SHA" \
+            --tier fast \
+            --seed 5200 \
+            --repeats 2 \
+            --core-out "$RUNNER_TEMP/phase52-fast/core.json" \
+            --performance-out "$RUNNER_TEMP/phase52-fast/performance.json"
+          python tools/run_phase52_observability.py render \
+            --core "$RUNNER_TEMP/phase52-fast/core.json" \
+            --performance "$RUNNER_TEMP/phase52-fast/performance.json" \
+            --json-out "$RUNNER_TEMP/phase52-fast/report.json" \
+            --markdown-out "$RUNNER_TEMP/phase52-fast/report.md" \
+            --pooled-performance-gate inconclusive
+          python tools/run_phase52_observability.py validate \
+            --core "$RUNNER_TEMP/phase52-fast/core.json" \
+            --performance "$RUNNER_TEMP/phase52-fast/performance.json" \
+            --json-report "$RUNNER_TEMP/phase52-fast/report.json" \
+            --pooled-performance-gate inconclusive
+
+      - name: Upload targeted fast evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase52-fast-${{ env.PHASE52_SHA }}
+          path: ${{ runner.temp }}/phase52-fast
+          if-no-files-found: error
+          retention-days: 30
+
+  extended:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'extended')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.PHASE52_SHA }}
+
+      - name: Verify exact work branch HEAD
+        run: |
+          actual_sha="$(git rev-parse HEAD)"
+          printf 'Expected checkout SHA: %s\nActual checkout SHA: %s\n' "$PHASE52_SHA" "$actual_sha"
+          test "$actual_sha" = "$PHASE52_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements-lock.txt
+
+      - name: Compile Phase 52 reporting sources
+        run: >-
+          python -m compileall -q
+          backend/engine/observability
+          backend/tools/run_phase52_observability.py
+          backend/tests/test_phase52_cross_engine_report.py
+          backend/tests/test_phase52_runner.py
+
+      - name: Run curated NLP, metamorphic, analytic, short SciPy, and runner contracts
+        working-directory: backend
+        run: >-
+          python -m pytest -q -o addopts=
+          tests/test_phase52_observability_contracts.py
+          tests/test_phase52_pipeline_trace.py
+          tests/test_phase52_cross_engine_report.py
+          tests/test_phase52_runner.py
+          tests/test_phase44_korean_nlp_robustness.py
+          tests/test_phase49_consistency_contracts.py
+          tests/test_phase49_oracles_metamorphic.py
+          tests/test_phase49_solver_consistency.py
+          tests/test_phase50_numeric_accuracy.py
+          tests/test_phase50_numeric_simulation.py
+          tests/test_phase51_runner.py
+
+      - name: Collect and machine-validate extended evidence with declared PyChrono absence
+        working-directory: backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/phase52-extended"
+          python tools/run_phase52_observability.py collect \
+            --source-commit "$PHASE52_SHA" \
+            --tier extended \
+            --seed 5200 \
+            --repeats 2 \
+            --core-out "$RUNNER_TEMP/phase52-extended/core.json" \
+            --performance-out "$RUNNER_TEMP/phase52-extended/performance.json"
+          python tools/run_phase52_observability.py render \
+            --core "$RUNNER_TEMP/phase52-extended/core.json" \
+            --performance "$RUNNER_TEMP/phase52-extended/performance.json" \
+            --json-out "$RUNNER_TEMP/phase52-extended/report.json" \
+            --markdown-out "$RUNNER_TEMP/phase52-extended/report.md" \
+            --pooled-performance-gate inconclusive
+          python tools/run_phase52_observability.py validate \
+            --core "$RUNNER_TEMP/phase52-extended/core.json" \
+            --performance "$RUNNER_TEMP/phase52-extended/performance.json" \
+            --json-report "$RUNNER_TEMP/phase52-extended/report.json" \
+            --pooled-performance-gate inconclusive
+
+      - name: Upload targeted extended evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase52-extended-${{ env.PHASE52_SHA }}
+          path: ${{ runner.temp }}/phase52-extended
+          if-no-files-found: error
+          retention-days: 30
+
+  nightly:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.tier == 'nightly')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.PHASE52_SHA }}
+
+      - name: Verify exact work branch HEAD
+        run: |
+          actual_sha="$(git rev-parse HEAD)"
+          printf 'Expected checkout SHA: %s\nActual checkout SHA: %s\n' "$PHASE52_SHA" "$actual_sha"
+          test "$actual_sha" = "$PHASE52_SHA"
+
+      - name: Set up pinned Phase 51 PyChrono environment
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: backend/environment-phase51-chrono.yml
+          environment-name: dynatutor-phase51-chrono
+          cache-environment: true
+          init-shell: bash
+
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Verify pinned real PyChrono version evidence
+        working-directory: backend
+        run: |
+          python -m tools.chrono_validation.version_evidence \
+            --expected-package projectchrono::pychrono \
+            --expected-version 9.0.1 \
+            --expected-build py312hf1de3a3_6463 \
+            --expected-channel projectchrono \
+            --expected-python 3.12
+
+      - name: Compile Phase 52 and real-engine sources
+        run: >-
+          python -m compileall -q
+          backend/engine/observability
+          backend/tools/run_phase52_observability.py
+          backend/tools/chrono_validation
+          backend/tests/test_phase52_cross_engine_report.py
+          backend/tests/test_phase52_runner.py
+
+      - name: Run full SciPy, six real PyChrono scenes, and Phase 52 contracts
+        working-directory: backend
+        run: >-
+          python -m pytest -q -o addopts=
+          tests/test_phase50_numeric_accuracy.py
+          tests/test_phase50_numeric_simulation.py
+          tests/test_phase51_version_evidence.py
+          tests/test_phase51_pychrono_validation.py
+          tests/test_phase51_runner.py
+          tests/test_phase51_capability_contract.py
+          tests/test_phase52_observability_contracts.py
+          tests/test_phase52_pipeline_trace.py
+          tests/test_phase52_cross_engine_report.py
+          tests/test_phase52_runner.py
+
+      - name: Collect twice and compare immutable core
+        working-directory: backend
+        run: |
+          mkdir -p "$RUNNER_TEMP/phase52-nightly/first" "$RUNNER_TEMP/phase52-nightly/second"
+          python tools/run_phase52_observability.py collect \
+            --source-commit "$PHASE52_SHA" \
+            --tier nightly \
+            --seed 5200 \
+            --repeats 3 \
+            --core-out "$RUNNER_TEMP/phase52-nightly/first/core.json" \
+            --performance-out "$RUNNER_TEMP/phase52-nightly/first/performance.json"
+          python tools/run_phase52_observability.py collect \
+            --source-commit "$PHASE52_SHA" \
+            --tier nightly \
+            --seed 5200 \
+            --repeats 3 \
+            --core-out "$RUNNER_TEMP/phase52-nightly/second/core.json" \
+            --performance-out "$RUNNER_TEMP/phase52-nightly/second/performance.json"
+          cmp "$RUNNER_TEMP/phase52-nightly/first/core.json" "$RUNNER_TEMP/phase52-nightly/second/core.json"
+
+      - name: Verify external Release exact-HEAD pooled gate evidence
+        id: release_evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_runs="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/backend-tests.yml/runs?head_sha=${PHASE52_SHA}&status=success&per_page=20")"
+          release_run_id="$(jq -r --arg expected_sha "$PHASE52_SHA" \
+            '[.workflow_runs[] | select(.head_sha == $expected_sha and .event == "pull_request" and .conclusion == "success")] | first | .id // empty' \
+            <<<"$release_runs")"
+          test -n "$release_run_id"
+          pooled_step_count="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${release_run_id}/jobs?filter=latest&per_page=100" \
+            --jq '[.jobs[] | select(.name == "test" and .conclusion == "success") | .steps[]? | select(.name == "Compare pooled PR10 hotfix performance" and .conclusion == "success")] | length')"
+          test "$pooled_step_count" = "1"
+          printf 'Using successful pull_request Release run %s with its successful pooled comparison step.\n' "$release_run_id"
+          echo "pooled_gate=passed" >> "$GITHUB_OUTPUT"
+
+      - name: Render the same evidence twice in separate processes and compare bytes
+        working-directory: backend
+        run: |
+          python tools/run_phase52_observability.py render \
+            --core "$RUNNER_TEMP/phase52-nightly/first/core.json" \
+            --performance "$RUNNER_TEMP/phase52-nightly/first/performance.json" \
+            --json-out "$RUNNER_TEMP/phase52-nightly/first/report.json" \
+            --markdown-out "$RUNNER_TEMP/phase52-nightly/first/report.md" \
+            --pooled-performance-gate "${{ steps.release_evidence.outputs.pooled_gate }}" \
+            --strict
+          python tools/run_phase52_observability.py render \
+            --core "$RUNNER_TEMP/phase52-nightly/first/core.json" \
+            --performance "$RUNNER_TEMP/phase52-nightly/first/performance.json" \
+            --json-out "$RUNNER_TEMP/phase52-nightly/second/report.json" \
+            --markdown-out "$RUNNER_TEMP/phase52-nightly/second/report.md" \
+            --pooled-performance-gate "${{ steps.release_evidence.outputs.pooled_gate }}" \
+            --strict
+          cmp "$RUNNER_TEMP/phase52-nightly/first/report.json" "$RUNNER_TEMP/phase52-nightly/second/report.json"
+          cmp "$RUNNER_TEMP/phase52-nightly/first/report.md" "$RUNNER_TEMP/phase52-nightly/second/report.md"
+
+      - name: Machine-validate strict nightly evidence
+        working-directory: backend
+        run: |
+          python tools/run_phase52_observability.py validate \
+            --core "$RUNNER_TEMP/phase52-nightly/first/core.json" \
+            --performance "$RUNNER_TEMP/phase52-nightly/first/performance.json" \
+            --json-report "$RUNNER_TEMP/phase52-nightly/first/report.json" \
+            --pooled-performance-gate "${{ steps.release_evidence.outputs.pooled_gate }}" \
+            --strict
+
+      - name: Upload strict nightly evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase52-nightly-${{ env.PHASE52_SHA }}
+          path: |
+            ${{ runner.temp }}/phase52-nightly/first/core.json
+            ${{ runner.temp }}/phase52-nightly/first/performance.json
+            ${{ runner.temp }}/phase52-nightly/first/report.json
+            ${{ runner.temp }}/phase52-nightly/first/report.md
+          if-no-files-found: error
+          retention-days: 30
