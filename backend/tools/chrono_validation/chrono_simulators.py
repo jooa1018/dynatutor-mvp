@@ -63,6 +63,11 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
             initial_conditions={"raw_inputs": raw_inputs},
         )
 
+    rolling_step = (
+        DEFAULT_CHRONO_POLICY.rolling_step_s / 2.0
+        if body_key == "disk"
+        else DEFAULT_CHRONO_POLICY.rolling_step_s
+    )
     initial = {
         "height_m": height,
         "body": body_key,
@@ -74,6 +79,7 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
         "friction_coefficient": 0.8,
         "target_along_ramp_distance_m": height / math.sin(math.radians(ROLLING_ANGLE_DEG)),
         "maximum_duration_s": DEFAULT_CHRONO_POLICY.rolling_max_duration_s,
+        "time_step_s": rolling_step,
     }
     if body_key == "disk":
         initial["collision_envelope_m"] = COLLISION_ENVELOPE_M
@@ -86,7 +92,7 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
         case_id=f"rolling_{body_key}",
         observable="final_center_of_mass_speed",
         unit="m/s",
-        time_step=DEFAULT_CHRONO_POLICY.rolling_step_s,
+        time_step=rolling_step,
         duration=DEFAULT_CHRONO_POLICY.rolling_max_duration_s,
         initial_conditions=initial,
         scene=lambda adapter: _simulate_rolling(adapter, initial),
@@ -148,7 +154,7 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
     ]
     elapsed = 0.0
     reached_target = False
-    step = policy.rolling_step_s
+    step = float(initial["time_step_s"])
     max_duration = policy.rolling_max_duration_s
     while elapsed + step / 2.0 <= max_duration:
         adapter.step(system, step)

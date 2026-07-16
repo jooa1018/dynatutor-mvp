@@ -214,6 +214,9 @@ def test_phase51_real_pychrono_scenes_when_dependency_is_available():
         results[1].initial_conditions["collision_shape_construction"]
         == "custom_ChBody_AddCylinder"
     )
+    assert results[0].time_step == DEFAULT_CHRONO_POLICY.rolling_step_s
+    assert results[1].time_step == DEFAULT_CHRONO_POLICY.rolling_step_s / 2.0
+    assert results[1].initial_conditions["time_step_s"] == results[1].time_step
     assert results[1].final_state["planar_guide"] == "ChLinkMatePlanar"
     assert results[1].artifacts[0]["planar_guide_count"] == 1
     assert results[1].constraint_errors["collision_geometry"] == pytest.approx(
