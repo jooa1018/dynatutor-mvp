@@ -1,0 +1,8 @@
+name: dynatutor-phase51-chrono
+channels:
+  - projectchrono
+  - conda-forge
+dependencies:
+  - python=3.12
+  - projectchrono::pychrono=9.0.1=py312hf1de3a3_6463
+  - pip

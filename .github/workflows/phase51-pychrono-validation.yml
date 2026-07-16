@@ -1,0 +1,149 @@
+name: Phase 51 PyChrono validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/phase51-pychrono-validation.yml"
+      - "backend/environment-phase51-chrono.yml"
+      - "backend/tools/chrono_validation/**"
+      - "backend/engine/capabilities/**"
+      - "backend/tests/test_phase51_*.py"
+      - "backend/tests/test_phase21_chrono_offline_validation.py"
+      - "backend/tests/test_phase42_baseline_contracts.py"
+      - "backend/tests/test_phase49_consistency_contracts.py"
+      - "docs/PHASE51_PYCHRONO_INTEGRATION_NOTES.md"
+  push:
+    branches:
+      - codex/phase47-54-engine-completion
+    paths:
+      - ".github/workflows/phase51-pychrono-validation.yml"
+      - "backend/environment-phase51-chrono.yml"
+      - "backend/tools/chrono_validation/**"
+      - "backend/engine/capabilities/**"
+      - "backend/tests/test_phase51_*.py"
+      - "backend/tests/test_phase21_chrono_offline_validation.py"
+      - "backend/tests/test_phase42_baseline_contracts.py"
+      - "backend/tests/test_phase49_consistency_contracts.py"
+      - "docs/PHASE51_PYCHRONO_INTEGRATION_NOTES.md"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase51-pychrono-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  pychrono:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify exact work branch HEAD
+        run: |
+          expected_sha="${{ github.event.pull_request.head.sha || github.sha }}"
+          actual_sha="$(git rev-parse HEAD)"
+          printf 'Expected checkout SHA: %s\nActual checkout SHA: %s\n' "$expected_sha" "$actual_sha"
+          test "$actual_sha" = "$expected_sha"
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: backend/environment-phase51-chrono.yml
+          environment-name: dynatutor-phase51-chrono
+          cache-environment: true
+          init-shell: bash
+
+      - name: Install backend test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Verify pinned real PyChrono environment
+        working-directory: backend
+        run: |
+          python -m tools.chrono_validation.version_evidence \
+            --expected-package projectchrono::pychrono \
+            --expected-version 9.0.1 \
+            --expected-build py312hf1de3a3_6463 \
+            --expected-channel projectchrono \
+            --expected-python 3.12
+
+      - name: Compile Phase 51 sources
+        run: |
+          python -m compileall -q \
+            backend/tools/chrono_validation \
+            backend/tests/test_phase51_version_evidence.py \
+            backend/tests/test_phase51_pychrono_validation.py \
+            backend/tests/test_phase51_runner.py \
+            backend/tests/test_phase51_capability_contract.py
+
+      - name: Run focused contracts and real scenes
+        working-directory: backend
+        run: |
+          pytest -q \
+            tests/test_phase51_version_evidence.py \
+            tests/test_phase51_pychrono_validation.py \
+            tests/test_phase51_runner.py \
+            tests/test_phase51_capability_contract.py \
+            tests/test_phase21_chrono_offline_validation.py \
+            tests/test_phase42_baseline_contracts.py \
+            tests/test_phase49_consistency_contracts.py
+
+      - name: Generate strict deterministic reports twice
+        working-directory: backend
+        run: |
+          python tools/chrono_validation/phase51_runner.py             --mode chrono             --strict             --json-out reports/phase51_pychrono_validation.json             --markdown-out reports/phase51_pychrono_validation.md             > /tmp/phase51-run-1.log
+          cp reports/phase51_pychrono_validation.json /tmp/phase51-first.json
+          cp reports/phase51_pychrono_validation.md /tmp/phase51-first.md
+          python tools/chrono_validation/phase51_runner.py             --mode chrono             --strict             --json-out reports/phase51_pychrono_validation.json             --markdown-out reports/phase51_pychrono_validation.md             > /tmp/phase51-run-2.log
+          cmp /tmp/phase51-first.json reports/phase51_pychrono_validation.json
+          cmp /tmp/phase51-first.md reports/phase51_pychrono_validation.md
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("reports/phase51_pychrono_validation.json").read_text())
+          assert report["status"] == "passed"
+          assert report["passed"] is True
+          assert report["summary"]["chrono_statuses"] == {
+              "passed": 6,
+              "failed": 0,
+              "skipped": 0,
+              "error": 0,
+          }
+          assert report["summary"]["passed_cases"] == 6
+          assert report["product_answer_overwrite"] is False
+          assert report["environment"]["chrono_versions"] == ["9.0.1"]
+          PY
+
+      - name: Upload Phase 51 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase51-pychrono-evidence
+          path: |
+            backend/reports/phase51_pychrono_validation.json
+            backend/reports/phase51_pychrono_validation.md
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Preserve runner-generated reports on the WIP branch
+        if: github.event_name == 'push' && github.ref_name == 'codex/phase47-54-engine-completion'
+        run: |
+          if [[ -n "$(git status --porcelain -- backend/reports/phase51_pychrono_validation.json backend/reports/phase51_pychrono_validation.md)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add             backend/reports/phase51_pychrono_validation.json             backend/reports/phase51_pychrono_validation.md
+            git commit -m "wip(phase51): record real PyChrono evidence [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          else
+            echo "Phase 51 reports already match the real execution."
+          fi

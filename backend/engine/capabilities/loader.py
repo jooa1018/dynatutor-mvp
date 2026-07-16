@@ -74,7 +74,41 @@ PHASE49_STUDENT_SOLVERS_BY_FAMILY = MappingProxyType(
         "fixed_axis_rotation": ("fixed_axis_rotation",),
     }
 )
+PHASE51_EXTERNAL_PATHS_BY_FAMILY = MappingProxyType(
+    {
+        "incline": MappingProxyType(
+            {"incline_with_friction": "phase51.pychrono.incline_friction"}
+        ),
+        "pulley": MappingProxyType(
+            {"massive_pulley_atwood": "phase51.pychrono.massive_pulley"}
+        ),
+        "collision": MappingProxyType(
+            {"collision_1d": "phase51.pychrono.collision_restitution"}
+        ),
+        "rolling": MappingProxyType(
+            {"pure_rolling_energy": "phase51.pychrono.rolling"}
+        ),
+        "work_energy": MappingProxyType({}),
+        "fixed_axis_rotation": MappingProxyType({}),
+    }
+)
 
+
+class _FrozenDict(dict):
+    """JSON-serializable immutable dictionary for nested capability roles."""
+
+    @staticmethod
+    def _immutable(*args: Any, **kwargs: Any) -> None:
+        raise TypeError("capability role mappings are immutable")
+
+    __setitem__ = _immutable
+    __delitem__ = _immutable
+    clear = _immutable
+    pop = _immutable
+    popitem = _immutable
+    setdefault = _immutable
+    update = _immutable
+    __ior__ = _immutable
 
 
 class CapabilityConfigError(ValueError):
@@ -215,15 +249,23 @@ def _validate_solver_path_roles(
         if secondary in secondary_ids:
             raise CapabilityConfigError("duplicate secondary analytic path")
         secondary_ids.add(secondary)
-        for unavailable in (
-            "numeric_validation_path",
-            "external_validation_path",
-        ):
-            if raw_roles[unavailable] is not None:
+        if raw_roles["numeric_validation_path"] is not None:
+            raise CapabilityConfigError(
+                f"solver_path_roles.{family}.numeric_validation_path must be null "
+                "until a family-wide numeric validation path is implemented"
+            )
+        external = raw_roles["external_validation_path"]
+        expected_external = dict(PHASE51_EXTERNAL_PATHS_BY_FAMILY[family])
+        if expected_external:
+            if not isinstance(external, dict) or external != expected_external:
                 raise CapabilityConfigError(
-                    f"solver_path_roles.{family}.{unavailable} must be null "
-                    "until its optional engine is implemented"
+                    f"solver_path_roles.{family}.external_validation_path must equal "
+                    f"{expected_external!r}"
                 )
+        elif external is not None:
+            raise CapabilityConfigError(
+                f"solver_path_roles.{family}.external_validation_path must be null"
+            )
         fallback = raw_roles["fallback_path"]
         if fallback is not None:
             raise CapabilityConfigError(
@@ -235,7 +277,11 @@ def _validate_solver_path_roles(
                 "student_answer_path": tuple(students),
                 "secondary_analytic_path": secondary,
                 "numeric_validation_path": None,
-                "external_validation_path": None,
+                "external_validation_path": (
+                    _FrozenDict(expected_external)
+                    if expected_external
+                    else None
+                ),
                 "fallback_path": fallback,
             }
         )
@@ -355,6 +401,7 @@ __all__ = [
     "SUPPORTED_VALIDATOR_IDS",
     "SECONDARY_ANALYTIC_PREFIX",
     "PHASE49_STUDENT_SOLVERS_BY_FAMILY",
+    "PHASE51_EXTERNAL_PATHS_BY_FAMILY",
     "SOLVER_PATH_FAMILIES",
     "SOLVER_PATH_ROLE_KEYS",
     "CapabilityConfigError",

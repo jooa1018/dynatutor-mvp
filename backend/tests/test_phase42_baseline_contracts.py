@@ -115,16 +115,23 @@ def test_phase42_capability_validator_claims_match_current_code():
 
 @pytest.mark.unit
 def test_phase42_chrono_matrix_does_not_overclaim_execution():
-    allowed = {"none", "manual_required_hook"}
+    allowed = {"none", "automated_optional"}
     assert {entry["chrono_support"]["status"] for entry in CAPABILITY["capabilities"]} <= allowed
-    manual = {entry["analytic_solver"] for entry in CAPABILITY["capabilities"] if entry["chrono_support"]["status"] == "manual_required_hook"}
-    assert manual == {
+    automated = {
+        entry["analytic_solver"]
+        for entry in CAPABILITY["capabilities"]
+        if entry["chrono_support"]["status"] == "automated_optional"
+    }
+    assert automated == {
         "incline_with_friction",
         "massive_pulley_atwood",
         "pure_rolling_energy",
-        "rolling_energy_general",
         "collision_1d",
     }
+    assert next(
+        entry for entry in CAPABILITY["capabilities"]
+        if entry["analytic_solver"] == "rolling_energy_general"
+    )["chrono_support"]["status"] == "none"
 
 
 @pytest.mark.unit
