@@ -138,12 +138,12 @@ jobs:
       - name: Preserve runner-generated reports on the WIP branch
         if: github.event_name == 'push' && github.ref_name == 'codex/phase47-54-engine-completion'
         run: |
-          if [[ -z "$(git status --porcelain -- backend/reports/phase51_pychrono_validation.json backend/reports/phase51_pychrono_validation.md)" ]]; then
+          if [[ -n "$(git status --porcelain -- backend/reports/phase51_pychrono_validation.json backend/reports/phase51_pychrono_validation.md)" ]]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add             backend/reports/phase51_pychrono_validation.json             backend/reports/phase51_pychrono_validation.md
+            git commit -m "wip(phase51): record real PyChrono evidence [skip ci]"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          else
             echo "Phase 51 reports already match the real execution."
-            exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add             backend/reports/phase51_pychrono_validation.json             backend/reports/phase51_pychrono_validation.md
-          git commit -m "wip(phase51): record real PyChrono evidence [skip ci]"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
