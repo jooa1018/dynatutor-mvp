@@ -193,6 +193,16 @@ def test_phase51_real_pychrono_scenes_when_dependency_is_available():
         for result in results
         if not result.passed
     }
+    if failures:
+        print(
+            json.dumps(
+                failures,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+        )
     assert not failures
     assert all(result.chrono_version != "unavailable" for result in results)
     assert all(result.value is not None and math.isfinite(result.value) for result in results)
