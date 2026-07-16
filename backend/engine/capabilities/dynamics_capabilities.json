@@ -13,8 +13,9 @@
   "notes": [
     "One entry corresponds to one SolverRegistry solver; particle_on_incline therefore has separate subtype entries.",
     "numeric_support means the current student-answer numeric path, not independent SciPy/PyDy simulation.",
-    "Chrono manual_required_hook is not a successful numerical simulation.",
-    "Phase 48 structured invariant validators are selected by analytic_solver and record explicit applicability."
+    "Phase 51 PyChrono evidence is optional, offline-only, and never replaces the student-answer path.",
+    "Phase 48 structured invariant validators are selected by analytic_solver and record explicit applicability.",
+    "Only solver IDs listed in solver_path_roles.*.external_validation_path have automated Phase 51 PyChrono coverage."
   ],
   "capabilities": [
     {
@@ -168,9 +169,11 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "incline_friction",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.incline_friction",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
         "status": "static_svg_fbd_only",
@@ -408,9 +411,11 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "massive_pulley",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.massive_pulley",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
         "status": "static_svg_fbd_only",
@@ -480,9 +485,11 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "rolling_sphere_or_disk",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.rolling",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
         "status": "static_svg_fbd_only",
@@ -554,9 +561,8 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
-        "case": "rolling_general",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "status": "none",
+        "notes": "Phase 51 validates explicit solid-sphere and solid-disk scenes only; arbitrary supplied inertia remains unsupported by PyChrono."
       },
       "visualization_support": {
         "status": "static_svg_fbd_only",
@@ -681,9 +687,11 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "collision_restitution",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.collision_restitution",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
         "status": "static_svg_fbd_only",
@@ -1716,7 +1724,9 @@
       ],
       "secondary_analytic_path": "phase49.secondary.incline",
       "numeric_validation_path": null,
-      "external_validation_path": null,
+      "external_validation_path": {
+        "incline_with_friction": "phase51.pychrono.incline_friction"
+      },
       "fallback_path": null
     },
     "pulley": {
@@ -1728,7 +1738,9 @@
       ],
       "secondary_analytic_path": "phase49.secondary.pulley",
       "numeric_validation_path": null,
-      "external_validation_path": null,
+      "external_validation_path": {
+        "massive_pulley_atwood": "phase51.pychrono.massive_pulley"
+      },
       "fallback_path": null
     },
     "collision": {
@@ -1737,7 +1749,9 @@
       ],
       "secondary_analytic_path": "phase49.secondary.collision",
       "numeric_validation_path": null,
-      "external_validation_path": null,
+      "external_validation_path": {
+        "collision_1d": "phase51.pychrono.collision_restitution"
+      },
       "fallback_path": null
     },
     "rolling": {
@@ -1747,7 +1761,9 @@
       ],
       "secondary_analytic_path": "phase49.secondary.rolling",
       "numeric_validation_path": null,
-      "external_validation_path": null,
+      "external_validation_path": {
+        "pure_rolling_energy": "phase51.pychrono.rolling"
+      },
       "fallback_path": null
     },
     "work_energy": {

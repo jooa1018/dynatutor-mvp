@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
 import math
 import re
@@ -16,6 +15,11 @@ from dataclasses import asdict, dataclass
 from typing import Callable, Iterable
 
 from engine.services import solve_problem
+
+try:
+    from .chrono_compat import import_chrono
+except ImportError:  # direct script execution
+    from chrono_compat import import_chrono
 
 
 @dataclass
@@ -52,30 +56,29 @@ class ValidationCase:
 
 
 def try_import_chrono():
-    """Try common PyChrono import names.
-
-    Project Chrono Python packaging has varied across setups, so this function
-    deliberately tries multiple import styles and returns `(module, message)`.
-    """
-    candidates = ["pychrono", "pychrono.core"]
-    errors = []
-    for name in candidates:
-        try:
-            return importlib.import_module(name), f"imported {name}"
-        except Exception as exc:
-            errors.append(f"{name}: {exc}")
-    return None, "; ".join(errors)
+    """Return the optional Chrono module without hiding broken installations."""
+    state = import_chrono()
+    return state.module, state.message
 
 
 def chrono_status() -> dict:
-    chrono, message = try_import_chrono()
+    state = import_chrono()
+    chrono = state.module
     if chrono is None:
-        return {"available": False, "message": message}
+        return {
+            "available": False,
+            "status": state.status,
+            "message": state.message,
+        }
+    version = getattr(chrono, "__version__", None)
+    if version is None and callable(getattr(chrono, "GetChronoVersion", None)):
+        version = chrono.GetChronoVersion()
     return {
         "available": True,
-        "message": message,
+        "status": state.status,
+        "message": state.message,
         "module": getattr(chrono, "__name__", "unknown"),
-        "version": getattr(chrono, "__version__", None),
+        "version": str(version) if version is not None else "unknown",
     }
 
 
@@ -174,7 +177,7 @@ def print_json_report(results: list[ValidationResult], *, suite: str, mode: str,
 
 
 def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    parser.add_argument("--mode", choices=["analytic", "chrono", "auto"], default="auto", help="analytic always runs; chrono requires PyChrono; auto uses chrono if available, otherwise analytic.")
+    parser.add_argument("--mode", choices=["analytic", "chrono", "auto"], default="auto", help="analytic runs the legacy reference suite; chrono/auto execute real Phase 51 scenes and report missing PyChrono as skipped.")
     parser.add_argument("--strict", action="store_true", help="exit nonzero when any validation result fails")
     return parser
 

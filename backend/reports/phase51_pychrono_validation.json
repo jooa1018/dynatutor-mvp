@@ -1,0 +1,1110 @@
+{
+  "cases": [
+    {
+      "analytic_value": 2.647100840002673,
+      "case_id": "rolling_sphere",
+      "chrono": {
+        "abs_error": 7.286535279726891e-05,
+        "analytic_value": 2.647100840002673,
+        "artifacts": [
+          {
+            "kind": "in_memory_trajectory_summary",
+            "planar_guide_count": 0,
+            "sample_count": 2210,
+            "target_distance_m": 1.4619022000815438
+          }
+        ],
+        "case_id": "rolling_sphere",
+        "chrono_version": "9.0.1",
+        "constraint_errors": {
+          "center_height_range_m": [
+            0.0999999369533841,
+            0.10000001654867566
+          ],
+          "checks": {
+            "contact_maintained": true,
+            "rolling_direction": true,
+            "signed_no_slip": true
+          },
+          "collision_geometry": {
+            "envelope_m": 0.029999999329447746,
+            "safe_margin_m": 0.009999999776482582
+          },
+          "contact_active_sample_count": 2209,
+          "contact_height_limit_m": 0.004,
+          "first_contact_time_s": 0.0005,
+          "max_contact_height_abs_m": 6.304661590017524e-08,
+          "maximum_height_error_time_s": 1.0874999999999357,
+          "maximum_height_normal_contact_force_N": 39.98846622557631,
+          "maximum_height_normal_velocity_m_s": 0.000111839764107312,
+          "maximum_height_time_s": 0.10550000000000008,
+          "minimum_height_time_s": 1.0874999999999357,
+          "samples_outside_height_limit": 0,
+          "signed_no_slip_abs_m_s": 1.2792264802996556e-07,
+          "signed_no_slip_limit_m_s": 0.03,
+          "trajectory_sample_count": 2210
+        },
+        "contact_method": "NSC:Coulomb",
+        "duration": 1.1044999999999339,
+        "final_state": {
+          "angular_velocity_parent_rad_s": [
+            -1.58189522411227e-06,
+            -5.691887452476515e-07,
+            -26.47028102572524
+          ],
+          "center_of_mass_position_m": [
+            1.4624829807990243,
+            0.0999999895910613,
+            4.7448239127734695e-08
+          ],
+          "center_of_mass_velocity_m_s": [
+            2.647027974649876,
+            3.7276340718202045e-05,
+            -1.5824185933579265e-07
+          ],
+          "contact_force_N": [
+            -4.015475847603644,
+            39.04050301166778,
+            -3.9309210012596403e-05
+          ],
+          "inertia_ratio_I_over_mR2": 0.4,
+          "mass_kg": 4.188790204786391,
+          "planar_guide": null,
+          "principal_inertia_kg_m2": {
+            "x": 0.01675516081914557,
+            "y": 0.01675516081914557,
+            "z": 0.01675516081914557
+          },
+          "target_reached": true
+        },
+        "initial_conditions": {
+          "body": "sphere",
+          "collision_shape_construction": "ChBodyEasySphere",
+          "friction_coefficient": 0.8,
+          "gravity_m_s2": 9.81,
+          "height_m": 0.5,
+          "incline_angle_deg": 20.0,
+          "initial_angular_velocity_rad_s": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "initial_center_of_mass_velocity_m_s": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maximum_duration_s": 3.0,
+          "radius_m": 0.1,
+          "solver_max_iterations": 200,
+          "solver_sharpness_lambda": 1.0,
+          "target_along_ramp_distance_m": 1.4619022000815438,
+          "time_step_s": 0.0005
+        },
+        "invariant_errors": {
+          "checks": {
+            "body_inertia": true,
+            "contact_maintained": true,
+            "energy_balance": true,
+            "forward_motion": true,
+            "observable_agreement": true,
+            "rolling_direction": true,
+            "signed_no_slip": true,
+            "target_reached": true
+          },
+          "energy_balance_relative": 0.0004521417713763551,
+          "energy_balance_relative_limit": 0.02,
+          "gravitational_work_J": 20.55417882437947,
+          "inertia_ratio_absolute": 0.0,
+          "inertia_ratio_absolute_limit": 1e-06,
+          "kinetic_energy_J": 20.54488542155663
+        },
+        "modeling_assumptions": [
+          "The incline is represented in a ramp-fixed frame by resolving gravity into tangent and normal components.",
+          "The body starts from rest in geometric contact with a fixed rigid plane.",
+          "Static Coulomb contact supplies the rolling constraint; no analytic velocity is prescribed.",
+          "The sphere is fully unconstrained apart from rigid contact with the plane."
+        ],
+        "observable": "final_center_of_mass_speed",
+        "passed": true,
+        "policy_version": "phase51-pychrono-policy-v1",
+        "relative_error": 2.7526474132052833e-05,
+        "schema_version": 1,
+        "solver": "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=1.0",
+        "status": "passed",
+        "suite_version": "phase51-pychrono-validation-v1",
+        "time_step": 0.0005,
+        "unit": "m/s",
+        "value": 2.647027974649876,
+        "warnings": [
+          "NSC uses a discretized Coulomb contact law; endpoint and contact residuals are reported separately from observable agreement."
+        ]
+      },
+      "comparisons": {
+        "chrono_vs_analytic": {
+          "absolute_error": 7.286535279726891e-05,
+          "absolute_tolerance": 0.03,
+          "left": 2.647027974649876,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 2.7526474132052833e-05,
+          "relative_tolerance": 0.01,
+          "right": 2.647100840002673,
+          "status": "passed"
+        },
+        "product_vs_analytic": {
+          "absolute_error": 1.5999732694282898e-07,
+          "absolute_tolerance": 0.002,
+          "left": 2.647101,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 6.044247522609203e-08,
+          "relative_tolerance": 0.002,
+          "right": 2.647100840002673,
+          "status": "passed"
+        },
+        "product_vs_chrono": {
+          "absolute_error": 7.302535012421174e-05,
+          "absolute_tolerance": 0.03,
+          "left": 2.647101,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 2.758767599872867e-05,
+          "relative_tolerance": 0.01,
+          "right": 2.647027974649876,
+          "status": "passed"
+        }
+      },
+      "passed": true,
+      "product": {
+        "answer_overwrite": false,
+        "display": "v = 2.647 m/s (β=0.4)",
+        "expected_solver": "pure_rolling_energy",
+        "problem": "정지 상태에서 속이 찬 구가 미끄러지지 않고 높이 0.5m 굴러 내려온다. 속도는?",
+        "pychrono_imported_by_normal_solve": false,
+        "required": true,
+        "selected_solver": "pure_rolling_energy",
+        "solver_matched": true,
+        "status": "solved",
+        "unit": "m/s",
+        "value": 2.647101
+      },
+      "topic": "rolling_sphere"
+    },
+    {
+      "analytic_value": 2.5573423705088842,
+      "case_id": "rolling_disk",
+      "chrono": {
+        "abs_error": 0.02182613646844489,
+        "analytic_value": 2.5573423705088842,
+        "artifacts": [
+          {
+            "kind": "in_memory_trajectory_summary",
+            "planar_guide_count": 1,
+            "sample_count": 2317,
+            "target_distance_m": 1.4619022000815438
+          }
+        ],
+        "case_id": "rolling_disk",
+        "chrono_version": "9.0.1",
+        "constraint_errors": {
+          "center_height_range_m": [
+            0.0998475557650057,
+            0.10353186665204865
+          ],
+          "checks": {
+            "contact_maintained": true,
+            "rolling_direction": true,
+            "signed_no_slip": true
+          },
+          "collision_geometry": {
+            "envelope_m": 0.0010000000474974513,
+            "safe_margin_m": 0.0010000000474974513
+          },
+          "contact_active_sample_count": 1981,
+          "contact_height_limit_m": 0.004,
+          "first_contact_time_s": 0.0015,
+          "max_contact_height_abs_m": 0.003531866652048646,
+          "maximum_height_error_time_s": 0.8584999999999608,
+          "maximum_height_normal_contact_force_N": 0.0,
+          "maximum_height_normal_velocity_m_s": 0.004093358658452432,
+          "maximum_height_time_s": 0.8584999999999608,
+          "minimum_height_time_s": 0.8289999999999641,
+          "samples_outside_height_limit": 0,
+          "signed_no_slip_abs_m_s": 0.0001018078590111493,
+          "signed_no_slip_limit_m_s": 0.03,
+          "trajectory_sample_count": 2317
+        },
+        "contact_method": "NSC:Coulomb",
+        "duration": 1.157999999999928,
+        "final_state": {
+          "angular_velocity_parent_rad_s": [
+            -1.8188800818816824e-05,
+            -2.249138619013346e-06,
+            -25.356180418994505
+          ],
+          "center_of_mass_position_m": [
+            1.4630508929893586,
+            0.10000188933687351,
+            1.0871920766002347e-08
+          ],
+          "center_of_mass_velocity_m_s": [
+            2.5355162340404394,
+            2.8552943500424778e-05,
+            3.2349862797722444e-06
+          ],
+          "contact_force_N": [
+            -2.1621745109955297,
+            17.597843882607705,
+            2.499001547300536
+          ],
+          "inertia_ratio_I_over_mR2": 0.5,
+          "mass_kg": 1.884955592153876,
+          "planar_guide": "ChLinkMatePlanar",
+          "principal_inertia_kg_m2": {
+            "x": 0.005277875658030853,
+            "y": 0.005277875658030853,
+            "z": 0.009424777960769383
+          },
+          "target_reached": true
+        },
+        "initial_conditions": {
+          "body": "disk",
+          "collision_envelope_m": 0.001,
+          "collision_safe_margin_m": 0.001,
+          "collision_shape_construction": "custom_ChBody_AddCylinder",
+          "friction_coefficient": 0.8,
+          "gravity_m_s2": 9.81,
+          "height_m": 0.5,
+          "incline_angle_deg": 20.0,
+          "initial_angular_velocity_rad_s": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "initial_center_of_mass_velocity_m_s": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "maximum_duration_s": 3.0,
+          "radius_m": 0.1,
+          "solver_max_iterations": 200,
+          "solver_sharpness_lambda": 0.95,
+          "target_along_ramp_distance_m": 1.4619022000815438,
+          "time_step_s": 0.0005
+        },
+        "invariant_errors": {
+          "checks": {
+            "body_inertia": true,
+            "contact_maintained": true,
+            "energy_balance": true,
+            "forward_motion": true,
+            "observable_agreement": true,
+            "rolling_direction": true,
+            "signed_no_slip": true,
+            "target_reached": true
+          },
+          "energy_balance_relative": 0.01773856064777693,
+          "energy_balance_relative_limit": 0.02,
+          "gravitational_work_J": 9.252939184929845,
+          "inertia_ratio_absolute": 0.0,
+          "inertia_ratio_absolute_limit": 1e-06,
+          "kinetic_energy_J": 9.088805362027776
+        },
+        "modeling_assumptions": [
+          "The incline is represented in a ramp-fixed frame by resolving gravity into tangent and normal components.",
+          "The body starts from rest in geometric contact with a fixed rigid plane.",
+          "Static Coulomb contact supplies the rolling constraint; no analytic velocity is prescribed.",
+          "The disk is a custom ChBody with an actual cylindrical collision shape and analytic solid-cylinder mass/inertia; a ChLinkMatePlanar guide constrains only out-of-plane translation and tilt, while in-plane translation, normal contact, and rotation about the disk axis remain engine-solved."
+        ],
+        "observable": "final_center_of_mass_speed",
+        "passed": true,
+        "policy_version": "phase51-pychrono-policy-v1",
+        "relative_error": 0.008534694736278787,
+        "schema_version": 1,
+        "solver": "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=0.95",
+        "status": "passed",
+        "suite_version": "phase51-pychrono-validation-v1",
+        "time_step": 0.0005,
+        "unit": "m/s",
+        "value": 2.5355162340404394,
+        "warnings": [
+          "NSC uses a discretized Coulomb contact law; endpoint and contact residuals are reported separately from observable agreement."
+        ]
+      },
+      "comparisons": {
+        "chrono_vs_analytic": {
+          "absolute_error": 0.02182613646844489,
+          "absolute_tolerance": 0.03,
+          "left": 2.5355162340404394,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 0.008534694736278787,
+          "relative_tolerance": 0.01,
+          "right": 2.5573423705088842,
+          "status": "passed"
+        },
+        "product_vs_analytic": {
+          "absolute_error": 3.7050888446188424e-07,
+          "absolute_tolerance": 0.002,
+          "left": 2.557342,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 1.4488043866733293e-07,
+          "relative_tolerance": 0.002,
+          "right": 2.5573423705088842,
+          "status": "passed"
+        },
+        "product_vs_chrono": {
+          "absolute_error": 0.021825765959560428,
+          "absolute_tolerance": 0.03,
+          "left": 2.557342,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 0.008608016650234678,
+          "relative_tolerance": 0.01,
+          "right": 2.5355162340404394,
+          "status": "passed"
+        }
+      },
+      "passed": true,
+      "product": {
+        "answer_overwrite": false,
+        "display": "v = 2.557 m/s (β=0.5)",
+        "expected_solver": "pure_rolling_energy",
+        "problem": "정지 상태에서 원판이 미끄러지지 않고 높이 0.5m 굴러 내려온다. 속도는?",
+        "pychrono_imported_by_normal_solve": false,
+        "required": true,
+        "selected_solver": "pure_rolling_energy",
+        "solver_matched": true,
+        "status": "solved",
+        "unit": "m/s",
+        "value": 2.557342
+      },
+      "topic": "rolling_disk"
+    },
+    {
+      "analytic_value": 2.894298375529322,
+      "case_id": "incline_friction_slip",
+      "chrono": {
+        "abs_error": 7.219685738135695e-09,
+        "analytic_value": 2.894298375529322,
+        "artifacts": [
+          {
+            "fit_sample_count": 1281,
+            "kind": "in_memory_velocity_trajectory",
+            "sample_count": 1601
+          }
+        ],
+        "case_id": "incline_friction_slip",
+        "chrono_version": "9.0.1",
+        "constraint_errors": {
+          "checks": {
+            "contact_maintained": true,
+            "friction_direction_or_balance": true,
+            "friction_regime": true,
+            "normal_force": true
+          },
+          "contact_height_limit_m": 0.004,
+          "friction_balance_relative": null,
+          "friction_direction_violation": 0.0,
+          "max_contact_height_abs_m": 5.7874276748928755e-05,
+          "normal_force_relative": 0.0004649379027725606,
+          "normal_force_relative_limit": 0.04
+        },
+        "contact_method": "NSC:Coulomb",
+        "duration": 0.7999999999999673,
+        "final_state": {
+          "center_of_mass_position_m": [
+            0.9267514439314214,
+            0.10005787427674893,
+            8.61006401422007e-22
+          ],
+          "center_of_mass_velocity_m_s": [
+            2.315435110371126,
+            7.169115405975732e-05,
+            -5.49594980326187e-21
+          ],
+          "contact_force_N": [
+            -3.6856395083212203,
+            73.71278906801825,
+            -2.7590559584740905e-18
+          ],
+          "expected_regime": "slip",
+          "mass_kg": 8.000000000000002,
+          "observed_regime": "slip",
+          "trajectory_fit_intercept_m_s": -3.617356237661795e-06
+        },
+        "initial_conditions": {
+          "block_size_m": 0.2,
+          "duration_s": 0.8,
+          "expected_regime": "slip",
+          "friction_coefficient": 0.05,
+          "gravity_m_s2": 9.81,
+          "initial_center_of_mass_velocity_m_s": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "theta_deg": 20.0
+        },
+        "invariant_errors": {
+          "acceleration_abs_m_s2": 7.219685738135695e-09,
+          "acceleration_rel": 2.4944510901766745e-09,
+          "checks": {
+            "contact_maintained": true,
+            "friction_direction_or_balance": true,
+            "friction_regime": true,
+            "normal_force": true,
+            "observable_agreement": true,
+            "trajectory_linear_after_transient": true
+          },
+          "trajectory_fit_limit_m_s": 0.03,
+          "trajectory_fit_max_abs_m_s": 7.15610586732307e-07
+        },
+        "modeling_assumptions": [
+          "The block and plane are finite rigid bodies in a ramp-fixed frame.",
+          "Acceleration is estimated from Chrono velocity samples after the first 20 percent transient; it is not prescribed.",
+          "Contact force, regime, and friction direction/balance are read from the simulated state."
+        ],
+        "observable": "trajectory_acceleration",
+        "passed": true,
+        "policy_version": "phase51-pychrono-policy-v1",
+        "relative_error": 2.4944510901766745e-09,
+        "schema_version": 1,
+        "solver": "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=1.0",
+        "status": "passed",
+        "suite_version": "phase51-pychrono-validation-v1",
+        "time_step": 0.0005,
+        "unit": "m/s^2",
+        "value": 2.894298368309636,
+        "warnings": [
+          "Chrono NSC uses one Coulomb coefficient for the contact cone; the textbook target treats the supplied coefficient as kinetic in slip and as an available static bound in stick."
+        ]
+      },
+      "comparisons": {
+        "chrono_vs_analytic": {
+          "absolute_error": 7.219685738135695e-09,
+          "absolute_tolerance": 0.05,
+          "left": 2.894298368309636,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 2.4944510901766745e-09,
+          "relative_tolerance": 0.02,
+          "right": 2.894298375529322,
+          "status": "passed"
+        },
+        "product_vs_analytic": {
+          "absolute_error": 1.6244706779744433e-06,
+          "absolute_tolerance": 0.002,
+          "left": 2.8943,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 5.612657947463184e-07,
+          "relative_tolerance": 0.002,
+          "right": 2.894298375529322,
+          "status": "passed"
+        },
+        "product_vs_chrono": {
+          "absolute_error": 1.631690363712579e-06,
+          "absolute_tolerance": 0.05,
+          "left": 2.8943,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 5.637602472427675e-07,
+          "relative_tolerance": 0.02,
+          "right": 2.894298368309636,
+          "status": "passed"
+        }
+      },
+      "passed": true,
+      "product": {
+        "answer_overwrite": false,
+        "display": "a = 2.894 m/s²",
+        "expected_solver": "incline_with_friction",
+        "problem": "운동마찰계수 0.05인 20도 경사면에서 블록의 가속도를 구하라.",
+        "pychrono_imported_by_normal_solve": false,
+        "required": true,
+        "selected_solver": "incline_with_friction",
+        "solver_matched": true,
+        "status": "solved",
+        "unit": "m/s²",
+        "value": 2.8943
+      },
+      "topic": "incline_friction"
+    },
+    {
+      "analytic_value": 0.0,
+      "case_id": "incline_friction_stick",
+      "chrono": {
+        "abs_error": 7.26752168438288e-36,
+        "analytic_value": 0.0,
+        "artifacts": [
+          {
+            "fit_sample_count": 1281,
+            "kind": "in_memory_velocity_trajectory",
+            "sample_count": 1601
+          }
+        ],
+        "case_id": "incline_friction_stick",
+        "chrono_version": "9.0.1",
+        "constraint_errors": {
+          "checks": {
+            "contact_maintained": true,
+            "friction_direction_or_balance": true,
+            "friction_regime": true,
+            "normal_force": true
+          },
+          "contact_height_limit_m": 0.004,
+          "friction_balance_relative": 3.910409531448194e-16,
+          "friction_direction_violation": 0.0,
+          "max_contact_height_abs_m": 1.1175870895385742e-08,
+          "normal_force_relative": 0.003084818679761889,
+          "normal_force_relative_limit": 0.04
+        },
+        "contact_method": "NSC:Coulomb",
+        "duration": 0.7999999999999673,
+        "final_state": {
+          "center_of_mass_position_m": [
+            5.435749235709721e-20,
+            0.09999999254941941,
+            2.4005035968853345e-20
+          ],
+          "center_of_mass_velocity_m_s": [
+            1.2874900798265372e-19,
+            7.450580596923855e-06,
+            6.352733318274014e-20
+          ],
+          "contact_force_N": [
+            -13.627908983300692,
+            77.52613103549966,
+            1.7763568394002505e-15
+          ],
+          "expected_regime": "stick",
+          "mass_kg": 8.000000000000002,
+          "observed_regime": "stick",
+          "trajectory_fit_intercept_m_s": 6.781024418955744e-20
+        },
+        "initial_conditions": {
+          "block_size_m": 0.2,
+          "duration_s": 0.8,
+          "expected_regime": "stick",
+          "friction_coefficient": 0.3,
+          "gravity_m_s2": 9.81,
+          "initial_center_of_mass_velocity_m_s": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "theta_deg": 10.0
+        },
+        "invariant_errors": {
+          "acceleration_abs_m_s2": 7.26752168438288e-36,
+          "acceleration_rel": 7.26752168438288e-24,
+          "checks": {
+            "contact_maintained": true,
+            "friction_direction_or_balance": true,
+            "friction_regime": true,
+            "normal_force": true,
+            "observable_agreement": true,
+            "trajectory_linear_after_transient": true
+          },
+          "trajectory_fit_limit_m_s": 0.03,
+          "trajectory_fit_max_abs_m_s": 6.1033980611523e-20
+        },
+        "modeling_assumptions": [
+          "The block and plane are finite rigid bodies in a ramp-fixed frame.",
+          "Acceleration is estimated from Chrono velocity samples after the first 20 percent transient; it is not prescribed.",
+          "Contact force, regime, and friction direction/balance are read from the simulated state."
+        ],
+        "observable": "trajectory_acceleration",
+        "passed": true,
+        "policy_version": "phase51-pychrono-policy-v1",
+        "relative_error": 7.26752168438288e-24,
+        "schema_version": 1,
+        "solver": "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=1.0",
+        "status": "passed",
+        "suite_version": "phase51-pychrono-validation-v1",
+        "time_step": 0.0005,
+        "unit": "m/s^2",
+        "value": -7.26752168438288e-36,
+        "warnings": [
+          "Chrono NSC uses one Coulomb coefficient for the contact cone; the textbook target treats the supplied coefficient as kinetic in slip and as an available static bound in stick."
+        ]
+      },
+      "comparisons": {
+        "chrono_vs_analytic": {
+          "absolute_error": 7.26752168438288e-36,
+          "absolute_tolerance": 0.05,
+          "left": -7.26752168438288e-36,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 7.26752168438288e-24,
+          "relative_tolerance": 0.02,
+          "right": 0.0,
+          "status": "passed"
+        },
+        "product_vs_analytic": {
+          "absolute_error": null,
+          "absolute_tolerance": null,
+          "left": null,
+          "passed": true,
+          "policy": "supplemental_chrono_invariant_case",
+          "relative_error": null,
+          "relative_tolerance": null,
+          "right": null,
+          "status": "not_applicable"
+        },
+        "product_vs_chrono": {
+          "absolute_error": null,
+          "absolute_tolerance": null,
+          "left": null,
+          "passed": true,
+          "policy": "supplemental_chrono_invariant_case",
+          "relative_error": null,
+          "relative_tolerance": null,
+          "right": null,
+          "status": "not_applicable"
+        }
+      },
+      "passed": true,
+      "product": {
+        "answer_overwrite": false,
+        "display": null,
+        "expected_solver": null,
+        "problem": null,
+        "pychrono_imported_by_normal_solve": false,
+        "required": false,
+        "selected_solver": null,
+        "solver_matched": true,
+        "status": "not_applicable",
+        "unit": null,
+        "value": null
+      },
+      "topic": "incline_friction_supplemental_stick"
+    },
+    {
+      "analytic_value": -0.8,
+      "case_id": "collision_restitution",
+      "chrono": {
+        "abs_error": 4.440892098500626e-16,
+        "analytic_value": -0.8,
+        "artifacts": [
+          {
+            "contact_detected": true,
+            "kind": "in_memory_contact_event_summary",
+            "sample_count": 2501,
+            "separation_detected": true
+          }
+        ],
+        "case_id": "collision_restitution",
+        "chrono_version": "9.0.1",
+        "constraint_errors": {
+          "checks": {
+            "bodies_separated": true,
+            "contact_started": true,
+            "event_timing": true,
+            "momentum": true,
+            "signed_restitution": true
+          },
+          "event_time_absolute_limit_s": 0.003,
+          "event_time_absolute_s": 0.00019999999999815998,
+          "mass_realization_absolute_kg": 0.0,
+          "momentum_relative": 6.661338147750939e-16,
+          "momentum_relative_limit": 0.001,
+          "signed_restitution_absolute": 6.661338147750939e-16,
+          "signed_restitution_absolute_limit": 0.02
+        },
+        "contact_method": "NSC:frictionless_restitution",
+        "duration": 0.2499999999999888,
+        "final_state": {
+          "body_1_position_m": [
+            -0.0199999999999932,
+            0.0,
+            0.0
+          ],
+          "body_1_velocity_m_s": [
+            -0.7999999999999996,
+            0.0,
+            0.0
+          ],
+          "body_2_position_m": [
+            0.7799999999999805,
+            0.0,
+            0.0
+          ],
+          "body_2_velocity_m_s": [
+            3.199999999999998,
+            0.0,
+            0.0
+          ],
+          "contact_duration_s": 0.0005000000000000143,
+          "contact_start_s": 0.09980000000000183,
+          "expected_v2_m_s": 3.2,
+          "realized_restitution": 0.9999999999999993,
+          "separation_time_s": 0.10030000000000185
+        },
+        "initial_conditions": {
+          "duration_s": 0.25,
+          "gravity_m_s2": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "initial_x1_m": -0.3,
+          "initial_x2_m": 0.3,
+          "m1_kg": 2.0,
+          "m2_kg": 3.0,
+          "radius_m": 0.1,
+          "target_restitution": 1.0,
+          "v1_m_s": 4.0,
+          "v2_m_s": 0.0
+        },
+        "invariant_errors": {
+          "checks": {
+            "bodies_separated": true,
+            "contact_started": true,
+            "event_timing": true,
+            "mass_realization": true,
+            "momentum": true,
+            "signed_restitution": true,
+            "v1_agreement": true,
+            "v2_agreement": true
+          },
+          "final_kinetic_energy_J": 15.99999999999998,
+          "initial_kinetic_energy_J": 16.0,
+          "kinetic_energy_relative": 1.4432899320127031e-15,
+          "v1_absolute_m_s": 4.440892098500626e-16,
+          "v1_relative": 5.551115123125783e-16,
+          "v2_absolute_m_s": 2.220446049250313e-15,
+          "v2_relative": 6.938893903907228e-16
+        },
+        "modeling_assumptions": [
+          "Two finite rigid spheres collide collinearly in zero gravity with zero friction.",
+          "Post-impact state is accepted only after both contact start and later separation are observed.",
+          "No analytic post-impact velocity is used to initialize or overwrite either Chrono body."
+        ],
+        "observable": "post_impact_v1",
+        "passed": true,
+        "policy_version": "phase51-pychrono-policy-v1",
+        "relative_error": 5.551115123125783e-16,
+        "schema_version": 1,
+        "solver": "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=1.0",
+        "status": "passed",
+        "suite_version": "phase51-pychrono-validation-v1",
+        "time_step": 0.0001,
+        "unit": "m/s",
+        "value": -0.7999999999999996,
+        "warnings": [
+          "Target restitution is a contact-material input; realized signed restitution is measured independently from the two final velocities."
+        ]
+      },
+      "comparisons": {
+        "chrono_vs_analytic": {
+          "absolute_error": 4.440892098500626e-16,
+          "absolute_tolerance": 0.05,
+          "left": -0.7999999999999996,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 5.551115123125783e-16,
+          "relative_tolerance": 0.01,
+          "right": -0.8,
+          "status": "passed"
+        },
+        "product_vs_analytic": {
+          "absolute_error": 0.0,
+          "absolute_tolerance": 0.003,
+          "left": -0.8,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 0.0,
+          "relative_tolerance": 0.003,
+          "right": -0.8,
+          "status": "passed"
+        },
+        "product_vs_chrono": {
+          "absolute_error": 4.440892098500626e-16,
+          "absolute_tolerance": 0.05,
+          "left": -0.8,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 5.551115123125786e-16,
+          "relative_tolerance": 0.01,
+          "right": -0.7999999999999996,
+          "status": "passed"
+        }
+      },
+      "passed": true,
+      "product": {
+        "answer_overwrite": false,
+        "display": "v1' = -0.800 m/s, v2' = 3.200 m/s",
+        "expected_solver": "collision_1d",
+        "problem": "m1=2kg, m2=3kg, v1=4m/s, v2=0m/s, 완전탄성 충돌이다. 충돌 후 속도는?",
+        "pychrono_imported_by_normal_solve": false,
+        "required": true,
+        "selected_solver": "collision_1d",
+        "solver_matched": true,
+        "status": "solved",
+        "unit": "m/s",
+        "value": -0.8
+      },
+      "topic": "collision_restitution"
+    },
+    {
+      "analytic_value": 3.5315999999999996,
+      "case_id": "massive_pulley",
+      "chrono": {
+        "abs_error": 4.884981308350689e-14,
+        "analytic_value": 3.5315999999999996,
+        "artifacts": [
+          {
+            "gear_constraint_count": 2,
+            "kind": "chrono_constraint_state",
+            "shaft_count": 3
+          }
+        ],
+        "case_id": "massive_pulley",
+        "chrono_version": "9.0.1",
+        "constraint_errors": {
+          "checks": {
+            "heavier_mass_direction": true,
+            "signed_no_slip": true
+          },
+          "chrono_direct_constraint_violations": {
+            "gear_1": 0.0,
+            "gear_2": 0.0
+          },
+          "constraint_limit": 1e-08,
+          "mass_1_position_no_slip_abs_rad": 0.0,
+          "mass_1_speed_no_slip_abs_rad_s": 8.881784197001252e-16,
+          "mass_2_position_no_slip_abs_rad": 0.0,
+          "mass_2_speed_no_slip_abs_rad_s": 0.0
+        },
+        "contact_method": "constraint_driveline:no_contact",
+        "duration": 0.5000000000000003,
+        "final_state": {
+          "direct_acceleration_m_s2": 3.531599999999635,
+          "gear_reactions_Nm": {
+            "mass_1": -8.004960000009437,
+            "mass_2": -9.41760000001246
+          },
+          "heavier_mass": "m2",
+          "shaft_accelerations_rad_s2": {
+            "mass_1": -11.771999999998783,
+            "mass_2": 11.771999999998783,
+            "pulley": -11.771999999998783
+          },
+          "shaft_positions_rad": {
+            "mass_1": -1.4744430000000057,
+            "mass_2": 1.4744430000000057,
+            "pulley": -1.4744430000000057
+          },
+          "shaft_speeds_rad_s": {
+            "mass_1": -5.885999999999921,
+            "mass_2": 5.885999999999922,
+            "pulley": -5.885999999999922
+          },
+          "tensions_N": {
+            "mass_1": 26.683200000031455,
+            "mass_2": 31.392000000041534
+          }
+        },
+        "initial_conditions": {
+          "duration_s": 0.5,
+          "gravity_m_s2": 9.81,
+          "initial_shaft_speeds_rad_s": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "m1_kg": 2.0,
+          "m2_kg": 5.0,
+          "mass_1_applied_gravity_load_Nm": 5.886,
+          "mass_2_applied_gravity_load_Nm": 14.715,
+          "pulley_inertia_kg_m2": 0.12,
+          "pulley_radius_m": 0.3
+        },
+        "invariant_errors": {
+          "acceleration_state_consistency_abs_m_s2": 3.157474282033945e-13,
+          "checks": {
+            "acceleration_state_consistency": true,
+            "energy_balance": true,
+            "heavier_mass_direction": true,
+            "mass_1_free_body": true,
+            "mass_2_free_body": true,
+            "observable_agreement": true,
+            "signed_no_slip": true,
+            "tension_difference": true
+          },
+          "coordinate_gravitational_work_J": 13.01785724700005,
+          "coordinate_integration_bias_J": 0.02598374699999617,
+          "energy_balance_relative": 3.062714026777235e-14,
+          "energy_balance_relative_limit": 0.0001,
+          "gravitational_work_J": 12.991873500000054,
+          "kinetic_energy_J": 12.991873499999656,
+          "mass_1_free_body_relative": 1.2061756211834512e-12,
+          "mass_2_free_body_relative": 8.094706616784492e-13,
+          "tension_difference_absolute_N": 1.056577048075269e-11,
+          "tension_difference_absolute_limit_N": 0.01,
+          "work_quadrature": "trapezoidal_from_engine_shaft_speeds",
+          "work_sample_count": 500
+        },
+        "modeling_assumptions": [
+          "Each translating mass is mapped to a shaft inertia m*R^2 and an absolute gravity load m*g*R.",
+          "Two signed ChShaftsGear constraints impose w_mass1=w_pulley and w_mass2=-w_pulley.",
+          "Acceleration is measured from stepped shaft state; tension is measured from gear reactions; the analytic target is comparison-only.",
+          "Applied-load work is integrated by trapezoidal quadrature over consecutive engine shaft-speed states; the raw coordinate work and semi-implicit integration bias are reported separately."
+        ],
+        "observable": "heavier_mass_downward_acceleration",
+        "passed": true,
+        "policy_version": "phase51-pychrono-policy-v1",
+        "relative_error": 1.3832204406927991e-14,
+        "schema_version": 1,
+        "solver": "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=1.0",
+        "status": "passed",
+        "suite_version": "phase51-pychrono-validation-v1",
+        "time_step": 0.001,
+        "unit": "m/s^2",
+        "value": 3.531599999999951,
+        "warnings": [
+          "This is Chrono's reduced-coordinate driveline model: ChShaft inertias and ChShaftsGear constraints are stepped by the real ChSystem solver rather than represented by decorative 3-D bodies."
+        ]
+      },
+      "comparisons": {
+        "chrono_vs_analytic": {
+          "absolute_error": 4.884981308350689e-14,
+          "absolute_tolerance": 0.005,
+          "left": 3.531599999999951,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 1.3832204406927991e-14,
+          "relative_tolerance": 0.005,
+          "right": 3.5315999999999996,
+          "status": "passed"
+        },
+        "product_vs_analytic": {
+          "absolute_error": 4.440892098500626e-16,
+          "absolute_tolerance": 0.002,
+          "left": 3.5316,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 1.2574731279025446e-16,
+          "relative_tolerance": 0.002,
+          "right": 3.5315999999999996,
+          "status": "passed"
+        },
+        "product_vs_chrono": {
+          "absolute_error": 4.929390229335695e-14,
+          "absolute_tolerance": 0.005,
+          "left": 3.5316,
+          "passed": true,
+          "policy": "absolute_or_relative_for_observable_only",
+          "relative_error": 1.3957951719718439e-14,
+          "relative_tolerance": 0.005,
+          "right": 3.531599999999951,
+          "status": "passed"
+        }
+      },
+      "passed": true,
+      "product": {
+        "answer_overwrite": false,
+        "display": "a = 3.532 m/s², α = 11.772 rad/s², T1 = 26.683 N, T2 = 31.392 N",
+        "expected_solver": "massive_pulley_atwood",
+        "problem": "질량 있는 도르래에 m1=2 kg, m2=5 kg가 줄로 연결되어 있다. 도르래 관성모멘트 I=0.12 kgm^2, 도르래 반지름 R=0.3 m 일 때 가속도를 구하라.",
+        "pychrono_imported_by_normal_solve": false,
+        "required": true,
+        "selected_solver": "massive_pulley_atwood",
+        "solver_matched": true,
+        "status": "solved",
+        "unit": "m/s²",
+        "value": 3.5316
+      },
+      "topic": "massive_pulley"
+    }
+  ],
+  "cross_checks": {
+    "all_chrono_cases_executed": true,
+    "all_chrono_cases_passed": true,
+    "all_required_product_comparisons_passed": true,
+    "normal_solve_imported_pychrono": false,
+    "product_answer_overwrite": false,
+    "sphere_speed_exceeds_disk_speed": true
+  },
+  "environment": {
+    "actual_contact_methods": [
+      "NSC:Coulomb",
+      "NSC:frictionless_restitution",
+      "constraint_driveline:no_contact"
+    ],
+    "actual_solvers": [
+      "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=0.95",
+      "ChSolverPSOR:PSOR:max_iterations=200:sharpness_lambda=1.0"
+    ],
+    "chrono_versions": [
+      "9.0.1"
+    ],
+    "platform_machine": "x86_64",
+    "platform_system": "Linux",
+    "python_version": "3.12.13"
+  },
+  "normal_runtime_dependency": false,
+  "offline_only": true,
+  "passed": true,
+  "policy": {
+    "collision_duration_s": 0.25,
+    "collision_event_time_abs_tolerance": 0.003,
+    "collision_momentum_rel_tolerance": 0.001,
+    "collision_restitution_abs_tolerance": 0.02,
+    "collision_step_s": 0.0001,
+    "collision_velocity_abs_tolerance": 0.05,
+    "collision_velocity_rel_tolerance": 0.01,
+    "contact_method": "NSC",
+    "incline_acceleration_abs_tolerance": 0.05,
+    "incline_acceleration_rel_tolerance": 0.02,
+    "incline_contact_abs_tolerance": 0.004,
+    "incline_duration_s": 0.8,
+    "incline_fit_residual_abs_tolerance": 0.03,
+    "incline_normal_force_rel_tolerance": 0.04,
+    "incline_step_s": 0.0005,
+    "policy_version": "phase51-pychrono-policy-v1",
+    "pulley_acceleration_abs_tolerance": 0.005,
+    "pulley_acceleration_rel_tolerance": 0.005,
+    "pulley_constraint_abs_tolerance": 1e-08,
+    "pulley_duration_s": 0.5,
+    "pulley_energy_rel_tolerance": 0.0001,
+    "pulley_step_s": 0.001,
+    "pulley_tension_abs_tolerance": 0.01,
+    "rolling_contact_abs_tolerance": 0.004,
+    "rolling_energy_rel_tolerance": 0.02,
+    "rolling_inertia_ratio_abs_tolerance": 1e-06,
+    "rolling_max_duration_s": 3.0,
+    "rolling_no_slip_abs_tolerance": 0.03,
+    "rolling_speed_abs_tolerance": 0.03,
+    "rolling_speed_rel_tolerance": 0.01,
+    "rolling_step_s": 0.0005,
+    "solver": "PSOR",
+    "solver_max_iterations": 200
+  },
+  "product_answer_overwrite": false,
+  "report_artifacts": {
+    "json": "backend/reports/phase51_pychrono_validation.json",
+    "markdown": "backend/reports/phase51_pychrono_validation.md"
+  },
+  "report_version": "phase51-pychrono-report-v1",
+  "schema_version": 1,
+  "status": "passed",
+  "suite_version": "phase51-pychrono-validation-v1",
+  "summary": {
+    "case_count": 6,
+    "chrono_statuses": {
+      "error": 0,
+      "failed": 0,
+      "passed": 6,
+      "skipped": 0
+    },
+    "failed_cases": 0,
+    "passed_cases": 6,
+    "product_comparison_count": 5
+  }
+}
