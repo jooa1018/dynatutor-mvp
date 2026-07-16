@@ -1,0 +1,120 @@
+name: Phase 52 rigid-body diagnostic profile
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/phase52-rigid-profile.yml"
+      - "backend/tools/profile_phase52_rigid_body.py"
+      - "backend/tests/test_phase52_rigid_profile.py"
+      - "backend/scripts/measure_pr10_hotfix_performance.py"
+      - "backend/engine/services.py"
+      - "backend/engine/solvers/base.py"
+      - "backend/engine/physics_core/validators.py"
+      - "backend/engine/verification/invariants.py"
+      - "backend/engine/verification/suite.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase52-rigid-profile-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  exact-ref-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - name: Check out exact pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify exact pull request head
+        run: test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements-lock.txt
+
+      - name: Compile and test the diagnostic contract
+        run: |
+          python -m compileall -q backend/tools/profile_phase52_rigid_body.py backend/tests/test_phase52_rigid_profile.py
+          cd backend
+          python -m pytest -q -o addopts= tests/test_phase52_rigid_profile.py
+
+      - name: Collect 16 fresh-process exact-ref artifacts
+        run: |
+          set -euo pipefail
+          evidence="$RUNNER_TEMP/phase52-rigid-profile/evidence"
+          head_worktree="$RUNNER_TEMP/dynatutor-profile-head"
+          base_worktree="$RUNNER_TEMP/dynatutor-profile-base"
+          mkdir -p "$evidence"
+          git worktree add --detach "$head_worktree" "$HEAD_SHA"
+          git worktree add --detach "$base_worktree" "$BASE_SHA"
+
+          for round_number in 1 2 3 4; do
+            if (( round_number % 2 == 1 )); then
+              order=(head base)
+            else
+              order=(base head)
+            fi
+            position=1
+            for revision_label in "${order[@]}"; do
+              if [[ "$revision_label" == "head" ]]; then
+                revision_sha="$HEAD_SHA"
+                revision_worktree="$head_worktree"
+              else
+                revision_sha="$BASE_SHA"
+                revision_worktree="$base_worktree"
+              fi
+              for case_id in rigid_body projectile; do
+                (
+                  cd "$revision_worktree/backend"
+                  python "$head_worktree/backend/tools/profile_phase52_rigid_body.py" collect \
+                    --backend-root "$revision_worktree/backend" \
+                    --revision-label "$revision_label" \
+                    --revision-sha "$revision_sha" \
+                    --case "$case_id" \
+                    --round-number "$round_number" \
+                    --position "$position" \
+                    --warmups 200 \
+                    --repeats 500 \
+                    --out "$evidence/round-${round_number}-${revision_label}-${case_id}.json"
+                )
+              done
+              position=$((position + 1))
+            done
+          done
+
+      - name: Compare exact evidence without changing a gate
+        run: |
+          mkdir -p "$RUNNER_TEMP/phase52-rigid-profile"
+          python backend/tools/profile_phase52_rigid_body.py compare \
+            --evidence-dir "$RUNNER_TEMP/phase52-rigid-profile/evidence" \
+            --expected-base-sha "$BASE_SHA" \
+            --expected-head-sha "$HEAD_SHA" \
+            --expected-rounds 4 \
+            --expected-warmups 200 \
+            --expected-repeats 500 \
+            --out "$RUNNER_TEMP/phase52-rigid-profile/comparison.json"
+
+      - name: Upload volatile diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase52-rigid-profile-${{ env.HEAD_SHA }}
+          path: ${{ runner.temp }}/phase52-rigid-profile
+          if-no-files-found: error
+          retention-days: 14
