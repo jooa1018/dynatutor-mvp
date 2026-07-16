@@ -204,19 +204,26 @@ def test_phase51_real_pychrono_scenes_when_dependency_is_available():
             )
         )
     assert not failures
-    for result in results[:5]:
-        assert result.initial_conditions["collision_envelope_m"] == (
-            chrono_compat.COLLISION_ENVELOPE_M
-        )
-        assert result.initial_conditions["collision_safe_margin_m"] == (
-            chrono_compat.COLLISION_SAFE_MARGIN_M
-        )
+    assert results[1].initial_conditions["collision_envelope_m"] == (
+        chrono_compat.COLLISION_ENVELOPE_M
+    )
+    assert results[1].initial_conditions["collision_safe_margin_m"] == (
+        chrono_compat.COLLISION_SAFE_MARGIN_M
+    )
+    assert (
+        results[1].initial_conditions["collision_shape_construction"]
+        == "custom_ChBody_AddCylinder"
+    )
     assert results[1].final_state["planar_guide"] == "ChLinkMatePlanar"
     assert results[1].artifacts[0]["planar_guide_count"] == 1
-    assert results[1].constraint_errors["collision_geometry"] == {
-        "envelope_m": chrono_compat.COLLISION_ENVELOPE_M,
-        "safe_margin_m": chrono_compat.COLLISION_SAFE_MARGIN_M,
-    }
+    assert results[1].constraint_errors["collision_geometry"] == pytest.approx(
+        {
+            "envelope_m": chrono_compat.COLLISION_ENVELOPE_M,
+            "safe_margin_m": chrono_compat.COLLISION_SAFE_MARGIN_M,
+        },
+        rel=0.0,
+        abs=1e-9,
+    )
     assert all(result.chrono_version != "unavailable" for result in results)
     assert all(result.value is not None and math.isfinite(result.value) for result in results)
     assert results[0].value > results[1].value

@@ -72,11 +72,15 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
         "initial_angular_velocity_rad_s": [0.0, 0.0, 0.0],
         "gravity_m_s2": G,
         "friction_coefficient": 0.8,
-        "collision_envelope_m": COLLISION_ENVELOPE_M,
-        "collision_safe_margin_m": COLLISION_SAFE_MARGIN_M,
         "target_along_ramp_distance_m": height / math.sin(math.radians(ROLLING_ANGLE_DEG)),
         "maximum_duration_s": DEFAULT_CHRONO_POLICY.rolling_max_duration_s,
     }
+    if body_key == "disk":
+        initial["collision_envelope_m"] = COLLISION_ENVELOPE_M
+        initial["collision_safe_margin_m"] = COLLISION_SAFE_MARGIN_M
+        initial["collision_shape_construction"] = "custom_ChBody_AddCylinder"
+    else:
+        initial["collision_shape_construction"] = "ChBodyEasySphere"
     return _dispatch_scene(
         import_state=import_chrono(),
         case_id=f"rolling_{body_key}",
@@ -303,7 +307,7 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
             "The body starts from rest in geometric contact with a fixed rigid plane.",
             "Static Coulomb contact supplies the rolling constraint; no analytic velocity is prescribed.",
             (
-                "The disk uses a ChLinkMatePlanar guide that constrains only out-of-plane translation and tilt; in-plane translation, normal contact, and rotation about the disk axis remain engine-solved."
+                "The disk is a custom ChBody with an actual cylindrical collision shape and analytic solid-cylinder mass/inertia; a ChLinkMatePlanar guide constrains only out-of-plane translation and tilt, while in-plane translation, normal contact, and rotation about the disk axis remain engine-solved."
                 if planar_guide is not None
                 else "The sphere is fully unconstrained apart from rigid contact with the plane."
             ),
@@ -333,8 +337,6 @@ def simulate_incline_friction(*, theta_deg: float, mu: float) -> ChronoResult:
         "friction_coefficient": coefficient,
         "gravity_m_s2": G,
         "block_size_m": BLOCK_SIZE_M,
-        "collision_envelope_m": COLLISION_ENVELOPE_M,
-        "collision_safe_margin_m": COLLISION_SAFE_MARGIN_M,
         "initial_center_of_mass_velocity_m_s": [0.0, 0.0, 0.0],
         "expected_regime": expected_regime,
         "duration_s": DEFAULT_CHRONO_POLICY.incline_duration_s,
@@ -557,8 +559,6 @@ def simulate_collision_restitution(
         "initial_x1_m": -0.3,
         "initial_x2_m": 0.3,
         "gravity_m_s2": [0.0, 0.0, 0.0],
-        "collision_envelope_m": COLLISION_ENVELOPE_M,
-        "collision_safe_margin_m": COLLISION_SAFE_MARGIN_M,
         "duration_s": DEFAULT_CHRONO_POLICY.collision_duration_s,
     }
     return _dispatch_scene(

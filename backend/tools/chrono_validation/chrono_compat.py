@@ -106,7 +106,6 @@ class ChronoAdapter:
             raise ChronoCompatibilityError(f"cannot read {axis}-component from {type(vector).__name__}")
 
     def new_nsc_system(self, *, gravity: tuple[float, float, float]) -> tuple[Any, str]:
-        self._configure_collision_geometry()
         system = self._attribute("ChSystemNSC")()
         self._configure_bullet_collision(system)
         gravity_vector = self.vector(*gravity)
@@ -119,45 +118,6 @@ class ChronoAdapter:
         if hasattr(system, "SetMinBounceSpeed"):
             system.SetMinBounceSpeed(0.0)
         return system, solver
-
-    def _configure_collision_geometry(self) -> None:
-        holder = self._attribute("ChCollisionModel")
-        self._call(
-            holder,
-            ("SetDefaultSuggestedEnvelope",),
-            COLLISION_ENVELOPE_M,
-        )
-        self._call(
-            holder,
-            ("SetDefaultSuggestedMargin",),
-            COLLISION_SAFE_MARGIN_M,
-        )
-        actual_envelope = _finite(
-            self._call(holder, ("GetDefaultSuggestedEnvelope",)),
-            name="default collision envelope",
-        )
-        actual_margin = _finite(
-            self._call(holder, ("GetDefaultSuggestedMargin",)),
-            name="default collision safe margin",
-        )
-        if not math.isclose(
-            actual_envelope,
-            COLLISION_ENVELOPE_M,
-            rel_tol=0.0,
-            abs_tol=1e-12,
-        ):
-            raise ChronoCompatibilityError(
-                f"PyChrono collision envelope mismatch: {actual_envelope}"
-            )
-        if not math.isclose(
-            actual_margin,
-            COLLISION_SAFE_MARGIN_M,
-            rel_tol=0.0,
-            abs_tol=1e-12,
-        ):
-            raise ChronoCompatibilityError(
-                f"PyChrono collision safe margin mismatch: {actual_margin}"
-            )
 
     def _configure_bullet_collision(self, system: Any) -> None:
         holder = self._attribute("ChCollisionSystem")
@@ -262,24 +222,56 @@ class ChronoAdapter:
         density: float,
         material: Any,
     ) -> Any:
-        cls = self._attribute("ChBodyEasyCylinder")
-        axis = self._axis_z()
-        body = None
-        if axis is not None:
-            try:
-                body = cls(axis, radius, height, density, False, True, material)
-            except TypeError:
-                try:
-                    body = cls(axis, radius, height, density, material)
-                except TypeError:
-                    body = None
-        if body is None:
-            try:
-                body = cls(radius, height, density, False, True, material)
-            except TypeError:
-                body = cls(radius, height, density, material)
-            self._call(body, ("SetRot",), self._quat_from_angle_x(math.pi / 2.0))
+        body = self._attribute("ChBody")()
+        model = self._call(body, ("GetCollisionModel",))
+        self._call(model, ("Clear",))
+        self._call(model, ("SetEnvelope",), COLLISION_ENVELOPE_M)
+        self._call(model, ("SetSafeMargin",), COLLISION_SAFE_MARGIN_M)
+        endpoint_1 = self.vector(0.0, 0.0, -float(height) / 2.0)
+        endpoint_2 = self.vector(0.0, 0.0, float(height) / 2.0)
+        added = self._call(
+            model,
+            ("AddCylinder",),
+            material,
+            float(radius),
+            endpoint_1,
+            endpoint_2,
+        )
+        if added is False:
+            raise ChronoCompatibilityError("ChCollisionModel.AddCylinder returned false")
+
+        mass = float(density) * math.pi * float(radius) ** 2 * float(height)
+        transverse_inertia = (
+            mass * (3.0 * float(radius) ** 2 + float(height) ** 2) / 12.0
+        )
+        axial_inertia = 0.5 * mass * float(radius) ** 2
+        self._call(body, ("SetMass",), mass)
+        self._call(
+            body,
+            ("SetInertiaXX",),
+            self.vector(transverse_inertia, transverse_inertia, axial_inertia),
+        )
         self._enable_collision(body)
+
+        actual = self.collision_geometry(body)
+        if not math.isclose(
+            actual["envelope_m"],
+            COLLISION_ENVELOPE_M,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ChronoCompatibilityError(
+                f"custom cylinder collision envelope mismatch: {actual['envelope_m']}"
+            )
+        if not math.isclose(
+            actual["safe_margin_m"],
+            COLLISION_SAFE_MARGIN_M,
+            rel_tol=0.0,
+            abs_tol=1e-9,
+        ):
+            raise ChronoCompatibilityError(
+                f"custom cylinder collision safe margin mismatch: {actual['safe_margin_m']}"
+            )
         return body
 
     def new_planar_guide(self, body: Any, reference: Any) -> Any:
