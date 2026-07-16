@@ -4,7 +4,13 @@ import math
 from typing import Any, Callable, Mapping
 
 try:
-    from .chrono_compat import ChronoAdapter, ChronoImport, import_chrono
+    from .chrono_compat import (
+        COLLISION_ENVELOPE_M,
+        COLLISION_SAFE_MARGIN_M,
+        ChronoAdapter,
+        ChronoImport,
+        import_chrono,
+    )
     from .contracts import (
         ChronoResult,
         DEFAULT_CHRONO_POLICY,
@@ -14,7 +20,13 @@ try:
         unavailable_result,
     )
 except ImportError:  # direct script execution from tools/chrono_validation
-    from chrono_compat import ChronoAdapter, ChronoImport, import_chrono
+    from chrono_compat import (
+        COLLISION_ENVELOPE_M,
+        COLLISION_SAFE_MARGIN_M,
+        ChronoAdapter,
+        ChronoImport,
+        import_chrono,
+    )
     from contracts import (
         ChronoResult,
         DEFAULT_CHRONO_POLICY,
@@ -60,6 +72,8 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
         "initial_angular_velocity_rad_s": [0.0, 0.0, 0.0],
         "gravity_m_s2": G,
         "friction_coefficient": 0.8,
+        "collision_envelope_m": COLLISION_ENVELOPE_M,
+        "collision_safe_margin_m": COLLISION_SAFE_MARGIN_M,
         "target_along_ramp_distance_m": height / math.sin(math.radians(ROLLING_ANGLE_DEG)),
         "maximum_duration_s": DEFAULT_CHRONO_POLICY.rolling_max_duration_s,
     }
@@ -280,6 +294,8 @@ def simulate_incline_friction(*, theta_deg: float, mu: float) -> ChronoResult:
         "friction_coefficient": coefficient,
         "gravity_m_s2": G,
         "block_size_m": BLOCK_SIZE_M,
+        "collision_envelope_m": COLLISION_ENVELOPE_M,
+        "collision_safe_margin_m": COLLISION_SAFE_MARGIN_M,
         "initial_center_of_mass_velocity_m_s": [0.0, 0.0, 0.0],
         "expected_regime": expected_regime,
         "duration_s": DEFAULT_CHRONO_POLICY.incline_duration_s,
@@ -502,6 +518,8 @@ def simulate_collision_restitution(
         "initial_x1_m": -0.3,
         "initial_x2_m": 0.3,
         "gravity_m_s2": [0.0, 0.0, 0.0],
+        "collision_envelope_m": COLLISION_ENVELOPE_M,
+        "collision_safe_margin_m": COLLISION_SAFE_MARGIN_M,
         "duration_s": DEFAULT_CHRONO_POLICY.collision_duration_s,
     }
     return _dispatch_scene(

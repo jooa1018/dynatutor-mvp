@@ -12,6 +12,10 @@ except ImportError:  # direct script execution from tools/chrono_validation
     from version_evidence import PyChronoEvidenceError, installed_pychrono_version
 
 
+COLLISION_ENVELOPE_M = 0.001
+COLLISION_SAFE_MARGIN_M = 0.001
+
+
 class ChronoCompatibilityError(RuntimeError):
     pass
 
@@ -102,6 +106,7 @@ class ChronoAdapter:
             raise ChronoCompatibilityError(f"cannot read {axis}-component from {type(vector).__name__}")
 
     def new_nsc_system(self, *, gravity: tuple[float, float, float]) -> tuple[Any, str]:
+        self._configure_collision_geometry()
         system = self._attribute("ChSystemNSC")()
         self._configure_bullet_collision(system)
         gravity_vector = self.vector(*gravity)
@@ -114,6 +119,45 @@ class ChronoAdapter:
         if hasattr(system, "SetMinBounceSpeed"):
             system.SetMinBounceSpeed(0.0)
         return system, solver
+
+    def _configure_collision_geometry(self) -> None:
+        holder = self._attribute("ChCollisionModel")
+        self._call(
+            holder,
+            ("SetDefaultSuggestedEnvelope",),
+            COLLISION_ENVELOPE_M,
+        )
+        self._call(
+            holder,
+            ("SetDefaultSuggestedMargin",),
+            COLLISION_SAFE_MARGIN_M,
+        )
+        actual_envelope = _finite(
+            self._call(holder, ("GetDefaultSuggestedEnvelope",)),
+            name="default collision envelope",
+        )
+        actual_margin = _finite(
+            self._call(holder, ("GetDefaultSuggestedMargin",)),
+            name="default collision safe margin",
+        )
+        if not math.isclose(
+            actual_envelope,
+            COLLISION_ENVELOPE_M,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise ChronoCompatibilityError(
+                f"PyChrono collision envelope mismatch: {actual_envelope}"
+            )
+        if not math.isclose(
+            actual_margin,
+            COLLISION_SAFE_MARGIN_M,
+            rel_tol=0.0,
+            abs_tol=1e-12,
+        ):
+            raise ChronoCompatibilityError(
+                f"PyChrono collision safe margin mismatch: {actual_margin}"
+            )
 
     def _configure_bullet_collision(self, system: Any) -> None:
         holder = self._attribute("ChCollisionSystem")
@@ -419,6 +463,8 @@ def _finite(value: Any, *, name: str) -> float:
 
 
 __all__ = [
+    "COLLISION_ENVELOPE_M",
+    "COLLISION_SAFE_MARGIN_M",
     "ChronoAdapter",
     "ChronoCompatibilityError",
     "ChronoImport",
