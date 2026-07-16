@@ -382,6 +382,19 @@ class ChronoAdapter:
         value = self._call(body, ("GetContactForce",))
         return tuple(self.vector_component(value, axis) for axis in "xyz")
 
+    def collision_geometry(self, body: Any) -> dict[str, float]:
+        model = self._call(body, ("GetCollisionModel",))
+        return {
+            "envelope_m": _finite(
+                self._call(model, ("GetEnvelope",)),
+                name="body collision envelope",
+            ),
+            "safe_margin_m": _finite(
+                self._call(model, ("GetSafeMargin",)),
+                name="body collision safe margin",
+            ),
+        }
+
     def mass(self, body: Any) -> float:
         return _finite(self._call(body, ("GetMass",)), name="body mass")
 

@@ -213,6 +213,10 @@ def test_phase51_real_pychrono_scenes_when_dependency_is_available():
         )
     assert results[1].final_state["planar_guide"] == "ChLinkMatePlanar"
     assert results[1].artifacts[0]["planar_guide_count"] == 1
+    assert results[1].constraint_errors["collision_geometry"] == {
+        "envelope_m": chrono_compat.COLLISION_ENVELOPE_M,
+        "safe_margin_m": chrono_compat.COLLISION_SAFE_MARGIN_M,
+    }
     assert all(result.chrono_version != "unavailable" for result in results)
     assert all(result.value is not None and math.isfinite(result.value) for result in results)
     assert results[0].value > results[1].value

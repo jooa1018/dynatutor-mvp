@@ -137,7 +137,11 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
         adapter.add(system, planar_guide)
 
     initial_position = adapter.position(rolling_body)
+    body_collision_geometry = adapter.collision_geometry(rolling_body)
     positions: list[tuple[float, float, float]] = [initial_position]
+    height_samples: list[tuple[float, float, float, float]] = [
+        (0.0, initial_position[1], 0.0, 0.0)
+    ]
     elapsed = 0.0
     reached_target = False
     step = policy.rolling_step_s
@@ -147,6 +151,11 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
         elapsed = adapter.time(system)
         position = adapter.position(rolling_body)
         positions.append(position)
+        current_velocity = adapter.linear_velocity(rolling_body)
+        current_contact_force = adapter.contact_force(rolling_body)
+        height_samples.append(
+            (elapsed, position[1], current_velocity[1], current_contact_force[1])
+        )
         if position[0] - initial_position[0] >= target_distance:
             reached_target = True
             break
@@ -167,7 +176,23 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
     abs_error, rel_error = comparison_errors(observed_speed, analytic_speed)
 
     signed_no_slip = abs(velocity[0] + radius * angular_velocity[2])
-    contact_height_error = max(abs(position[1] - radius) for position in positions)
+    maximum_height_sample = max(height_samples, key=lambda sample: sample[1])
+    minimum_height_sample = min(height_samples, key=lambda sample: sample[1])
+    maximum_height_error_sample = max(
+        height_samples,
+        key=lambda sample: abs(sample[1] - radius),
+    )
+    contact_height_error = abs(maximum_height_error_sample[1] - radius)
+    contact_active_samples = [
+        sample for sample in height_samples if abs(sample[3]) > 1e-9
+    ]
+    first_contact_time = (
+        contact_active_samples[0][0] if contact_active_samples else None
+    )
+    samples_outside_height_limit = sum(
+        abs(sample[1] - radius) > policy.rolling_contact_abs_tolerance
+        for sample in height_samples
+    )
     displacement = tuple(final_position[i] - initial_position[i] for i in range(3))
     gravitational_work = mass * (gx * displacement[0] + gy * displacement[1])
     translational_ke = 0.5 * mass * sum(component * component for component in velocity)
@@ -233,6 +258,20 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
             "signed_no_slip_limit_m_s": policy.rolling_no_slip_abs_tolerance,
             "max_contact_height_abs_m": contact_height_error,
             "contact_height_limit_m": policy.rolling_contact_abs_tolerance,
+            "collision_geometry": body_collision_geometry,
+            "center_height_range_m": [
+                minimum_height_sample[1],
+                maximum_height_sample[1],
+            ],
+            "maximum_height_time_s": maximum_height_sample[0],
+            "maximum_height_normal_velocity_m_s": maximum_height_sample[2],
+            "maximum_height_normal_contact_force_N": maximum_height_sample[3],
+            "minimum_height_time_s": minimum_height_sample[0],
+            "maximum_height_error_time_s": maximum_height_error_sample[0],
+            "contact_active_sample_count": len(contact_active_samples),
+            "first_contact_time_s": first_contact_time,
+            "samples_outside_height_limit": samples_outside_height_limit,
+            "trajectory_sample_count": len(height_samples),
             "checks": {
                 "signed_no_slip": checks["signed_no_slip"],
                 "contact_maintained": checks["contact_maintained"],
