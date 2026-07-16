@@ -63,11 +63,8 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
             initial_conditions={"raw_inputs": raw_inputs},
         )
 
-    rolling_step = (
-        DEFAULT_CHRONO_POLICY.rolling_step_s / 2.0
-        if body_key == "disk"
-        else DEFAULT_CHRONO_POLICY.rolling_step_s
-    )
+    rolling_step = DEFAULT_CHRONO_POLICY.rolling_step_s
+    solver_max_iterations = 1000 if body_key == "disk" else 200
     initial = {
         "height_m": height,
         "body": body_key,
@@ -80,6 +77,7 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
         "target_along_ramp_distance_m": height / math.sin(math.radians(ROLLING_ANGLE_DEG)),
         "maximum_duration_s": DEFAULT_CHRONO_POLICY.rolling_max_duration_s,
         "time_step_s": rolling_step,
+        "solver_max_iterations": solver_max_iterations,
     }
     if body_key == "disk":
         initial["collision_envelope_m"] = COLLISION_ENVELOPE_M
@@ -108,7 +106,10 @@ def _simulate_rolling(adapter: ChronoAdapter, initial: Mapping[str, Any]) -> Chr
     target_distance = float(initial["target_along_ramp_distance_m"])
     gx = G * math.sin(angle)
     gy = -G * math.cos(angle)
-    system, solver = adapter.new_nsc_system(gravity=(gx, gy, 0.0))
+    system, solver = adapter.new_nsc_system(
+        gravity=(gx, gy, 0.0),
+        max_iterations=int(initial["solver_max_iterations"]),
+    )
     material = adapter.contact_material_nsc(friction=0.8)
 
     ground = adapter.easy_box(

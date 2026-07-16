@@ -105,7 +105,14 @@ class ChronoAdapter:
         except (KeyError, TypeError, IndexError):
             raise ChronoCompatibilityError(f"cannot read {axis}-component from {type(vector).__name__}")
 
-    def new_nsc_system(self, *, gravity: tuple[float, float, float]) -> tuple[Any, str]:
+    def new_nsc_system(
+        self,
+        *,
+        gravity: tuple[float, float, float],
+        max_iterations: int = 200,
+    ) -> tuple[Any, str]:
+        if isinstance(max_iterations, bool) or int(max_iterations) <= 0:
+            raise ChronoCompatibilityError("solver max_iterations must be positive")
         system = self._attribute("ChSystemNSC")()
         self._configure_bullet_collision(system)
         gravity_vector = self.vector(*gravity)
@@ -114,7 +121,7 @@ class ChronoAdapter:
             ("SetGravitationalAcceleration", "Set_G_acc", "SetGravity"),
             gravity_vector,
         )
-        solver = self._configure_psor(system)
+        solver = self._configure_psor(system, max_iterations=int(max_iterations))
         if hasattr(system, "SetMinBounceSpeed"):
             system.SetMinBounceSpeed(0.0)
         return system, solver
@@ -148,7 +155,7 @@ class ChronoAdapter:
                 "PyChrono did not create the requested BULLET collision system"
             )
 
-    def _configure_psor(self, system: Any) -> str:
+    def _configure_psor(self, system: Any, *, max_iterations: int) -> str:
         holder = self._attribute("ChSolver")
         candidates: list[Any] = []
         type_holder = getattr(holder, "Type", None)
@@ -172,8 +179,15 @@ class ChronoAdapter:
             candidate = as_iterative()
             if candidate is not None:
                 iterative = candidate
-        self._call(iterative, ("SetMaxIterations", "SetMaxIters"), 200)
-        return f"{type(solver).__name__}:PSOR:max_iterations=200"
+        self._call(
+            iterative,
+            ("SetMaxIterations", "SetMaxIters"),
+            int(max_iterations),
+        )
+        return (
+            f"{type(solver).__name__}:PSOR:"
+            f"max_iterations={int(max_iterations)}"
+        )
 
     def contact_material_nsc(self, *, friction: float, restitution: float = 0.0) -> Any:
         cls = self._attribute("ChContactMaterialNSC", "ChMaterialSurfaceNSC")
