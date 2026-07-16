@@ -462,13 +462,13 @@ def test_phase51_real_pychrono_scenes_when_dependency_is_available():
     assert results[0].initial_conditions["solver_max_iterations"] == 200
     assert results[1].initial_conditions["solver_max_iterations"] == 200
     assert results[0].initial_conditions["solver_sharpness_lambda"] == 1.0
-    assert results[1].initial_conditions["solver_sharpness_lambda"] == 0.9
+    assert results[1].initial_conditions["solver_sharpness_lambda"] == 0.95
     for index in (0, 2, 3, 4, 5):
         assert results[index].solver.endswith(
             "max_iterations=200:sharpness_lambda=1.0"
         )
     assert results[1].solver.endswith(
-        "max_iterations=200:sharpness_lambda=0.9"
+        "max_iterations=200:sharpness_lambda=0.95"
     )
     assert results[1].final_state["planar_guide"] == "ChLinkMatePlanar"
     assert results[1].artifacts[0]["planar_guide_count"] == 1

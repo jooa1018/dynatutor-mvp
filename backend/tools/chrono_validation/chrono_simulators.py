@@ -65,7 +65,7 @@ def simulate_rolling_down_ramp(*, height_m: float, body: str) -> ChronoResult:
 
     rolling_step = DEFAULT_CHRONO_POLICY.rolling_step_s
     solver_max_iterations = 200
-    solver_sharpness_lambda = 0.9 if body_key == "disk" else 1.0
+    solver_sharpness_lambda = 0.95 if body_key == "disk" else 1.0
     initial = {
         "height_m": height,
         "body": body_key,
