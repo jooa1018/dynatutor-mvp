@@ -160,7 +160,7 @@ test('snapshot times cover start, events, and end for reduced motion', () => {
   const labels = times.map((_, i) => motion.snapshotLabel(scene, i, times));
   assert.ok(labels[0].includes('시작'));
   assert.ok(labels[labels.length - 1].includes('최종'));
-  assert.ok(labels.some((l) => l.includes('충돌'));
+  assert.ok(labels.some((l) => l.includes('충돌')));
 
   const noEvents = inclineScene();
   const times2 = motion.snapshotTimes(noEvents);
