@@ -96,7 +96,14 @@
       "role",
       "response_index",
       "equation_ids",
-      "substitution_ids"
+      "substitution_ids",
+      "candidate_key",
+      "candidate_numeric",
+      "delivery_candidate_id",
+      "delivery_candidate_key",
+      "delivery_transform",
+      "decimal_places",
+      "delivery_policy_id"
     ],
     "SolverExplanationEvidence": [
       "coordinate_frame",

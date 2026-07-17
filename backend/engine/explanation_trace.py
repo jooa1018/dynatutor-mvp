@@ -19,6 +19,7 @@ from engine.models import (
     SolverExplanationEvidence,
     SolverResult,
 )
+from engine.physics_core.answer_validators import OUTPUT_KEY_COMPATIBILITY
 
 
 TRACE_SCHEMA = "dynatutor.explanation_trace"
@@ -267,6 +268,87 @@ _FORBIDDEN_SEMANTIC_TOKENS = {
 _NORMALIZED_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
 _NORMALIZED_ENUM_VALUE = re.compile(r"^[A-Za-z][A-Za-z0-9_.:-]{0,63}$")
 _NUMERIC_LITERAL = re.compile(r"(?<![A-Za-z_])[-+]?(?:\d+(?:\.\d*)?|\.\d+)")
+
+# Candidate-key meaning is code-owned.  Equal numeric values are never enough
+# to connect a raw solver variable to a delivered product field.
+_OUTPUT_SEMANTICS_BY_CANDIDATE_KEY = {
+    "t": {"time"},
+    "time": {"time"},
+    "s": {"distance"},
+    "distance": {"distance"},
+    "R": {"range", "distance"},
+    "delta_x": {"distance"},
+    "H": {"max_height"},
+    "max_height": {"max_height"},
+    "vf": {"final_velocity"},
+    "v_f": {"final_velocity", "post_collision_velocity"},
+    "v": {"final_velocity"},
+    "final_velocity": {"final_velocity"},
+    "a": {"acceleration"},
+    "acceleration": {"acceleration"},
+    "v0": {"initial_velocity"},
+    "initial_velocity": {"initial_velocity"},
+    "omega": {"angular_velocity"},
+    "ω": {"angular_velocity"},
+    "angular_velocity": {"angular_velocity"},
+    "v_min": {"minimum_speed"},
+    "minimum_speed": {"minimum_speed"},
+    "T": {"tension"},
+    "tension": {"tension"},
+    "v1'": {"v1_after"},
+    "v1_after": {"v1_after"},
+    "v2'": {"v2_after"},
+    "v2_after": {"v2_after"},
+    "post_collision_velocity": {"post_collision_velocity"},
+    "f_k": {"friction_force"},
+    "f_s": {"friction_force"},
+    "f_s,max": {"friction_force"},
+    "friction_force": {"friction_force"},
+    "N": {"normal_force"},
+    "normal_force": {"normal_force"},
+    "alpha": {"angular_acceleration"},
+    "α": {"angular_acceleration"},
+    "T1": {"tension"},
+    "T2": {"tension"},
+    "F": {"force"},
+    "F_net": {"force"},
+    "force": {"force"},
+    "E_s": {"elastic_energy"},
+    "elastic_energy": {"elastic_energy"},
+}
+
+_SOLVER_OUTPUT_SEMANTICS = {
+    ("spring_mass_vibration", "T"): {"period"},
+    ("spring_mass_vibration", "f"): {"frequency"},
+    ("spring_mass_vibration", "omega_n"): {"angular_frequency"},
+}
+_KNOWN_OUTPUT_KEYS = (
+    set(OUTPUT_KEY_COMPATIBILITY)
+    | {item for values in OUTPUT_KEY_COMPATIBILITY.values() for item in values}
+    | {
+        item
+        for values in _OUTPUT_SEMANTICS_BY_CANDIDATE_KEY.values()
+        for item in values
+    }
+    | {item for values in _SOLVER_OUTPUT_SEMANTICS.values() for item in values}
+)
+
+# Explicit raw-to-delivery transforms.  The policy ID carries branch identity
+# where a solver uses different rounding in different code paths; the builder
+# never accepts an arbitrary ndigits value or infers policy from candidate IDs.
+_DELIVERY_TRANSFORM_POLICIES = {
+    "kinematics.time.round6": ("constant_acceleration_1d", "t", "time", "python_builtin_round", 6),
+    "kinematics.distance.round6": ("constant_acceleration_1d", "s", "distance", "python_builtin_round", 6),
+    "kinematics.final_velocity.round6": ("constant_acceleration_1d", "vf", "final_velocity", "python_builtin_round", 6),
+    "kinematics.acceleration.round6": ("constant_acceleration_1d", "a", "acceleration", "python_builtin_round", 6),
+    "kinematics.initial_velocity.round6": ("constant_acceleration_1d", "v0", "initial_velocity", "python_builtin_round", 6),
+    "projectile.general.time.round6": ("projectile_motion", "t", "time", "python_builtin_round", 6),
+    "projectile.general.range.round6": ("projectile_motion", "R", "range", "python_builtin_round", 6),
+    "projectile.general.distance.round6": ("projectile_motion", "R", "distance", "python_builtin_round", 6),
+    "projectile.general.delta_x.round6": ("projectile_motion", "delta_x", "distance", "python_builtin_round", 6),
+    "incline.no_friction.acceleration.round5": ("incline_no_friction", "a", "acceleration", "python_builtin_round", 5),
+    "incline.with_friction.moving.round5": ("incline_with_friction", "a", "acceleration", "python_builtin_round", 5),
+}
 
 
 def _stable_unique(values: Iterable[str]) -> list[str]:
@@ -849,8 +931,64 @@ def _delivered_answers(response: Any) -> list[dict[str, Any]]:
     ]
 
 
-def _selected_candidate_summary(response: Any) -> tuple[dict[str, Any], Any]:
+def _top_level_answer_matches_primary(
+    response: Any,
+    delivered: list[dict[str, Any]],
+    warnings: list[str],
+) -> bool:
+    """Close the compatibility edge without changing either public answer view."""
+
+    answer = getattr(response, "answer", None)
+    answers = list(getattr(response, "answers", []) or [])
+    if answer is None or not answers:
+        return True
+    primary = [item for item in delivered if item.get("role") == "primary"]
+    if not primary:
+        warnings.append("top-level answer has no primary delivered output authority")
+        return False
+    first = primary[0]
+    primary_key = first.get("output_key")
+    if (
+        not isinstance(primary_key, str)
+        or not primary_key
+        or primary_key not in _KNOWN_OUTPUT_KEYS
+        or sum(item.get("output_key") == primary_key for item in primary) != 1
+    ):
+        warnings.append("first primary delivered output has no unique semantic key")
+        return False
+    if not _same_signed_number(getattr(answer, "numeric", None), first.get("numeric")):
+        warnings.append("top-level answer numeric does not exactly match the first primary output")
+        return False
+    if getattr(answer, "unit", None) != first.get("unit"):
+        warnings.append("top-level answer unit does not exactly match the first primary output")
+        return False
+    answer_key = getattr(answer, "output_key", None)
+    if answer_key is None:
+        return True
+    if (
+        not isinstance(answer_key, str)
+        or not answer_key
+        or answer_key not in _KNOWN_OUTPUT_KEYS
+        or primary_key
+        not in ({answer_key} | OUTPUT_KEY_COMPATIBILITY.get(answer_key, set()))
+    ):
+        warnings.append("top-level answer semantic key is incompatible with the first primary output")
+        return False
+    return True
+
+
+def _selected_candidate_summary(
+    response: Any,
+    *,
+    raw_selection_decision: Any = None,
+    delivery_decision: Any = None,
+) -> tuple[dict[str, Any], Any]:
     decision = getattr(response, "selection_decision", None)
+    if (
+        getattr(raw_selection_decision, "status", None) == "selected"
+        and getattr(delivery_decision, "status", None) == "selected"
+    ):
+        decision = raw_selection_decision
     status = getattr(decision, "status", None) or "not_available"
     selected = getattr(decision, "selected_candidate", None)
     alternatives = list(getattr(decision, "valid_alternatives", []) or [])
@@ -868,18 +1006,104 @@ def _selected_candidate_summary(response: Any) -> tuple[dict[str, Any], Any]:
     )
 
 
-def _candidate_value(selected: Any, output_link: Any) -> tuple[bool, Any]:
+def _candidate_value(selected: Any, key: str) -> tuple[bool, Any]:
     mapping = getattr(selected, "numerical_mapping", None)
+    if not isinstance(mapping, dict) or not isinstance(key, str) or not key:
+        return False, None
+    if key not in mapping:
+        return False, None
+    value = mapping[key]
+    if not _is_finite_number(value):
+        return False, None
+    return True, value
+
+
+def _candidate_key_matches_output(
+    candidate_key: str,
+    output_key: Any,
+    *,
+    selected_solver: str | None,
+) -> bool:
+    if not isinstance(candidate_key, str) or not isinstance(output_key, str):
+        return False
+    solver_semantics = _SOLVER_OUTPUT_SEMANTICS.get(
+        (selected_solver, candidate_key)
+    )
+    if solver_semantics is not None:
+        return output_key in solver_semantics
+    return output_key in _OUTPUT_SEMANTICS_BY_CANDIDATE_KEY.get(
+        candidate_key, set()
+    )
+
+
+def _delivery_mapping_is_exact(
+    delivered: list[dict[str, Any]], delivery_candidate: Any
+) -> bool:
+    mapping = getattr(delivery_candidate, "numerical_mapping", None)
     if not isinstance(mapping, dict):
-        return False, None
-    keys = dict.fromkeys((output_link.output_key, output_link.symbol, output_link.output_id))
-    present = [key for key in keys if key is not None and key in mapping]
-    if not present:
-        return False, None
-    values = [mapping[key] for key in present]
-    if not all(_same_signed_number(output_link.numeric, value) for value in values):
-        return False, None
-    return True, values[0]
+        return False
+    expected_keys = {
+        str(key)
+        for item in delivered
+        for key in (item.get("output_key"), item.get("symbol"))
+        if isinstance(key, str) and key
+    }
+    # candidate_from_solver_result deliberately retains this code-owned
+    # representative alias for one-answer legacy results before also adding the
+    # semantic output key.  It is expected only when the delivered item has no
+    # symbol and can never be selected as explanation evidence.
+    if any(item.get("symbol") is None for item in delivered):
+        expected_keys.add("answer")
+    return set(mapping) == expected_keys and all(
+        _is_finite_number(value) for value in mapping.values()
+    )
+
+
+def _delivery_transform_is_exact(
+    link: Any,
+    *,
+    selected_solver: str | None,
+    raw_is_delivery_authority: bool,
+) -> bool:
+    raw = link.candidate_numeric
+    delivered = link.numeric
+    if not _is_finite_number(raw) or not _is_finite_number(delivered):
+        return False
+    if isinstance(link.decimal_places, bool):
+        return False
+
+    # A direct/legacy solver has one identity *decision object*.  Candidate-ID
+    # equality is not used to infer this relationship.
+    if raw_is_delivery_authority:
+        return (
+            not link.delivery_policy_id
+            and link.candidate_id == link.delivery_candidate_id
+            and link.candidate_key == link.delivery_candidate_key
+            and link.delivery_transform == "identity"
+            and link.decimal_places is None
+            and _same_signed_number(raw, delivered)
+        )
+
+    policy = _DELIVERY_TRANSFORM_POLICIES.get(link.delivery_policy_id)
+    if policy is None:
+        return False
+    expected = (
+        selected_solver,
+        link.candidate_key,
+        link.output_key,
+        link.delivery_transform,
+        link.decimal_places,
+    )
+    if policy != expected:
+        return False
+    if link.delivery_transform == "identity":
+        return link.decimal_places is None and _same_signed_number(raw, delivered)
+    if link.delivery_transform != "python_builtin_round":
+        return False
+    if not isinstance(link.decimal_places, int):
+        return False
+    rounded = round(raw, link.decimal_places)
+    return _same_signed_number(rounded, delivered)
 
 
 def _match_output_links(
@@ -887,6 +1111,9 @@ def _match_output_links(
     evidence: SolverExplanationEvidence,
     selected_candidate: Any,
     candidate_summary: dict[str, Any],
+    delivery_decision: Any,
+    selected_solver: str | None,
+    raw_is_delivery_authority: bool,
     equations_by_id: dict[str, dict[str, Any]],
     substitutions_by_id: dict[str, dict[str, Any]],
     warnings: list[str],
@@ -910,6 +1137,21 @@ def _match_output_links(
     if candidate_summary["status"] != "selected" or selected_candidate_id is None:
         warnings.append("selected candidate evidence is unavailable")
         return [], False
+
+    delivery_status = getattr(delivery_decision, "status", None)
+    delivery_candidate = getattr(delivery_decision, "selected_candidate", None)
+    delivery_candidate_id = getattr(delivery_candidate, "candidate_id", None)
+    if delivery_status != "selected" or delivery_candidate_id is None:
+        warnings.append("delivered-output candidate evidence is unavailable")
+        return [], False
+    if not _delivery_mapping_is_exact(delivered, delivery_candidate):
+        warnings.append("delivered-output candidate keys are missing, ambiguous, or surplus")
+        return [], False
+
+    output_key_counts: dict[Any, int] = {}
+    for delivered_item in delivered:
+        output_key = delivered_item["output_key"]
+        output_key_counts[output_key] = output_key_counts.get(output_key, 0) + 1
 
     matched_links: dict[int, Any] = {}
     unused = set(range(len(links)))
@@ -947,6 +1189,24 @@ def _match_output_links(
         warnings.append("surplus structured output link identities were not consumed")
         return [], False
 
+    for output_key, count in output_key_counts.items():
+        if count <= 1:
+            continue
+        keys = [
+            matched_links[item["index"]].delivery_candidate_key
+            for item in delivered
+            if item["output_key"] == output_key
+        ]
+        if (
+            any(not isinstance(key, str) or not key for key in keys)
+            or len(keys) != count
+            or len(set(keys)) != count
+        ):
+            warnings.append(
+                f"duplicated output_key {output_key!r} must use globally unique delivery keys"
+            )
+            return [], False
+
     derivations: list[dict[str, Any]] = []
     valid = True
     substitution_owners: dict[str, str] = {}
@@ -965,6 +1225,57 @@ def _match_output_links(
         if link.candidate_id != selected_candidate_id:
             warnings.append(f"{prefix} is not linked to the selected candidate")
             valid = False
+        if not _candidate_key_matches_output(
+            link.candidate_key,
+            link.output_key,
+            selected_solver=selected_solver,
+        ):
+            warnings.append(f"{prefix} raw candidate key has the wrong physical meaning")
+            valid = False
+        found_candidate_value, candidate_value = _candidate_value(
+            selected_candidate, link.candidate_key
+        )
+        if (
+            not found_candidate_value
+            or not _same_signed_number(link.candidate_numeric, candidate_value)
+        ):
+            warnings.append(f"{prefix} raw candidate key/value is not exact")
+            valid = False
+
+        if link.delivery_candidate_id != delivery_candidate_id:
+            warnings.append(f"{prefix} is not linked to the delivered-output candidate")
+            valid = False
+        if not _candidate_key_matches_output(
+            link.delivery_candidate_key,
+            link.output_key,
+            selected_solver=selected_solver,
+        ):
+            warnings.append(f"{prefix} delivery candidate key has the wrong physical meaning")
+            valid = False
+        if (
+            output_key_counts.get(delivered_item["output_key"], 0) > 1
+            and link.delivery_candidate_key != delivered_item["symbol"]
+        ):
+            warnings.append(
+                f"{prefix} must use its unique symbol key for a duplicated output_key"
+            )
+            valid = False
+        found_delivery_value, delivery_value = _candidate_value(
+            delivery_candidate, link.delivery_candidate_key
+        )
+        if (
+            not found_delivery_value
+            or not _same_signed_number(link.numeric, delivery_value)
+        ):
+            warnings.append(f"{prefix} delivery candidate key/value is not exact")
+            valid = False
+        if not _delivery_transform_is_exact(
+            link,
+            selected_solver=selected_solver,
+            raw_is_delivery_authority=raw_is_delivery_authority,
+        ):
+            warnings.append(f"{prefix} raw-to-delivery transform is not code-owned and exact")
+            valid = False
         if not _same_signed_number(link.numeric, delivered_item["numeric"]):
             warnings.append(f"{prefix} signed numeric value does not match the delivered response")
             valid = False
@@ -973,11 +1284,6 @@ def _match_output_links(
             valid = False
         if not _valid_unit(link.unit) or not _valid_unit(delivered_item["unit"]):
             warnings.append(f"{prefix} unit is outside the code-owned physical vocabulary")
-            valid = False
-
-        found_candidate_value, candidate_value = _candidate_value(selected_candidate, link)
-        if not found_candidate_value or not _same_signed_number(link.numeric, candidate_value):
-            warnings.append(f"{prefix} does not match one exact selected-candidate value")
             valid = False
 
         if (
@@ -1256,6 +1562,8 @@ def build_explanation_trace_payload(
     route_reason: str | None,
     route_decision: Any = None,
     legacy_steps: Sequence[Any] = (),
+    delivery_decision: Any = None,
+    raw_selection_decision: Any = None,
 ) -> dict[str, Any]:
     """Build ExplanationTrace v1 from one completed pipeline pass.
 
@@ -1414,7 +1722,15 @@ def build_explanation_trace_payload(
         grounding_warnings.append("a branch condition is not explicitly linked")
         grounding_valid = False
 
-    candidate_summary, selected_candidate = _selected_candidate_summary(response)
+    candidate_summary, selected_candidate = _selected_candidate_summary(
+        response,
+        raw_selection_decision=raw_selection_decision,
+        delivery_decision=delivery_decision,
+    )
+    raw_authority = raw_selection_decision or getattr(
+        response, "selection_decision", None
+    )
+    raw_is_delivery_authority = raw_authority is delivery_decision
     candidate_summary["branch_fact_ids"] = sorted(branch_fact_ids)
     delivered = _delivered_answers(response)
     derivations: list[dict[str, Any]] = []
@@ -1425,10 +1741,19 @@ def build_explanation_trace_payload(
             evidence,
             selected_candidate,
             candidate_summary,
+            delivery_decision,
+            selected_solver,
+            raw_is_delivery_authority,
             equations_by_id,
             substitutions_by_id,
             grounding_warnings,
         )
+        if outputs_valid:
+            outputs_valid = _top_level_answer_matches_primary(
+                response, delivered, grounding_warnings
+            )
+            if not outputs_valid:
+                derivations = []
         grounding_valid = grounding_valid and outputs_valid
     elif delivered:
         grounding_warnings.append("structured output derivation evidence is unavailable")

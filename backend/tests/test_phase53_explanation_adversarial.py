@@ -52,7 +52,7 @@ def _fixture():
     )
     selected = CandidateSolutionModel(
         candidate_id="candidate:selected:hidden",
-        numerical_mapping={"acceleration": 5.0},
+        numerical_mapping={"a": 5.0, "acceleration": 5.0},
     )
     rejected = ValidatedCandidateModel(
         candidate_id="candidate:rejected:hidden",
@@ -124,6 +124,11 @@ def _fixture():
                 response_index=0,
                 equation_ids=("eq:hidden",),
                 substitution_ids=("sub:hidden",),
+                candidate_key="a",
+                candidate_numeric=5.0,
+                delivery_candidate_id="candidate:selected:hidden",
+                delivery_candidate_key="a",
+                delivery_transform="identity",
             ),
         ),
     )
@@ -140,6 +145,7 @@ def _build(canonical, response, evidence, *, route_status="select"):
             selected_solver="solver:hidden",
             route_reason="synthetic",
             route_decision=SimpleNamespace(status=route_status, warnings=[]),
+            delivery_decision=response.selection_decision,
         )
     )
 
@@ -681,10 +687,11 @@ def _multi_fixture():
         unit="m/s",
         display="7 m/s",
         role="primary",
-        output_key="velocity",
+        output_key="final_velocity",
     )
     response.answers.append(second_answer)
-    response.selection_decision.selected_candidate.numerical_mapping["velocity"] = 7.0
+    response.selection_decision.selected_candidate.numerical_mapping["v"] = 7.0
+    response.selection_decision.selected_candidate.numerical_mapping["final_velocity"] = 7.0
     second_equation = EquationEvidence(
         "eq:velocity:hidden",
         "v = F - 3",
@@ -702,7 +709,7 @@ def _multi_fixture():
     )
     second_output = OutputEvidenceLink(
         "output:velocity:hidden",
-        "velocity",
+        "final_velocity",
         "candidate:selected:hidden",
         7.0,
         "m/s",
@@ -711,6 +718,11 @@ def _multi_fixture():
         response_index=1,
         equation_ids=("eq:velocity:hidden",),
         substitution_ids=("sub:velocity:hidden",),
+        candidate_key="v",
+        candidate_numeric=7.0,
+        delivery_candidate_id="candidate:selected:hidden",
+        delivery_candidate_key="v",
+        delivery_transform="identity",
     )
     evidence = replace(
         evidence,

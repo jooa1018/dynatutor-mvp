@@ -39,7 +39,6 @@ from engine.physics_core.validators import (
     CandidateSolveBatch,
     ValidationContext,
     candidate_from_solver_result,
-    validate_and_select,
     validate_output_candidates,
 )
 
@@ -105,6 +104,34 @@ def _answers_from_result(result):
         label = "최종 답"
         return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary", output_key=getattr(result.answer, "output_key", None))]
     return []
+
+
+def _validate_delivered_result(result, *, solver_name, requested_outputs):
+    """Select one fresh response-projection candidate without touching raw physics."""
+
+    candidate_context = ValidationContext(
+        requested_outputs=list(requested_outputs or []),
+        selection_policy=f"{solver_name}:validated-delivery",
+    )
+    delivery_candidate = candidate_from_solver_result(
+        result,
+        candidate_id=f"delivery:{solver_name}:solve-response",
+        requested_outputs=requested_outputs,
+    )
+    return validate_output_candidates([delivery_candidate], candidate_context)
+
+
+def _reconcile_selection_authorities(result, solver_decision, output_decision):
+    """Preserve raw evidence while retaining the legacy public failure policy."""
+
+    raw_selection_decision = solver_decision or output_decision
+    if solver_decision is None or (
+        getattr(solver_decision, "status", None) == "selected"
+        and getattr(output_decision, "status", None) != "selected"
+    ):
+        result.selection_decision = output_decision
+    return raw_selection_decision
+
 
 def _quantity_model(q):
     return QuantityModel(symbol=q.symbol, value=q.value, unit=q.unit, source_text=q.source_text)
@@ -345,6 +372,8 @@ def _finalize_public_explanation(
     selected_solver,
     route_decision,
     legacy_steps=(),
+    delivery_decision=None,
+    raw_selection_decision=None,
 ):
     """Finalize strict evidence or preserve an unmigrated successful response."""
 
@@ -369,6 +398,8 @@ def _finalize_public_explanation(
             route_reason=route_reason,
             route_decision=route_decision,
             legacy_steps=legacy_steps,
+            delivery_decision=delivery_decision,
+            raw_selection_decision=raw_selection_decision,
         )
         response.explanation_trace = ExplanationTraceModel(**payload)
     except Exception as exc:
@@ -467,6 +498,12 @@ def _solve_problem_impl(
         route_decision=route_decision,
     )
     solver = registry.select(canonical, decision=route_decision)
+    # The raw solver selection and the final delivered-output selection are
+    # independent authorities.  Initialize the latter before every terminal
+    # branch so conflicts, domain errors, and no-solver responses cannot reuse a
+    # stale decision.
+    output_decision = None
+    raw_selection_decision = None
     trace.finish_stage("route")
 
     if not solver:
@@ -532,6 +569,8 @@ def _solve_problem_impl(
             result=None,
             selected_solver=None,
             route_decision=route_decision,
+            delivery_decision=output_decision,
+            raw_selection_decision=raw_selection_decision,
         )
         trace.capture_validation(response.verification)
         trace.capture_response(response)
@@ -589,35 +628,37 @@ def _solve_problem_impl(
                 ],
             )
         result = batch.result
-        candidate_context = ValidationContext(
-            requested_outputs=list(canonical.requested_outputs or []),
-            selection_policy=f"{solver.name}:validated-candidate",
-        )
         solver_decision = result.selection_decision
-        output_decision = (
-            validate_output_candidates(batch.candidates, candidate_context)
-            if solver_decision is not None
-            else validate_and_select(batch.candidates, candidate_context)
+        # Exactly one validation call owns the delivered response contract.
+        # It receives a fresh candidate projected from SolverResult so it cannot
+        # mutate the solver's raw candidate batch or selection decision.
+        output_decision = _validate_delivered_result(
+            result,
+            solver_name=solver.name,
+            requested_outputs=canonical.requested_outputs,
         )
-        # Preserve richer solver/generator branch evidence when it selected a
-        # valid candidate.  The service output contract remains authoritative:
-        # a missing requested output overrides an otherwise selected branch.
-        if (
-            solver_decision is None
-            or (
-                solver_decision.status == "selected"
-                and output_decision.status != "selected"
-            )
+        # Direct/legacy solvers have no separate raw selection authority.  Rich
+        # raw decisions stay public only when the delivered-output contract also
+        # selects; an output rejection retains the established public failure
+        # decision and diagnostics while raw evidence remains internal.
+        raw_selection_decision = _reconcile_selection_authorities(
+            result, solver_decision, output_decision
+        )
+        raw_status = getattr(result.selection_decision, "status", None)
+        delivery_status = getattr(output_decision, "status", None)
+        if result.ok and (
+            raw_status != "selected" or delivery_status != "selected"
         ):
-            result.selection_decision = output_decision
-        if result.ok and result.selection_decision.status != "selected":
+            failed_status = (
+                raw_status if raw_status != "selected" else delivery_status
+            )
             result.verification.errors.append(
                 "후보 해 선택을 확정하지 못했습니다: "
-                + result.selection_decision.status
+                + str(failed_status)
             )
             result.unsupported_reason = (
                 "물리적으로 가능한 해가 여러 개입니다. 사건, 방향 또는 시간 구간을 더 지정해 주세요."
-                if result.selection_decision.status == "ambiguous"
+                if failed_status == "ambiguous"
                 else "모든 후보 해가 명시된 물리 제약과 출력 계약을 통과하지 못했습니다."
             )
     trace.capture_solution_candidates(batch, result)
@@ -626,7 +667,10 @@ def _solve_problem_impl(
     trace.start_stage("verify")
     # Phase 30/47: only a selected candidate proceeds to the established
     # dimension, plausibility and governing-equation verification suite.
-    if getattr(result.selection_decision, "status", None) == "selected":
+    if (
+        getattr(result.selection_decision, "status", None) == "selected"
+        and getattr(output_decision, "status", None) == "selected"
+    ):
         suite_report = verify_result(canonical, result, solver_id=solver.name)
         result.verification = merge_reports(result.verification, suite_report)
     # 강등은 아래 apply_result_gate 한 곳에서만 수행한다 (Phase 33 통합).
@@ -681,6 +725,8 @@ def _solve_problem_impl(
         selected_solver=solver.name,
         route_decision=route_decision,
         legacy_steps=all_steps,
+        delivery_decision=output_decision,
+        raw_selection_decision=raw_selection_decision,
     )
     trace.capture_validation(response.verification)
     trace.capture_response(response)

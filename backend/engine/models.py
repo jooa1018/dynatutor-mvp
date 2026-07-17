@@ -243,6 +243,16 @@ class OutputEvidenceLink:
     response_index: int | None = None
     equation_ids: tuple[str, ...] = ()
     substitution_ids: tuple[str, ...] = ()
+    # Phase 53 keeps the solver's selected physics candidate distinct from the
+    # service's post-format delivery candidate.  These fields are appended with
+    # defaults so legacy positional construction remains source compatible.
+    candidate_key: str = ""
+    candidate_numeric: float | int | None = None
+    delivery_candidate_id: str = ""
+    delivery_candidate_key: str = ""
+    delivery_transform: str = "identity"
+    decimal_places: int | None = None
+    delivery_policy_id: str = ""
 
 
 @dataclass(frozen=True)
