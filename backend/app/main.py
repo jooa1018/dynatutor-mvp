@@ -71,14 +71,6 @@ app = FastAPI(
 cors_origins_raw = os.environ.get("DYNATUTOR_CORS_ORIGINS", "*")
 cors_origins = [x.strip() for x in cors_origins_raw.split(",") if x.strip()] or ["*"]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=cors_origins,
-    allow_credentials=("*" not in cors_origins),
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 # Production/Render defaults: reject oversized CPU-heavy requests and limit
 # repeated solve/diagnose/explain traffic. Local development remains unlimited
 # unless the corresponding environment variables are set explicitly.
@@ -91,9 +83,19 @@ app.add_middleware(
     requests_per_window=configured_rate_limit(),
 )
 
-# Added last so authentication is evaluated before the inner runtime budgets.
-# If DYNATUTOR_ACCESS_TOKEN is unset, local development remains frictionless.
+# Authentication remains before the inner runtime budgets. If
+# DYNATUTOR_ACCESS_TOKEN is unset, local development remains frictionless.
 app.add_middleware(PersonalAccessTokenMiddleware)
+
+# Added last so CORS wraps every response, including authentication failures.
+# This lets the frontend receive a protected API's 401 and show the token prompt.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_credentials=("*" not in cors_origins),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(diagnose_router, prefix="/diagnose", tags=["diagnose"])
 app.include_router(solve_router, prefix="/solve", tags=["solve"])
