@@ -377,7 +377,8 @@ def test_direct_finalizer_preserves_all_legacy_fields_only_for_success_without_e
         "internal_id": _STALE_PUBLIC_SENTINEL,
         "value": 987653,
     }
-    assert "legacy equation sentinel" in response.equation_sheet
+    assert response.diagnosis.not_applicable_equations == ["legacy equation sentinel"]
+    assert f"x = 530153 {_STALE_PUBLIC_SENTINEL}" in response.equation_sheet
 
 
 @pytest.mark.unit
