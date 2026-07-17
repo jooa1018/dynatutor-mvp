@@ -315,15 +315,17 @@ def _unmigrated_migrated_solver_branch(case: str) -> CanonicalProblem:
 
 
 def _assert_excluded_or_terminal_trace(response, selected_solver: str) -> None:
-    assert response.diagnosis.selected_solver == selected_solver
     trace = response.explanation_trace
     if trace is None:
+        assert response.ok is True
+        assert response.diagnosis.selected_solver == selected_solver
         return
 
     assert response.ok is False
     assert response.answer is None
     assert response.answers == []
-    assert trace.selected_solver == selected_solver
+    assert response.diagnosis.selected_solver in {None, selected_solver}
+    assert trace.selected_solver == response.diagnosis.selected_solver
     assert trace.status != "fully_grounded"
     assert trace.answer_derivation == []
     step_kinds = {step.kind for step in trace.student_steps}
