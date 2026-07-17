@@ -107,6 +107,26 @@ function evaluateAll(scene, t) {
   return out;
 }
 
+// Student-facing readouts must identify every moving body.  Returning one row
+// per kinematic body avoids the old collision bug where the first cart's speed
+// was shown without a label while the second cart was silently omitted.
+function motionReadouts(scene, t) {
+  const states = evaluateAll(scene, t);
+  const out = [];
+  for (const body of scene.bodies || []) {
+    if (body.body_type !== 'kinematic') continue;
+    const state = states[body.id];
+    if (!state) continue;
+    out.push({
+      bodyId: body.id,
+      label: body.label || body.id,
+      speed: Math.hypot(state.vx, state.vy),
+      acceleration: Math.hypot(state.ax, state.ay),
+    });
+  }
+  return out;
+}
+
 function totalDuration(scene) {
   return scene.timestep.duration;
 }
@@ -172,6 +192,7 @@ function snapshotLabel(scene, index, times) {
 module.exports = {
   evaluateBody,
   evaluateAll,
+  motionReadouts,
   totalDuration,
   totalSteps,
   timeAtStep,
