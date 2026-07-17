@@ -203,27 +203,40 @@ export class VizController {
     this.callbacks.onFrame?.(t, this.state);
   }
 
+  private shouldRun(): boolean {
+    return !this.disposed && this.state.playing && this.visible && this.inViewport;
+  }
+
   private frame = (nowMs: number) => {
     this.rafId = null;
-    if (this.disposed || !this.state.playing) return;
+    if (!this.shouldRun()) {
+      this.lastFrameMs = null;
+      return;
+    }
     const elapsed = this.lastFrameMs == null ? 0 : nowMs - this.lastFrameMs;
     this.lastFrameMs = nowMs;
     playback.tick(this.scene, this.state, elapsed);
     this.drawCurrent();
-    this.syncLoop();
+    if (this.shouldRun() && this.rafId == null) {
+      this.rafId = requestAnimationFrame(this.frame);
+    } else {
+      this.lastFrameMs = null;
+    }
   };
 
   // Single RAF ownership: at most one pending frame; paused, hidden-tab and
-  // offscreen states schedule nothing at all.
+  // offscreen states schedule nothing at all. lastFrameMs resets only on a
+  // stop→run transition so in-loop frames measure real elapsed time.
   private syncLoop(): void {
-    const shouldRun = !this.disposed && this.state.playing && this.visible && this.inViewport;
-    if (shouldRun && this.rafId == null) {
+    const run = this.shouldRun();
+    if (run && this.rafId == null) {
       this.lastFrameMs = null;
       this.rafId = requestAnimationFrame(this.frame);
     }
-    if (!shouldRun && this.rafId != null) {
+    if (!run && this.rafId != null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;
+      this.lastFrameMs = null;
     }
   }
 

@@ -310,6 +310,13 @@ export default function VisualizationSection({ scene: rawScene }: { scene: any }
   const [importedScene, setImportedScene] = useState<any | null>(null);
   const reducedMotion = usePrefersReducedMotion();
 
+  // A new solve delivers a new scene object: drop imported/opened state so a
+  // previous problem's scene (or an imported one) can never linger.
+  useEffect(() => {
+    setOpened(false);
+    setImportedScene(null);
+  }, [rawScene]);
+
   const validation = useMemo(() => (rawScene == null ? null : validateScene(rawScene)), [rawScene]);
   if (rawScene == null) return null;
 
