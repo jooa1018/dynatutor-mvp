@@ -1,9 +1,20 @@
 import math
 
-from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
+from engine.models import (
+    Answer, AnswerItem, CanonicalProblem, EquationEvidence, SolverResult,
+    StepCard, SubstitutionEvidence, VerificationReport,
+)
 from engine.physics_core.units import magnitude_si
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.verification.checks import require_no_missing, merge_reports
+from engine.solvers.explanation_evidence import (
+    OutputSpec,
+    attach_evidence,
+    calculation_frame,
+    gravity_fact,
+    known_fact,
+    semantic_fact,
+)
 
 
 class VerticalCircleSolver(BaseSolver):
@@ -160,7 +171,7 @@ class VerticalCircleSolver(BaseSolver):
                 "장력이 0 이상이므로 현재 줄 구속과 양립합니다.",
             ],
         )
-        return SolverResult(
+        result = SolverResult(
             ok=True,
             answer=Answer(
                 symbolic=formula,
@@ -181,4 +192,60 @@ class VerticalCircleSolver(BaseSolver):
             steps=steps,
             verification=merge_reports(pre, ver),
             used_equations=[formula],
+        )
+        if (
+            c.knowns["m"].unit != "kg"
+            or c.knowns["R"].unit != "m"
+            or c.knowns["v"].unit != "m/s"
+            or (
+                "g" in c.knowns
+                and c.knowns["g"].unit not in {"m/s^2", "m/s²"}
+            )
+        ):
+            return result
+        gravity = gravity_fact(c)
+        subtype = semantic_fact(c, "subtype")
+        explicit = [
+            known_fact(c, "m"), known_fact(c, "R"), known_fact(c, "v"), subtype,
+        ]
+        assumptions = []
+        if gravity.classification == "assumed":
+            assumptions.append(gravity)
+        else:
+            explicit.append(gravity)
+        fact_ids = tuple(fact.fact_id for fact in (*explicit, *assumptions))
+        sign = "-" if c.subtype == "top" else "+"
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=calculation_frame(
+                "vertical-circle.path-frame", "path_tangent_normal",
+                ("t", "n"), ("tangential_positive", "normal_inward"),
+                ("m", "m"),
+            ),
+            explicit_facts=explicit,
+            assumptions=assumptions,
+            equations=(
+                EquationEvidence(
+                    "vertical-circle.tension",
+                    f"T = m v^2 / R {sign} m g",
+                    "solver_equation", "newton_second_law",
+                    fact_ids=fact_ids, output_ids=("tension",),
+                ),
+            ),
+            substitutions=(
+                SubstitutionEvidence(
+                    "vertical-circle.tension.values",
+                    "vertical-circle.tension",
+                    f"T = {mass} * {v}^2 / {R} {sign} {mass} * {g} = {result.answers[0].numeric} N",
+                    "tension", fact_ids=fact_ids,
+                ),
+            ),
+            outputs=(
+                OutputSpec(
+                    "tension", 0, "tension", "tension",
+                    ("vertical-circle.tension",),
+                    ("vertical-circle.tension.values",),
+                ),
+            ),
         )

@@ -96,6 +96,7 @@ _ALLOWLISTED_ASSUMPTION_KEYS = {
 }
 _SEMANTIC_ENUM_VALUES = {
     "body_shape": {
+        "block", "cylinder", "particle", "rod", "sphere",
         "solid_sphere", "hollow_sphere", "solid_cylinder", "disk", "hoop", "ring",
     },
     "displacement_direction": {
@@ -150,7 +151,7 @@ _ASSUMPTION_ENUM_VALUES = {
     "deformation": {"ignored", "included", "rigid"},
     "energy_loss": {"none"},
     "external_forcing": {"absent"},
-    "friction_regime": {"limiting_static", "none"},
+    "friction_regime": {"kinetic", "limiting_static", "none"},
     "gravity_uniform": {"uniform"},
     "ideal_constraint": {"enforced", "ideal"},
     "motion_model": {"one_degree_of_freedom", "planar_polar", "uniform_circular"},
@@ -687,6 +688,11 @@ def _canonical_fact_inventory(
 
     for key in sorted(getattr(canonical, "knowns", {}) or {}):
         quantity = canonical.knowns[key]
+        if key == "g" and getattr(quantity, "provenance_hint", None) == "domain_default":
+            # The extractor's domain default is an assumption, not an explicit
+            # student fact.  A migrated solver must redeclare the exact typed
+            # 9.81 m/s^2 contract before it can be used.
+            continue
         value = getattr(quantity, "value", None)
         unit = getattr(quantity, "unit", None)
         if (

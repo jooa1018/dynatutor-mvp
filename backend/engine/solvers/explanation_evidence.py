@@ -98,7 +98,14 @@ def assumption_fact(
 
 
 def gravity_fact(canonical: CanonicalProblem) -> SemanticFactEvidence:
-    if "g" in canonical.knowns and canonical.knowns["g"].value is not None:
+    quantity = canonical.knowns.get("g")
+    if quantity is not None and quantity.value is not None:
+        if quantity.provenance_hint == "domain_default":
+            # Preserve the exact default payload so the strict builder, rather
+            # than this copying helper, rejects forged values/units fail-closed.
+            return assumption_fact(
+                "gravity_acceleration", quantity.value, unit=quantity.unit
+            )
         return known_fact(canonical, "g")
     return assumption_fact("gravity_acceleration", 9.81, unit="m/s^2")
 

@@ -38,10 +38,15 @@ def _gravity_parts(c: CanonicalProblem):
     fact = gravity_fact(c)
     value = (
         magnitude_si(c.knowns["g"], "m/s^2")
-        if fact.fact_id == "known:g"
+        if "g" in c.knowns and c.knowns["g"].value is not None
         else 9.81
     )
     return fact, value
+
+
+def _gravity_unit_supported(c: CanonicalProblem) -> bool:
+    quantity = c.knowns.get("g")
+    return quantity is None or quantity.unit in {"m/s^2", "m/s²"}
 
 
 
@@ -108,6 +113,8 @@ class InclineNoFrictionSolver(BaseSolver):
             selection_decision=generated.decision,
             coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
         )
+        if c.knowns["theta"].unit != "deg" or not _gravity_unit_supported(c):
+            return result
         gravity, gravity_value = _gravity_parts(c)
         subtype = semantic_fact(c, "subtype")
         theta = known_fact(c, "theta")
@@ -235,24 +242,35 @@ class InclineWithFrictionSolver(BaseSolver):
             coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
         )
         mu_key = "mu" if "mu" in c.knowns else "mu_k" if "mu_k" in c.knowns else None
-        if mu_key is None:
+        if (
+            mu_key is None
+            or c.friction_type != "kinetic"
+            or c.displacement_direction != "down_slope"
+            or a_val < 0.0
+            or c.knowns["theta"].unit != "deg"
+            or not _gravity_unit_supported(c)
+        ):
             return result
         gravity, gravity_value = _gravity_parts(c)
         subtype = semantic_fact(c, "subtype")
+        friction_type = semantic_fact(c, "friction_type")
+        direction = semantic_fact(c, "displacement_direction")
         theta = known_fact(c, "theta")
         friction = known_fact(c, mu_key)
         particle = assumption_fact("particle_model", "point_mass")
+        kinetic = assumption_fact("friction_regime", "kinetic")
         fact_ids = (
-            subtype.fact_id, theta.fact_id, friction.fact_id,
-            gravity.fact_id, particle.fact_id,
+            subtype.fact_id, friction_type.fact_id, direction.fact_id,
+            theta.fact_id, friction.fact_id, gravity.fact_id,
+            particle.fact_id, kinetic.fact_id,
         )
         selected = generated.decision.selected_candidate
         return attach_evidence(
             result,
             solver_name=self.name,
             coordinate_frame=_incline_frame(self.name),
-            explicit_facts=(subtype, theta, friction) + (() if gravity.classification == "assumed" else (gravity,)),
-            assumptions=(particle,) + ((gravity,) if gravity.classification == "assumed" else ()),
+            explicit_facts=(subtype, friction_type, direction, theta, friction) + (() if gravity.classification == "assumed" else (gravity,)),
+            assumptions=(particle, kinetic) + ((gravity,) if gravity.classification == "assumed" else ()),
             equations=(
                 EquationEvidence(
                     "incline-with-friction.acceleration",

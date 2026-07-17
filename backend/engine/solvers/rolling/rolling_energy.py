@@ -121,9 +121,19 @@ class PureRollingEnergySolver(BaseSolver):
             fbd=["중력 mg", "수직항력 N", "정지마찰력 f_s"],
             coordinate_guide=["질량중심 병진 + 질량중심 기준 회전"],
         )
-        if "h" not in c.knowns:
+        if (
+            "h" not in c.knowns
+            or c.knowns["h"].unit != "m"
+            or len(typed_answers) != 1
+            or (
+                "g" in c.knowns
+                and c.knowns["g"].unit not in {"m/s^2", "m/s²"}
+            )
+        ):
             return result
         if "v0" in c.knowns:
+            if c.knowns["v0"].unit != "m/s":
+                return result
             initial = known_fact(c, "v0")
         elif (c.flags or {}).get("starts_from_rest") is True:
             initial = flag_fact(c, "starts_from_rest")
@@ -136,7 +146,7 @@ class PureRollingEnergySolver(BaseSolver):
         gravity = gravity_fact(c)
         gravity_value = (
             magnitude_si(c.knowns["g"], "m/s^2")
-            if gravity.fact_id == "known:g"
+            if "g" in c.knowns and c.knowns["g"].value is not None
             else 9.81
         )
         height = known_fact(c, "h")
@@ -198,47 +208,6 @@ class PureRollingEnergySolver(BaseSolver):
                 ("rolling.energy-speed.values",),
             )
         ]
-        if len(typed_answers) == 2:
-            radius_key = next(
-                (
-                    key for key in ("R", "r")
-                    if key in c.knowns
-                    and magnitude_si(c.knowns[key], "m") == radius
-                ),
-                None,
-            )
-            if radius_key is None:
-                return result
-            radius_fact = known_fact(c, radius_key)
-            explicit.append(radius_fact)
-            equations.append(
-                EquationEvidence(
-                    "rolling.no-slip-angular-speed",
-                    "omega = v / R",
-                    "solver_equation",
-                    "constraint",
-                    fact_ids=(radius_fact.fact_id, no_slip.fact_id),
-                    input_output_ids=("final_velocity",),
-                    output_ids=("angular_velocity",),
-                )
-            )
-            substitutions.append(
-                SubstitutionEvidence(
-                    "rolling.no-slip-angular-speed.values",
-                    "rolling.no-slip-angular-speed",
-                    f"omega = {typed_answers[0].numeric} / {radius} = {typed_answers[1].numeric} rad/s",
-                    "angular_velocity",
-                    fact_ids=(radius_fact.fact_id, no_slip.fact_id),
-                    input_output_ids=("final_velocity",),
-                )
-            )
-            outputs.append(
-                OutputSpec(
-                    "angular_velocity", 1, "angular_velocity", "angular_velocity",
-                    ("rolling.no-slip-angular-speed",),
-                    ("rolling.no-slip-angular-speed.values",),
-                )
-            )
         return attach_evidence(
             result,
             solver_name=self.name,

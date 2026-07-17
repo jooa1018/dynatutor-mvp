@@ -7,10 +7,12 @@ on:
       - "backend/engine/explanation.py"
       - "backend/engine/explanation_trace.py"
       - "backend/engine/services.py"
+      - "backend/engine/solvers/**"
       - "backend/app/schemas/solution.py"
       - "backend/tests/test_phase42_baseline_contracts.py"
       - "backend/tests/test_phase52_pipeline_trace.py"
       - "backend/tests/test_phase53_explanation_*.py"
+      - "backend/tests/test_phase53_solver_coverage.py"
       - "backend/tests/contracts/phase42_api_schema_contract.json"
       - ".github/workflows/phase53-quality.yml"
   push:
@@ -21,10 +23,12 @@ on:
       - "backend/engine/explanation.py"
       - "backend/engine/explanation_trace.py"
       - "backend/engine/services.py"
+      - "backend/engine/solvers/**"
       - "backend/app/schemas/solution.py"
       - "backend/tests/test_phase42_baseline_contracts.py"
       - "backend/tests/test_phase52_pipeline_trace.py"
       - "backend/tests/test_phase53_explanation_*.py"
+      - "backend/tests/test_phase53_solver_coverage.py"
       - "backend/tests/contracts/phase42_api_schema_contract.json"
       - ".github/workflows/phase53-quality.yml"
   workflow_dispatch:
@@ -64,6 +68,13 @@ jobs:
           engine/explanation.py
           engine/explanation_trace.py
           engine/services.py
+          engine/solvers/explanation_evidence.py
+          engine/solvers/incline.py
+          engine/solvers/rolling/rolling_energy.py
+          engine/solvers/vertical_circle.py
+          engine/solvers/energy_vibration.py
+          engine/solvers/curves.py
+          engine/solvers/advanced_motion.py
           app/schemas/solution.py
 
       - name: Run provenance and compatibility tests
@@ -73,3 +84,4 @@ jobs:
           tests/test_phase52_pipeline_trace.py
           tests/test_phase53_explanation_trace.py
           tests/test_phase53_explanation_adversarial.py
+          tests/test_phase53_solver_coverage.py

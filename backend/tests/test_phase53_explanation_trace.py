@@ -1104,7 +1104,7 @@ def test_service_serialization_scrubs_actual_clarify_and_unsupported_responses(
     ],
     ids=("incline", "rolling"),
 )
-def test_real_successful_unmigrated_solver_keeps_legacy_product_projection(
+def test_real_successful_migrated_solver_keeps_legacy_product_projection(
     problem_text, expected_solver, expected_equation
 ):
     response = services.solve_problem(problem_text)
@@ -1112,7 +1112,8 @@ def test_real_successful_unmigrated_solver_keeps_legacy_product_projection(
     assert response.ok is True
     assert response.diagnosis.selected_solver == expected_solver
     assert response.answer is not None
-    assert response.explanation_trace is None
+    assert response.explanation_trace is not None
+    assert response.explanation_trace.status == "fully_grounded"
     assert response.steps
     assert response.equation_sheet
     assert response.physical_model is not None

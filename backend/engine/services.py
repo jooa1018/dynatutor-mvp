@@ -414,7 +414,12 @@ def _finalize_public_explanation(
                 ),
             )
         )
-    project_explanation_from_trace(response)
+    # A successful migration is additive: ExplanationTrace carries the new
+    # deterministic student projection, while every pre-Phase53 /solve field
+    # remains byte-for-byte compatible.  Terminal responses keep the existing
+    # neutral projection so ambiguous/unsupported physics cannot leak as fact.
+    if response.ok is not True:
+        project_explanation_from_trace(response)
 
 
 def solve_problem(
