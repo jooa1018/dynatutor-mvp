@@ -471,6 +471,21 @@ def test_normal_solver_request_has_closed_deterministic_trace(monkeypatch, solve
 
 
 @pytest.mark.unit
+def test_actual_extractor_spring_energy_request_is_fully_grounded():
+    response = services.solve_problem(
+        "k=200 N/m 스프링을 0.1 m 압축했다. 탄성에너지를 구하라."
+    )
+
+    assert response.ok is True
+    assert response.diagnosis.selected_solver == "spring_energy_speed"
+    assert response.explanation_trace is not None
+    assert response.explanation_trace.status == "fully_grounded"
+    assert [item.output_key for item in response.explanation_trace.answer_derivation] == [
+        "elastic_energy"
+    ]
+
+
+@pytest.mark.unit
 def test_default_and_explicit_gravity_are_mutually_exclusive(monkeypatch):
     default_response = _solve(monkeypatch, _canonical("flat_curve_friction"))
     explicit = _canonical("flat_curve_friction")

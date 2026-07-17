@@ -171,7 +171,9 @@ class SpringEnergySpeedSolver(BaseSolver):
         kq = c.knowns.get("k")
         xq = c.knowns.get("x") or c.knowns.get("A")
         mq = c.knowns.get("m")
-        typed_requested = set(c.requested_outputs or []) | set(c.unknowns or [])
+        typed_requested = set(c.requested_outputs or [])
+        if not typed_requested:
+            typed_requested = set(c.unknowns or []) - {"auto"}
         requested = set(c.requested_outputs or c.unknowns or [])
         explicit_energy_only = typed_requested == {"elastic_energy"}
         wants_energy = "elastic_energy" in requested or (
