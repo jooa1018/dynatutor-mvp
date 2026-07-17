@@ -234,9 +234,9 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         ],
         events=[],
         camera=camera,
-        # A finite number of complete cycles ends cleanly instead of wrapping
-        # from an arbitrary phase back to t=0.
-        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=duration, loop=False),
+        # Loop only after a complete number of oscillation cycles, so the
+        # wrap returns to the same phase instead of jumping from an arbitrary pose.
+        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=duration, loop=True),
         answer_overlay=overlay,
         scene_description=(
             "벽에 연결된 스프링-질량계가 평형 위치를 중심으로 단순 조화 진동하는 장면입니다. "
