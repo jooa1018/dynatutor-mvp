@@ -722,6 +722,11 @@ def _solve_problem_impl(
 
     # 유일한 강등 지점: verification.errors 를 보고 ok/passed/unsupported_reason 을 결정.
     apply_result_gate(response)
+    if response.ok is True:
+        # Build the established product projection first for every successful
+        # solver.  Structured evidence is an additive optional field and must
+        # not change steps, summaries, diagnosis, FBD, or physical_model.
+        project_legacy_explanation(response, all_steps)
     _finalize_public_explanation(
         response,
         canonical=canonical,

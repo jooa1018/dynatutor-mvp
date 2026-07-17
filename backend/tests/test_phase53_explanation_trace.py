@@ -1115,7 +1115,6 @@ def test_real_successful_migrated_solver_keeps_legacy_product_projection(
     assert response.answer is not None
     assert response.explanation_trace is not None
     assert response.explanation_trace.status == "fully_grounded"
-    assert response.steps == []
     assert response.equation_sheet
     assert response.physical_model is not None
     assert response.diagnosis.physical_model is not None
