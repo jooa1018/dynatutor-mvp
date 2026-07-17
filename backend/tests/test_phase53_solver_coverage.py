@@ -33,6 +33,8 @@ def _canonical(case: str) -> CanonicalProblem:
         return CanonicalProblem(
             system_type="particle_on_incline",
             subtype="no_friction",
+            surface_type="incline",
+            displacement_direction="down_slope",
             knowns={
                 "m": _q("m", 5, "kg"),
                 "theta": _q("theta", 30, "deg"),
@@ -48,11 +50,13 @@ def _canonical(case: str) -> CanonicalProblem:
         return CanonicalProblem(
             system_type="particle_on_incline",
             subtype="with_friction",
+            surface_type="incline",
             friction_type="kinetic",
             displacement_direction="down_slope",
             knowns={
                 "theta": _q("theta", 30, "deg"),
                 "mu": _q("mu", 0.2, None),
+                "m": _q("m", 5, "kg"),
                 "g": _default_g(),
             },
             unknowns=["acceleration"],
@@ -65,6 +69,7 @@ def _canonical(case: str) -> CanonicalProblem:
         return CanonicalProblem(
             system_type="pure_rolling_energy",
             subtype="rolling_on_incline",
+            surface_type="incline",
             body_shape="disk",
             knowns={"h": _q("h", 1.5, "m"), "g": _default_g()},
             unknowns=["final_velocity"],

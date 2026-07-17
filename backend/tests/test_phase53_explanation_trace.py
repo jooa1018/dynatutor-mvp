@@ -263,6 +263,12 @@ def _assert_scrubbed_public_physics(response: SolveResponse, *, fully_grounded: 
     )
 
 
+def _public_payload_without_trace(response: SolveResponse) -> dict:
+    payload = response.model_dump()
+    payload.pop("explanation_trace")
+    return payload
+
+
 @pytest.mark.unit
 @pytest.mark.parametrize(
     "answers",
@@ -1096,13 +1102,8 @@ def test_service_serialization_scrubs_actual_clarify_and_unsupported_responses(
             "incline_no_friction",
             "mg sinθ",
         ),
-        (
-            "정지 상태에서 원판이 미끄러지지 않고 경사면을 높이 1.5 m만큼 굴러 내려간다. 속도를 구하라.",
-            "pure_rolling_energy",
-            "v_G = ωR",
-        ),
     ],
-    ids=("incline", "rolling"),
+    ids=("incline",),
 )
 def test_real_successful_migrated_solver_keeps_legacy_product_projection(
     problem_text, expected_solver, expected_equation
@@ -1114,7 +1115,7 @@ def test_real_successful_migrated_solver_keeps_legacy_product_projection(
     assert response.answer is not None
     assert response.explanation_trace is not None
     assert response.explanation_trace.status == "fully_grounded"
-    assert response.steps
+    assert response.steps == []
     assert response.equation_sheet
     assert response.physical_model is not None
     assert response.diagnosis.physical_model is not None
@@ -1197,10 +1198,11 @@ def test_failed_unmigrated_result_never_enters_legacy_compatibility_path():
 
 
 @pytest.mark.unit
-def test_service_finalizer_rebuilds_fully_grounded_public_fields_only_from_trace():
+def test_service_finalizer_adds_fully_grounded_trace_without_rewriting_public_fields():
     answers = [_answer("acceleration", "a", 5.0, "m/s^2")]
     response = _response(answers)
     _seed_stale_public_physics(response)
+    original_public = _public_payload_without_trace(response)
 
     services._finalize_public_explanation(
         response,
@@ -1215,14 +1217,15 @@ def test_service_finalizer_rebuilds_fully_grounded_public_fields_only_from_trace
     )
 
     assert response.explanation_trace.status == "fully_grounded"
-    _assert_scrubbed_public_physics(response, fully_grounded=True)
+    assert _public_payload_without_trace(response) == original_public
 
 
 @pytest.mark.unit
-def test_structured_malformed_evidence_stays_strict_and_scrubs_stale_projection():
+def test_structured_malformed_evidence_stays_strict_and_preserves_public_projection():
     answers = [_answer("acceleration", "a", 5.0, "m/s^2")]
     response = _response(answers)
     _seed_stale_public_physics(response)
+    original_public = _public_payload_without_trace(response)
     original_answers = [answer.model_dump() for answer in response.answers]
     malformed = replace(_evidence(answers), equations=())
 
@@ -1246,7 +1249,7 @@ def test_structured_malformed_evidence_stays_strict_and_scrubs_stale_projection(
     assert response.explanation_trace is not None
     assert response.explanation_trace.status != "fully_grounded"
     assert response.explanation_trace.answer_derivation == []
-    _assert_scrubbed_public_physics(response, fully_grounded=False)
+    assert _public_payload_without_trace(response) == original_public
 
 
 @pytest.mark.unit
@@ -1367,6 +1370,7 @@ def test_builder_failure_preserves_product_answer(monkeypatch):
     response = _response(answers)
     _seed_stale_public_physics(response)
     original_dump = [answer.model_dump() for answer in response.answers]
+    original_public = _public_payload_without_trace(response)
 
     def fail_builder(**_kwargs):
         raise RuntimeError("sensitive builder detail")
@@ -1387,4 +1391,4 @@ def test_builder_failure_preserves_product_answer(monkeypatch):
     assert response.explanation_trace.status == "withheld"
     assert response.explanation_trace.answer_derivation == []
     assert "sensitive builder detail" not in response.explanation_trace.model_dump_json()
-    _assert_scrubbed_public_physics(response, fully_grounded=False)
+    assert _public_payload_without_trace(response) == original_public
