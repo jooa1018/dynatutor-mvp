@@ -13,7 +13,9 @@
   "notes": [
     "One entry corresponds to one SolverRegistry solver; particle_on_incline therefore has separate subtype entries.",
     "numeric_support means the current student-answer numeric path, not independent SciPy/PyDy simulation.",
-    "Chrono manual_required_hook is not a successful numerical simulation."
+    "Phase 51 PyChrono evidence is optional, offline-only, and never replaces the student-answer path.",
+    "Phase 48 structured invariant validators are selected by analytic_solver and record explicit applicability.",
+    "Only solver IDs listed in solver_path_roles.*.external_validation_path have automated Phase 51 PyChrono coverage."
   ],
   "capabilities": [
     {
@@ -101,7 +103,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -113,9 +116,10 @@
         "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback (Rapier2D 프론트엔드 재생). backend post-gate 가속도를 닫힌형으로 재생하며 Rapier가 값을 결정하지 않는다.",
+        "scene_type": "incline_block"
       },
       "known_limitations": [
         "One-dimensional along-slope model; no contact-loss or finite-length integration."
@@ -156,7 +160,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -164,14 +170,17 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "incline_friction",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.incline_friction",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. solver evidence guard와 동일하게 명시적 운동마찰(kinetic)과 typed 운동 방향(displacement_direction=down_slope)이 모두 있어야 장면을 만들며, static/모호 μ/방향 미확정 branch는 unavailable로 처리한다(현 NL extractor 경로에서는 항상 unavailable). backend post-gate 가속도를 재생하며 Rapier가 값을 결정하지 않는다.",
+        "scene_type": "incline_block"
       },
       "known_limitations": [
         "Requires friction state/coefficients; transition after static failure may require direction and mu_k."
@@ -205,7 +214,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -268,7 +279,10 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -323,7 +337,10 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -385,7 +402,10 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "string_constraint",
+        "tension_slack",
+        "pulley_no_slip"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -393,9 +413,11 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "massive_pulley",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.massive_pulley",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
         "status": "static_svg_fbd_only",
@@ -455,7 +477,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "pure_rolling",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -463,14 +487,17 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "rolling_sphere_or_disk",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.rolling",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. backend 최종 속도 endpoint에 맞춰 재생한다. 반지름 미제시(또는 표시 범위 밖) 시 회전은 화면 표시용으로만 그린다. 반지름이 명시된 문제는 현 라우팅에서 rolling_energy_general로 이동하므로 장면은 unavailable이다.",
+        "scene_type": "pure_rolling"
       },
       "known_limitations": [
         "Uses an inertia-factor table; no slip transition, required friction, or trajectory."
@@ -527,7 +554,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "pure_rolling",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -535,9 +564,8 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
-        "case": "rolling_general",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "status": "none",
+        "notes": "Phase 51 validates explicit solid-sphere and solid-disk scenes only; arbitrary supplied inertia remains unsupported by PyChrono."
       },
       "visualization_support": {
         "status": "static_svg_fbd_only",
@@ -593,7 +621,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "tension_slack"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -650,7 +680,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "collision_momentum",
+        "collision_restitution"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -658,14 +690,17 @@
         "notes": "현재 학생 경로의 폐쇄형/기호 계산만 지원하며 SciPy/PyDy trajectory 검증은 없다."
       },
       "chrono_support": {
-        "status": "manual_required_hook",
+        "status": "automated_optional",
         "case": "collision_restitution",
-        "notes": "analytic harness는 있으나 PyChrono가 있어도 현재 구현은 manual_required를 반환한다."
+        "external_validation_path": "phase51.pychrono.collision_restitution",
+        "report_version": "phase51-pychrono-report-v1",
+        "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. 충돌 전 typed 조건과 backend 충돌 후 속도로 timeline을 만들며 Rapier 접촉 해석을 쓰지 않는다.",
+        "scene_type": "collision_1d"
       },
       "known_limitations": [
         "No oblique impact, spin, finite contact duration, or real contact simulation."
@@ -939,7 +974,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1063,7 +1100,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "work_energy"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1121,9 +1159,10 @@
         "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. backend post-gate 진동 답(ω/T/f)을 재생하며 진폭이 없으면 시각화 전용 진폭으로 표시한다.",
+        "scene_type": "mass_spring"
       },
       "known_limitations": [
         "No damping/forcing/nonlinearity; requested_outputs currently does not encode period/frequency."
@@ -1214,7 +1253,9 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal",
+        "friction_regime"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1261,7 +1302,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "contact_normal"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1421,7 +1463,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "rigid_relative_acceleration"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1654,7 +1697,8 @@
         "dimension",
         "plausibility",
         "provenance",
-        "equation_residual"
+        "equation_residual",
+        "rigid_relative_velocity"
       ],
       "numeric_support": {
         "analytic_numeric": true,
@@ -1675,5 +1719,75 @@
       ]
     }
   ],
-  "source_ref": "codex/fix-physics-audit"
+  "source_ref": "codex/fix-physics-audit",
+  "verification_policy_version": "phase48-tolerance-policy-v1",
+  "solver_path_roles": {
+    "incline": {
+      "student_answer_path": [
+        "incline_no_friction",
+        "incline_with_friction"
+      ],
+      "secondary_analytic_path": "phase49.secondary.incline",
+      "numeric_validation_path": null,
+      "external_validation_path": {
+        "incline_with_friction": "phase51.pychrono.incline_friction"
+      },
+      "fallback_path": null
+    },
+    "pulley": {
+      "student_answer_path": [
+        "pulley_atwood",
+        "pulley_table_hanging",
+        "pulley_incline_hanging",
+        "massive_pulley_atwood"
+      ],
+      "secondary_analytic_path": "phase49.secondary.pulley",
+      "numeric_validation_path": null,
+      "external_validation_path": {
+        "massive_pulley_atwood": "phase51.pychrono.massive_pulley"
+      },
+      "fallback_path": null
+    },
+    "collision": {
+      "student_answer_path": [
+        "collision_1d"
+      ],
+      "secondary_analytic_path": "phase49.secondary.collision",
+      "numeric_validation_path": null,
+      "external_validation_path": {
+        "collision_1d": "phase51.pychrono.collision_restitution"
+      },
+      "fallback_path": null
+    },
+    "rolling": {
+      "student_answer_path": [
+        "pure_rolling_energy",
+        "rolling_energy_general"
+      ],
+      "secondary_analytic_path": "phase49.secondary.rolling",
+      "numeric_validation_path": null,
+      "external_validation_path": {
+        "pure_rolling_energy": "phase51.pychrono.rolling"
+      },
+      "fallback_path": null
+    },
+    "work_energy": {
+      "student_answer_path": [
+        "work_energy_speed"
+      ],
+      "secondary_analytic_path": "phase49.secondary.work_energy",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    },
+    "fixed_axis_rotation": {
+      "student_answer_path": [
+        "fixed_axis_rotation"
+      ],
+      "secondary_analytic_path": "phase49.secondary.fixed_axis_rotation",
+      "numeric_validation_path": null,
+      "external_validation_path": null,
+      "fallback_path": null
+    }
+  }
 }

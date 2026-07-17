@@ -31,7 +31,7 @@ class MassivePulleyAtwoodSolver(BaseSolver):
         model = model or build_physical_model(c)
         generated = solve_particle_newton_system(c, model)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors))
+            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors), selection_decision=generated.decision)
         sol = generated.solution
         a_val = float(sol[S.a])
         T1 = float(sol[S.T1])
@@ -64,5 +64,6 @@ class MassivePulleyAtwoodSolver(BaseSolver):
             verification=merge_reports(pre, verification),
             used_equations=["T1 - m1g = m1a", "m2g - T2 = m2a", "(T2-T1)R = I(a/R)"],
             fbd=["m1: T1, m1g", "m2: T2, m2g", "도르래: (T2-T1)R"],
+            selection_decision=generated.decision,
             coordinate_guide=["m2 아래쪽을 + 방향으로 가정"],
         )

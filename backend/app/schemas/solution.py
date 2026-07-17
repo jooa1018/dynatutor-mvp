@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
+
+from app.schemas.visualization_scene import VisualizationSceneModel
 
 
 class QuantityModel(BaseModel):
@@ -97,6 +99,7 @@ class AnswerModel(BaseModel):
     numeric: float | None = None
     unit: str | None = None
     display: str | None = None
+    output_key: str | None = None
 
 
 class AnswerItemModel(BaseModel):
@@ -109,12 +112,75 @@ class AnswerItemModel(BaseModel):
     output_key: str | None = None
 
 
+class VerificationCheckModel(BaseModel):
+    check_id: str
+    category: str
+    status: str
+    applicability: str
+    observed: Any = None
+    expected: Any = None
+    absolute_error: float | None = None
+    relative_error: float | None = None
+    tolerance: float | None = None
+    message: str
+    evidence: list[str] = Field(default_factory=list)
+    source_equation_ids: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class VerificationReport(BaseModel):
     passed: bool
     dimension_summary: str | None = None
     checks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    structured_checks: list[VerificationCheckModel] = Field(default_factory=list)
+    policy_version: str | None = None
+
+
+class CandidateValidationCheckModel(BaseModel):
+    check_id: str
+    category: str
+    status: str
+    message: str
+    observed: Any = None
+    expected: Any = None
+    absolute_error: float | None = None
+    relative_error: float | None = None
+    tolerance: float | None = None
+    evidence: list[str] = Field(default_factory=list)
+    source_equation_ids: list[str] = Field(default_factory=list)
+
+
+class CandidateSolutionModel(BaseModel):
+    candidate_id: str
+    symbolic_mapping: dict[str, str] = Field(default_factory=dict)
+    numerical_mapping: dict[str, float | str] = Field(default_factory=dict)
+    unresolved_symbols: list[str] = Field(default_factory=list)
+    domain_conditions: list[str] = Field(default_factory=list)
+    branch_information: dict[str, Any] = Field(default_factory=dict)
+    approximation_method: str | None = None
+    initial_guess: dict[str, float | str] = Field(default_factory=dict)
+    validation_checks: list[CandidateValidationCheckModel] = Field(default_factory=list)
+    rejection_reasons: list[str] = Field(default_factory=list)
+    rank_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ValidatedCandidateModel(CandidateSolutionModel):
+    accepted: bool
+    checks: list[CandidateValidationCheckModel] = Field(default_factory=list)
+
+
+class SelectionDecisionModel(BaseModel):
+    status: str
+    selected_candidate: CandidateSolutionModel | None = None
+    valid_alternatives: list[CandidateSolutionModel] = Field(default_factory=list)
+    rejected_candidates: list[ValidatedCandidateModel] = Field(default_factory=list)
+    selection_policy: str
+    explanation: str
+    tolerances: dict[str, float] = Field(default_factory=dict)
+    policy_version: str
+    diagnostics: list[VerificationCheckModel] = Field(default_factory=list)
 
 
 class ClarificationInputFieldModel(BaseModel):
@@ -141,6 +207,107 @@ class ClarificationModel(BaseModel):
     options: list[ClarificationOptionModel] = Field(default_factory=list)
 
 
+class _FrozenTraceModel(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+
+class ExplanationCoordinateFrameModel(_FrozenTraceModel):
+    frame_id: str
+    coordinate_system: str
+    axes: list[str] = Field(default_factory=list)
+    positive_directions: list[str] = Field(default_factory=list)
+    units: list[str] = Field(default_factory=list)
+    source: str
+    status: str
+
+
+class ExplanationFactModel(_FrozenTraceModel):
+    fact_id: str
+    semantic_key: str
+    value: str | float | int | bool | None
+    unit: str | None = None
+    source: str
+    classification: str
+    status: str
+
+
+class ExplanationEquationModel(_FrozenTraceModel):
+    equation_id: str
+    expression: str
+    source: str
+    provenance: str
+    fact_ids: list[str] = Field(default_factory=list)
+    input_output_ids: list[str] = Field(default_factory=list)
+    output_ids: list[str] = Field(default_factory=list)
+
+
+class ExplanationSubstitutionModel(_FrozenTraceModel):
+    substitution_id: str
+    equation_id: str
+    expression: str
+    output_id: str
+    fact_ids: list[str] = Field(default_factory=list)
+    input_output_ids: list[str] = Field(default_factory=list)
+    source: str
+
+
+class ExplanationCandidateSummaryModel(_FrozenTraceModel):
+    status: str
+    selected_candidate_id: str | None = None
+    selection_policy: str | None = None
+    alternative_count: int = 0
+    rejected_count: int = 0
+    branch_fact_ids: list[str] = Field(default_factory=list)
+
+
+class ExplanationValidationSummaryModel(_FrozenTraceModel):
+    passed: bool
+    policy_version: str | None = None
+    check_count: int = 0
+    warning_count: int = 0
+    error_count: int = 0
+
+
+class ExplanationAnswerDerivationModel(_FrozenTraceModel):
+    output_id: str
+    output_key: str
+    label: str
+    symbol: str | None = None
+    role: str | None = None
+    numeric: float | int
+    unit: str | None = None
+    display: str
+    candidate_id: str
+    equation_ids: list[str] = Field(default_factory=list)
+    substitution_ids: list[str] = Field(default_factory=list)
+
+
+class ExplanationStudentStepModel(_FrozenTraceModel):
+    kind: str
+    title: str
+    body: str
+    math: str | None = None
+
+
+class ExplanationTraceModel(_FrozenTraceModel):
+    schema: str
+    version: str
+    status: str
+    selected_solver: str | None = None
+    route_reason: str | None = None
+    coordinate_frame: ExplanationCoordinateFrameModel | None = None
+    explicit_facts: list[ExplanationFactModel] = Field(default_factory=list)
+    assumptions: list[ExplanationFactModel] = Field(default_factory=list)
+    equation_ids: list[str] = Field(default_factory=list)
+    equations: list[ExplanationEquationModel] = Field(default_factory=list)
+    substitutions: list[ExplanationSubstitutionModel] = Field(default_factory=list)
+    candidate_summary: ExplanationCandidateSummaryModel
+    validation_summary: ExplanationValidationSummaryModel
+    answer_derivation: list[ExplanationAnswerDerivationModel] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    student_steps: list[ExplanationStudentStepModel] = Field(default_factory=list)
+
+
 class SolveResponse(BaseModel):
     ok: bool
     teacher_summary: list[str] = Field(default_factory=list)
@@ -157,6 +324,10 @@ class SolveResponse(BaseModel):
     clarification: ClarificationModel | None = None
     route_decision: RouteDecisionModel | None = None
     physical_model: dict[str, Any] | None = None
+    selection_decision: SelectionDecisionModel | None = None
+    explanation_trace: ExplanationTraceModel | None = None
+    # Phase 54: additive, optional, non-authoritative visualization scene.
+    visualization_scene: VisualizationSceneModel | None = None
 
 
 class FeedbackResponse(BaseModel):

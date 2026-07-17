@@ -10,7 +10,9 @@ from app.schemas.solution import (
     QuantityModel,
     RouteCandidateModel,
     RouteDecisionModel,
+    SelectionDecisionModel,
     SolveResponse,
+    ExplanationTraceModel,
     StepCard as StepCardSchema,
     VerificationReport as VerificationReportSchema,
 )
@@ -21,14 +23,25 @@ from engine.model_builder import build_physical_model, physical_model_step_cards
 from engine.solvers.registry import SolverRegistry
 from engine.tutor_cards import build_diagnosis_cards
 from engine.feedback import analyze_student_solution
-from engine.explanation import build_common_mistakes, build_concept_summary, build_equation_sheet, build_study_tips, build_teacher_summary
+from engine.explanation import project_explanation_from_trace, project_legacy_explanation
+from engine.explanation_trace import (
+    build_explanation_trace_payload,
+    neutral_explanation_trace_payload,
+)
 from engine.visualization.fbd import build_fbd_annotations, build_fbd_svg
+from engine.visualization.scene_builder import attach_visualization_scene
 from engine.physics_core.answer_validators import validate_solve_response
 from engine.verification.suite import verify_result
 from engine.verification.gate import apply_result_gate
 from engine.routing.clarify import ClarifyPatchError, apply_clarify_patch, build_clarification, validate_clarify_patch
 from engine.verification.checks import merge_reports
 from engine.verification.plausibility import check_knowns
+from engine.physics_core.validators import (
+    CandidateSolveBatch,
+    ValidationContext,
+    candidate_from_solver_result,
+    validate_output_candidates,
+)
 
 
 
@@ -90,8 +103,36 @@ def _answers_from_result(result):
         return [_answer_item_model(a) for a in result.answers]
     if result.answer:
         label = "최종 답"
-        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary", output_key=None)]
+        return [AnswerItemModel(label=label, symbol=None, numeric=result.answer.numeric, unit=result.answer.unit, display=result.answer.display or "", role="primary", output_key=getattr(result.answer, "output_key", None))]
     return []
+
+
+def _validate_delivered_result(result, *, solver_name, requested_outputs):
+    """Select one fresh response-projection candidate without touching raw physics."""
+
+    candidate_context = ValidationContext(
+        requested_outputs=list(requested_outputs or []),
+        selection_policy=f"{solver_name}:validated-delivery",
+    )
+    delivery_candidate = candidate_from_solver_result(
+        result,
+        candidate_id=f"delivery:{solver_name}:solve-response",
+        requested_outputs=requested_outputs,
+    )
+    return validate_output_candidates([delivery_candidate], candidate_context)
+
+
+def _reconcile_selection_authorities(result, solver_decision, output_decision):
+    """Preserve raw evidence while retaining the legacy public failure policy."""
+
+    raw_selection_decision = solver_decision or output_decision
+    if solver_decision is None or (
+        getattr(solver_decision, "status", None) == "selected"
+        and getattr(output_decision, "status", None) != "selected"
+    ):
+        result.selection_decision = output_decision
+    return raw_selection_decision
+
 
 def _quantity_model(q):
     return QuantityModel(symbol=q.symbol, value=q.value, unit=q.unit, source_text=q.source_text)
@@ -153,6 +194,25 @@ def _route_decision_model(decision):
         reason=decision.reason,
         warnings=decision.warnings,
     )
+
+
+def _selection_decision_model(decision):
+    if decision is None:
+        return None
+    return SelectionDecisionModel(**decision.to_dict())
+
+
+def _verification_report_model(report):
+    payload = dict(report.__dict__)
+    payload["structured_checks"] = [
+        (
+            check.to_dict()
+            if callable(getattr(check, "to_dict", None))
+            else dict(check)
+        )
+        for check in getattr(report, "structured_checks", [])
+    ]
+    return VerificationReportSchema(**payload)
 
 
 def _physical_model_payload(payload, decision):
@@ -252,21 +312,189 @@ def diagnose_problem(
     )
 
 
-def solve_problem(problem_text: str, student_solution: str | None = None, clarify_patch: dict | None = None, canonical_patch: dict | None = None) -> SolveResponse:
+class _NoopSolveTraceHooks:
+    """Zero-work hook used by the established product path."""
+
+    @property
+    def current_stage(self):
+        return None
+
+    @staticmethod
+    def _ignore(*args, **kwargs):
+        return None
+
+    def __getattr__(self, name):
+        return self._ignore
+
+
+class _FailOpenSolveTraceHooks:
+    """Prevent an observability failure from changing product behavior."""
+
+    def __init__(self, collector):
+        self._collector = collector
+
+    @property
+    def current_stage(self):
+        try:
+            return self._collector.current_stage
+        except Exception:
+            return None
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            try:
+                return getattr(self._collector, name)(*args, **kwargs)
+            except Exception:
+                return None
+
+        return call
+
+
+_NOOP_SOLVE_TRACE = _NoopSolveTraceHooks()
+
+
+def _solve_trace_status(response):
+    if response.ok:
+        warnings = getattr(getattr(response, "verification", None), "warnings", [])
+        return "passed_with_warning" if warnings else "passed"
+    if response.clarification is not None:
+        return "inconclusive"
+    if response.unsupported_reason:
+        return "unsupported"
+    return "error"
+
+
+def _finalize_public_explanation(
+    response,
+    *,
+    canonical,
+    physical_model,
+    result,
+    selected_solver,
+    route_decision,
+    legacy_steps=(),
+    delivery_decision=None,
+    raw_selection_decision=None,
+):
+    """Finalize strict evidence or preserve an unmigrated successful response."""
+
+    # Successful solvers migrate to Phase 53 only when they explicitly supply
+    # structured evidence.  Until then, keep the pre-Phase53 product response
+    # byte/field semantics and leave the additive trace absent.  Failed and
+    # gate-demoted responses must never enter this compatibility branch.
+    if response.ok is True and getattr(result, "explanation_evidence", None) is None:
+        project_legacy_explanation(response, legacy_steps)
+        return
+
+    route_reason = getattr(route_decision, "reason", None) or getattr(
+        response.diagnosis, "solver_reason", None
+    )
+    try:
+        payload = build_explanation_trace_payload(
+            response=response,
+            canonical=canonical,
+            physical_model=physical_model,
+            result=result,
+            selected_solver=selected_solver,
+            route_reason=route_reason,
+            route_decision=route_decision,
+            legacy_steps=legacy_steps,
+            delivery_decision=delivery_decision,
+            raw_selection_decision=raw_selection_decision,
+        )
+        response.explanation_trace = ExplanationTraceModel(**payload)
+    except Exception as exc:
+        # Explanation construction is deliberately fail-open for the product
+        # answer.  Exception messages are not copied into the public payload.
+        response.explanation_trace = ExplanationTraceModel(
+            **neutral_explanation_trace_payload(
+                selected_solver=selected_solver,
+                route_reason=route_reason,
+                warnings=(
+                    f"explanation trace builder failed ({type(exc).__name__}); product answer preserved",
+                ),
+            )
+        )
+    # A successful migration is additive: ExplanationTrace carries the new
+    # deterministic student projection, while every pre-Phase53 /solve field
+    # remains byte-for-byte compatible.  Terminal responses keep the existing
+    # neutral projection so ambiguous/unsupported physics cannot leak as fact.
+    if response.ok is not True:
+        project_explanation_from_trace(response)
+
+
+def solve_problem(
+    problem_text: str,
+    student_solution: str | None = None,
+    clarify_patch: dict | None = None,
+    canonical_patch: dict | None = None,
+    *,
+    trace_collector=None,
+) -> SolveResponse:
+    """Solve once, optionally observing the same intermediates with fail-open hooks.
+
+    The first four positional arguments and the returned response are the legacy
+    product contract. The None branch deliberately does not import or execute
+    observability hashing, clocks, or projections.
+    """
+
+    if trace_collector is None:
+        return _solve_problem_impl(
+            problem_text,
+            student_solution,
+            clarify_patch,
+            canonical_patch,
+            _NOOP_SOLVE_TRACE,
+        )
+
+    trace = _FailOpenSolveTraceHooks(trace_collector)
+    trace.begin()
+    trace.capture_input(problem_text, student_solution)
+    try:
+        response = _solve_problem_impl(
+            problem_text,
+            student_solution,
+            clarify_patch,
+            canonical_patch,
+            trace,
+        )
+    except Exception as exc:
+        trace.finalize_error(trace.current_stage or "parse", type(exc).__name__)
+        raise
+    trace.finalize(_solve_trace_status(response))
+    return response
+
+
+def _solve_problem_impl(
+    problem_text: str,
+    student_solution: str | None,
+    clarify_patch: dict | None,
+    canonical_patch: dict | None,
+    trace,
+) -> SolveResponse:
+    # Exclusive timing boundaries: parse=extract/patch; route=model/registry/
+    # diagnosis; solve=solver/candidate selection; verify=suite/serialization/gate.
+    trace.start_stage("parse")
     canonical = extract_problem(problem_text)
     if clarify_patch:
         # 되묻기 선택지 적용. 화이트리스트 밖 patch는 즉시 거절 (API 노출 지점).
         canonical = apply_clarify_patch(canonical, clarify_patch)
     if canonical_patch:
         canonical = apply_clarify_patch(canonical, canonical_patch)
+    trace.capture_canonical(canonical)
+    trace.finish_stage("parse")
+
+    trace.start_stage("route")
     # Phase 35: diagnosis는 반드시 patch가 반영된 canonical 기준으로 만든다.
     # (이전에는 patch 전 원문으로 진단해 selected_solver/physical_model이
     #  사용자가 선택한 해석과 어긋난 채 화면에 남았다.)
     # Phase 45 vertical slices share one typed/legacy model across diagnosis,
     # solving, StepCards, and response serialization.
     physical_model = build_physical_model(canonical)
+    trace.capture_models(physical_model)
     registry = SolverRegistry()
     route_decision = registry.route(canonical)
+    trace.capture_route(route_decision)
     diagnosis = diagnose_problem(
         problem_text,
         student_solution,
@@ -276,8 +504,19 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         route_decision=route_decision,
     )
     solver = registry.select(canonical, decision=route_decision)
+    # The raw solver selection and the final delivered-output selection are
+    # independent authorities.  Initialize the latter before every terminal
+    # branch so conflicts, domain errors, and no-solver responses cannot reuse a
+    # stale decision.
+    output_decision = None
+    raw_selection_decision = None
+    trace.finish_stage("route")
 
     if not solver:
+        trace.start_stage("solve")
+        trace.capture_solution_candidates(None, None)
+        trace.finish_stage("solve")
+        trace.start_stage("verify")
         verification = VerificationReportSchema(
             passed=False,
             warnings=[
@@ -315,7 +554,7 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
             diagnosis=diagnosis,
             answer=None,
             answers=[],
-            steps=_partial_guidance_steps(canonical),
+            steps=[],
             verification=verification,
             unsupported_reason=(
                 clar.question if clar is not None
@@ -329,13 +568,30 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
             route_decision=_route_decision_model(route_decision),
             physical_model=diagnosis.physical_model,
         )
-        response.teacher_summary = build_teacher_summary(response)
-        response.concept_summary = build_concept_summary(response)
-        response.common_mistakes = build_common_mistakes(response)
-        response.study_tips = build_study_tips(response)
-        response.equation_sheet = build_equation_sheet(response)
+        _finalize_public_explanation(
+            response,
+            canonical=canonical,
+            physical_model=physical_model,
+            result=None,
+            selected_solver=None,
+            route_decision=route_decision,
+            delivery_decision=output_decision,
+            raw_selection_decision=raw_selection_decision,
+        )
+        # Phase 54: additive scene projection; no-solver responses carry None.
+        attach_visualization_scene(
+            response,
+            canonical=canonical,
+            physical_model=physical_model,
+            selected_solver=None,
+        )
+        trace.capture_validation(response.verification)
+        trace.capture_response(response)
+        trace.finish_stage("verify")
         return response
 
+    trace.start_stage("solve")
+    batch = None
     conflicts = list(canonical.canonical_v2.conflicts) if canonical.canonical_v2 is not None else []
     domain_errors = [
         issue.message
@@ -358,14 +614,77 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
             unsupported_reason="입력값의 물리적 범위를 확인해 주세요.",
         )
     else:
-        result = (
-            solver.solve(canonical, physical_model)
-            if getattr(solver, "uses_prebuilt_physical_model", False)
-            else solver.solve(canonical)
+        if hasattr(solver, "solve_candidates"):
+            batch = (
+                solver.solve_candidates(canonical, physical_model)
+                if getattr(solver, "uses_prebuilt_physical_model", False)
+                else solver.solve_candidates(canonical)
+            )
+        else:
+            # Compatibility for injected/test solvers and third-party legacy
+            # adapters that implement only solve().
+            legacy_result = (
+                solver.solve(canonical, physical_model)
+                if getattr(solver, "uses_prebuilt_physical_model", False)
+                else solver.solve(canonical)
+            )
+            batch = CandidateSolveBatch(
+                result=legacy_result,
+                candidates=[
+                    candidate_from_solver_result(
+                        legacy_result,
+                        candidate_id=(
+                            f"{getattr(solver, 'name', 'legacy')}-candidate-0"
+                        ),
+                        requested_outputs=canonical.requested_outputs,
+                    )
+                ],
+            )
+        result = batch.result
+        solver_decision = result.selection_decision
+        # Exactly one validation call owns the delivered response contract.
+        # It receives a fresh candidate projected from SolverResult so it cannot
+        # mutate the solver's raw candidate batch or selection decision.
+        output_decision = _validate_delivered_result(
+            result,
+            solver_name=solver.name,
+            requested_outputs=canonical.requested_outputs,
         )
-        # Phase 30: 물리 검증 스위트 (차원 · 타당성 · 역대입 잔차).
-        # 검증 error는 '조용한 오답'이므로 ok=False로 강등한다.
-        suite_report = verify_result(canonical, result)
+        # Direct/legacy solvers have no separate raw selection authority.  Rich
+        # raw decisions stay public only when the delivered-output contract also
+        # selects; an output rejection retains the established public failure
+        # decision and diagnostics while raw evidence remains internal.
+        raw_selection_decision = _reconcile_selection_authorities(
+            result, solver_decision, output_decision
+        )
+        raw_status = getattr(result.selection_decision, "status", None)
+        delivery_status = getattr(output_decision, "status", None)
+        if result.ok and (
+            raw_status != "selected" or delivery_status != "selected"
+        ):
+            failed_status = (
+                raw_status if raw_status != "selected" else delivery_status
+            )
+            result.verification.errors.append(
+                "후보 해 선택을 확정하지 못했습니다: "
+                + str(failed_status)
+            )
+            result.unsupported_reason = (
+                "물리적으로 가능한 해가 여러 개입니다. 사건, 방향 또는 시간 구간을 더 지정해 주세요."
+                if failed_status == "ambiguous"
+                else "모든 후보 해가 명시된 물리 제약과 출력 계약을 통과하지 못했습니다."
+            )
+    trace.capture_solution_candidates(batch, result)
+    trace.finish_stage("solve")
+
+    trace.start_stage("verify")
+    # Phase 30/47: only a selected candidate proceeds to the established
+    # dimension, plausibility and governing-equation verification suite.
+    if (
+        getattr(result.selection_decision, "status", None) == "selected"
+        and getattr(output_decision, "status", None) == "selected"
+    ):
+        suite_report = verify_result(canonical, result, solver_id=solver.name)
         result.verification = merge_reports(result.verification, suite_report)
     # 강등은 아래 apply_result_gate 한 곳에서만 수행한다 (Phase 33 통합).
     model_cards = physical_model_step_cards(physical_model)
@@ -375,16 +694,16 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         diagnosis=diagnosis,
         answer=AnswerModel(**result.answer.__dict__) if result.answer else None,
         answers=_answers_from_result(result),
-        steps=[StepCardSchema(**s.__dict__) for s in all_steps],
-        verification=VerificationReportSchema(**result.verification.__dict__),
+        # Student steps are projected only after the result gate from the
+        # finalized ExplanationTrace.  Legacy cards remain partial machine input.
+        steps=[],
+        verification=_verification_report_model(result.verification),
         unsupported_reason=result.unsupported_reason,
         route_decision=_route_decision_model(route_decision),
         physical_model=_physical_model_payload(physical_model.to_dict(), route_decision),
+        selection_decision=_selection_decision_model(result.selection_decision),
     )
     # 실패 응답도 "완전히 못 풂" 대신 현재 가능한 것/필요한 조건을 보여준다.
-    if not response.ok and not response.steps:
-        response.steps = _partial_guidance_steps(canonical)
-
     # 되묻기: solver가 매치됐지만 값 부족 등으로 실패한 경우에도 질문을 제공.
     # (검증 강등 등 missing_info와 무관한 실패에는 규칙이 발동하지 않는다.)
     if not response.ok and response.clarification is None:
@@ -411,11 +730,33 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
 
     # 유일한 강등 지점: verification.errors 를 보고 ok/passed/unsupported_reason 을 결정.
     apply_result_gate(response)
-    response.teacher_summary = build_teacher_summary(response)
-    response.concept_summary = build_concept_summary(response)
-    response.common_mistakes = build_common_mistakes(response)
-    response.study_tips = build_study_tips(response)
-    response.equation_sheet = build_equation_sheet(response)
+    if response.ok is True:
+        # Build the established product projection first for every successful
+        # solver.  Structured evidence is an additive optional field and must
+        # not change steps, summaries, diagnosis, FBD, or physical_model.
+        project_legacy_explanation(response, all_steps)
+    _finalize_public_explanation(
+        response,
+        canonical=canonical,
+        physical_model=physical_model,
+        result=result,
+        selected_solver=solver.name,
+        route_decision=route_decision,
+        legacy_steps=all_steps,
+        delivery_decision=output_decision,
+        raw_selection_decision=raw_selection_decision,
+    )
+    # Phase 54: scene projection runs strictly after apply_result_gate and
+    # explanation finalization; it is additive and fail-open by contract.
+    attach_visualization_scene(
+        response,
+        canonical=canonical,
+        physical_model=physical_model,
+        selected_solver=solver.name,
+    )
+    trace.capture_validation(response.verification)
+    trace.capture_response(response)
+    trace.finish_stage("verify")
     return response
 
 

@@ -1,7 +1,10 @@
 import math
 from sympy import Eq, Symbol, sin, pi, solve
 
-from engine.models import Answer, CanonicalProblem, SolverResult, StepCard, VerificationReport
+from engine.models import (
+    Answer, CanonicalProblem, EquationEvidence, SolverResult, StepCard,
+    SubstitutionEvidence, VerificationReport,
+)
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.verification.checks import require_no_missing, merge_reports
 from engine.equation_generators.particle_newton import solve_particle_newton_system
@@ -10,6 +13,40 @@ from engine.model_builder.model_types import PhysicalModel
 from engine.physics_core import symbols as S
 from engine.physics_core.friction import decide_incline_static
 from engine.physics_core.units import magnitude_si
+from engine.solvers.explanation_evidence import (
+    OutputSpec,
+    assumption_fact,
+    attach_evidence,
+    calculation_frame,
+    gravity_fact,
+    known_fact,
+    semantic_fact,
+)
+
+
+def _incline_frame(solver_name: str):
+    return calculation_frame(
+        f"{solver_name}.slope-frame",
+        "cartesian_2d",
+        ("x", "y"),
+        ("down_slope", "normal_outward"),
+        ("m", "m"),
+    )
+
+
+def _gravity_parts(c: CanonicalProblem):
+    fact = gravity_fact(c)
+    value = (
+        magnitude_si(c.knowns["g"], "m/s^2")
+        if "g" in c.knowns and c.knowns["g"].value is not None
+        else 9.81
+    )
+    return fact, value
+
+
+def _gravity_unit_supported(c: CanonicalProblem) -> bool:
+    quantity = c.knowns.get("g")
+    return quantity is None or quantity.unit in {"m/s^2", "m/s²"}
 
 
 
@@ -47,7 +84,7 @@ class InclineNoFrictionSolver(BaseSolver):
         model = model or build_physical_model(c)
         generated = solve_particle_newton_system(c, model)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
+            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.", selection_decision=generated.decision)
         a_val = float(generated.solution[S.a])
         symbolic = "g*sin(theta)"
 
@@ -66,14 +103,62 @@ class InclineNoFrictionSolver(BaseSolver):
                 "θ=90°이면 a=g가 되어 자유낙하와 일치합니다.",
             ],
         )
-        return SolverResult(
+        result = SolverResult(
             ok=True,
-            answer=Answer(symbolic=f"a = {symbolic}", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²"),
+            answer=Answer(symbolic=f"a = {symbolic}", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²", output_key="acceleration"),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=["ΣF_x = ma", "mg sinθ = ma", "a = g sinθ"],
             fbd=["중력 mg", "수직항력 N"],
+            selection_decision=generated.decision,
             coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
+        )
+        if c.knowns["theta"].unit != "deg" or not _gravity_unit_supported(c):
+            return result
+        gravity, gravity_value = _gravity_parts(c)
+        subtype = semantic_fact(c, "subtype")
+        theta = known_fact(c, "theta")
+        particle = assumption_fact("particle_model", "point_mass")
+        fact_ids = (subtype.fact_id, theta.fact_id, gravity.fact_id, particle.fact_id)
+        selected = generated.decision.selected_candidate
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=_incline_frame(self.name),
+            explicit_facts=(subtype, theta) + (() if gravity.classification == "assumed" else (gravity,)),
+            assumptions=(particle,) + ((gravity,) if gravity.classification == "assumed" else ()),
+            equations=(
+                EquationEvidence(
+                    "incline-no-friction.acceleration",
+                    "a = g sin(theta)",
+                    "solver_equation",
+                    "newton_second_law",
+                    fact_ids=fact_ids,
+                    output_ids=("acceleration",),
+                ),
+            ),
+            substitutions=(
+                SubstitutionEvidence(
+                    "incline-no-friction.acceleration.values",
+                    "incline-no-friction.acceleration",
+                    f"a = {gravity_value} sin({c.knowns['theta'].value} deg) = {result.answer.numeric} m/s²",
+                    "acceleration",
+                    fact_ids=fact_ids,
+                ),
+            ),
+            outputs=(
+                OutputSpec(
+                    "acceleration", 0, "acceleration", "a",
+                    ("incline-no-friction.acceleration",),
+                    ("incline-no-friction.acceleration.values",),
+                    candidate_id=selected.candidate_id,
+                    candidate_numeric=selected.numerical_mapping["a"],
+                    delivery_candidate_key="acceleration",
+                    delivery_transform="python_builtin_round",
+                    decimal_places=5,
+                    delivery_policy_id="incline.no_friction.acceleration.round5",
+                ),
+            ),
         )
 
 
@@ -111,7 +196,7 @@ class InclineWithFrictionSolver(BaseSolver):
                 )
                 return SolverResult(
                     ok=True,
-                    answer=Answer(symbolic="a = 0, |f_s| <= μ_s N", numeric=0.0, unit="m/s²", display=f"a = 0.000 m/s², f_s = {decision.friction_force:.3f} N"),
+                    answer=Answer(symbolic="a = 0, |f_s| <= μ_s N", numeric=0.0, unit="m/s²", display=f"a = 0.000 m/s², f_s = {decision.friction_force:.3f} N", output_key="acceleration"),
                     steps=[
                         StepCard("정지마찰 판정", "정지마찰 문제는 먼저 움직이는지 확인합니다.", r"|f_s| \le \mu_s N"),
                         StepCard("부등식 비교", f"구동력={decision.driving_force:.3f} N, 최대정지마찰={decision.max_static:.3f} N → 정지 유지"),
@@ -125,7 +210,7 @@ class InclineWithFrictionSolver(BaseSolver):
         model = model or build_physical_model(c)
         generated = solve_particle_newton_system(c, model)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.")
+            return SolverResult(ok=False, verification=VerificationReport(passed=False, errors=generated.errors), unsupported_reason="모델 기반 Newton 방정식 생성/풀이에 실패했습니다.", selection_decision=generated.decision)
         a_val = float(generated.solution[S.a])
         warnings = []
         if a_val < 0:
@@ -146,12 +231,76 @@ class InclineWithFrictionSolver(BaseSolver):
             ],
             warnings=warnings,
         )
-        return SolverResult(
+        result = SolverResult(
             ok=True,
-            answer=Answer(symbolic="a = g(sinθ - μcosθ)", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²"),
+            answer=Answer(symbolic="a = g(sinθ - μcosθ)", numeric=round(a_val, 5), unit="m/s²", display=f"a = {a_val:.3f} m/s²", output_key="acceleration"),
             steps=steps,
             verification=merge_reports(pre, verification),
             used_equations=["N = mg cosθ", "f = μN", "mg sinθ - f = ma"],
             fbd=["중력 mg", "수직항력 N", "마찰력 f"],
+            selection_decision=generated.decision,
             coordinate_guide=["x축: 경사면 아래 방향", "y축: 경사면 수직 방향"],
+        )
+        mu_key = "mu" if "mu" in c.knowns else "mu_k" if "mu_k" in c.knowns else None
+        if (
+            mu_key is None
+            or c.friction_type != "kinetic"
+            or c.displacement_direction != "down_slope"
+            or a_val < 0.0
+            or c.knowns["theta"].unit != "deg"
+            or not _gravity_unit_supported(c)
+        ):
+            return result
+        gravity, gravity_value = _gravity_parts(c)
+        subtype = semantic_fact(c, "subtype")
+        friction_type = semantic_fact(c, "friction_type")
+        direction = semantic_fact(c, "displacement_direction")
+        theta = known_fact(c, "theta")
+        friction = known_fact(c, mu_key)
+        particle = assumption_fact("particle_model", "point_mass")
+        kinetic = assumption_fact("friction_regime", "kinetic")
+        fact_ids = (
+            subtype.fact_id, friction_type.fact_id, direction.fact_id,
+            theta.fact_id, friction.fact_id, gravity.fact_id,
+            particle.fact_id, kinetic.fact_id,
+        )
+        selected = generated.decision.selected_candidate
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=_incline_frame(self.name),
+            explicit_facts=(subtype, friction_type, direction, theta, friction) + (() if gravity.classification == "assumed" else (gravity,)),
+            assumptions=(particle, kinetic) + ((gravity,) if gravity.classification == "assumed" else ()),
+            equations=(
+                EquationEvidence(
+                    "incline-with-friction.acceleration",
+                    "a = g (sin(theta) - mu cos(theta))",
+                    "solver_equation",
+                    "newton_second_law",
+                    fact_ids=fact_ids,
+                    output_ids=("acceleration",),
+                ),
+            ),
+            substitutions=(
+                SubstitutionEvidence(
+                    "incline-with-friction.acceleration.values",
+                    "incline-with-friction.acceleration",
+                    f"a = {gravity_value} (sin({c.knowns['theta'].value} deg) - {c.knowns[mu_key].value} cos({c.knowns['theta'].value} deg)) = {result.answer.numeric} m/s²",
+                    "acceleration",
+                    fact_ids=fact_ids,
+                ),
+            ),
+            outputs=(
+                OutputSpec(
+                    "acceleration", 0, "acceleration", "a",
+                    ("incline-with-friction.acceleration",),
+                    ("incline-with-friction.acceleration.values",),
+                    candidate_id=selected.candidate_id,
+                    candidate_numeric=selected.numerical_mapping["a"],
+                    delivery_candidate_key="acceleration",
+                    delivery_transform="python_builtin_round",
+                    decimal_places=5,
+                    delivery_policy_id="incline.with_friction.moving.round5",
+                ),
+            ),
         )

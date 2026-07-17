@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import math
-from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
+from engine.models import (
+    Answer, AnswerItem, CanonicalProblem, EquationEvidence, SolverResult,
+    StepCard, SubstitutionEvidence, VerificationReport,
+)
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.physics_core.units import magnitude_si
 from engine.units.dimensions import attach_unit_check, unit_hint_for_equation
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
+from engine.solvers.explanation_evidence import (
+    OutputSpec,
+    assumption_fact,
+    attach_evidence,
+    calculation_frame,
+    flag_fact,
+    known_fact,
+)
 
 
 class SpringMassVibrationSolver(BaseSolver):
@@ -80,13 +91,71 @@ class SpringMassVibrationSolver(BaseSolver):
             ],
         )
         attach_unit_check(verification, expected_unknown=expected, actual_unit=ans.unit)
-        return SolverResult(
+        result = SolverResult(
             ok=True,
             answer=ans,
             answers=answer_items,
             steps=steps,
             verification=verification,
             used_equations=["m x¨ + kx = 0", "ω_n = √(k/m)"],
+        )
+        if kq.unit != "N/m" or mq.unit != "kg":
+            return result
+        k_fact, m_fact = known_fact(c, "k"), known_fact(c, "m")
+        assumptions = (
+            assumption_fact("damping", "ignored"),
+            assumption_fact("external_forcing", "absent"),
+            assumption_fact("spring_law", "linear"),
+            assumption_fact("motion_model", "one_degree_of_freedom"),
+        )
+        fact_ids = (k_fact.fact_id, m_fact.fact_id) + tuple(
+            fact.fact_id for fact in assumptions
+        )
+        formulas = {
+            "angular_frequency": ("omega_n = sqrt(k / m)", omega),
+            "frequency": ("f = sqrt(k / m) / (2 pi)", freq),
+            "period": ("T = 2 pi sqrt(m / k)", period),
+        }
+        equations = []
+        substitutions = []
+        outputs = []
+        for index, target in enumerate(targets):
+            equation_id = f"spring-vibration.{target}"
+            substitution_id = f"{equation_id}.values"
+            symbol = answer_specs[target][1]
+            delivered = answer_items[index]
+            equations.append(
+                EquationEvidence(
+                    equation_id, formulas[target][0], "solver_equation",
+                    "governing_law", fact_ids=fact_ids,
+                    output_ids=(target,),
+                )
+            )
+            substitutions.append(
+                SubstitutionEvidence(
+                    substitution_id, equation_id,
+                    f"{symbol} = {formulas[target][1]} = {delivered.numeric} {delivered.unit}",
+                    target, fact_ids=fact_ids,
+                )
+            )
+            outputs.append(
+                OutputSpec(
+                    target, index, target, symbol,
+                    (equation_id,), (substitution_id,),
+                )
+            )
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=calculation_frame(
+                "spring-vibration.equilibrium-frame", "cartesian_1d",
+                ("x",), ("right",), ("m",),
+            ),
+            explicit_facts=(k_fact, m_fact),
+            assumptions=assumptions,
+            equations=equations,
+            substitutions=substitutions,
+            outputs=outputs,
         )
 
 
@@ -102,7 +171,11 @@ class SpringEnergySpeedSolver(BaseSolver):
         kq = c.knowns.get("k")
         xq = c.knowns.get("x") or c.knowns.get("A")
         mq = c.knowns.get("m")
+        typed_requested = set(c.requested_outputs or [])
+        if not typed_requested:
+            typed_requested = set(c.unknowns or []) - {"auto"}
         requested = set(c.requested_outputs or c.unknowns or [])
+        explicit_energy_only = typed_requested == {"elastic_energy"}
         wants_energy = "elastic_energy" in requested or (
             not mq and "에너지" in (c.raw_text or "")
         )
@@ -123,15 +196,17 @@ class SpringEnergySpeedSolver(BaseSolver):
                 unit="J",
                 display=f"E = {energy_value:.3f} J",
                 role="primary",
+                output_key="elastic_energy",
             )
             if not wants_speed:
-                return SolverResult(
+                result = SolverResult(
                     ok=True,
                     answer=Answer(
                         symbolic="E = ½kx²",
                         numeric=round(energy_value, 6),
                         unit="J",
                         display=f"E = {energy_value:.3f} J",
+                        output_key="elastic_energy",
                     ),
                     answers=[energy_item],
                     steps=[
@@ -147,6 +222,53 @@ class SpringEnergySpeedSolver(BaseSolver):
                         ],
                     ),
                     used_equations=["E = ½kx²"],
+                )
+                if not explicit_energy_only:
+                    return result
+                displacement_key = "x" if "x" in c.knowns else "A"
+                if kq.unit != "N/m" or c.knowns[displacement_key].unit != "m":
+                    return result
+                k_fact = known_fact(c, "k")
+                displacement = known_fact(c, displacement_key)
+                assumptions = (
+                    assumption_fact("spring_law", "linear"),
+                    assumption_fact("energy_loss", "none"),
+                )
+                fact_ids = (k_fact.fact_id, displacement.fact_id) + tuple(
+                    fact.fact_id for fact in assumptions
+                )
+                return attach_evidence(
+                    result,
+                    solver_name=self.name,
+                    coordinate_frame=calculation_frame(
+                        "spring-energy.deformation-frame", "cartesian_1d",
+                        ("x",), ("right",), ("m",),
+                    ),
+                    explicit_facts=(k_fact, displacement),
+                    assumptions=assumptions,
+                    equations=(
+                        EquationEvidence(
+                            "spring-energy.elastic-energy", "E = 0.5 k x^2",
+                            "solver_equation", "constitutive_law",
+                            fact_ids=fact_ids,
+                            output_ids=("elastic_energy",),
+                        ),
+                    ),
+                    substitutions=(
+                        SubstitutionEvidence(
+                            "spring-energy.elastic-energy.values",
+                            "spring-energy.elastic-energy",
+                            f"E = 0.5 * {k_si} * ({x_si})^2 = {energy_item.numeric} J",
+                            "elastic_energy", fact_ids=fact_ids,
+                        ),
+                    ),
+                    outputs=(
+                        OutputSpec(
+                            "elastic_energy", 0, "elastic_energy", "elastic_energy",
+                            ("spring-energy.elastic-energy",),
+                            ("spring-energy.elastic-energy.values",),
+                        ),
+                    ),
                 )
 
         if not kq or not xq or not mq:
@@ -272,7 +394,57 @@ class WorkEnergySpeedSolver(BaseSolver):
             ],
         )
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v_f = √(v_i² + 2W/m)", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s"), steps=steps, verification=verification, used_equations=["W=ΔK", "v_f = √(v_i² + 2W/m)"])
+        result = SolverResult(ok=True, answer=Answer(symbolic="v_f = √(v_i² + 2W/m)", numeric=round(vf, 5), unit="m/s", display=f"v_f = {vf:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["W=ΔK", "v_f = √(v_i² + 2W/m)"])
+        if Wq is None:
+            return result
+        if "v0" in c.knowns:
+            if c.knowns["v0"].unit != "m/s":
+                return result
+            initial = known_fact(c, "v0")
+        elif "v" in c.knowns:
+            if c.knowns["v"].unit != "m/s":
+                return result
+            initial = known_fact(c, "v")
+        elif (c.flags or {}).get("starts_from_rest") is True:
+            initial = flag_fact(c, "starts_from_rest")
+        else:
+            return result
+        if mq.unit != "kg" or Wq.unit != "J":
+            return result
+        mass_fact, work_fact = known_fact(c, "m"), known_fact(c, "W")
+        fact_ids = (mass_fact.fact_id, work_fact.fact_id, initial.fact_id)
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=calculation_frame(
+                "work-energy.motion-axis", "cartesian_1d",
+                ("x",), ("along_motion",), ("m",),
+            ),
+            explicit_facts=(mass_fact, work_fact, initial),
+            equations=(
+                EquationEvidence(
+                    "work-energy.final-speed",
+                    "v_f = sqrt(v_i^2 + 2 W / m)",
+                    "solver_equation", "conservation_law",
+                    fact_ids=fact_ids, output_ids=("final_velocity",),
+                ),
+            ),
+            substitutions=(
+                SubstitutionEvidence(
+                    "work-energy.final-speed.values",
+                    "work-energy.final-speed",
+                    f"v_f = sqrt({v0}^2 + 2 * {W} / {m}) = {result.answer.numeric} m/s",
+                    "final_velocity", fact_ids=fact_ids,
+                ),
+            ),
+            outputs=(
+                OutputSpec(
+                    "final_velocity", 0, "final_velocity", "final_velocity",
+                    ("work-energy.final-speed",),
+                    ("work-energy.final-speed.values",),
+                ),
+            ),
+        )
 
 
 class HorizontalFrictionForceSolver(BaseSolver):

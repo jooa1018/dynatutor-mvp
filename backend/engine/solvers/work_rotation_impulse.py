@@ -46,7 +46,7 @@ class ConstantForceWorkSolver(BaseSolver):
         ]
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="W = F s cosθ", numeric=round(W, 6), unit="J", display=f"W = {W:.3f} J"),
+            answer=Answer(symbolic="W = F s cosθ", numeric=round(W, 6), unit="J", display=f"W = {W:.3f} J", output_key="work"),
             steps=steps,
             verification=VerificationReport(passed=True, dimension_summary="N·m = J 차원 검증 통과", checks=["힘이 이동방향과 수직이면 cos90°=0이라 일은 0입니다.", "마찰력/저항력처럼 이동 반대방향이면 일은 음수입니다."]),
             used_equations=["W=Fs cosθ"],
@@ -86,7 +86,7 @@ class FixedAxisRotationSolver(BaseSolver):
         ]
         return SolverResult(
             ok=True,
-            answer=Answer(symbolic="α = τ/I", numeric=round(alpha, 5), unit="rad/s²", display=f"α = {alpha:.3f} rad/s²"),
+            answer=Answer(symbolic="α = τ/I", numeric=round(alpha, 5), unit="rad/s²", display=f"α = {alpha:.3f} rad/s²", output_key="angular_acceleration"),
             steps=steps,
             verification=VerificationReport(passed=True, checks=["같은 토크에서 관성모멘트가 커지면 각가속도는 작아집니다.", "단위 (N·m)/(kg·m²)=1/s²이며 rad/s²로 씁니다."]),
             used_equations=["ΣM=Iα"],

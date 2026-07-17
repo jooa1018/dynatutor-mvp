@@ -6,6 +6,12 @@ from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, St
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.physics_core.units import magnitude_si
 from engine.verification.checks import require_no_missing, merge_reports
+from engine.physics_core.validators import (
+    ValidationContext,
+    VariableConstraint,
+    candidate_from_mapping,
+    validate_and_select,
+)
 
 
 class ConstantAcceleration1DSolver(BaseSolver):
@@ -167,27 +173,132 @@ class ConstantAcceleration1DSolver(BaseSolver):
                 ),
             )
 
-        solved: list[tuple[str, float]] = []
-        for requested in requested_keys:
-            values = _unique_values(float(state[sym_map[requested]]) for state in states)
-            event_value = _select_event_value(c, requested, values)
-            if event_value is not None:
-                values = [event_value]
-            if len(values) > 1:
-                formatted = ", ".join(f"{value:.6g}" for value in values)
+        candidate_solutions = [
+            candidate_from_mapping(
+                state,
+                candidate_id=f"kinematics-state-{index}",
+                branch_info={"state_index": index, **branch_info},
+                rank_metadata={"solver": self.name},
+            )
+            for index, (state, branch_info) in enumerate(states)
+        ]
+        preferred_candidate_id = None
+        event_description = None
+        if requested_keys == ["t"] and len(candidate_solutions) > 1:
+            positive_time_candidates = [
+                (candidate, value)
+                for candidate in candidate_solutions
+                if (
+                    value := _finite_real_value(
+                        candidate.symbolic_mapping.get(sym_map["t"])
+                    )
+                )
+                is not None
+                and value > 1e-9
+            ]
+            selected_time = _select_event_value(
+                c,
+                "t",
+                [value for _, value in positive_time_candidates],
+            )
+            if selected_time is not None:
+                for candidate, value in positive_time_candidates:
+                    if math.isclose(
+                        value,
+                        selected_time,
+                        rel_tol=1e-8,
+                        abs_tol=1e-9,
+                    ):
+                        preferred_candidate_id = candidate.candidate_id
+                        event_description = (
+                            "문제의 처음/다시/진행 구간 표현이 시간 사건을 유일하게 지정했습니다."
+                        )
+                        break
+        explicit_constraints = []
+        if sym_map["t"] in [sym_map[key] for key in unknown_candidates]:
+            explicit_constraints.append(
+                VariableConstraint(
+                    sym_map["t"],
+                    lower_bound=0.0,
+                    lower_inclusive=True,
+                    reason="시간은 명시된 운동 구간에서 0 이상이어야 합니다.",
+                    source="constant_acceleration_time_domain",
+                )
+            )
+        candidate_context = ValidationContext(
+            equations=equations,
+            substitutions=substitutions,
+            constraints=explicit_constraints,
+            requested_symbols=[sym_map[key] for key in requested_keys],
+            preferred_candidate_id=preferred_candidate_id,
+            event_description=event_description,
+            selection_policy="constant-acceleration-explicit-event",
+        )
+        selection_decision = validate_and_select(
+            candidate_solutions,
+            candidate_context,
+        )
+        if (
+            selection_decision.status != "selected"
+            or selection_decision.selected_candidate is None
+        ):
+            if selection_decision.status == "ambiguous":
+                alternatives = ", ".join(
+                    str(candidate.numerical_mapping)
+                    for candidate in selection_decision.valid_alternatives
+                )
                 return SolverResult(
                     ok=False,
                     verification=VerificationReport(
                         passed=False,
                         warnings=[
-                            f"{_label_for(requested)}에 물리적으로 가능한 해가 여러 개입니다: {formatted} {_unit_for(requested)}"
+                            "물리적으로 가능한 등가속도 후보가 여러 개입니다: "
+                            + alternatives
                         ],
-                        errors=[],
                     ),
-                    unsupported_reason="운동의 시간 구간이나 진행 방향을 더 지정해 어떤 해인지 선택해 주세요.",
+                    unsupported_reason=(
+                        "운동의 시간 구간이나 진행 방향을 더 지정해 어떤 해인지 선택해 주세요."
+                    ),
+                    selection_decision=selection_decision,
                 )
-            if values:
-                solved.append((requested, values[0]))
+            has_failed_equation_residual = (
+                selection_decision.status == "no_valid_solution"
+                and any(
+                    check.category == "equation_residual"
+                    and check.status == "failed"
+                    for rejected in selection_decision.rejected_candidates
+                    for check in rejected.checks
+                )
+            )
+            error_prefix = (
+                "입력한 등가속도 조건 사이의 모순으로 "
+                if has_failed_equation_residual
+                else ""
+            )
+            return SolverResult(
+                ok=False,
+                verification=VerificationReport(
+                    passed=False,
+                    errors=[
+                        error_prefix
+                        + "공통 후보 검증에서 등가속도 해를 확정하지 못했습니다: "
+                        + selection_decision.status
+                    ],
+                ),
+                unsupported_reason=(
+                    "입력한 등가속도 조건 사이의 모순을 확인해 주세요."
+                    if has_failed_equation_residual
+                    else "입력한 조건과 물리적 정의역을 확인해 주세요."
+                ),
+                selection_decision=selection_decision,
+            )
+
+        selected_state = selection_decision.selected_candidate.symbolic_mapping
+        solved: list[tuple[str, float]] = [
+            (key, float(selected_state[sym_map[key]]))
+            for key in requested_keys
+            if sym_map[key] in selected_state
+        ]
 
         if not solved:
             return SolverResult(
@@ -230,6 +341,7 @@ class ConstantAcceleration1DSolver(BaseSolver):
             verification=merge_reports(pre if pre.passed else VerificationReport(passed=True), VerificationReport(passed=True, checks=checks)),
             used_equations=["vf=v0+at", "s=v0t+1/2at²", "vf²=v0²+2as", "s=(v0+vf)t/2"],
             coordinate_guide=["운동 방향을 +x로 잡고 속도와 가속도 부호를 정합니다."],
+            selection_decision=selection_decision,
         )
 
 
@@ -255,8 +367,8 @@ def _requested_keys(c: CanonicalProblem, candidates: list[str]) -> list[str]:
 def _select_event_value(c: CanonicalProblem, key: str, values: list[float]) -> float | None:
     """Select a root only when the problem states which event is intended."""
 
-    if key != "t" or len(values) <= 1:
-        return values[0] if len(values) == 1 else None
+    if key != "t" or not values:
+        return None
     raw = (c.raw_text or "").lower().replace(" ", "")
     positive = [value for value in values if value > 1e-9]
 
@@ -290,20 +402,36 @@ def _select_event_value(c: CanonicalProblem, key: str, values: list[float]) -> f
     return None
 
 
+def _finite_real_value(value) -> float | None:
+    if value is None:
+        return None
+    try:
+        evaluated = sp.N(value)
+        if getattr(evaluated, "free_symbols", set()):
+            return None
+        numeric = complex(evaluated)
+    except Exception:
+        return None
+    if abs(numeric.imag) > 1e-9 or not math.isfinite(numeric.real):
+        return None
+    return float(numeric.real)
+
+
 def _consistent_states(equations, substitutions, sym_map, unknown_candidates: list[str]):
     unknown_symbols = [sym_map[key] for key in unknown_candidates]
+    solve_symbols = [
+        sp.Dummy(f"{symbol}_candidate") for symbol in unknown_symbols
+    ]
+    to_unconstrained = dict(zip(unknown_symbols, solve_symbols))
+    from_unconstrained = dict(zip(solve_symbols, unknown_symbols))
     residuals = [(eq.lhs - eq.rhs).subs(substitutions) for eq in equations]
-
-    for residual in residuals:
-        if not residual.free_symbols and not _residual_is_zero(residual):
-            return [], "주어진 값들만 대입해도 등가속도 운동식 사이에 모순이 생깁니다."
 
     active = [
         residual
         for residual in residuals
         if any(symbol in residual.free_symbols for symbol in unknown_symbols)
     ]
-    raw_solutions: list[dict] = []
+    raw_solutions: list[tuple[dict, int, int]] = []
     solve_sets = [active]
     if len(active) >= len(unknown_symbols):
         solve_sets.extend(
@@ -311,46 +439,76 @@ def _consistent_states(equations, substitutions, sym_map, unknown_candidates: li
             for group in combinations(active, len(unknown_symbols))
         )
 
-    for equation_set in solve_sets:
+    for solve_set_index, equation_set in enumerate(solve_sets):
         try:
-            raw_solutions.extend(
-                sp.solve(equation_set, unknown_symbols, dict=True)
+            solved_set = sp.solve(
+                [equation.xreplace(to_unconstrained) for equation in equation_set],
+                solve_symbols,
+                dict=True,
             )
         except Exception:
             continue
+        normalized_solutions = [
+            {
+                original_symbol: sp.sympify(solution[solve_symbol]).xreplace(
+                    from_unconstrained
+                )
+                for original_symbol, solve_symbol in zip(
+                    unknown_symbols, solve_symbols
+                )
+                if solve_symbol in solution
+            }
+            for solution in solved_set
+        ]
+        raw_solutions.extend(
+            (dict(solution), solve_set_index, solution_index)
+            for solution_index, solution in enumerate(normalized_solutions)
+        )
+        # The full active system is authoritative when it yields branches.
+        # If it is empty, every fallback subsystem must run: an early partial
+        # mapping is unvalidated and cannot suppress a later complete branch.
+        if solve_set_index == 0 and solved_set:
+            break
 
-    states: list[dict] = []
-    underdetermined = False
-    for solution in raw_solutions:
-        if any(symbol not in solution for symbol in unknown_symbols):
-            underdetermined = True
+    states: list[tuple[dict, dict]] = []
+    seen_mappings: set[tuple[tuple[str, str], ...]] = set()
+    for raw_solution_index, (
+        solution,
+        solve_set_index,
+        solve_set_solution_index,
+    ) in enumerate(raw_solutions):
+        state = {
+            symbol: solution.get(symbol, symbol)
+            for symbol in unknown_symbols
+        }
+        try:
+            mapping_identity = tuple(
+                (sp.srepr(symbol), sp.srepr(sp.sympify(state[symbol])))
+                for symbol in unknown_symbols
+            )
+        except Exception:
+            mapping_identity = tuple(
+                (str(symbol), repr(state[symbol]))
+                for symbol in unknown_symbols
+            )
+        if mapping_identity in seen_mappings:
             continue
-        state: dict = {}
-        valid = True
-        for symbol in unknown_symbols:
-            value = sp.N(solution[symbol])
-            if value.free_symbols:
-                valid = False
-                break
-            complex_value = complex(value)
-            if abs(complex_value.imag) > 1e-9 or not math.isfinite(complex_value.real):
-                valid = False
-                break
-            state[symbol] = float(complex_value.real)
-        if not valid:
-            continue
-        t_symbol = sym_map.get("t")
-        if t_symbol is not None:
-            time_value = state.get(t_symbol, substitutions.get(t_symbol))
-            if time_value is not None and float(time_value) < -1e-9:
-                continue
-        if not all(_equation_is_satisfied(eq, substitutions, state) for eq in equations):
-            continue
-        if not any(_same_state(state, existing, unknown_symbols) for existing in states):
-            states.append(state)
+        seen_mappings.add(mapping_identity)
+        states.append(
+            (
+                state,
+                {
+                    "raw_solution_index": raw_solution_index,
+                    "solve_set_index": solve_set_index,
+                    "solve_set_solution_index": solve_set_solution_index,
+                    "raw_mapping": {
+                        str(symbol): str(value)
+                        for symbol, value in solution.items()
+                    },
+                },
+            )
+        )
 
-    if not states and underdetermined:
-        return [], "주어진 조건만으로는 미지수가 유일하게 결정되지 않습니다."
     return states, None
 
 
@@ -362,33 +520,6 @@ def _residual_is_zero(residual) -> bool:
     if abs(value.imag) > 1e-9:
         return False
     return abs(value.real) <= 1e-7
-
-
-def _equation_is_satisfied(eq, substitutions, state) -> bool:
-    try:
-        lhs = complex(sp.N(eq.lhs.subs(substitutions).subs(state)))
-        rhs = complex(sp.N(eq.rhs.subs(substitutions).subs(state)))
-    except Exception:
-        return False
-    if abs(lhs.imag) > 1e-9 or abs(rhs.imag) > 1e-9:
-        return False
-    scale = max(abs(lhs.real), abs(rhs.real), 1.0)
-    return abs(lhs.real - rhs.real) <= 1e-7 * scale
-
-
-def _same_state(left: dict, right: dict, symbols: list) -> bool:
-    return all(
-        math.isclose(float(left[symbol]), float(right[symbol]), rel_tol=1e-8, abs_tol=1e-9)
-        for symbol in symbols
-    )
-
-
-def _unique_values(values) -> list[float]:
-    unique: list[float] = []
-    for value in values:
-        if not any(math.isclose(value, seen, rel_tol=1e-8, abs_tol=1e-9) for seen in unique):
-            unique.append(value)
-    return sorted(unique)
 
 
 def _requested_key(c: CanonicalProblem, candidates: list[str]) -> str:

@@ -144,7 +144,7 @@ class TableHangingPulleySolver(BaseSolver):
         friction = kinetic_friction(mu_val, m1 * g) if friction_type in {"kinetic", "unspecified"} else 0.0
         generated = solve_particle_newton_system(c)
         if not generated.ok:
-            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors))
+            return SolverResult(ok=False, verification=VerificationReport(False, errors=generated.errors), selection_decision=generated.decision)
         sol = generated.solution
         a_val = float(sol[S.a])
         T_val = float(sol[S.T])
@@ -195,5 +195,6 @@ class TableHangingPulleySolver(BaseSolver):
             verification=merge_reports(pre, verification),
             used_equations=["T - f = m1a", "m2g - T = m2a", "f=μ_k m1g" if friction_type in {"kinetic", "unspecified"} else "f=0"],
             fbd=["m1: 장력 T, 수직항력 N, 중력 m1g, 마찰력 f", "m2: 장력 T, 중력 m2g"],
+            selection_decision=generated.decision,
             coordinate_guide=["m1 오른쪽, m2 아래쪽을 +로 설정"],
         )

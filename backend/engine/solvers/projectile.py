@@ -1,12 +1,43 @@
 from __future__ import annotations
 
+from functools import lru_cache
 import math
 import sympy as sp
 
 from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
 from engine.physics_core.units import magnitude_si
+from engine.physics_core.validators import (
+    ModelConstraint,
+    ValidationContext,
+    VariableConstraint,
+    candidate_from_mapping,
+    validate_and_select,
+)
 from engine.solvers.base import BaseSolver, SolverMatch
 
+
+# Reuse an assumption-free symbol so repeated solves can reuse SymPy's cached
+# expression graph without hiding non-real algebraic branches.
+_RAW_FLIGHT_TIME = sp.Symbol("_projectile_flight_time")
+_ROOT_SOLVE_DEPENDENCY = sp.solve
+
+
+@lru_cache(maxsize=256, typed=True)
+def _projectile_height_roots(
+    y0: float,
+    vy: float,
+    g: float,
+    y_target: float,
+) -> tuple[sp.Expr, ...]:
+    equation = sp.Eq(
+        y0
+        + vy * _RAW_FLIGHT_TIME
+        - sp.Rational(1, 2) * g * _RAW_FLIGHT_TIME**2,
+        y_target,
+    )
+    # Preserve SymPy's root order and exact expression objects.  Only this
+    # immutable algebraic root tuple is shared; downstream evidence is rebuilt.
+    return tuple(sp.solve(equation, _RAW_FLIGHT_TIME))
 
 
 def can_solve_flight_time_without_speed(c: CanonicalProblem) -> bool:
@@ -45,6 +76,21 @@ def can_solve_flight_time_without_speed(c: CanonicalProblem) -> bool:
         and launch is not None
         and launch - landing > 0
     )
+
+
+def _finite_real_root(root) -> float | None:
+    if root is None:
+        return None
+    try:
+        evaluated = sp.N(root)
+        if getattr(evaluated, "free_symbols", set()):
+            return None
+        numeric = complex(evaluated)
+    except Exception:
+        return None
+    if abs(numeric.imag) > 1e-10 or not math.isfinite(numeric.real):
+        return None
+    return float(numeric.real)
 
 
 class ProjectileMotionSolver(BaseSolver):
@@ -150,11 +196,17 @@ class ProjectileMotionSolver(BaseSolver):
         vy = v0 * math.sin(theta)
         t_sym = sp.symbols("t", real=True)
 
-        def positive_times_for_height(y_target: float) -> list[float]:
-            eq = sp.Eq(y0 + vy * t_sym - sp.Rational(1, 2) * g * t_sym**2, y_target)
-            roots = sp.solve(eq, t_sym)
-            vals = sorted(float(sp.N(r)) for r in roots if r.is_real and float(sp.N(r)) > 1e-10)
-            return vals
+        def times_for_height(y_target: float) -> list[sp.Expr]:
+            # Return a fresh list so candidate and branch evidence remains
+            # per-solve even when the immutable algebraic roots are reused.
+            # A replaced solve callable is a different dependency and must not
+            # reuse roots produced by the original dependency.
+            solve_roots = (
+                _projectile_height_roots
+                if sp.solve is _ROOT_SOLVE_DEPENDENCY
+                else _projectile_height_roots.__wrapped__
+            )
+            return list(solve_roots(y0, vy, g, y_target))
 
         steps = [
             StepCard("기본 방정식", "포물선 운동은 x(t), y(t)를 직접 세워서 풉니다.", r"x=x_0+v_0\cos\theta\,t,\quad y=y_0+v_0\sin\theta\,t-\frac12gt^2"),
@@ -171,41 +223,240 @@ class ProjectileMotionSolver(BaseSolver):
                 req = ["range"]
 
         computed: dict[str, AnswerItem] = {}
+        selection_decision = None
         t_f: float | None = None
         range_x: float | None = None
         if y_final is not None:
-            times = positive_times_for_height(y_final)
-            if times:
-                asks_first = any(word in raw for word in ("처음", "최초", "first"))
-                asks_later = any(word in raw for word in ("다시", "두 번째", "두번째", "나중", "착지", "떨어졌", "도착", "later", "second time", "landing"))
-                if len(times) > 1 and not (asks_first or asks_later):
-                    alternatives = ", ".join(f"{value:.3f} s" for value in times)
+            times = times_for_height(y_final)
+            needs_flight_event = any(
+                key in req for key in ("time", "range", "distance")
+            )
+            if needs_flight_event:
+                asks_first = any(
+                    word in raw for word in ("처음", "최초", "first")
+                )
+                asks_later = any(
+                    word in raw
+                    for word in (
+                        "다시",
+                        "두 번째",
+                        "두번째",
+                        "나중",
+                        "착지",
+                        "떨어졌",
+                        "도착",
+                        "later",
+                        "second time",
+                        "landing",
+                    )
+                )
+                range_symbol = sp.Symbol("R", real=True)
+                displacement_symbol = sp.Symbol("delta_x", real=True)
+                candidates = [
+                    candidate_from_mapping(
+                        {
+                            t_sym: value,
+                            range_symbol: abs(vx * value),
+                            displacement_symbol: vx * value,
+                        },
+                        candidate_id=f"projectile-time-{index}",
+                        branch_info={
+                            "root_index": index,
+                            "target_height": y_final,
+                            "raw_root": value,
+                        },
+                        rank_metadata={"solver": self.name},
+                    )
+                    for index, value in enumerate(times)
+                ]
+                valid_positive = [
+                    (candidate, value)
+                    for candidate in candidates
+                    if (
+                        value := _finite_real_root(
+                            candidate.symbolic_mapping.get(t_sym)
+                        )
+                    )
+                    is not None
+                    and value > 1e-10
+                ]
+                preferred_candidate_id = None
+                event_description = None
+                if asks_first and valid_positive:
+                    preferred_candidate_id = min(
+                        valid_positive, key=lambda item: item[1]
+                    )[0].candidate_id
+                    event_description = "처음 도달하는 양의 시간 사건을 선택했습니다."
+                elif asks_later and valid_positive:
+                    preferred_candidate_id = max(
+                        valid_positive, key=lambda item: item[1]
+                    )[0].candidate_id
+                    event_description = "다시 도달하거나 착지하는 시간 사건을 선택했습니다."
+                candidate_context = ValidationContext(
+                    constraints=[
+                        VariableConstraint(
+                            t_sym,
+                            lower_bound=0.0,
+                            lower_inclusive=False,
+                            reason="비행 사건의 시간은 출발 후여야 합니다.",
+                            source="projectile_flight_event",
+                        )
+                    ],
+                    model_constraints=[
+                        ModelConstraint(
+                            "projectile_vertical_position",
+                            lambda candidate: (
+                                y0
+                                + vy * candidate.symbolic_mapping[t_sym]
+                                - 0.5
+                                * g
+                                * candidate.symbolic_mapping[t_sym] ** 2
+                                - y_final
+                            ),
+                            message="후보 시간은 수직 위치 지배식을 만족합니다.",
+                            source_equation_ids=("projectile.vertical_position",),
+                        ),
+                        ModelConstraint(
+                            "projectile_range_magnitude",
+                            lambda candidate: (
+                                candidate.symbolic_mapping[range_symbol]
+                                - abs(
+                                    vx
+                                    * candidate.symbolic_mapping[t_sym]
+                                )
+                            ),
+                            message="사거리 R은 수평 변위의 크기입니다.",
+                        ),
+                        ModelConstraint(
+                            "projectile_signed_displacement",
+                            lambda candidate: (
+                                candidate.symbolic_mapping[
+                                    displacement_symbol
+                                ]
+                                - vx
+                                * candidate.symbolic_mapping[t_sym]
+                            ),
+                            message="delta_x는 부호 있는 수평 변위입니다.",
+                        ),
+                    ],
+                    requested_symbols=[
+                        t_sym,
+                        range_symbol,
+                        displacement_symbol,
+                    ],
+                    preferred_candidate_id=preferred_candidate_id,
+                    event_description=event_description,
+                    selection_policy="projectile-explicit-flight-event",
+                )
+                selection_decision = validate_and_select(
+                    candidates,
+                    candidate_context,
+                )
+                if (
+                    selection_decision.status != "selected"
+                    or selection_decision.selected_candidate is None
+                ):
+                    if selection_decision.status == "ambiguous":
+                        alternatives = ", ".join(
+                            f"{candidate.numerical_mapping.get('t')} s"
+                            for candidate in selection_decision.valid_alternatives
+                        )
+                        return SolverResult(
+                            ok=False,
+                            verification=VerificationReport(
+                                passed=False,
+                                warnings=[
+                                    "목표 높이에 도달하는 시간이 여러 개입니다: "
+                                    + alternatives
+                                ],
+                            ),
+                            unsupported_reason=(
+                                "올라가며 처음 도달하는 때인지, 내려오며 다시 "
+                                "도달하는 때인지 알려 주세요."
+                            ),
+                            selection_decision=selection_decision,
+                        )
                     return SolverResult(
                         ok=False,
                         verification=VerificationReport(
                             passed=False,
-                            errors=[f"목표 높이에 도달하는 양수 시간이 여러 개입니다: {alternatives}"],
+                            errors=[
+                                "포물선 후보 해가 물리 제약을 통과하지 못했습니다: "
+                                + selection_decision.status
+                            ],
                         ),
-                        unsupported_reason="올라가며 처음 도달하는 때인지, 내려오며 다시 도달하는 때인지 알려 주세요.",
+                        unsupported_reason=(
+                            "발사 조건, 목표 높이와 시간 구간을 확인해 주세요."
+                        ),
+                        selection_decision=selection_decision,
                     )
-                t_f = min(times) if asks_first else max(times)
-                range_x = vx * t_f
-                range_magnitude = abs(range_x)
-                horizontal_direction = "왼쪽" if range_x < -1e-12 else "오른쪽" if range_x > 1e-12 else "수평 변위 0"
-                computed["time"] = AnswerItem("시간", "t", round(t_f, 6), "s", f"시간 t = {t_f:.3f} s", "primary")
-                computed["range"] = AnswerItem("수평 사거리", "R", round(range_magnitude, 6), "m", f"수평 사거리 R = {range_magnitude:.3f} m ({horizontal_direction}, Δx={range_x:.3f} m)", "primary")
+                selected = selection_decision.selected_candidate
+                t_f = float(selected.symbolic_mapping[t_sym])
+                range_x = float(
+                    selected.symbolic_mapping[displacement_symbol]
+                )
+                range_magnitude = float(
+                    selected.symbolic_mapping[range_symbol]
+                )
+                horizontal_direction = (
+                    "왼쪽"
+                    if range_x < -1e-12
+                    else "오른쪽"
+                    if range_x > 1e-12
+                    else "수평 변위 0"
+                )
+                computed["time"] = AnswerItem(
+                    "시간",
+                    "t",
+                    round(t_f, 6),
+                    "s",
+                    f"시간 t = {t_f:.3f} s",
+                    "primary",
+                )
+                computed["range"] = AnswerItem(
+                    "수평 사거리",
+                    "R",
+                    round(range_magnitude, 6),
+                    "m",
+                    (
+                        f"수평 사거리 R = {range_magnitude:.3f} m "
+                        f"({horizontal_direction}, Δx={range_x:.3f} m)"
+                    ),
+                    "primary",
+                )
                 computed["distance"] = computed["range"]
                 computed["delta_x"] = AnswerItem(
                     "수평 변위",
                     "delta_x",
                     round(range_x, 6),
                     "m",
-                    f"수평 변위 Δx = {range_x:.3f} m ({horizontal_direction})",
+                    (
+                        f"수평 변위 Δx = {range_x:.3f} m "
+                        f"({horizontal_direction})"
+                    ),
                     "supporting",
                 )
-                event_note = "첫 도달" if len(times) > 1 and asks_first else "다시 도달" if len(times) > 1 else "유일한 양수 사건"
-                steps.append(StepCard("착지/목표 높이 조건", f"y_final={y_final:g} m에서 {event_note} 시간 해를 사용합니다.", r"y_0+v_0\sin\theta\,t-\frac12gt^2=y_f"))
-                steps.append(StepCard("수평 운동", "수평방향 가속도는 0이므로 x=vx t입니다.", r"x=v_0\cos\theta\,t"))
+                event_note = (
+                    event_description
+                    or "유일하게 물리 제약을 통과한 비행 사건"
+                )
+                steps.append(
+                    StepCard(
+                        "착지/목표 높이 조건",
+                        f"y_final={y_final:g} m에서 {event_note}",
+                        (
+                            r"y_0+v_0\sin\theta\,t"
+                            r"-\frac12gt^2=y_f"
+                        ),
+                    )
+                )
+                steps.append(
+                    StepCard(
+                        "수평 운동",
+                        "수평방향 가속도는 0이므로 x=vx t입니다.",
+                        r"x=v_0\cos\theta\,t",
+                    )
+                )
         hmax = y0 + vy**2 / (2 * g)
         computed["max_height"] = AnswerItem("최대높이", "H", round(hmax, 6), "m", f"최대높이 H = {hmax:.3f} m", "primary")
 
@@ -263,4 +514,5 @@ class ProjectileMotionSolver(BaseSolver):
             verification=verification,
             used_equations=["x=x0+v0cosθ t", "y=y0+v0sinθ t-1/2gt²"],
             coordinate_guide=["x축: 수평 오른쪽", "y축: 위쪽. ay=-g"],
+            selection_decision=selection_decision,
         )

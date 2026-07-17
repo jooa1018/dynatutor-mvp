@@ -61,8 +61,21 @@ AMBIGUOUS_OUTPUT_SYMBOLS = {"T", "f", "omega", "ω"}
 OUTPUT_KEY_COMPATIBILITY: dict[str, set[str]] = {
     "force": {"force", "tension", "friction_force", "normal_force"},
     "distance": {"distance", "range"},
-    "final_velocity": {"final_velocity", "minimum_speed", "tangential_velocity"},
-    "post_collision_velocity": {"post_collision_velocity", "v1_after", "v2_after"},
+    "final_velocity": {
+        "final_velocity",
+        "minimum_speed",
+        "tangential_velocity",
+        "post_collision_velocity",
+        "v1_after",
+        "v2_after",
+    },
+    "post_collision_velocity": {
+        "post_collision_velocity",
+        "v1_after",
+        "v2_after",
+    },
+    "v1_after": {"v1_after"},
+    "v2_after": {"v2_after"},
 }
 
 

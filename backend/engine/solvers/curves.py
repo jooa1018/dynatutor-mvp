@@ -1,9 +1,32 @@
 from __future__ import annotations
 
 import math
-from engine.models import Answer, CanonicalProblem, SolverResult, StepCard, VerificationReport
+from engine.models import (
+    Answer, CanonicalProblem, EquationEvidence, SolverResult, StepCard,
+    SubstitutionEvidence, VerificationReport,
+)
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.units.dimensions import attach_unit_check
+from engine.solvers.explanation_evidence import (
+    OutputSpec,
+    assumption_fact,
+    attach_evidence,
+    calculation_frame,
+    gravity_fact,
+    known_fact,
+)
+
+
+def _curve_frame(solver_name: str):
+    return calculation_frame(
+        f"{solver_name}.path-frame", "path_tangent_normal",
+        ("t", "n"), ("tangential_positive", "normal_inward"), ("m", "m"),
+    )
+
+
+def _gravity_value(c: CanonicalProblem, fact) -> float:
+    quantity = c.knowns.get("g")
+    return float(quantity.value) if quantity is not None else 9.81
 
 
 class FlatCurveFrictionSolver(BaseSolver):
@@ -38,7 +61,54 @@ class FlatCurveFrictionSolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, checks=["μ=0이면 마찰이 없어 커브를 돌 수 있는 최대속도도 0입니다.", "R이 클수록 완만한 커브라서 허용 속도가 커집니다."])
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v_max = √(μgR)", numeric=round(v, 5), unit="m/s", display=f"v_max = {v:.3f} m/s"), steps=steps, verification=verification, used_equations=["f_s ≤ μN", "ΣF_r = mv²/R"])
+        result = SolverResult(ok=True, answer=Answer(symbolic="v_max = √(μgR)", numeric=round(v, 5), unit="m/s", display=f"v_max = {v:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["f_s ≤ μN", "ΣF_r = mv²/R"])
+        if (
+            Rq.unit != "m"
+            or muq.unit not in {None, "", "1", "dimensionless"}
+            or (gq is not None and gq.unit not in {"m/s^2", "m/s²"})
+        ):
+            return result
+        radius, friction = known_fact(c, "R"), known_fact(c, "mu")
+        gravity = gravity_fact(c)
+        assumptions = [
+            assumption_fact("motion_model", "uniform_circular"),
+            assumption_fact("friction_regime", "limiting_static"),
+        ]
+        explicit = [radius, friction]
+        if gravity.classification == "assumed":
+            assumptions.append(gravity)
+        else:
+            explicit.append(gravity)
+        fact_ids = tuple(f.fact_id for f in (*explicit, *assumptions))
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=_curve_frame(self.name),
+            explicit_facts=explicit,
+            assumptions=assumptions,
+            equations=(
+                EquationEvidence(
+                    "flat-curve.limiting-speed", "v = sqrt(mu g R)",
+                    "solver_equation", "newton_second_law",
+                    fact_ids=fact_ids, output_ids=("final_velocity",),
+                ),
+            ),
+            substitutions=(
+                SubstitutionEvidence(
+                    "flat-curve.limiting-speed.values",
+                    "flat-curve.limiting-speed",
+                    f"v = sqrt({muq.value} * {_gravity_value(c, gravity)} * {Rq.value}) = {result.answer.numeric} m/s",
+                    "final_velocity", fact_ids=fact_ids,
+                ),
+            ),
+            outputs=(
+                OutputSpec(
+                    "final_velocity", 0, "final_velocity", "final_velocity",
+                    ("flat-curve.limiting-speed",),
+                    ("flat-curve.limiting-speed.values",),
+                ),
+            ),
+        )
 
 
 class BankedCurveNoFrictionSolver(BaseSolver):
@@ -80,4 +150,51 @@ class BankedCurveNoFrictionSolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, checks=["θ=0°이면 평평한 마찰 없는 도로라서 설계속도 0이 됩니다.", "R이 커지면 더 완만한 커브라 설계속도가 커집니다."])
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v = √(gR tanθ)", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s"), steps=steps, verification=verification, used_equations=["Ncosθ=mg", "Nsinθ=mv²/R"])
+        result = SolverResult(ok=True, answer=Answer(symbolic="v = √(gR tanθ)", numeric=round(v, 5), unit="m/s", display=f"v = {v:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["Ncosθ=mg", "Nsinθ=mv²/R"])
+        if (
+            Rq.unit != "m"
+            or thq.unit != "deg"
+            or (gq is not None and gq.unit not in {"m/s^2", "m/s²"})
+        ):
+            return result
+        radius, angle = known_fact(c, "R"), known_fact(c, "theta")
+        gravity = gravity_fact(c)
+        assumptions = [
+            assumption_fact("motion_model", "uniform_circular"),
+            assumption_fact("friction_regime", "none"),
+        ]
+        explicit = [radius, angle]
+        if gravity.classification == "assumed":
+            assumptions.append(gravity)
+        else:
+            explicit.append(gravity)
+        fact_ids = tuple(f.fact_id for f in (*explicit, *assumptions))
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=_curve_frame(self.name),
+            explicit_facts=explicit,
+            assumptions=assumptions,
+            equations=(
+                EquationEvidence(
+                    "banked-curve.design-speed", "v = sqrt(g R tan(theta))",
+                    "solver_equation", "newton_second_law",
+                    fact_ids=fact_ids, output_ids=("final_velocity",),
+                ),
+            ),
+            substitutions=(
+                SubstitutionEvidence(
+                    "banked-curve.design-speed.values",
+                    "banked-curve.design-speed",
+                    f"v = sqrt({_gravity_value(c, gravity)} * {Rq.value} * tan({thq.value} deg)) = {result.answer.numeric} m/s",
+                    "final_velocity", fact_ids=fact_ids,
+                ),
+            ),
+            outputs=(
+                OutputSpec(
+                    "final_velocity", 0, "final_velocity", "final_velocity",
+                    ("banked-curve.design-speed",),
+                    ("banked-curve.design-speed.values",),
+                ),
+            ),
+        )

@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 import math
-from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
+from engine.models import (
+    Answer, AnswerItem, CanonicalProblem, EquationEvidence, SolverResult,
+    StepCard, SubstitutionEvidence, VerificationReport,
+)
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.units.dimensions import attach_unit_check
+from engine.solvers.explanation_evidence import (
+    OutputSpec,
+    assumption_fact,
+    attach_evidence,
+    calculation_frame,
+    known_fact,
+)
 
 
 def _val(c: CanonicalProblem, *keys: str, default: float | None = None) -> float | None:
@@ -182,7 +192,85 @@ class SlotPinRelativeMotionSolver(BaseSolver):
         display = f"|v| = {v_mag:.3f} m/s"
         if has_acceleration_terms:
             display += f"; a_r = {a_r:.3f} m/s², a_θ = {a_theta:.3f} m/s²"
-        return SolverResult(ok=True, answer=Answer(symbolic="v = √(r_dot² + (rω)²)", numeric=round(v_mag, 6), unit="m/s", display=display), steps=steps, verification=verification, used_equations=["v_r=r_dot", "v_θ=rω", "a_r=r_ddot-rω²", "a_θ=rα+2r_dotω"])
+        result = SolverResult(ok=True, answer=Answer(symbolic="v = √(r_dot² + (rω)²)", numeric=round(v_mag, 6), unit="m/s", display=display, output_key="final_velocity"), steps=steps, verification=verification, used_equations=["v_r=r_dot", "v_θ=rω", "a_r=r_ddot-rω²", "a_θ=rα+2r_dotω"])
+        # Acceleration terms are rendered inside answer.display when present.
+        # Until they have their own delivered outputs, keep that mixed branch
+        # on the legacy fail-closed path instead of exposing partial evidence.
+        if alpha is not None or rddot is not None:
+            return result
+        radius_key = "r" if "r" in c.knowns else "R"
+        if (
+            c.knowns[radius_key].unit != "m"
+            or c.knowns["omega"].unit != "rad/s"
+            or c.knowns["rdot"].unit != "m/s"
+        ):
+            return result
+        radius = known_fact(c, radius_key)
+        omega_fact = known_fact(c, "omega")
+        radial_speed = known_fact(c, "rdot")
+        assumptions = (
+            assumption_fact("constraint_model", "rotating_slot"),
+            assumption_fact("motion_model", "planar_polar"),
+        )
+        radial_fact_ids = (radial_speed.fact_id, assumptions[0].fact_id, assumptions[1].fact_id)
+        transverse_fact_ids = (radius.fact_id, omega_fact.fact_id, assumptions[0].fact_id, assumptions[1].fact_id)
+        magnitude_fact_ids = tuple(f.fact_id for f in assumptions)
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=calculation_frame(
+                "slot-pin.polar-frame", "polar_2d",
+                ("e_r", "e_theta"), ("increasing_r", "increasing_theta"),
+                ("m", "rad"),
+            ),
+            explicit_facts=(radius, omega_fact, radial_speed),
+            assumptions=assumptions,
+            equations=(
+                EquationEvidence(
+                    "slot-pin.radial-speed", "v_r = rdot",
+                    "solver_equation", "kinematic_identity",
+                    fact_ids=radial_fact_ids, output_ids=("radial_velocity",),
+                ),
+                EquationEvidence(
+                    "slot-pin.transverse-speed", "v_theta = r omega",
+                    "solver_equation", "kinematic_identity",
+                    fact_ids=transverse_fact_ids, output_ids=("transverse_velocity",),
+                ),
+                EquationEvidence(
+                    "slot-pin.speed-magnitude",
+                    "v = sqrt(v_r^2 + v_theta^2)",
+                    "solver_equation", "definition",
+                    fact_ids=magnitude_fact_ids,
+                    input_output_ids=("radial_velocity", "transverse_velocity"),
+                    output_ids=("final_velocity",),
+                ),
+            ),
+            substitutions=(
+                SubstitutionEvidence(
+                    "slot-pin.radial-speed.values", "slot-pin.radial-speed",
+                    f"v_r = {rdot}", "radial_velocity",
+                    fact_ids=radial_fact_ids,
+                ),
+                SubstitutionEvidence(
+                    "slot-pin.transverse-speed.values", "slot-pin.transverse-speed",
+                    f"v_theta = {r} * {omega} = {v_theta}",
+                    "transverse_velocity", fact_ids=transverse_fact_ids,
+                ),
+                SubstitutionEvidence(
+                    "slot-pin.speed-magnitude.values", "slot-pin.speed-magnitude",
+                    f"v = sqrt({rdot}^2 + {v_theta}^2) = {result.answer.numeric} m/s",
+                    "final_velocity", fact_ids=magnitude_fact_ids,
+                    input_output_ids=("radial_velocity", "transverse_velocity"),
+                ),
+            ),
+            outputs=(
+                OutputSpec(
+                    "final_velocity", 0, "final_velocity", "final_velocity",
+                    ("slot-pin.speed-magnitude",),
+                    ("slot-pin.speed-magnitude.values",),
+                ),
+            ),
+        )
 
 
 class PlaneRigidBodyVelocitySolver(BaseSolver):
@@ -215,4 +303,4 @@ class PlaneRigidBodyVelocitySolver(BaseSolver):
         ]
         verification = VerificationReport(passed=True, warnings=["이번 solver는 속도 크기 기본형입니다. 실제 문제에서 v_A와 ω×r의 방향각이 주어지면 벡터 성분 계산으로 확장해야 합니다."], checks=["ω=0이면 강체는 순간적으로 병진운동만 하므로 모든 점 속도가 v_A와 같습니다."])
         attach_unit_check(verification, expected_unknown="velocity", actual_unit="m/s")
-        return SolverResult(ok=True, answer=Answer(symbolic="v_B = v_A + ω×r_B/A", numeric=round(vB, 6), unit="m/s", display=f"|v_B| ≈ {vB:.3f} m/s"), steps=steps, verification=verification, used_equations=["v_B=v_A+ω×r_B/A", "|v_B/A|=ωr"])
+        return SolverResult(ok=True, answer=Answer(symbolic="v_B = v_A + ω×r_B/A", numeric=round(vB, 6), unit="m/s", display=f"|v_B| ≈ {vB:.3f} m/s", output_key="final_velocity"), steps=steps, verification=verification, used_equations=["v_B=v_A+ω×r_B/A", "|v_B/A|=ωr"])

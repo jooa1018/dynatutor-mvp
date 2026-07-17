@@ -11,6 +11,7 @@
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
+    "@dimforge/rapier2d-compat": "0.19.3",
     "next": "15.5.18",
     "react": "19.1.2",
     "react-dom": "19.1.2"

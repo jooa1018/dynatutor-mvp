@@ -17,11 +17,30 @@ from app.schemas.solution import (
     ClarificationModel,
     ClarificationOptionModel,
     DiagnosisResponse,
+    ExplanationAnswerDerivationModel,
+    ExplanationCandidateSummaryModel,
+    ExplanationCoordinateFrameModel,
+    ExplanationEquationModel,
+    ExplanationFactModel,
+    ExplanationStudentStepModel,
+    ExplanationSubstitutionModel,
+    ExplanationTraceModel,
+    ExplanationValidationSummaryModel,
     SolveResponse,
     VerificationReport as VerificationReportModel,
 )
 from engine.extraction.extractor import extract_problem
-from engine.models import CanonicalProblem, SolverResult, VerificationReport
+from engine.models import (
+    CalculationCoordinateFrame,
+    CanonicalProblem,
+    EquationEvidence,
+    OutputEvidenceLink,
+    SemanticFactEvidence,
+    SolverExplanationEvidence,
+    SolverResult,
+    SubstitutionEvidence,
+    VerificationReport,
+)
 from engine.solvers.registry import SolverRegistry
 from engine.services import solve_problem
 from engine.verification.residuals import CHECKERS
@@ -115,16 +134,23 @@ def test_phase42_capability_validator_claims_match_current_code():
 
 @pytest.mark.unit
 def test_phase42_chrono_matrix_does_not_overclaim_execution():
-    allowed = {"none", "manual_required_hook"}
+    allowed = {"none", "automated_optional"}
     assert {entry["chrono_support"]["status"] for entry in CAPABILITY["capabilities"]} <= allowed
-    manual = {entry["analytic_solver"] for entry in CAPABILITY["capabilities"] if entry["chrono_support"]["status"] == "manual_required_hook"}
-    assert manual == {
+    automated = {
+        entry["analytic_solver"]
+        for entry in CAPABILITY["capabilities"]
+        if entry["chrono_support"]["status"] == "automated_optional"
+    }
+    assert automated == {
         "incline_with_friction",
         "massive_pulley_atwood",
         "pure_rolling_energy",
-        "rolling_energy_general",
         "collision_1d",
     }
+    assert next(
+        entry for entry in CAPABILITY["capabilities"]
+        if entry["analytic_solver"] == "rolling_energy_general"
+    )["chrono_support"]["status"] == "none"
 
 
 @pytest.mark.unit
@@ -217,6 +243,12 @@ def test_phase42_engine_dataclass_contract():
         "CanonicalProblem": [field.name for field in fields(CanonicalProblem)],
         "SolverResult": [field.name for field in fields(SolverResult)],
         "VerificationReport": [field.name for field in fields(VerificationReport)],
+        "CalculationCoordinateFrame": [field.name for field in fields(CalculationCoordinateFrame)],
+        "SemanticFactEvidence": [field.name for field in fields(SemanticFactEvidence)],
+        "EquationEvidence": [field.name for field in fields(EquationEvidence)],
+        "SubstitutionEvidence": [field.name for field in fields(SubstitutionEvidence)],
+        "OutputEvidenceLink": [field.name for field in fields(OutputEvidenceLink)],
+        "SolverExplanationEvidence": [field.name for field in fields(SolverExplanationEvidence)],
     }
     assert actual == CONTRACT["engine_dataclasses"]
 
@@ -233,8 +265,34 @@ def test_phase42_pydantic_schema_contract():
         "ClarificationOptionModel": _field_names(ClarificationOptionModel),
         "ClarificationModel": _field_names(ClarificationModel),
         "SolveResponse": _field_names(SolveResponse),
+        "ExplanationCoordinateFrameModel": _field_names(ExplanationCoordinateFrameModel),
+        "ExplanationFactModel": _field_names(ExplanationFactModel),
+        "ExplanationEquationModel": _field_names(ExplanationEquationModel),
+        "ExplanationSubstitutionModel": _field_names(ExplanationSubstitutionModel),
+        "ExplanationCandidateSummaryModel": _field_names(ExplanationCandidateSummaryModel),
+        "ExplanationValidationSummaryModel": _field_names(ExplanationValidationSummaryModel),
+        "ExplanationAnswerDerivationModel": _field_names(ExplanationAnswerDerivationModel),
+        "ExplanationStudentStepModel": _field_names(ExplanationStudentStepModel),
+        "ExplanationTraceModel": _field_names(ExplanationTraceModel),
     }
     assert actual == CONTRACT["api_models"]
+
+
+@pytest.mark.unit
+def test_phase53_schema_migration_is_append_only_and_optional():
+    # Phase 54 appended visualization_scene after the Phase 53 field; the
+    # Phase 53 guarantees stay intact (explanation_trace immediately before).
+    assert CONTRACT["schema_version"] == 7
+    assert CONTRACT["engine_dataclasses"]["SolverResult"][-1] == "explanation_evidence"
+    assert CONTRACT["api_models"]["SolveResponse"][-2] == "explanation_trace"
+    assert SolverResult(ok=False).explanation_evidence is None
+    assert SolveResponse.model_fields["explanation_trace"].default is None
+
+
+@pytest.mark.unit
+def test_phase54_schema_migration_is_append_only_and_optional():
+    assert CONTRACT["api_models"]["SolveResponse"][-1] == "visualization_scene"
+    assert SolveResponse.model_fields["visualization_scene"].default is None
 
 
 @pytest.mark.regression
