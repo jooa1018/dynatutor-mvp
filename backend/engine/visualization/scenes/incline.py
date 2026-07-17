@@ -57,22 +57,25 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         raise SceneUnavailable("경사각 θ가 도 단위 수치로 확정되지 않았습니다.", "incline_block")
 
     with_friction = selected_solver == "incline_with_friction"
-    direction_assumed = False
     if with_friction:
-        # Clear kinetic branch only: friction_type == "kinetic" is set from an
-        # explicit 운동마찰 statement, unlike "unspecified" (bare μ) or
-        # "static".  Contrary typed direction evidence rejects the scene.
+        # Clear kinetic branch only, gated exactly like the solver's own
+        # typed-evidence guard: an explicit 운동마찰 statement AND explicit
+        # typed down-slope motion.  The current NL extractor cannot produce
+        # displacement_direction == "down_slope", so an up-slope problem can
+        # never be silently animated as a down-slope scene; until typed
+        # direction evidence exists the friction scene is honestly
+        # unavailable rather than guessed.
         if canonical.friction_type != "kinetic":
             raise SceneUnavailable(
                 "운동마찰(kinetic) branch가 typed 근거로 확정되지 않아 시각화하지 않습니다.",
                 "incline_block",
             )
-        if canonical.displacement_direction not in (None, "down_slope"):
+        if canonical.displacement_direction != "down_slope":
             raise SceneUnavailable(
-                "경사면 아래 방향 운동이 아닌 것으로 표시된 문제여서 시각화하지 않습니다.",
+                "운동 방향(경사면 아래쪽)이 typed 근거로 확정되지 않아 시각화하지 않습니다. "
+                "답과 풀이는 위 카드에서 그대로 확인할 수 있습니다.",
                 "incline_block",
             )
-        direction_assumed = canonical.displacement_direction is None
     if a <= 1e-9:
         raise SceneUnavailable(
             "가속도가 0 이하로 계산되어 '아래로 미끄러지는 블록' 장면으로 표시하지 않습니다.",
@@ -196,10 +199,6 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
             VizConstraintModel(kind="kinetic_friction", description="운동마찰 f = μN이 운동 반대 방향으로 작용합니다.")
         )
         assumptions.append("운동마찰 계수 μ가 일정하다고 가정합니다.")
-        if direction_assumed:
-            assumptions.append(
-                "운동 방향(경사면 아래쪽)은 solver 모델의 가정을 따릅니다. 문제에 방향이 명시되면 더 확실해집니다."
-            )
     else:
         assumptions.append("마찰이 없는 경사면입니다.")
 

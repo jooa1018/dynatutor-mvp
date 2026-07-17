@@ -74,29 +74,36 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     if amplitude_schematic:
         amplitude_render = _SCHEMATIC_AMPLITUDE
     else:
-        # Real amplitude drives phase truthfully, but keep the drawn extent
-        # in a readable band by scaling the world, not the physics.
-        amplitude_render = clamp(amplitude, 0.4, 1.6)
+        # A stated amplitude is used exactly — the displacement, the animated
+        # |v| readout, and the equilibrium geometry stay truthful.  Only the
+        # surrounding scenery (wall distance, body size) scales with A, and
+        # that scenery is already marked schematic_size.
+        amplitude_render = amplitude
+
+    # Scenery scale relative to the schematic reference amplitude.
+    gs = amplitude_render / _SCHEMATIC_AMPLITUDE
+    wall_x = _WALL_X * gs
+    mass_half = _MASS_HALF * gs
 
     period = 2.0 * math.pi / omega
     duration = clamp(2.0 * period, 2.0, 16.0)
 
-    mass_y = _GROUND_Y + _MASS_HALF
+    mass_y = _GROUND_Y + mass_half
     bodies = [
         VizBodyModel(
             id="wall",
             label="벽",
             role="wall",
-            shape=VizShapeModel(kind="wall", half_width=0.18, half_height=1.2),
+            shape=VizShapeModel(kind="wall", half_width=0.18 * gs, half_height=1.2 * gs),
             body_type="fixed",
-            initial_position=VizVec2(x=_WALL_X, y=_GROUND_Y + 1.0),
+            initial_position=VizVec2(x=wall_x, y=_GROUND_Y + 1.0 * gs),
             schematic_size=True,
         ),
         VizBodyModel(
             id="ground",
             label="바닥",
             role="ground",
-            shape=VizShapeModel(kind="ground_line", half_width=6.0),
+            shape=VizShapeModel(kind="ground_line", half_width=6.0 * gs),
             body_type="fixed",
             initial_position=VizVec2(x=0.0, y=_GROUND_Y),
             schematic_size=True,
@@ -105,25 +112,25 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
             id="spring",
             label="스프링",
             role="spring",
-            shape=VizShapeModel(kind="spring_coil", half_height=0.16, half_width=abs(_WALL_X)),
+            shape=VizShapeModel(kind="spring_coil", half_height=0.16 * gs, half_width=abs(wall_x)),
             body_type="fixed",
-            initial_position=VizVec2(x=_WALL_X + 0.18, y=mass_y),
+            initial_position=VizVec2(x=wall_x + 0.18 * gs, y=mass_y),
             schematic_size=True,
         ),
         VizBodyModel(
             id="equilibrium",
             label="평형 위치 (x = 0)",
             role="equilibrium_marker",
-            shape=VizShapeModel(kind="wall", half_width=0.02, half_height=0.9),
+            shape=VizShapeModel(kind="wall", half_width=0.02 * gs, half_height=0.9 * gs),
             body_type="fixed",
-            initial_position=VizVec2(x=0.0, y=_GROUND_Y + 0.7),
+            initial_position=VizVec2(x=0.0, y=_GROUND_Y + 0.7 * gs),
             schematic_size=True,
         ),
         VizBodyModel(
             id="mass",
             label="질량 m",
             role="block",
-            shape=VizShapeModel(kind="rect", half_width=_MASS_HALF, half_height=_MASS_HALF),
+            shape=VizShapeModel(kind="rect", half_width=mass_half, half_height=mass_half),
             body_type="kinematic",
             initial_position=VizVec2(x=amplitude_render, y=mass_y),
             schematic_size=True,
@@ -167,14 +174,16 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
             0,
             "진폭은 문제에 주어지지 않아 시각화 전용 값입니다. 공식 물리량이 아닙니다.",
         )
+    else:
+        schematic_notes.insert(0, f"진폭 A = {amplitude_render:g} m는 문제에 주어진 값을 그대로 사용합니다.")
     if omega_note:
         schematic_notes.append(omega_note)
 
     camera = VizCameraModel(
-        min_x=_WALL_X - 0.8,
-        min_y=_GROUND_Y - 0.8,
-        max_x=amplitude_render + 2.2,
-        max_y=_GROUND_Y + 2.6,
+        min_x=wall_x - 0.8 * gs,
+        min_y=_GROUND_Y - 0.8 * gs,
+        max_x=amplitude_render + 2.2 * gs,
+        max_y=_GROUND_Y + 2.6 * gs,
     )
 
     return VisualizationSceneModel(
@@ -194,7 +203,7 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         axes=[
             VizAxisModel(
                 kind="positive_x",
-                origin=VizVec2(x=0.0, y=_GROUND_Y + 1.9),
+                origin=VizVec2(x=0.0, y=_GROUND_Y + 1.9 * gs),
                 direction=VizVec2(x=1.0, y=0.0),
                 label="+x: 평형에서 늘어나는 방향(양의 방향)",
             )

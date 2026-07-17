@@ -30,10 +30,14 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-function AnswerOverlayPanel({ scene }: { scene: any }) {
+function AnswerOverlayPanel({ scene, imported }: { scene: any; imported: boolean }) {
+  // Imported scenes carry foreign numbers: never present them under the
+  // backend-authority heading.
   return (
-    <div className="viz-values viz-values-backend">
-      <p className="col-label">백엔드 계산값 (정답 권위)</p>
+    <div className={imported ? 'viz-values viz-values-anim' : 'viz-values viz-values-backend'}>
+      <p className="col-label">
+        {imported ? '가져온 장면의 표시값 (이 문제의 backend 답 아님)' : '백엔드 계산값 (정답 권위)'}
+      </p>
       <ul className="list">
         {(scene.answer_overlay || []).map((item: any, i: number) => (
           <li key={i}><code className="math">{item.display || `${item.label}: ${item.numeric ?? '-'} ${item.unit ?? ''}`}</code></li>
@@ -200,12 +204,15 @@ function AnimatedViewer({ scene }: { scene: any }) {
   const [speedLive, setSpeedLive] = useState<number | null>(null);
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [engineReady, setEngineReady] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const stateRef = useRef({ vx: 0, vy: 0, ax: 0, ay: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return undefined;
     let cancelled = false;
+    setRuntimeError(null);
+    setEngineReady(false);
     const controller = new VizController(canvas, scene, {
       onFrame: (t, state) => {
         if (cancelled) return;
@@ -231,7 +238,7 @@ function AnimatedViewer({ scene }: { scene: any }) {
       controller.dispose();
       controllerRef.current = null;
     };
-  }, [scene]);
+  }, [scene, retryKey]);
 
   const speedControl = useCallback((s: number) => {
     controllerRef.current?.setSpeed(s);
@@ -247,7 +254,8 @@ function AnimatedViewer({ scene }: { scene: any }) {
     <div>
       {runtimeError ? (
         <p className="viz-fallback-note" role="status">
-          물리 엔진(WASM)을 불러오지 못해 정지 화면으로 표시합니다. 답과 풀이는 위 카드에서 그대로 확인할 수 있습니다.
+          물리 엔진(WASM)을 불러오지 못해 정지 화면으로 표시합니다. 답과 풀이는 위 카드에서 그대로 확인할 수 있습니다.{' '}
+          <button type="button" className="mini-btn viz-touch" onClick={() => setRetryKey((k) => k + 1)}>다시 시도</button>
         </p>
       ) : null}
       <canvas
@@ -308,14 +316,17 @@ function AnimatedViewer({ scene }: { scene: any }) {
 export default function VisualizationSection({ scene: rawScene }: { scene: any }) {
   const [opened, setOpened] = useState(false);
   const [importedScene, setImportedScene] = useState<any | null>(null);
+  const [lastScene, setLastScene] = useState<any>(rawScene);
   const reducedMotion = usePrefersReducedMotion();
 
   // A new solve delivers a new scene object: drop imported/opened state so a
-  // previous problem's scene (or an imported one) can never linger.
-  useEffect(() => {
+  // previous problem's scene (or an imported one) can never linger. Adjusted
+  // synchronously during render so the old viewer never mounts for one frame.
+  if (rawScene !== lastScene) {
+    setLastScene(rawScene);
     setOpened(false);
     setImportedScene(null);
-  }, [rawScene]);
+  }
 
   const validation = useMemo(() => (rawScene == null ? null : validateScene(rawScene)), [rawScene]);
   if (rawScene == null) return null;
@@ -352,7 +363,7 @@ export default function VisualizationSection({ scene: rawScene }: { scene: any }
         </p>
       ) : null}
 
-      <AnswerOverlayPanel scene={scene} />
+      <AnswerOverlayPanel scene={scene} imported={importedScene != null} />
 
       {!opened ? (
         <button type="button" className="btn primary viz-touch viz-open-btn" onClick={() => setOpened(true)}>

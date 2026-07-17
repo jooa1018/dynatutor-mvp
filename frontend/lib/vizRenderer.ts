@@ -250,13 +250,21 @@ export function renderScene(
     }
   }
 
+  // Arrow lengths are schematic and scale with the camera extent so every
+  // scene (from centimeter-scale springs to ten-meter slopes) stays legible.
+  const extent = Math.max(scene.camera.max_x - scene.camera.min_x, scene.camera.max_y - scene.camera.min_y);
+  const axisLen = 0.12 * extent;
+  const forceLen = 0.095 * extent;
+  const velCap = 0.155 * extent;
+  const accCap = 0.13 * extent;
+
   // Positive-direction axes.
   for (const axis of (scene.axes || []) as any[]) {
     const [x0, y0] = toPx(camera, axis.origin.x, axis.origin.y);
     const [x1, y1] = toPx(
       camera,
-      axis.origin.x + axis.direction.x * 1.4,
-      axis.origin.y + axis.direction.y * 1.4,
+      axis.origin.x + axis.direction.x * axisLen,
+      axis.origin.y + axis.direction.y * axisLen,
     );
     drawArrow(ctx, x0, y0, x1, y1, { color: MUTED, width: 1.6, label: '+x' });
   }
@@ -272,9 +280,8 @@ export function renderScene(
         dir = motion.restoringDirection(scene, force, t);
       }
       if (!dir || (dir.x === 0 && dir.y === 0)) continue;
-      const arrowLen = 1.1;
       const [x0, y0] = toPx(camera, state.x, state.y);
-      const [x1, y1] = toPx(camera, state.x + dir.x * arrowLen, state.y + dir.y * arrowLen);
+      const [x1, y1] = toPx(camera, state.x + dir.x * forceLen, state.y + dir.y * forceLen);
       const color = force.kind === 'impulse' ? IMPULSE_COLOR : FORCE_COLOR;
       drawArrow(ctx, x0, y0, x1, y1, {
         color,
@@ -293,7 +300,7 @@ export function renderScene(
     if (options.showVelocity) {
       const vLen = Math.hypot(state.vx, state.vy);
       if (vLen > 1e-6) {
-        const s = Math.min(0.28 * vLen, 1.8);
+        const s = Math.min(0.28 * vLen, velCap);
         const [x1, y1] = toPx(camera, state.x + (state.vx / vLen) * s, state.y + (state.vy / vLen) * s);
         drawArrow(ctx, x0, y0, x1, y1, { color: VELOCITY_COLOR, label: 'v', width: 2.4 });
       }
@@ -301,21 +308,24 @@ export function renderScene(
     if (options.showAcceleration) {
       const aLen = Math.hypot(state.ax, state.ay);
       if (aLen > 1e-6) {
-        const s = Math.min(0.22 * aLen, 1.5);
+        const s = Math.min(0.22 * aLen, accCap);
         const [x1, y1] = toPx(camera, state.x + (state.ax / aLen) * s, state.y + (state.ay / aLen) * s);
         drawArrow(ctx, x0, y0, x1, y1, { color: ACCEL_COLOR, label: 'a', open: true, width: 2.2 });
       }
     }
   }
 
-  // Event flash marker near the collision instant.
+  // Event flash marker near the collision instant, anchored to the current
+  // kinematic bodies (works for any camera placement, including imports).
   for (const event of (scene.events || []) as any[]) {
-    if (Math.abs(t - event.t) <= 0.12 && firstKinematic) {
+    if (Math.abs(t - event.t) <= 0.12 && kinematicIds.length) {
+      const avgX = kinematicIds.reduce((sum, id) => sum + allStates[id].x, 0) / kinematicIds.length;
+      const labelY = scene.camera.max_y - 0.12 * (scene.camera.max_y - scene.camera.min_y);
       ctx.save();
       ctx.font = 'bold 13px system-ui, sans-serif';
       ctx.fillStyle = IMPULSE_COLOR;
       ctx.textAlign = 'center';
-      const [ex, ey] = toPx(camera, 0, 1.4);
+      const [ex, ey] = toPx(camera, avgX, labelY);
       ctx.fillText(`⚡ ${event.label}`, ex, ey);
       ctx.restore();
     }

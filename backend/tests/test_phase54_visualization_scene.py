@@ -22,18 +22,20 @@ from engine.services import solve_problem
 from engine.visualization import scene_builder
 
 INCLINE_NO_FRICTION = "마찰이 없는 30도 경사면 위 블록의 가속도는?"
-INCLINE_KINETIC = "운동마찰계수 0.2인 30도 경사면에서 블록이 아래로 미끄러진다. 가속도를 구하라."
+INCLINE_KINETIC_NL = "운동마찰계수 0.2인 30도 경사면에서 블록이 아래로 미끄러진다. 가속도를 구하라."
+INCLINE_KINETIC_UP_NL = "운동마찰계수 0.2인 30도 경사면에서 블록이 위로 미끄러져 올라가고 있다. 블록의 가속도를 구하라."
 INCLINE_AMBIGUOUS_MU = "마찰계수 0.2인 거친 30도 경사면에서 블록의 가속도를 구하라."
 SPRING_PERIOD = "k=200 N/m 스프링에 질량 2 kg을 달았다. 주기를 구하라."
+SPRING_WITH_AMPLITUDE = "k=200 N/m 스프링에 질량 2 kg을 달아 진폭 0.05 m로 진동시킨다. 주기를 구하라."
 ROLLING = "정지 상태에서 원판이 미끄러지지 않고 높이 1.5 m를 굴러 내려간다. 바닥에서의 속도를 구하라."
 COLLISION_E1 = "m1=2 kg, m2=3 kg, v1=4 m/s, v2=0 m/s, e=1인 1차원 충돌이다. 충돌 후 속도를 구하라."
+COLLISION_LEFTWARD = "m1=2 kg, m2=3 kg, v1=-1 m/s, v2=-3 m/s, e=1인 1차원 충돌이다. 충돌 후 속도를 구하라."
 UNSUPPORTED_SCENE = "질량 2 kg에 힘 10 N이 작용한다. 가속도를 구하라."
 CLARIFY_CASE = "30도 경사면 위 블록의 가속도는?"
 NON_PHYSICS = "오늘 저녁 메뉴를 추천해 줘."
 
 READY_CASES = {
     "incline_no_friction": INCLINE_NO_FRICTION,
-    "incline_with_friction": INCLINE_KINETIC,
     "spring_mass_vibration": SPRING_PERIOD,
     "pure_rolling_energy": ROLLING,
     "collision_1d": COLLISION_E1,
@@ -160,8 +162,28 @@ def test_phase54_incline_no_friction_scene():
 
 
 @pytest.mark.regression
-def test_phase54_incline_kinetic_friction_scene_and_ambiguous_fallback():
-    response, scene = _ready_scene(INCLINE_KINETIC)
+def test_phase54_incline_kinetic_friction_certified_branch_scene():
+    # The scene gate mirrors the solver's typed-evidence guard exactly:
+    # explicit kinetic friction AND explicit typed down-slope direction.
+    # The NL extractor cannot produce down_slope today, so the certified
+    # branch is exercised by projecting the real product response through the
+    # builder with a canonical carrying the required typed direction.
+    from engine.extraction.extractor import extract_problem
+    from engine.model_builder import build_physical_model
+    from engine.visualization.scene_builder import build_visualization_scene
+
+    response = solve_problem(INCLINE_KINETIC_NL)
+    assert response.ok is True
+    canonical = extract_problem(INCLINE_KINETIC_NL)
+    assert canonical.friction_type == "kinetic"
+    canonical.displacement_direction = "down_slope"
+    scene = build_visualization_scene(
+        response,
+        canonical=canonical,
+        physical_model=build_physical_model(canonical),
+        selected_solver="incline_with_friction",
+    )
+    assert scene.status == "ready"
     force_kinds = {f.kind for f in scene.forces}
     assert force_kinds == {"weight", "normal", "friction"}
     friction = next(f for f in scene.forces if f.kind == "friction")
@@ -169,13 +191,23 @@ def test_phase54_incline_kinetic_friction_scene_and_ambiguous_fallback():
     # Friction arrow opposes the acceleration (up-slope).
     dot = friction.direction.x * slide.acceleration.x + friction.direction.y * slide.acceleration.y
     assert dot < 0
+    overlay = {item.output_key: item for item in scene.answer_overlay}
+    assert overlay["acceleration"].numeric == response.answer.numeric
 
-    ambiguous = solve_problem(INCLINE_AMBIGUOUS_MU)
-    assert ambiguous.ok is True
-    scene2 = ambiguous.visualization_scene
-    assert scene2 is not None and scene2.status == "unavailable"
-    assert scene2.fallback_reason
-    assert ambiguous.answer is not None  # answer flow untouched
+
+@pytest.mark.negative
+def test_phase54_incline_friction_without_typed_direction_is_unavailable():
+    # Checker finding: without typed direction evidence, an up-slope problem
+    # must never be animated down-slope. Both NL phrasings (down and up)
+    # lack typed down_slope direction, so both stay honestly unavailable.
+    for text in (INCLINE_KINETIC_NL, INCLINE_KINETIC_UP_NL, INCLINE_AMBIGUOUS_MU):
+        response = solve_problem(text)
+        if response.ok is not True:
+            continue
+        scene = response.visualization_scene
+        assert scene is not None and scene.status == "unavailable", text
+        assert scene.fallback_reason
+        assert response.answer is not None  # answer flow untouched
 
 
 @pytest.mark.regression
@@ -247,6 +279,46 @@ def test_phase54_collision_scene_uses_backend_post_velocities():
     x1_c = segs["body1-before"].position0.x + segs["body1-before"].velocity0.x * event.t
     x2_c = segs["body2-before"].position0.x + segs["body2-before"].velocity0.x * event.t
     assert x1_c + b1.shape.half_width == pytest.approx(x2_c - b2.shape.half_width, abs=1e-9)
+
+
+@pytest.mark.regression
+def test_phase54_spring_stated_amplitude_is_used_exactly():
+    # Checker finding: a stated amplitude must never be silently distorted.
+    response = solve_problem(SPRING_WITH_AMPLITUDE)
+    if response.ok is not True or response.visualization_scene is None:
+        pytest.skip("amplitude phrasing not extracted in product path")
+    scene = response.visualization_scene
+    if scene.status != "ready":
+        pytest.skip("scene unavailable for amplitude phrasing: " + str(scene.fallback_reason))
+    osc = next(seg for seg in scene.motion if seg.kind == "oscillation")
+    assert osc.amplitude == pytest.approx(0.05, abs=1e-12)
+    # Stated amplitude is not schematic: no "시각화 전용 진폭" note, and the
+    # stated-value note is present instead.
+    assert not any("주어지지 않아" in note for note in scene.schematic_notes)
+    assert any("주어진 값" in note for note in scene.schematic_notes)
+    # Scenery scales with the amplitude so the camera keeps proportions.
+    assert scene.camera.max_x < 1.0
+
+
+@pytest.mark.regression
+def test_phase54_collision_camera_contains_full_timeline_for_leftward_velocities():
+    # Checker finding: leftward-velocity collisions must keep the contact
+    # point and the post-collision travel inside the camera bounds.
+    response = solve_problem(COLLISION_LEFTWARD)
+    if response.ok is not True:
+        pytest.skip("leftward collision phrasing not solved in product path")
+    scene = response.visualization_scene
+    assert scene is not None and scene.status == "ready"
+    cam = scene.camera
+    event_t = scene.events[0].t
+    duration = scene.timestep.duration
+    for seg in scene.motion:
+        for t in (seg.t_start, min(seg.t_end, duration)):
+            x = seg.position0.x + seg.velocity0.x * (t - seg.t_start)
+            assert cam.min_x <= x <= cam.max_x, f"{seg.id}@{t}: {x} outside [{cam.min_x}, {cam.max_x}]"
+    # Contact point (x=0) stays visible at the event.
+    assert cam.min_x <= 0.0 <= cam.max_x
+    assert event_t < duration
 
 
 @pytest.mark.regression

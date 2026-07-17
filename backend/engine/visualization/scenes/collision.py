@@ -101,6 +101,21 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     x2_0 = half_w2 - v2 * t_c
     y = half_h
 
+    # Camera covers every segment endpoint of both bodies (positions are
+    # piecewise linear, so extremes occur at t=0, the collision, or the end),
+    # keeping the contact point and the full post-collision travel on screen
+    # for any velocity signs.
+    x1_c = x1_0 + v1 * t_c
+    x2_c = x2_0 + v2 * t_c
+    x1_end = x1_c + v1_after * _POST_DURATION_S
+    x2_end = x2_c + v2_after * _POST_DURATION_S
+    x_min = min(x1_0 - half_w1, x1_c - half_w1, x1_end - half_w1,
+                x2_0 - half_w2, x2_c - half_w2, x2_end - half_w2)
+    x_max = max(x1_0 + half_w1, x1_c + half_w1, x1_end + half_w1,
+                x2_0 + half_w2, x2_c + half_w2, x2_end + half_w2)
+    ground_center = (x_min + x_max) / 2.0
+    ground_half = (x_max - x_min) / 2.0 + 2.0
+
     def _segments(body_id: str, x0: float, v_pre: float, v_post: float) -> list[VizMotionSegmentModel]:
         x_c = x0 + v_pre * t_c
         return [
@@ -131,9 +146,9 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
             id="ground",
             label="바닥",
             role="ground",
-            shape=VizShapeModel(kind="ground_line", half_width=14.0),
+            shape=VizShapeModel(kind="ground_line", half_width=ground_half),
             body_type="fixed",
-            initial_position=VizVec2(x=0.0, y=0.0),
+            initial_position=VizVec2(x=ground_center, y=0.0),
             schematic_size=True,
         ),
         VizBodyModel(
@@ -183,10 +198,6 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         ),
     ]
 
-    x_min = min(x1_0 - half_w1, x2_0 - half_w2)
-    x_end_1 = x1_0 + v1 * t_c + v1_after * _POST_DURATION_S
-    x_end_2 = x2_0 + v2 * t_c + v2_after * _POST_DURATION_S
-    x_max = max(x_end_1 + half_w1, x_end_2 + half_w2, half_w2 + 1.0)
     camera = VizCameraModel(
         min_x=x_min - 1.0,
         min_y=-1.2,

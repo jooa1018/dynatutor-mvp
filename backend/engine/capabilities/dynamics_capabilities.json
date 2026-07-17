@@ -179,7 +179,7 @@
       "visualization_support": {
         "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. 명시적 운동마찰(kinetic) branch만 장면을 만들고 static/모호한 μ branch는 unavailable로 처리한다. backend post-gate 가속도를 재생하며 Rapier가 값을 결정하지 않는다.",
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. solver evidence guard와 동일하게 명시적 운동마찰(kinetic)과 typed 운동 방향(displacement_direction=down_slope)이 모두 있어야 장면을 만들며, static/모호 μ/방향 미확정 branch는 unavailable로 처리한다(현 NL extractor 경로에서는 항상 unavailable). backend post-gate 가속도를 재생하며 Rapier가 값을 결정하지 않는다.",
         "scene_type": "incline_block"
       },
       "known_limitations": [
@@ -496,7 +496,7 @@
       "visualization_support": {
         "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. backend 최종 속도 endpoint에 맞춰 재생하며 반지름이 없으면 화면 표시용 회전만 보여준다.",
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. backend 최종 속도 endpoint에 맞춰 재생한다. 반지름 미제시(또는 표시 범위 밖) 시 회전은 화면 표시용으로만 그린다. 반지름이 명시된 문제는 현 라우팅에서 rolling_energy_general로 이동하므로 장면은 unavailable이다.",
         "scene_type": "pure_rolling"
       },
       "known_limitations": [

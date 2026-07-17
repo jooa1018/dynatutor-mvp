@@ -77,6 +77,9 @@ function evaluateBody(scene, body, t) {
     if (t < seg.t_start) {
       if (lastEnd) return { ...lastEnd, vx: 0, vy: 0, ax: 0, ay: 0, angularVelocity: 0 };
       const first = evalSegmentAt(seg, seg.t_start);
+      if (seg.angle0 == null && seg.angular_velocity0 == null && seg.angular_acceleration == null) {
+        first.angle = body.initial_angle || 0;
+      }
       return { ...first, vx: 0, vy: 0, ax: 0, ay: 0, angularVelocity: 0 };
     }
     if (t < seg.t_end) {

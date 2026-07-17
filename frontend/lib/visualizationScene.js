@@ -89,8 +89,13 @@ function validateScene(raw) {
     if (!shape || !SHAPE_KINDS.includes(shape.kind)) {
       errors.push(`${body.id}: shape가 유효하지 않습니다.`);
     } else {
-      for (const key of ['half_width', 'half_height', 'radius', 'angle_deg', 'base_length']) {
-        pushIf(errors, shape[key] != null && !isFiniteNumber(shape[key]), `${body.id}: shape.${key}가 유한한 수가 아닙니다.`);
+      pushIf(errors, shape.angle_deg != null && !isFiniteNumber(shape.angle_deg), `${body.id}: shape.angle_deg가 유한한 수가 아닙니다.`);
+      for (const key of ['half_width', 'half_height', 'radius', 'base_length']) {
+        pushIf(
+          errors,
+          shape[key] != null && (!isFiniteNumber(shape[key]) || shape[key] <= 0),
+          `${body.id}: shape.${key}는 양의 유한한 수여야 합니다.`,
+        );
       }
       pushIf(errors, shape.kind === 'rect' && (!isFiniteNumber(shape.half_width) || !isFiniteNumber(shape.half_height)), `${body.id}: rect 크기가 없습니다.`);
       pushIf(errors, shape.kind === 'circle' && !isFiniteNumber(shape.radius), `${body.id}: circle 반지름이 없습니다.`);

@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import math
 
+from engine.physics_core.initial_conditions import explicitly_starts_from_rest
+
 from app.schemas.visualization_scene import (
     VISUALIZATION_SCENE_SCHEMA,
     VISUALIZATION_SCENE_VERSION,
@@ -69,10 +71,15 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
 
     v0 = known_value(canonical, "v0", units=("m/s",))
     if v0 is None:
-        if (canonical.flags or {}).get("starts_from_rest"):
+        # Same explicit-rest rule the solver/verification path uses
+        # (physics_core.initial_conditions) — reused, not reinterpreted.
+        if (canonical.flags or {}).get("starts_from_rest") or explicitly_starts_from_rest(canonical):
             v0 = 0.0
         else:
-            v0 = 0.0
+            raise SceneUnavailable(
+                "초기 조건(정지 출발 또는 초기 속도)이 typed 근거로 확정되지 않았습니다.",
+                "pure_rolling",
+            )
     if v0 < 0 or v_final <= v0:
         raise SceneUnavailable("초기/최종 속도 관계가 아래로 구르는 장면과 맞지 않습니다.", "pure_rolling")
 
@@ -85,8 +92,14 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     radius = known_value(canonical, "R", units=("m",))
     if radius is None:
         radius = known_value(canonical, "r", units=("m",))
-    radius_schematic = radius is None or radius <= 0
-    render_radius = clamp(radius, 0.2, 0.8) if not radius_schematic else _SCHEMATIC_RADIUS
+    radius_stated = radius is not None and radius > 0
+    if radius_stated:
+        render_radius = clamp(radius, 0.2, 0.8)
+    else:
+        render_radius = _SCHEMATIC_RADIUS
+    # A stated radius outside the readable band is drawn clamped, so the
+    # on-screen spin becomes display-only in that case too.
+    radius_schematic = (not radius_stated) or render_radius != radius
 
     # Real drop height fixes the slope; animation acceleration is chosen so the
     # backend start/final speeds meet exactly at the bottom of that slope.
@@ -211,7 +224,11 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     if radius_schematic:
         schematic_notes.insert(
             0,
-            "반지름이 주어지지 않아 바퀴 크기와 회전 빠르기는 화면 표시용입니다. 물리적 각속도로 읽지 마세요.",
+            (
+                "반지름이 화면 표시 범위를 벗어나 표시용 크기로 그립니다. 회전 빠르기도 표시용이며 물리적 각속도가 아닙니다."
+                if radius_stated
+                else "반지름이 주어지지 않아 바퀴 크기와 회전 빠르기는 화면 표시용입니다. 물리적 각속도로 읽지 마세요."
+            ),
         )
     if theta_schematic:
         schematic_notes.append("경사각은 표시용 값이며, 낙하 높이 h만 문제의 값입니다.")
