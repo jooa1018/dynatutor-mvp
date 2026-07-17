@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/phase52-quality.yml"
       - "backend/engine/observability/**"
+      - "backend/engine/services.py"
       - "backend/tools/run_phase52_observability.py"
       - "backend/tests/test_phase52_*.py"
       - "docs/PHASE52_CROSS_ENGINE_OBSERVABILITY.md"
@@ -17,6 +18,7 @@ on:
     paths:
       - ".github/workflows/phase52-quality.yml"
       - "backend/engine/observability/**"
+      - "backend/engine/services.py"
       - "backend/tools/run_phase52_observability.py"
       - "backend/tests/test_phase52_*.py"
       - "docs/PHASE52_CROSS_ENGINE_OBSERVABILITY.md"

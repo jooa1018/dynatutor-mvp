@@ -25,6 +25,8 @@ from engine.observability.reporting import (
     normalize_phase51_report,
     render_final_json,
     render_final_markdown,
+    validate_core,
+    validate_cross_engine_case,
     validate_final_report,
     validate_performance,
     validate_trace_snapshot,
@@ -191,6 +193,25 @@ def _core(tier="extended", phase51=None):
         phase51_payload=_phase51_payload() if phase51 is None else phase51,
         dashboard_sources=_dashboard_sources(),
         runtime_versions={"sympy": "1.14", "scipy": "1.17", "pychrono": "9.0.1"},
+    )
+
+
+def _final_report():
+    core = _core()
+    performance = build_performance_artifact(
+        source_commit=SHA,
+        tier="extended",
+        case_samples=_samples(0.1),
+        repeats=20,
+    )
+    return build_final_report(
+        core=core.to_dict(),
+        performance=performance.to_dict(),
+        performance_filename="performance.json",
+        performance_content=performance.canonical_json + "\n",
+        pooled_performance_gate="passed",
+        flaky_test_count=0,
+        strict=False,
     )
 
 
@@ -598,3 +619,180 @@ def test_source_report_free_text_sentinels_are_discarded_by_projection():
     projected = json.dumps(normalize_phase51_report(phase51), sort_keys=True)
     assert raw not in projected
     assert student not in projected
+
+
+@pytest.mark.unit
+def test_core_rejects_unknown_root_and_case_fields_with_private_sentinels():
+    core = _core().to_dict()
+    core["detail"] = "RAW_PHASE52_CORE_SENTINEL"
+    with pytest.raises(ValueError, match="keys differ"):
+        validate_core(core)
+
+    case = normalize_phase51_report(_phase51_payload())[0]
+    case["detail"] = {
+        "payload": "RAW_PHASE52_CASE_SENTINEL:PRIVATE_PHASE52_CASE_SENTINEL"
+    }
+    with pytest.raises(ValueError, match="keys differ"):
+        validate_cross_engine_case(case)
+
+
+@pytest.mark.unit
+def test_case_rejects_unknown_nested_field_in_valid_pychrono_settings():
+    case = normalize_phase51_report(_phase51_payload())[0]
+    case["engine_settings"]["pychrono"]["detail"] = {
+        "payload": "RAW_PHASE52_NESTED_SENTINEL"
+    }
+    with pytest.raises(ValueError, match="keys differ"):
+        validate_cross_engine_case(case)
+
+
+@pytest.mark.unit
+def test_case_rejects_unknown_value_and_comparison_path_names():
+    unknown_value_path = normalize_phase51_report(_phase51_payload())[0]
+    unknown_value_path["values_and_units"]["detail"] = {
+        "value": "RAW_PRIVATE_PHASE52_SENTINEL",
+        "unit": None,
+    }
+    with pytest.raises(ValueError, match="values_and_units keys differ"):
+        validate_cross_engine_case(unknown_value_path)
+
+    unknown_comparison = normalize_phase51_report(_phase51_payload())[0]
+    unknown_comparison["absolute_relative_errors"]["detail"] = {
+        "absolute_error": None,
+        "relative_error": None,
+        "absolute_tolerance": None,
+        "relative_tolerance": None,
+    }
+    with pytest.raises(ValueError, match="absolute_relative_errors keys differ"):
+        validate_cross_engine_case(unknown_comparison)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("runtime_name", "forged_version"),
+    (("sympy", 123), ("scipy", True), ("numpy", False)),
+)
+def test_scipy_case_rejects_numeric_and_boolean_runtime_versions(
+    runtime_name, forged_version
+):
+    case = normalize_phase50_report(_phase50_payload(1))[0]
+    case["runtime"]["versions"][runtime_name] = forged_version
+    with pytest.raises(ValueError, match="null or a nonempty canonical string"):
+        validate_cross_engine_case(case)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("forged_version", (123, True))
+def test_pychrono_case_rejects_numeric_and_boolean_runtime_version(forged_version):
+    case = normalize_phase51_report(_phase51_payload())[0]
+    case["runtime"]["version"] = forged_version
+    with pytest.raises(ValueError, match="null or a nonempty canonical string"):
+        validate_cross_engine_case(case)
+
+
+@pytest.mark.unit
+def test_core_rejects_forged_code_owned_version_and_source_commit():
+    forged_policy = _core().to_dict()
+    forged_policy["versions"]["tolerance_policy_version"] = "forged-policy"
+    with pytest.raises(ValueError, match="code-owned version evidence"):
+        validate_core(forged_policy)
+
+    forged_commit = _core().to_dict()
+    forged_commit["versions"]["source_commit"] = "c" * 40
+    with pytest.raises(ValueError, match="code-owned version evidence"):
+        validate_core(forged_commit)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("engine", "forged_version"),
+    (("sympy", 123), ("scipy", True)),
+)
+def test_core_rejects_numeric_and_boolean_runtime_versions(engine, forged_version):
+    core = _core().to_dict()
+    core["versions"][engine] = forged_version
+    with pytest.raises(ValueError, match="null or a nonempty canonical string"):
+        validate_core(core)
+
+
+@pytest.mark.unit
+def test_core_rejects_mutated_dashboard_and_expected_skip_policy():
+    bad_dashboard_shape = _core().to_dict()
+    bad_dashboard_shape["dashboard_sources"]["golden"]["detail"] = 0
+    with pytest.raises(ValueError, match="keys differ"):
+        validate_core(bad_dashboard_shape)
+
+    bad_dashboard_value = _core().to_dict()
+    bad_dashboard_value["dashboard_sources"]["numeric_checked"] = -1
+    with pytest.raises(ValueError, match="nonnegative integer"):
+        validate_core(bad_dashboard_value)
+
+    bad_skip_shape = _core().to_dict()
+    bad_skip_shape["expected_skip_policy"][0]["detail"] = "widened"
+    with pytest.raises(ValueError, match="keys differ"):
+        validate_core(bad_skip_shape)
+
+    bad_skip_value = _core().to_dict()
+    bad_skip_value["expected_skip_policy"][0]["tier"] = "nightly"
+    with pytest.raises(ValueError, match="code-owned expected skip policy"):
+        validate_core(bad_skip_value)
+
+
+@pytest.mark.unit
+def test_final_report_rejects_unknown_root_nested_fields_and_status_counts():
+    unknown_root = _final_report()
+    unknown_root["detail"] = "RAW_PHASE52_FINAL_SENTINEL"
+    with pytest.raises(ValueError, match="keys differ"):
+        validate_final_report(unknown_root, strict=False)
+
+    unknown_nested = _final_report()
+    unknown_nested["deterministic_checks"]["detail"] = True
+    with pytest.raises(ValueError, match="keys differ"):
+        validate_final_report(unknown_nested, strict=False)
+
+    inconsistent_counts = _final_report()
+    inconsistent_counts["status_counts"]["passed"] += 1
+    with pytest.raises(ValueError, match="status_counts differ"):
+        validate_final_report(inconsistent_counts, strict=False)
+
+
+@pytest.mark.unit
+def test_impossible_end_to_end_sample_is_rejected_by_builder_and_validator():
+    impossible = {
+        "impossible": [
+            {
+                "parse": 100.0,
+                "route": 100.0,
+                "solve": 100.0,
+                "verify": 100.0,
+                "end_to_end": 1.0,
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="same-sample stage sum"):
+        build_performance_artifact(
+            source_commit=SHA,
+            tier="fast",
+            case_samples=impossible,
+            repeats=1,
+        )
+
+    valid = build_performance_artifact(
+        source_commit=SHA,
+        tier="fast",
+        case_samples={
+            "impossible": [
+                {
+                    "parse": 100.0,
+                    "route": 100.0,
+                    "solve": 100.0,
+                    "verify": 100.0,
+                    "end_to_end": 400.0,
+                }
+            ]
+        },
+        repeats=1,
+    ).to_dict()
+    valid["cases"][0]["end_to_end_samples_ms"][0] = 1.0
+    with pytest.raises(ValueError, match="same-sample stage sum"):
+        validate_performance(valid)

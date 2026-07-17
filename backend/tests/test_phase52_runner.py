@@ -135,7 +135,14 @@ def _phase51_builder():
                     },
                     "modeling_assumptions": ["offline optional dependency"],
                 },
-                "comparisons": {},
+                "comparisons": {
+                    "chrono_vs_analytic": {
+                        "absolute_error": None,
+                        "relative_error": None,
+                        "absolute_tolerance": None,
+                        "relative_tolerance": None,
+                    }
+                },
             }
             for case_id in sorted(PHASE51_CASE_IDS)
         ],
@@ -370,6 +377,21 @@ def test_nightly_marker_push_is_opt_in_and_confined_to_nightly_job():
     assert workflow.count("[phase52-nightly]") == 1
     assert normalized_condition == expected_condition
     assert normalized_condition.count("github.event_name == 'push'") == 1
+
+
+@pytest.mark.unit
+def test_services_changes_trigger_exactly_pull_request_and_push_phase52_paths():
+    repository_root = Path(__file__).resolve().parents[2]
+    workflow = (
+        repository_root / ".github" / "workflows" / "phase52-quality.yml"
+    ).read_text(encoding="utf-8")
+    pull_request = workflow.split("  pull_request:\n", 1)[1].split("  push:\n", 1)[0]
+    push = workflow.split("  push:\n", 1)[1].split("  workflow_dispatch:\n", 1)[0]
+    exact_entry = '      - "backend/engine/services.py"'
+
+    assert pull_request.splitlines().count(exact_entry) == 1
+    assert push.splitlines().count(exact_entry) == 1
+    assert workflow.splitlines().count(exact_entry) == 2
 
 
 @pytest.mark.unit

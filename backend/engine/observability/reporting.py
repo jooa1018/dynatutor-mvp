@@ -44,6 +44,33 @@ CASE_FIELDS = (
     "runtime",
     "status",
 )
+CORE_FIELDS = (
+    "schema_version",
+    "report_version",
+    "source_commit",
+    "tier",
+    "versions",
+    "traces",
+    "cross_engine_cases",
+    "dashboard_sources",
+    "expected_skip_policy",
+)
+VERSION_FIELDS = (
+    "canonical_schema_version",
+    "legacy_model_schema_version",
+    "typed_model_schema_version",
+    "solver_pipeline_version",
+    "tolerance_policy_version",
+    "numeric_policy_version",
+    "benchmark_version",
+    "trace_version",
+    "cross_engine_report_version",
+    "performance_version",
+    "sympy",
+    "scipy",
+    "pychrono",
+    "source_commit",
+)
 STATUS_PRECEDENCE = {
     "error": 7,
     "disagreement": 6,
@@ -139,6 +166,74 @@ def _safe_scalar(value: Any, *, field: str) -> str | int | float | bool | None:
     if isinstance(value, float):
         return _finite(value, field=field)
     return _identifier(value)
+
+
+def _json_scalar(value: Any, *, field: str) -> None:
+    if isinstance(value, (Mapping, list, tuple, set, frozenset)):
+        raise TypeError(f"{field} must be a JSON scalar")
+    if isinstance(value, float):
+        _finite(value, field=field)
+
+
+def _nonnegative_integer(value: Any, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field} must be a nonnegative integer")
+    return value
+
+
+def _nonnegative_number(value: Any, *, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise TypeError(f"{field} must be numeric")
+    numeric = _finite(value, field=field)
+    if numeric < 0:
+        raise ValueError(f"{field} may not be negative")
+    return numeric
+
+
+def _source_commit(value: Any, *, field: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError(f"{field} must be a string")
+    canonical = build_version_evidence(source_commit=value)["source_commit"]
+    if value != canonical:
+        raise ValueError(f"{field} must be a lowercase 40-character git SHA")
+    return canonical
+
+
+def _validate_versions(value: Any, *, source_commit: str, path: str) -> None:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{path} must be an object")
+    allowed = frozenset(VERSION_FIELDS) | {"llm_identifier"}
+    actual = frozenset(value)
+    if not frozenset(VERSION_FIELDS) <= actual or not actual <= allowed:
+        added = sorted(actual - allowed)
+        missing = sorted(frozenset(VERSION_FIELDS) - actual)
+        raise ValueError(f"{path} keys differ; added={added}, missing={missing}")
+    for engine in ("sympy", "scipy", "pychrono"):
+        runtime_version = value[engine]
+        if runtime_version is not None and (
+            not isinstance(runtime_version, str)
+            or runtime_version != _identifier(runtime_version)
+        ):
+            raise ValueError(
+                f"{path}.{engine} must be null or a nonempty canonical string"
+            )
+    if "llm_identifier" in value:
+        llm_identifier = value["llm_identifier"]
+        if (
+            not isinstance(llm_identifier, str)
+            or llm_identifier != _identifier(llm_identifier)
+        ):
+            raise ValueError(
+                f"{path}.llm_identifier must be a nonempty canonical string"
+            )
+    expected = build_version_evidence(
+        source_commit=source_commit,
+        runtime_versions={engine: value[engine] for engine in ("sympy", "scipy", "pychrono")},
+    )
+    if "llm_identifier" in value:
+        expected["llm_identifier"] = value["llm_identifier"]
+    if dict(value) != expected:
+        raise ValueError(f"{path} does not match code-owned version evidence")
 
 
 def _version(distribution: str) -> str | None:
@@ -276,16 +371,150 @@ def is_expected_skip(*, tier: str, engine: str, case_id: str) -> bool:
 
 
 def validate_cross_engine_case(case: Mapping[str, Any]) -> None:
-    missing = [field for field in CASE_FIELDS if field not in case]
-    if missing:
-        raise ValueError(f"cross-engine case missing fields: {', '.join(missing)}")
-    if _identifier(case.get("case_id")) is None:
-        raise ValueError("cross-engine case_id is required")
-    if case.get("status") not in STATUS_VALUES:
-        raise ValueError(f"invalid cross-engine status: {case.get('status')}")
-    if not isinstance(case.get("candidate_paths"), list):
-        raise TypeError("candidate_paths must be a list")
-    stable_json_dumps(case)
+    root = _exact_keys(case, CASE_FIELDS, path="$case")
+    for field in ("case_id", "reference_path"):
+        if not isinstance(root[field], str) or not root[field].strip():
+            raise ValueError(f"cross-engine {field} must be a nonempty string")
+    if root["status"] not in STATUS_VALUES:
+        raise ValueError(f"invalid cross-engine status: {root['status']}")
+    candidates = root["candidate_paths"]
+    if (
+        not isinstance(candidates, list)
+        or not candidates
+        or not all(isinstance(item, str) and item.strip() for item in candidates)
+    ):
+        raise TypeError("candidate_paths must be a list of nonempty strings")
+
+    values = root["values_and_units"]
+    if not isinstance(values, Mapping):
+        raise TypeError("values_and_units must be an object")
+    for path_name, path_values in values.items():
+        if not isinstance(path_name, str) or not path_name:
+            raise ValueError("values_and_units keys must be nonempty strings")
+        if not isinstance(path_values, Mapping):
+            raise TypeError(f"values_and_units.{path_name} must be an object")
+        if frozenset(path_values) == {"value", "unit"}:
+            value_items = [(path_name, path_values)]
+        else:
+            value_items = list(path_values.items())
+        for value_name, value_item in value_items:
+            if not isinstance(value_name, str) or not value_name:
+                raise ValueError("values_and_units measurement keys must be nonempty strings")
+            projection = _exact_keys(
+                value_item,
+                ("value", "unit"),
+                path=f"$case.values_and_units.{path_name}.{value_name}",
+            )
+            _json_scalar(projection["value"], field=f"values_and_units.{path_name}.{value_name}.value")
+            if projection["unit"] is not None and not isinstance(projection["unit"], str):
+                raise TypeError("values_and_units unit must be a string or null")
+
+    errors = root["absolute_relative_errors"]
+    if not isinstance(errors, Mapping):
+        raise TypeError("absolute_relative_errors must be an object")
+    for comparison_name, comparison in errors.items():
+        if not isinstance(comparison_name, str) or not comparison_name:
+            raise ValueError("error comparison keys must be nonempty strings")
+        projection = _exact_keys(
+            comparison,
+            (
+                "absolute_error",
+                "relative_error",
+                "absolute_tolerance",
+                "relative_tolerance",
+            ),
+            path=f"$case.absolute_relative_errors.{comparison_name}",
+        )
+        for field, value in projection.items():
+            if value is not None:
+                numeric = _finite(value, field=f"absolute_relative_errors.{comparison_name}.{field}")
+                if numeric < 0:
+                    raise ValueError("errors and tolerances may not be negative")
+
+    checks = _exact_items(
+        root["invariant_checks"],
+        ("check_id", "passed"),
+        path="$case.invariant_checks",
+    )
+    for check in checks:
+        if not isinstance(check["check_id"], str) or not check["check_id"]:
+            raise ValueError("invariant check_id must be a nonempty string")
+        if not isinstance(check["passed"], bool):
+            raise TypeError("invariant passed must be a boolean")
+    assumptions = root["assumptions"]
+    if not isinstance(assumptions, list) or not all(isinstance(item, str) for item in assumptions):
+        raise TypeError("assumptions must be a list of strings")
+
+    runtime = _exact_keys(root["runtime"], ("engine", "versions"), path="$case.runtime") if _mapping(root["runtime"]).get("engine") == "scipy" else _exact_keys(root["runtime"], ("engine", "version"), path="$case.runtime")
+    engine = runtime["engine"]
+    if engine == "scipy":
+        if frozenset(values) != {"analytic", "scipy"}:
+            raise ValueError("SciPy values_and_units keys differ")
+        if frozenset(errors) != {"analytic_vs_scipy"}:
+            raise ValueError("SciPy absolute_relative_errors keys differ")
+        if root["reference_path"] != "analytic" or candidates != ["scipy"]:
+            raise ValueError("SciPy case paths differ from the Phase 50 contract")
+        settings_root = _exact_keys(root["engine_settings"], ("scipy",), path="$case.engine_settings")
+        settings = _exact_keys(
+            settings_root["scipy"],
+            ("method", "rtol", "atol", "max_step"),
+            path="$case.engine_settings.scipy",
+        )
+        for field, value in settings.items():
+            _json_scalar(value, field=f"engine_settings.scipy.{field}")
+        versions = _exact_keys(
+            runtime["versions"],
+            ("sympy", "scipy", "numpy"),
+            path="$case.runtime.versions",
+        )
+        for field, value in versions.items():
+            if value is not None and (
+                not isinstance(value, str) or value != _identifier(value)
+            ):
+                raise ValueError(
+                    f"runtime.versions.{field} must be null or a nonempty "
+                    "canonical string"
+                )
+    elif engine == "pychrono":
+        if frozenset(values) != {"analytic", "product", "pychrono"}:
+            raise ValueError("PyChrono values_and_units keys differ")
+        comparison_names = frozenset(errors)
+        allowed_comparisons = {
+            "chrono_vs_analytic",
+            "product_vs_analytic",
+            "product_vs_chrono",
+        }
+        if not comparison_names or not comparison_names <= allowed_comparisons:
+            raise ValueError("PyChrono absolute_relative_errors keys differ")
+        if root["reference_path"] != "analytic" or candidates != ["product", "pychrono"]:
+            raise ValueError("PyChrono case paths differ from the Phase 51 contract")
+        settings_root = _exact_keys(root["engine_settings"], ("pychrono",), path="$case.engine_settings")
+        settings = settings_root["pychrono"]
+        required_settings = {"time_step", "solver", "contact_method"}
+        optional_settings = {
+            "time_step_s",
+            "solver_max_iterations",
+            "collision_envelope_m",
+            "collision_safe_margin_m",
+        }
+        if not isinstance(settings, Mapping):
+            raise TypeError("$case.engine_settings.pychrono must be an object")
+        actual_settings = set(settings)
+        if not required_settings <= actual_settings or not actual_settings <= required_settings | optional_settings:
+            raise ValueError("$case.engine_settings.pychrono keys differ")
+        for field, value in settings.items():
+            _json_scalar(value, field=f"engine_settings.pychrono.{field}")
+        runtime_version = runtime["version"]
+        if runtime_version is not None and (
+            not isinstance(runtime_version, str)
+            or runtime_version != _identifier(runtime_version)
+        ):
+            raise ValueError(
+                "runtime.version must be null or a nonempty canonical string"
+            )
+    else:
+        raise ValueError(f"unsupported cross-engine runtime: {engine}")
+    stable_json_dumps(root, enforce_privacy=True)
 
 
 def _exact_keys(value: Any, expected: Iterable[str], *, path: str) -> Mapping[str, Any]:
@@ -610,7 +839,10 @@ def _phase50_values(record: Mapping[str, Any]) -> dict[str, Any]:
     }
     analytic = _mapping(record.get("analytic_error"))
     references = {
-        str(key): _safe_scalar(value, field=f"phase50.analytic.{key}")
+        str(key): {
+            "value": _safe_scalar(value, field=f"phase50.analytic.{key}"),
+            "unit": None,
+        }
         for key, value in sorted(analytic.items())
         if key in {"reference", "analytic_period", "observed_period", "reference_scale"}
     }
@@ -677,16 +909,18 @@ def normalize_phase50_report(payload: Mapping[str, Any]) -> list[dict[str, Any]]
             ],
             "engine_settings": {
                 "scipy": {
-                    str(key): _safe_scalar(value, field=f"phase50.integration.{key}")
-                    for key, value in sorted(_mapping(record.get("integration")).items())
-                    if key in {"method", "rtol", "atol", "max_step"}
+                    key: _safe_scalar(
+                        _mapping(record.get("integration")).get(key),
+                        field=f"phase50.integration.{key}",
+                    )
+                    for key in ("method", "rtol", "atol", "max_step")
                 }
             },
             "runtime": {
                 "engine": "scipy",
                 "versions": {
-                    str(key): _identifier(value)
-                    for key, value in sorted(_mapping(record.get("runtime_versions")).items())
+                    key: _identifier(_mapping(record.get("runtime_versions")).get(key))
+                    for key in ("sympy", "scipy", "numpy")
                 },
             },
             "status": status,
@@ -843,9 +1077,14 @@ def build_performance_artifact(
                     raise ValueError("performance durations may not be negative")
                 stage_samples[stage].append(value)
                 all_stage_samples[stage].append(value)
+            stage_total = sum(stage_samples[stage][-1] for stage in STAGES)
             total = _optional_finite(current.get("end_to_end"), field=f"{case_id}.end_to_end")
             if total is None:
-                total = sum(stage_samples[stage][-1] for stage in STAGES)
+                total = stage_total
+            elif total != stage_total:
+                raise ValueError(
+                    f"{case_id}.end_to_end must equal the same-sample stage sum"
+                )
             if total < 0:
                 raise ValueError("end-to-end duration may not be negative")
             end_to_end.append(total)
@@ -966,6 +1205,7 @@ def build_cross_engine_core(
             for item in EXPECTED_SKIP_MANIFEST
         ],
     }
+    validate_core(payload)
     return StableSnapshot.from_payload(payload, enforce_privacy=True)
 
 
@@ -1009,19 +1249,18 @@ def build_dashboard(
     return metrics
 
 
-def evaluate_release_gate(
+def _release_gate_from_summary(
     *,
-    core: Mapping[str, Any],
-    performance: Mapping[str, Any],
+    tier: str,
+    cases: Sequence[Mapping[str, Any]],
+    mean: float,
+    p95: float,
     pooled_performance_gate: str,
     strict: bool,
 ) -> dict[str, Any]:
-    validate_performance(performance)
     if pooled_performance_gate not in {"passed", "failed", "inconclusive"}:
         raise ValueError("pooled_performance_gate must be passed, failed, or inconclusive")
-    tier = str(core.get("tier"))
     reasons: list[str] = []
-    cases = [_mapping(case) for case in _list(core.get("cross_engine_cases"))]
     for case in cases:
         status = str(case.get("status"))
         engine = str(_mapping(case.get("runtime")).get("engine", ""))
@@ -1070,9 +1309,6 @@ def evaluate_release_gate(
                     reasons.append(
                         f"nightly_required_status:{engine}:{case_id}:{statuses[0]}"
                     )
-    overall = _mapping(performance.get("overall"))
-    mean = _finite(overall.get("mean_ms"), field="performance.overall.mean_ms")
-    p95 = _finite(overall.get("p95_ms"), field="performance.overall.p95_ms")
     if mean > ABSOLUTE_MEAN_CEILING_MS:
         reasons.append(f"absolute_mean_ms:{mean}>{ABSOLUTE_MEAN_CEILING_MS}")
     if p95 > ABSOLUTE_P95_CEILING_MS:
@@ -1086,6 +1322,25 @@ def evaluate_release_gate(
         "absolute_performance": {"mean_ms": mean, "p95_ms": p95, "mean_ceiling_ms": ABSOLUTE_MEAN_CEILING_MS, "p95_ceiling_ms": ABSOLUTE_P95_CEILING_MS},
         "external_pooled_parent_head_gate": {"status": pooled_performance_gate, "maximum_regression_percent": 15.0, "evidence_owner": "existing Release exact-HEAD workflow"},
     }
+
+
+def evaluate_release_gate(
+    *,
+    core: Mapping[str, Any],
+    performance: Mapping[str, Any],
+    pooled_performance_gate: str,
+    strict: bool,
+) -> dict[str, Any]:
+    validate_performance(performance)
+    overall = _mapping(performance.get("overall"))
+    return _release_gate_from_summary(
+        tier=str(core.get("tier")),
+        cases=[_mapping(case) for case in _list(core.get("cross_engine_cases"))],
+        mean=_finite(overall.get("mean_ms"), field="performance.overall.mean_ms"),
+        p95=_finite(overall.get("p95_ms"), field="performance.overall.p95_ms"),
+        pooled_performance_gate=pooled_performance_gate,
+        strict=strict,
+    )
 
 
 def build_final_report(
@@ -1194,21 +1449,73 @@ def render_final_markdown(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _validate_dashboard_sources(value: Any, *, path: str) -> None:
+    root = _exact_keys(
+        value,
+        (
+            "golden",
+            "false_solve",
+            "clarification",
+            "routing",
+            "residual_invariant_failures",
+            "numeric_checked",
+        ),
+        path=path,
+    )
+    groups = (
+        ("golden", ("passed", "total")),
+        ("false_solve", ("false", "total")),
+        (
+            "clarification",
+            (
+                "true_positive",
+                "false_positive",
+                "fired",
+                "total",
+                "precision_denominator",
+            ),
+        ),
+        ("routing", ("correct", "total")),
+    )
+    for group_name, fields in groups:
+        group = _exact_keys(root[group_name], fields, path=f"{path}.{group_name}")
+        for field, count in group.items():
+            _nonnegative_integer(count, field=f"{path}.{group_name}.{field}")
+    for field in ("residual_invariant_failures", "numeric_checked"):
+        _nonnegative_integer(root[field], field=f"{path}.{field}")
+
+
+def _validate_expected_skip_policy(value: Any, *, path: str) -> None:
+    items = _exact_items(value, ("tier", "engine", "case_id"), path=path)
+    expected = [
+        {"tier": tier, "engine": engine, "case_id": case_id}
+        for tier, engine, case_id in EXPECTED_SKIP_MANIFEST
+    ]
+    if [dict(item) for item in items] != expected:
+        raise ValueError(f"{path} does not match the code-owned expected skip policy")
+
+
 def validate_core(core: Mapping[str, Any]) -> None:
-    if core.get("schema_version") != CROSS_ENGINE_REPORT_SCHEMA_VERSION:
+    root = _exact_keys(core, CORE_FIELDS, path="$core")
+    if root["schema_version"] != CROSS_ENGINE_REPORT_SCHEMA_VERSION:
         raise ValueError("invalid core schema version")
-    if core.get("report_version") != CROSS_ENGINE_REPORT_VERSION:
+    if root["report_version"] != CROSS_ENGINE_REPORT_VERSION:
         raise ValueError("invalid core report version")
-    build_version_evidence(source_commit=str(core.get("source_commit", "")), runtime_versions=_mapping(core.get("versions")))
-    if core.get("tier") not in TIERS:
+    source_commit = _source_commit(root["source_commit"], field="core.source_commit")
+    _validate_versions(root["versions"], source_commit=source_commit, path="$core.versions")
+    if root["tier"] not in TIERS:
         raise ValueError("invalid core tier")
-    if not isinstance(core.get("traces"), list):
+    if not isinstance(root["traces"], list):
         raise TypeError("core traces must be a list")
-    for trace in core["traces"]:
-        validate_trace_snapshot(_mapping(trace))
-    for case in _list(core.get("cross_engine_cases")):
-        validate_cross_engine_case(_mapping(case))
-    rendered = stable_json_dumps(core, enforce_privacy=True)
+    for trace in root["traces"]:
+        validate_trace_snapshot(trace)
+    if not isinstance(root["cross_engine_cases"], list):
+        raise TypeError("core cross_engine_cases must be a list")
+    for case in root["cross_engine_cases"]:
+        validate_cross_engine_case(case)
+    _validate_dashboard_sources(root["dashboard_sources"], path="$core.dashboard_sources")
+    _validate_expected_skip_policy(root["expected_skip_policy"], path="$core.expected_skip_policy")
+    rendered = stable_json_dumps(root, enforce_privacy=True)
     for forbidden in ("duration", "timing", "timestamp", "random"):
         if f'"{forbidden}' in rendered.casefold():
             raise ValueError(f"deterministic core contains volatile field: {forbidden}")
@@ -1237,7 +1544,7 @@ def validate_performance(performance: Mapping[str, Any]) -> None:
         raise ValueError("invalid performance version")
     if root.get("tier") not in TIERS:
         raise ValueError("invalid performance tier")
-    build_version_evidence(source_commit=str(root.get("source_commit", "")))
+    _source_commit(root["source_commit"], field="performance.source_commit")
     stable_json_dumps(root, enforce_privacy=True)
     repeats = root.get("fixed_repeats")
     if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 1:
@@ -1270,6 +1577,7 @@ def validate_performance(performance: Mapping[str, Any]) -> None:
         stage_statistics = _exact_keys(
             case["stage_statistics"], STAGES, path=f"$performance.cases[{case_index}].stage_statistics"
         )
+        case_stage_samples: dict[str, list[float]] = {}
         for stage in STAGES:
             samples = stage_samples[stage]
             if not isinstance(samples, list) or len(samples) != repeats:
@@ -1285,6 +1593,7 @@ def validate_performance(performance: Mapping[str, Any]) -> None:
             )
             if dict(actual_stats) != expected_stats:
                 raise ValueError(f"{case_id}.{stage} statistics do not match raw samples")
+            case_stage_samples[stage] = finite_samples
             all_stage_samples[stage].extend(finite_samples)
         end_samples = case["end_to_end_samples_ms"]
         if not isinstance(end_samples, list) or len(end_samples) != repeats:
@@ -1292,6 +1601,15 @@ def validate_performance(performance: Mapping[str, Any]) -> None:
         finite_end = [_finite(item, field=f"{case_id}.end_to_end") for item in end_samples]
         if any(item < 0 for item in finite_end):
             raise ValueError("end-to-end durations may not be negative")
+        for sample_index, actual_total in enumerate(finite_end):
+            stage_total = sum(
+                case_stage_samples[stage][sample_index] for stage in STAGES
+            )
+            if actual_total != stage_total:
+                raise ValueError(
+                    f"{case_id}.end_to_end sample {sample_index} does not equal "
+                    "the same-sample stage sum"
+                )
         actual_end_stats = _exact_keys(
             case["end_to_end_statistics"],
             ("sample_count", "p50_ms", "p95_ms", "worst_ms"),
@@ -1350,15 +1668,266 @@ def validate_performance(performance: Mapping[str, Any]) -> None:
         raise ValueError("absolute performance ceilings were altered")
 
 
-def validate_final_report(report: Mapping[str, Any], *, strict: bool) -> None:
-    if tuple(_mapping(metric).get("metric_id") for metric in _list(report.get("dashboard"))) != DASHBOARD_METRIC_IDS:
+def _validate_summary_statistics(value: Any, *, path: str) -> Mapping[str, Any]:
+    statistics = _exact_keys(
+        value,
+        ("sample_count", "p50_ms", "p95_ms", "worst_ms"),
+        path=path,
+    )
+    _nonnegative_integer(statistics["sample_count"], field=f"{path}.sample_count")
+    for field in ("p50_ms", "p95_ms", "worst_ms"):
+        _nonnegative_number(statistics[field], field=f"{path}.{field}")
+    if not statistics["p50_ms"] <= statistics["p95_ms"] <= statistics["worst_ms"]:
+        raise ValueError(f"{path} percentiles are inconsistent")
+    return statistics
+
+
+def _validate_final_performance(value: Any) -> Mapping[str, Any]:
+    performance = _exact_keys(
+        value,
+        ("baseline", "absolute_ceilings", "overall", "artifact"),
+        path="$report.performance",
+    )
+    baseline = _exact_keys(
+        performance["baseline"],
+        ("phase42_mean_ms", "phase42_p95_ms"),
+        path="$report.performance.baseline",
+    )
+    if dict(baseline) != {
+        "phase42_mean_ms": PHASE42_MEAN_MS,
+        "phase42_p95_ms": PHASE42_P95_MS,
+    }:
+        raise ValueError("Phase 42 performance baseline was altered")
+    ceilings = _exact_keys(
+        performance["absolute_ceilings"],
+        ("mean_ms", "p95_ms"),
+        path="$report.performance.absolute_ceilings",
+    )
+    if dict(ceilings) != {
+        "mean_ms": ABSOLUTE_MEAN_CEILING_MS,
+        "p95_ms": ABSOLUTE_P95_CEILING_MS,
+    }:
+        raise ValueError("absolute performance ceilings were altered")
+    overall = _exact_keys(
+        performance["overall"],
+        ("sample_count", "mean_ms", "p50_ms", "p95_ms", "worst_ms", "stage_statistics"),
+        path="$report.performance.overall",
+    )
+    sample_count = _nonnegative_integer(
+        overall["sample_count"], field="$report.performance.overall.sample_count"
+    )
+    if sample_count < 1:
+        raise ValueError("final performance summary requires samples")
+    for field in ("mean_ms", "p50_ms", "p95_ms", "worst_ms"):
+        _nonnegative_number(overall[field], field=f"$report.performance.overall.{field}")
+    if not overall["p50_ms"] <= overall["p95_ms"] <= overall["worst_ms"]:
+        raise ValueError("final performance percentiles are inconsistent")
+    if overall["mean_ms"] > overall["worst_ms"]:
+        raise ValueError("final performance mean exceeds the worst sample")
+    stage_statistics = _exact_keys(
+        overall["stage_statistics"],
+        STAGES,
+        path="$report.performance.overall.stage_statistics",
+    )
+    for stage in STAGES:
+        stage_summary = _validate_summary_statistics(
+            stage_statistics[stage],
+            path=f"$report.performance.overall.stage_statistics.{stage}",
+        )
+        if stage_summary["sample_count"] != sample_count:
+            raise ValueError("final performance stage sample_count differs from overall")
+    artifact = _exact_keys(
+        performance["artifact"],
+        ("filename", "schema_version", "content_sha256"),
+        path="$report.performance.artifact",
+    )
+    filename = artifact["filename"]
+    if not isinstance(filename, str) or not filename or Path(filename).name != filename:
+        raise ValueError("performance artifact filename must be a basename")
+    if artifact["schema_version"] != PERFORMANCE_SCHEMA_VERSION:
+        raise ValueError("performance artifact schema version mismatch")
+    digest = artifact["content_sha256"]
+    if (
+        not isinstance(digest, str)
+        or len(digest) != 64
+        or any(character not in "0123456789abcdef" for character in digest)
+    ):
+        raise ValueError("performance artifact digest must be a lowercase SHA256")
+    return overall
+
+
+def _dashboard_counts(value: Any, fields: Iterable[str], *, path: str) -> Mapping[str, Any]:
+    counts = _exact_keys(value, fields, path=path)
+    for field, count in counts.items():
+        _nonnegative_integer(count, field=f"{path}.{field}")
+    return counts
+
+
+def _validate_final_dashboard(
+    value: Any,
+    *,
+    cases: Sequence[Mapping[str, Any]],
+    performance_overall: Mapping[str, Any],
+) -> None:
+    metrics = _exact_items(
+        value,
+        ("metric_id", "value", "evidence"),
+        path="$report.dashboard",
+    )
+    if tuple(metric["metric_id"] for metric in metrics) != DASHBOARD_METRIC_IDS:
         raise ValueError("dashboard must contain the exact eight metrics")
-    if _mapping(report.get("performance")).get("artifact", {}).get("content_sha256") is None:
-        raise ValueError("performance artifact digest missing")
-    gate = _mapping(report.get("release_gate"))
-    if strict and gate.get("verdict") != "passed":
-        raise ValueError(f"strict release gate did not pass: {gate.get('verdict')}")
-    stable_json_dumps(report)
+
+    golden = _dashboard_counts(
+        metrics[0]["evidence"], ("passed", "total"), path="$report.dashboard[0].evidence"
+    )
+    if metrics[0]["value"] != _ratio(golden["passed"], golden["total"]):
+        raise ValueError("golden answer dashboard value differs from evidence")
+    false_solve = _dashboard_counts(
+        metrics[1]["evidence"], ("false", "total"), path="$report.dashboard[1].evidence"
+    )
+    if metrics[1]["value"] != _ratio(false_solve["false"], false_solve["total"]):
+        raise ValueError("false solve dashboard value differs from evidence")
+    clarification = _dashboard_counts(
+        metrics[2]["evidence"],
+        ("true_positive", "false_positive", "fired", "total", "precision_denominator"),
+        path="$report.dashboard[2].evidence",
+    )
+    clarification_value = _exact_keys(
+        metrics[2]["value"],
+        ("precision", "recall"),
+        path="$report.dashboard[2].value",
+    )
+    expected_clarification = {
+        "precision": _ratio(
+            clarification["true_positive"], clarification["precision_denominator"]
+        ),
+        "recall": _ratio(clarification["fired"], clarification["total"]),
+    }
+    if dict(clarification_value) != expected_clarification:
+        raise ValueError("clarification dashboard value differs from evidence")
+    routing = _dashboard_counts(
+        metrics[3]["evidence"], ("correct", "total"), path="$report.dashboard[3].evidence"
+    )
+    if metrics[3]["value"] != _ratio(routing["correct"], routing["total"]):
+        raise ValueError("routing dashboard value differs from evidence")
+    residual_evidence = _exact_keys(
+        metrics[4]["evidence"], ("source",), path="$report.dashboard[4].evidence"
+    )
+    if dict(residual_evidence) != {"source": "normalized invariant checks"}:
+        raise ValueError("residual invariant dashboard evidence was altered")
+    _nonnegative_integer(metrics[4]["value"], field="$report.dashboard[4].value")
+    disagreement_evidence = _dashboard_counts(
+        metrics[5]["evidence"], ("case_count",), path="$report.dashboard[5].evidence"
+    )
+    if disagreement_evidence["case_count"] != len(cases):
+        raise ValueError("cross-engine dashboard case_count differs from cases")
+    if metrics[5]["value"] != sum(case["status"] == "disagreement" for case in cases):
+        raise ValueError("cross-engine disagreement dashboard value differs from cases")
+    latency_evidence = _dashboard_counts(
+        metrics[6]["evidence"], ("sample_count",), path="$report.dashboard[6].evidence"
+    )
+    if latency_evidence["sample_count"] != performance_overall["sample_count"]:
+        raise ValueError("latency dashboard sample_count differs from performance")
+    if metrics[6]["value"] != performance_overall["p95_ms"]:
+        raise ValueError("latency dashboard value differs from performance")
+    flaky_evidence = _exact_keys(
+        metrics[7]["evidence"], ("scope",), path="$report.dashboard[7].evidence"
+    )
+    if dict(flaky_evidence) != {"scope": "current_run_only"}:
+        raise ValueError("flaky-test dashboard evidence was altered")
+    _nonnegative_integer(metrics[7]["value"], field="$report.dashboard[7].value")
+
+
+def validate_final_report(report: Mapping[str, Any], *, strict: bool) -> None:
+    root = _exact_keys(
+        report,
+        (
+            "schema_version",
+            "report_version",
+            "source_commit",
+            "tier",
+            "versions",
+            "cross_engine_cases",
+            "status_counts",
+            "trace_count",
+            "deterministic_checks",
+            "performance",
+            "dashboard",
+            "expected_skip_policy",
+            "release_gate",
+        ),
+        path="$report",
+    )
+    if root["schema_version"] != CROSS_ENGINE_REPORT_SCHEMA_VERSION:
+        raise ValueError("invalid final report schema version")
+    if root["report_version"] != CROSS_ENGINE_REPORT_VERSION:
+        raise ValueError("invalid final report version")
+    source_commit = _source_commit(root["source_commit"], field="report.source_commit")
+    if root["tier"] not in TIERS:
+        raise ValueError("invalid final report tier")
+    _validate_versions(root["versions"], source_commit=source_commit, path="$report.versions")
+    if not isinstance(root["cross_engine_cases"], list):
+        raise TypeError("final report cross_engine_cases must be a list")
+    cases = root["cross_engine_cases"]
+    for case in cases:
+        validate_cross_engine_case(case)
+    status_counts = _exact_keys(root["status_counts"], STATUS_VALUES, path="$report.status_counts")
+    expected_counts = {
+        status: sum(case["status"] == status for case in cases)
+        for status in STATUS_VALUES
+    }
+    for status, count in status_counts.items():
+        _nonnegative_integer(count, field=f"$report.status_counts.{status}")
+    if dict(status_counts) != expected_counts:
+        raise ValueError("final report status_counts differ from cross-engine cases")
+    _nonnegative_integer(root["trace_count"], field="$report.trace_count")
+    deterministic_checks = _exact_keys(
+        root["deterministic_checks"],
+        ("core_contains_timing", "render_uses_immutable_inputs"),
+        path="$report.deterministic_checks",
+    )
+    if dict(deterministic_checks) != {
+        "core_contains_timing": False,
+        "render_uses_immutable_inputs": True,
+    }:
+        raise ValueError("deterministic checks differ from the code-owned contract")
+    performance_overall = _validate_final_performance(root["performance"])
+    _validate_final_dashboard(
+        root["dashboard"], cases=cases, performance_overall=performance_overall
+    )
+    _validate_expected_skip_policy(root["expected_skip_policy"], path="$report.expected_skip_policy")
+    gate = _exact_keys(
+        root["release_gate"],
+        ("verdict", "reasons", "absolute_performance", "external_pooled_parent_head_gate"),
+        path="$report.release_gate",
+    )
+    if not isinstance(gate["reasons"], list) or not all(
+        isinstance(reason, str) for reason in gate["reasons"]
+    ):
+        raise TypeError("release gate reasons must be a list of strings")
+    _exact_keys(
+        gate["absolute_performance"],
+        ("mean_ms", "p95_ms", "mean_ceiling_ms", "p95_ceiling_ms"),
+        path="$report.release_gate.absolute_performance",
+    )
+    external_gate = _exact_keys(
+        gate["external_pooled_parent_head_gate"],
+        ("status", "maximum_regression_percent", "evidence_owner"),
+        path="$report.release_gate.external_pooled_parent_head_gate",
+    )
+    expected_gate = _release_gate_from_summary(
+        tier=root["tier"],
+        cases=cases,
+        mean=performance_overall["mean_ms"],
+        p95=performance_overall["p95_ms"],
+        pooled_performance_gate=external_gate["status"],
+        strict=strict,
+    )
+    if dict(gate) != expected_gate:
+        raise ValueError("final report release gate differs from code-owned evaluation")
+    if strict and gate["verdict"] != "passed":
+        raise ValueError(f"strict release gate did not pass: {gate['verdict']}")
+    stable_json_dumps(root)
 
 
 __all__ = [
