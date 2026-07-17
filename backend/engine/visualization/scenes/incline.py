@@ -1,8 +1,12 @@
 """Incline block scene: incline_no_friction / incline_with_friction (kinetic).
 
-Motion is a closed-form playback of the post-gate backend acceleration.
-The friction case is supported only on the unambiguous kinetic branch that
-the solver itself certifies (friction_type == "kinetic", down-slope motion,
+Motion is a closed-form playback of the post-gate backend acceleration.  A
+stated non-zero initial speed is used only when its along-slope direction is
+available as typed canonical evidence; otherwise the scene is unavailable
+rather than silently replacing that state with rest.
+
+The friction case is supported only on the unambiguous kinetic branch that the
+solver itself certifies (friction_type == "kinetic", down-slope motion,
 non-negative acceleration); every other branch reports unavailable.
 """
 
@@ -39,6 +43,77 @@ from .common import (
 _BLOCK_HALF_W = 0.42
 _BLOCK_HALF_H = 0.26
 _REST_TAIL_S = 0.8
+_DEFAULT_PLAYBACK_S = 3.0
+_MAX_PLAYBACK_S = 8.0
+_MAX_RENDER_PATH_M = 20.0
+_EPS = 1e-9
+
+
+def _typed_initial_velocity(canonical) -> tuple[float, str | None]:
+    """Return signed velocity along the down-slope positive axis.
+
+    ``v0`` is stored as a speed magnitude by the current canonical contract, so
+    every non-zero value also needs an explicit typed motion direction.  The
+    scene builder never re-parses source text to guess that direction.
+    """
+
+    value = known_value(canonical, "v0", units=("m/s",))
+    if value is None:
+        return 0.0, None
+    if abs(value) <= _EPS:
+        return 0.0, "explicit_rest"
+    if value < 0:
+        raise SceneUnavailable(
+            "초기속도 v0의 부호만으로 경사면 운동 방향을 추정하지 않습니다. "
+            "경사면 위쪽/아래쪽 방향을 typed 조건으로 지정해 주세요.",
+            "incline_block",
+        )
+
+    direction = getattr(canonical, "displacement_direction", None)
+    if direction == "down_slope":
+        return value, "down_slope"
+    if direction == "up_slope":
+        return -value, "up_slope"
+    raise SceneUnavailable(
+        "초기속도 v0는 있지만 경사면 위쪽/아래쪽 운동 방향이 typed 근거로 확정되지 않아 "
+        "시각화하지 않습니다. 답과 풀이는 위 카드에서 그대로 확인할 수 있습니다.",
+        "incline_block",
+    )
+
+
+def _motion_window(a: float, v0: float) -> tuple[float, float, float, float]:
+    """Choose a readable constant-acceleration window and its path extrema.
+
+    Displacement ``s`` is measured along the down-slope positive axis.  The
+    returned extrema let an initially up-slope body turn around without leaving
+    the drawn incline.
+    """
+
+    if v0 < 0.0:
+        turn_time = -v0 / a
+        duration = min(
+            _MAX_PLAYBACK_S,
+            max(_DEFAULT_PLAYBACK_S, 2.0 * turn_time + 1.0),
+        )
+    else:
+        target_distance = clamp(v0 * _DEFAULT_PLAYBACK_S + 0.5 * a * _DEFAULT_PLAYBACK_S**2, 2.0, 10.0)
+        duration = (-v0 + math.sqrt(v0 * v0 + 2.0 * a * target_distance)) / a
+        duration = min(duration, _MAX_PLAYBACK_S)
+
+    end_displacement = v0 * duration + 0.5 * a * duration**2
+    samples = [0.0, end_displacement]
+    turn_time = -v0 / a
+    if 0.0 < turn_time < duration:
+        samples.append(v0 * turn_time + 0.5 * a * turn_time**2)
+
+    min_displacement = min(samples)
+    max_displacement = max(samples)
+    if max_displacement - min_displacement > _MAX_RENDER_PATH_M:
+        raise SceneUnavailable(
+            "초기속도와 가속도로 계산한 표시 구간이 너무 커서 읽기 쉬운 경사면 장면을 만들 수 없습니다.",
+            "incline_block",
+        )
+    return duration, min_displacement, max_displacement, end_displacement
 
 
 def build(response, canonical, physical_model, selected_solver: str) -> VisualizationSceneModel:
@@ -60,10 +135,7 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     if with_friction:
         # Clear kinetic branch only, gated exactly like the solver's own
         # typed-evidence guard: an explicit 운동마찰 statement AND explicit
-        # typed down-slope motion.  The current NL extractor cannot produce
-        # displacement_direction == "down_slope", so an up-slope problem can
-        # never be silently animated as a down-slope scene; until typed
-        # direction evidence exists the friction scene is honestly
+        # typed down-slope motion.  Until that evidence exists the scene is
         # unavailable rather than guessed.
         if canonical.friction_type != "kinetic":
             raise SceneUnavailable(
@@ -76,27 +148,23 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
                 "답과 풀이는 위 카드에서 그대로 확인할 수 있습니다.",
                 "incline_block",
             )
-    if a <= 1e-9:
+    if a <= _EPS:
         raise SceneUnavailable(
-            "가속도가 0 이하로 계산되어 '아래로 미끄러지는 블록' 장면으로 표시하지 않습니다.",
+            "가속도가 0 이하로 계산되어 '경사면 아래쪽 가속도' 장면으로 표시하지 않습니다.",
             "incline_block",
         )
+
+    signed_v0, initial_state = _typed_initial_velocity(canonical)
+    motion_time, min_s, max_s, end_s = _motion_window(a, signed_v0)
 
     theta = math.radians(theta_deg)
     # Down-slope unit vector (slope descends to the right) and outward normal.
     u = (math.cos(theta), -math.sin(theta))
     n = (math.sin(theta), math.cos(theta))
 
-    # Slide length is a render-scale choice; the acceleration is the backend
-    # value, so only the travelled distance/duration are schematic.
-    slide_len = clamp(0.5 * a * 3.0**2, 2.0, 10.0)
-    slide_time = math.sqrt(2.0 * slide_len / a)
-    if slide_time > 8.0:
-        slide_time = 8.0
-        slide_len = 0.5 * a * slide_time**2
-
     margin = 0.6
-    slope_len = slide_len + 2.0 * margin
+    path_span = max_s - min_s
+    slope_len = path_span + 2.0 * margin
     base = slope_len * math.cos(theta)
     height = slope_len * math.sin(theta)
     top = (0.0, height)
@@ -104,10 +172,18 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     def on_slope(s: float) -> tuple[float, float]:
         return (top[0] + u[0] * s, top[1] + u[1] * s)
 
-    start_surface = on_slope(margin)
+    # Shift the initial point down the rendered slope when the block first moves
+    # up-slope, leaving room for the physically computed turnaround excursion.
+    start_s = margin - min_s
+    start_surface = on_slope(start_s)
     start_center = (
         start_surface[0] + n[0] * _BLOCK_HALF_H,
         start_surface[1] + n[1] * _BLOCK_HALF_H,
+    )
+    end_surface = on_slope(start_s + end_s)
+    end_center = (
+        end_surface[0] + n[0] * _BLOCK_HALF_H,
+        end_surface[1] + n[1] * _BLOCK_HALF_H,
     )
 
     bodies = [
@@ -138,21 +214,18 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
             body_id="block",
             kind="uniform_acceleration",
             t_start=0.0,
-            t_end=slide_time,
+            t_end=motion_time,
             position0=VizVec2(x=start_center[0], y=start_center[1]),
-            velocity0=VizVec2(x=0.0, y=0.0),
+            velocity0=VizVec2(x=signed_v0 * u[0], y=signed_v0 * u[1]),
             acceleration=VizVec2(x=a * u[0], y=a * u[1]),
         ),
         VizMotionSegmentModel(
             id="settle",
             body_id="block",
             kind="rest",
-            t_start=slide_time,
-            t_end=slide_time + _REST_TAIL_S,
-            position0=VizVec2(
-                x=start_center[0] + u[0] * slide_len,
-                y=start_center[1] + u[1] * slide_len,
-            ),
+            t_start=motion_time,
+            t_end=motion_time + _REST_TAIL_S,
+            position0=VizVec2(x=end_center[0], y=end_center[1]),
         ),
     ]
 
@@ -179,10 +252,18 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     constraints = [
         VizConstraintModel(kind="contact", description="블록은 경사면 위를 따라서만 움직입니다."),
     ]
-    assumptions = [
-        "질점(입자) 모델로 단순화한 블록입니다.",
-        "시각화는 블록이 t=0에 정지 상태에서 출발한다고 가정합니다.",
-    ]
+    assumptions = ["질점(입자) 모델로 단순화한 블록입니다."]
+    if initial_state is None:
+        assumptions.append("초기속도가 주어지지 않아 시각화는 블록이 t=0에 정지 상태에서 출발한다고 가정합니다.")
+        initial_description = "정지 상태에서"
+    elif initial_state == "explicit_rest":
+        assumptions.append("문제에 명시된 초기속도 v0 = 0 m/s를 사용합니다.")
+        initial_description = "초기속도 0 m/s로"
+    else:
+        direction_label = "경사면 아래쪽" if initial_state == "down_slope" else "경사면 위쪽"
+        assumptions.append(f"문제의 초기속도 {abs(signed_v0):g} m/s와 typed 운동 방향({direction_label})을 사용합니다.")
+        initial_description = f"{direction_label} 초기속도 {abs(signed_v0):g} m/s로"
+
     if with_friction:
         forces.append(
             VizForceModel(
@@ -235,16 +316,16 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         ],
         events=[],
         camera=camera,
-        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=slide_time + _REST_TAIL_S, loop=False),
+        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=motion_time + _REST_TAIL_S, loop=False),
         answer_overlay=[overlay_item(acc_item)],
         scene_description=(
-            f"경사각 {theta_deg:g}도 경사면 위 블록이 backend가 계산한 가속도 {acc_display}로 "
-            "경사면 아래(+x) 방향으로 미끄러지는 장면입니다."
+            f"경사각 {theta_deg:g}도 경사면 위 블록이 {initial_description} 움직이며, "
+            f"backend가 계산한 가속도 {acc_display}는 경사면 아래(+x) 방향으로 작용하는 장면입니다."
         ),
         assumptions=assumptions,
         warnings=[],
         schematic_notes=[
-            "경사면 길이·블록 크기·이동 거리는 화면 표시용 값이며 문제의 물리량이 아닙니다.",
+            "경사면 길이·블록 크기·재생 시간은 화면 표시용 선택이며 문제의 물리량이 아닙니다.",
             "힘 화살표 길이는 개형(스케일 없음)입니다.",
         ],
     )
