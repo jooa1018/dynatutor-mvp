@@ -30,7 +30,6 @@ from .common import (
     SceneUnavailable,
     answer_numeric,
     answers_by_output_key,
-    clamp,
     known_value,
     overlay_item,
     scene_coordinate_frame,
@@ -40,6 +39,30 @@ _MASS_HALF = 0.35
 _SCHEMATIC_AMPLITUDE = 0.9
 _WALL_X = -3.2
 _GROUND_Y = 0.0
+_MIN_PLAYBACK_S = 2.0
+_MAX_PLAYBACK_S = 16.0
+_MIN_COMPLETE_CYCLES = 2
+
+
+def _complete_cycle_duration(period: float) -> float:
+    """Choose a non-looping duration that ends on a complete oscillation cycle.
+
+    Typical scenes show at least two cycles and at least two seconds.  Very
+    slow oscillations are capped to the largest complete-cycle duration within
+    the existing 16-second presentation budget.  Only periods longer than the
+    whole budget are clipped; playback is still non-looping, so it never jumps
+    back to an unrelated phase.
+    """
+
+    cycles = max(_MIN_COMPLETE_CYCLES, math.ceil(_MIN_PLAYBACK_S / period))
+    duration = cycles * period
+    if duration <= _MAX_PLAYBACK_S:
+        return duration
+
+    complete_cycles = math.floor(_MAX_PLAYBACK_S / period)
+    if complete_cycles >= 1:
+        return complete_cycles * period
+    return _MAX_PLAYBACK_S
 
 
 def build(response, canonical, physical_model, selected_solver: str) -> VisualizationSceneModel:
@@ -86,7 +109,7 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     mass_half = _MASS_HALF * gs
 
     period = 2.0 * math.pi / omega
-    duration = clamp(2.0 * period, 2.0, 16.0)
+    duration = _complete_cycle_duration(period)
 
     mass_y = _GROUND_Y + mass_half
     bodies = [
@@ -193,6 +216,7 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         scene_type="mass_spring",
         scene_label="질량-스프링 진동",
         source_solver=selected_solver,
+        motion_readout_mode="direction_only" if amplitude_schematic else "numeric",
         coordinate_frame=scene_coordinate_frame(response, physical_model),
         bodies=bodies,
         motion=motion,
@@ -210,7 +234,9 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         ],
         events=[],
         camera=camera,
-        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=duration, loop=True),
+        # A finite number of complete cycles ends cleanly instead of wrapping
+        # from an arbitrary phase back to t=0.
+        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=duration, loop=False),
         answer_overlay=overlay,
         scene_description=(
             "벽에 연결된 스프링-질량계가 평형 위치를 중심으로 단순 조화 진동하는 장면입니다. "
