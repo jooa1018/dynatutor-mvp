@@ -1,6 +1,8 @@
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
 
+from app.schemas.visualization_scene import VisualizationSceneModel
+
 
 class QuantityModel(BaseModel):
     symbol: str
@@ -324,6 +326,8 @@ class SolveResponse(BaseModel):
     physical_model: dict[str, Any] | None = None
     selection_decision: SelectionDecisionModel | None = None
     explanation_trace: ExplanationTraceModel | None = None
+    # Phase 54: additive, optional, non-authoritative visualization scene.
+    visualization_scene: VisualizationSceneModel | None = None
 
 
 class FeedbackResponse(BaseModel):

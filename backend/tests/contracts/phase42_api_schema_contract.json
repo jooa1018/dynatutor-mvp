@@ -1,6 +1,6 @@
 {
-  "schema_version": 6,
-  "source_commit": "ef15012209955ab0e0f89d0143b2d61cf6fab496",
+  "schema_version": 7,
+  "source_commit": "1eb2f9da47248061c9d54fbc12fb843a96d70eb2",
   "engine_dataclasses": {
     "CanonicalProblem": [
       "system_type",
@@ -222,7 +222,8 @@
       "route_decision",
       "physical_model",
       "selection_decision",
-      "explanation_trace"
+      "explanation_trace",
+      "visualization_scene"
     ],
     "ExplanationCoordinateFrameModel": [
       "frame_id",
@@ -345,6 +346,7 @@
     "Clarification input_fields adds typed multi-value inputs while needs_value remains for single-value clients.",
     "selection_decision is an additive Phase 47 diagnostic; legacy answer and verification fields remain authoritative compatibility views.",
     "structured_checks and policy_version are additive Phase 48 verification evidence; legacy checks, warnings, and errors remain compatibility views.",
-    "explanation_evidence and explanation_trace are additive Phase 53 provenance views; existing answer fields and the result gate remain authoritative."
+    "explanation_evidence and explanation_trace are additive Phase 53 provenance views; existing answer fields and the result gate remain authoritative.",
+    "visualization_scene is an additive Phase 54 render-only projection; it carries no answer authority and never changes existing fields."
   ]
 }

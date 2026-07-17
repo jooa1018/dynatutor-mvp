@@ -116,9 +116,10 @@
         "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback (Rapier2D 프론트엔드 재생). backend post-gate 가속도를 닫힌형으로 재생하며 Rapier가 값을 결정하지 않는다.",
+        "scene_type": "incline_block"
       },
       "known_limitations": [
         "One-dimensional along-slope model; no contact-loss or finite-length integration."
@@ -176,9 +177,10 @@
         "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. solver evidence guard와 동일하게 명시적 운동마찰(kinetic)과 typed 운동 방향(displacement_direction=down_slope)이 모두 있어야 장면을 만들며, static/모호 μ/방향 미확정 branch는 unavailable로 처리한다(현 NL extractor 경로에서는 항상 unavailable). backend post-gate 가속도를 재생하며 Rapier가 값을 결정하지 않는다.",
+        "scene_type": "incline_block"
       },
       "known_limitations": [
         "Requires friction state/coefficients; transition after static failure may require direction and mu_k."
@@ -492,9 +494,10 @@
         "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. backend 최종 속도 endpoint에 맞춰 재생한다. 반지름 미제시(또는 표시 범위 밖) 시 회전은 화면 표시용으로만 그린다. 반지름이 명시된 문제는 현 라우팅에서 rolling_energy_general로 이동하므로 장면은 unavailable이다.",
+        "scene_type": "pure_rolling"
       },
       "known_limitations": [
         "Uses an inertia-factor table; no slip transition, required friction, or trajectory."
@@ -694,9 +697,10 @@
         "notes": "Real PyChrono execution is available only in the offline Phase 51 environment; missing PyChrono is an explicit skip and never a student answer."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. 충돌 전 typed 조건과 backend 충돌 후 속도로 timeline을 만들며 Rapier 접촉 해석을 쓰지 않는다.",
+        "scene_type": "collision_1d"
       },
       "known_limitations": [
         "No oblique impact, spin, finite contact duration, or real contact simulation."
@@ -1155,9 +1159,10 @@
         "notes": "PyChrono 장면 또는 자동 교차 검증이 없다."
       },
       "visualization_support": {
-        "status": "static_svg_fbd_only",
+        "status": "rapier2d_kinematic_playback_v1",
         "dynamic_physics": false,
-        "notes": "기존 diagnosis SVG/FBD만 해당한다. Rapier2D 동적 시각화는 없다."
+        "notes": "Phase 54: VisualizationScene v1.0 kinematic playback. backend post-gate 진동 답(ω/T/f)을 재생하며 진폭이 없으면 시각화 전용 진폭으로 표시한다.",
+        "scene_type": "mass_spring"
       },
       "known_limitations": [
         "No damping/forcing/nonlinearity; requested_outputs currently does not encode period/frequency."

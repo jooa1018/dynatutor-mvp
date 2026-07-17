@@ -5,6 +5,7 @@ import { MathBlock } from './MathBlock';
 import AnswerCard from './AnswerCard';
 import VerificationPanel from './VerificationPanel';
 import SafeSvg from './SafeSvg';
+import VisualizationSection from './VisualizationSection';
 
 function KnownValues({ knowns }: { knowns: Record<string, any> }) {
   const entries = Object.entries(knowns ?? {}).filter(([k]) => k !== 'g');
@@ -83,6 +84,9 @@ export default function SolveResult({ data, feedback, onSave }: { data: any; fee
       <Section label="검산">
         <VerificationPanel verification={data.verification} compact />
       </Section>
+
+      {/* Phase 54: additive 동작 시각화. scene이 없으면 아무것도 그리지 않는다. */}
+      <VisualizationSection scene={data.visualization_scene} />
 
       {firstMistake ? (
         <Section label="자주 하는 실수" className="tight">

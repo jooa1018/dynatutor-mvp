@@ -29,6 +29,7 @@ from engine.explanation_trace import (
     neutral_explanation_trace_payload,
 )
 from engine.visualization.fbd import build_fbd_annotations, build_fbd_svg
+from engine.visualization.scene_builder import attach_visualization_scene
 from engine.physics_core.answer_validators import validate_solve_response
 from engine.verification.suite import verify_result
 from engine.verification.gate import apply_result_gate
@@ -577,6 +578,13 @@ def _solve_problem_impl(
             delivery_decision=output_decision,
             raw_selection_decision=raw_selection_decision,
         )
+        # Phase 54: additive scene projection; no-solver responses carry None.
+        attach_visualization_scene(
+            response,
+            canonical=canonical,
+            physical_model=physical_model,
+            selected_solver=None,
+        )
         trace.capture_validation(response.verification)
         trace.capture_response(response)
         trace.finish_stage("verify")
@@ -737,6 +745,14 @@ def _solve_problem_impl(
         legacy_steps=all_steps,
         delivery_decision=output_decision,
         raw_selection_decision=raw_selection_decision,
+    )
+    # Phase 54: scene projection runs strictly after apply_result_gate and
+    # explanation finalization; it is additive and fail-open by contract.
+    attach_visualization_scene(
+        response,
+        canonical=canonical,
+        physical_model=physical_model,
+        selected_solver=solver.name,
     )
     trace.capture_validation(response.verification)
     trace.capture_response(response)

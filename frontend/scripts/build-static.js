@@ -49,6 +49,21 @@ esbuild.buildSync({
   logLevel: 'info',
 });
 
+// Phase 54: Rapier2D runtime is a separate bundle so the main app stays free
+// of Rapier/WASM. The frontend injects this script only when the user opens
+// the visualization; WASM compiles only inside load().
+esbuild.buildSync({
+  entryPoints: [path.join(root, 'src', 'vizRapierRuntime.ts')],
+  bundle: true,
+  outfile: path.join(outDir, 'assets', 'viz-rapier.js'),
+  format: 'iife',
+  platform: 'browser',
+  target: ['es2020'],
+  minify: true,
+  sourcemap: false,
+  logLevel: 'info',
+});
+
 const html = `<!doctype html>
 <html lang="ko">
   <head>

@@ -43,3 +43,6 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# TypeScript incremental build cache (frontend typecheck artifact)
+frontend/tsconfig.tsbuildinfo
