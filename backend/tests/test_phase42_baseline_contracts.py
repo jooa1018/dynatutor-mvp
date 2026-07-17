@@ -280,11 +280,19 @@ def test_phase42_pydantic_schema_contract():
 
 @pytest.mark.unit
 def test_phase53_schema_migration_is_append_only_and_optional():
-    assert CONTRACT["schema_version"] == 6
+    # Phase 54 appended visualization_scene after the Phase 53 field; the
+    # Phase 53 guarantees stay intact (explanation_trace immediately before).
+    assert CONTRACT["schema_version"] == 7
     assert CONTRACT["engine_dataclasses"]["SolverResult"][-1] == "explanation_evidence"
-    assert CONTRACT["api_models"]["SolveResponse"][-1] == "explanation_trace"
+    assert CONTRACT["api_models"]["SolveResponse"][-2] == "explanation_trace"
     assert SolverResult(ok=False).explanation_evidence is None
     assert SolveResponse.model_fields["explanation_trace"].default is None
+
+
+@pytest.mark.unit
+def test_phase54_schema_migration_is_append_only_and_optional():
+    assert CONTRACT["api_models"]["SolveResponse"][-1] == "visualization_scene"
+    assert SolveResponse.model_fields["visualization_scene"].default is None
 
 
 @pytest.mark.regression
