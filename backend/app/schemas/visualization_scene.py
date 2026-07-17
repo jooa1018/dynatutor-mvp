@@ -236,6 +236,10 @@ class VisualizationSceneModel(_SceneModel):
     scene_label: str | None = None
     source_solver: str | None = None
     simulation_mode: Literal["kinematic_playback"] = "kinematic_playback"
+    # Numeric readouts are allowed only when their physical scale is grounded.
+    # direction_only keeps vector directions visible without presenting
+    # magnitudes derived from schematic geometry as physical m/s or m/s².
+    motion_readout_mode: Literal["numeric", "direction_only"] = "numeric"
     coordinate_frame: VizCoordinateFrameModel | None = None
     bodies: list[VizBodyModel] = Field(default_factory=list)
     motion: list[VizMotionSegmentModel] = Field(default_factory=list)
