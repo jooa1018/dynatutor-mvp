@@ -314,6 +314,26 @@ def _unmigrated_migrated_solver_branch(case: str) -> CanonicalProblem:
     raise AssertionError(case)
 
 
+def _assert_excluded_or_terminal_trace(response, selected_solver: str) -> None:
+    assert response.diagnosis.selected_solver == selected_solver
+    trace = response.explanation_trace
+    if trace is None:
+        return
+
+    assert response.ok is False
+    assert response.answer is None
+    assert response.answers == []
+    assert trace.selected_solver == selected_solver
+    assert trace.status != "fully_grounded"
+    assert trace.answer_derivation == []
+    step_kinds = {step.kind for step in trace.student_steps}
+    assert step_kinds == {"status", "required_input"}
+    assert step_kinds.isdisjoint(
+        {"calculation", "equation", "substitution", "answer", "final_answer"}
+    )
+    assert all(step.math is None for step in trace.student_steps)
+
+
 _SOLVER_IDS = (
     "incline_no_friction",
     "incline_with_friction",
@@ -592,27 +612,28 @@ def test_unmigrated_legacy_solver_matrix_never_claims_grounding(
 ):
     response = _solve(monkeypatch, _legacy_negative_canonical(case))
 
-    assert response.diagnosis.selected_solver == selected_solver
-    assert response.explanation_trace is None
+    _assert_excluded_or_terminal_trace(response, selected_solver)
 
 
 @pytest.mark.unit
 @pytest.mark.parametrize(
-    "case",
+    ("case", "selected_solver"),
     (
-        "vertical-min-speed",
-        "spring-speed-only",
-        "spring-mixed",
-        "spring-raw-text-only",
-        "work-force-distance",
-        "slot-acceleration-mixed",
-        "rolling-omega",
+        ("vertical-min-speed", "vertical_circle"),
+        ("spring-speed-only", "spring_energy_speed"),
+        ("spring-mixed", "spring_energy_speed"),
+        ("spring-raw-text-only", "spring_energy_speed"),
+        ("work-force-distance", "work_energy_speed"),
+        ("slot-acceleration-mixed", "slot_pin_relative_motion"),
+        ("rolling-omega", "pure_rolling_energy"),
     ),
 )
-def test_migrated_solver_negative_branch_matrix_stays_unmigrated(monkeypatch, case):
+def test_migrated_solver_negative_branch_matrix_stays_unmigrated(
+    monkeypatch, case, selected_solver
+):
     response = _solve(monkeypatch, _unmigrated_migrated_solver_branch(case))
 
-    assert response.explanation_trace is None
+    _assert_excluded_or_terminal_trace(response, selected_solver)
 
 
 @pytest.mark.unit
