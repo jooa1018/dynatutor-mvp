@@ -77,16 +77,27 @@ _ALLOWLISTED_BRANCH_KEYS = {
 }
 _ALLOWLISTED_ASSUMPTION_KEYS = {
     "air_resistance",
+    "constraint_model",
+    "damping",
     "deformation",
+    "energy_loss",
+    "external_forcing",
+    "friction_regime",
+    "gravity_acceleration",
     "gravity_uniform",
     "ideal_constraint",
+    "motion_model",
     "no_slip",
+    "particle_model",
     "pulley_friction",
     "rope_mass",
     "small_angle",
+    "spring_law",
 }
 _SEMANTIC_ENUM_VALUES = {
-    "body_shape": {"block", "cylinder", "disk", "particle", "ring", "rod", "sphere"},
+    "body_shape": {
+        "solid_sphere", "hollow_sphere", "solid_cylinder", "disk", "hoop", "ring",
+    },
     "displacement_direction": {
         "+x", "+y", "+z", "-x", "-y", "-z", "down", "down_slope",
         "forward", "left", "right", "up", "up_slope",
@@ -134,13 +145,78 @@ _BRANCH_ENUM_VALUES = {
 }
 _ASSUMPTION_ENUM_VALUES = {
     "air_resistance": {"ignored", "included", "negligible"},
+    "constraint_model": {"rotating_slot"},
+    "damping": {"ignored"},
     "deformation": {"ignored", "included", "rigid"},
+    "energy_loss": {"none"},
+    "external_forcing": {"absent"},
+    "friction_regime": {"limiting_static", "none"},
     "gravity_uniform": {"uniform"},
     "ideal_constraint": {"enforced", "ideal"},
+    "motion_model": {"one_degree_of_freedom", "planar_polar", "uniform_circular"},
     "no_slip": {"enforced"},
+    "particle_model": {"point_mass"},
     "pulley_friction": {"ignored", "included", "negligible"},
     "rope_mass": {"included", "massless", "negligible"},
     "small_angle": {"enforced", "valid"},
+    "spring_law": {"linear"},
+}
+_ASSUMPTION_NUMERIC_CONTRACTS = {
+    "gravity_acceleration": (9.81, "m/s^2"),
+}
+_FREE_FORM_ASSUMPTION_WARNING = (
+    "free-form canonical assumptions were omitted; typed solver assumptions are required"
+)
+# The legacy diagnosis field remains byte-compatible.  For migrated solvers,
+# these exact historical strings are acknowledged only when their calculation
+# dependency is present as typed evidence.  Unknown/free-form text still fails
+# closed and never becomes student-facing content.
+_LEGACY_ASSUMPTION_REQUIREMENTS = {
+    "incline_no_friction": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (("known:g", "assumption:gravity_acceleration"),),
+        "블록을 질점으로 모델링": (("assumption:particle_model",),),
+        "마찰력 없음": (("semantic:subtype",),),
+    },
+    "incline_with_friction": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (("known:g", "assumption:gravity_acceleration"),),
+        "블록을 질점으로 모델링": (("assumption:particle_model",),),
+    },
+    "pure_rolling_energy": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (("known:g", "assumption:gravity_acceleration"),),
+        "미끄러지지 않는 순수 구름": (("assumption:no_slip",),),
+        "정지마찰은 일을 하지 않는 이상적 조건": (("assumption:energy_loss",),),
+        "강체 종류 또는 관성모멘트가 필요함": (("semantic:body_shape",),),
+    },
+    "vertical_circle": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (("known:g", "assumption:gravity_acceleration"),),
+    },
+    "spring_mass_vibration": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (),
+        "감쇠 없음": (("assumption:damping",),),
+        "외력 없음": (("assumption:external_forcing",),),
+        "평형 위치 기준 1자유도 운동": (("assumption:motion_model",),),
+    },
+    "spring_energy_speed": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (),
+        "마찰 없음": (("assumption:energy_loss",),),
+        "스프링 탄성에너지가 운동에너지로 전환": (("assumption:spring_law",),),
+    },
+    "work_energy_speed": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (),
+    },
+    "flat_curve_friction": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (("known:g", "assumption:gravity_acceleration"),),
+        "등속 원운동으로 모델링": (("assumption:motion_model",),),
+    },
+    "banked_curve_no_friction": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (("known:g", "assumption:gravity_acceleration"),),
+        "등속 원운동으로 모델링": (("assumption:motion_model",),),
+    },
+    "slot_pin_relative_motion": {
+        "중력가속도 g = 9.81 m/s² 기본값 사용": (),
+        "슬롯을 따라 미끄러지는 핀을 회전 좌표계의 극좌표 운동으로 모델링": (("assumption:constraint_model",),),
+        "r 방향 상대속도와 θ 방향 회전속도를 동시에 고려": (("assumption:motion_model",),),
+    },
 }
 _ALLOWED_FACT_SOURCES = {
     "assumption": {
@@ -425,6 +501,10 @@ def _valid_fact_unit(expected_group: str, semantic_key: str, unit: Any) -> bool:
         numeric_contract = _SEMANTIC_NUMERIC_CONTRACTS.get(semantic_key)
         expected_unit = numeric_contract[2] if numeric_contract is not None else None
         return unit == expected_unit
+    if expected_group == "assumption":
+        numeric_contract = _ASSUMPTION_NUMERIC_CONTRACTS.get(semantic_key)
+        expected_unit = numeric_contract[1] if numeric_contract is not None else None
+        return unit == expected_unit
     # Flags, branch conditions, and typed enum assumptions are dimensionless
     # state declarations and therefore never carry a unit string.
     return unit is None
@@ -501,6 +581,18 @@ def _validate_structured_fact(
         return None
 
     expected_id = f"assumption:{fact.semantic_key}"
+    numeric_contract = _ASSUMPTION_NUMERIC_CONTRACTS.get(fact.semantic_key)
+    if numeric_contract is not None:
+        expected_value, _expected_unit = numeric_contract
+        if (
+            fact.fact_id != expected_id
+            or fact.source != "solver_assumption"
+            or fact.classification != "assumed"
+            or not _is_finite_number(fact.value)
+            or not _same_signed_number(fact.value, expected_value)
+        ):
+            return "does not satisfy the typed numeric assumption contract"
+        return None
     if (
         fact.fact_id != expected_id
         or fact.semantic_key not in _ALLOWLISTED_ASSUMPTION_KEYS
@@ -562,6 +654,28 @@ def _fact_payload(fact: SemanticFactEvidence) -> dict[str, Any]:
         "classification": fact.classification,
         "status": fact.status,
     }
+
+
+def _legacy_assumptions_are_typed(
+    canonical: Any,
+    selected_solver: str | None,
+    evidence: SolverExplanationEvidence | None,
+) -> bool:
+    values = list(getattr(canonical, "assumptions", []) or [])
+    if not values:
+        return True
+    requirements = _LEGACY_ASSUMPTION_REQUIREMENTS.get(selected_solver or "")
+    if evidence is None or requirements is None or any(
+        not isinstance(value, str) or value not in requirements for value in values
+    ):
+        return False
+    declared = {
+        fact.fact_id for fact in (*evidence.explicit_facts, *evidence.assumptions)
+    }
+    return all(
+        all(any(candidate in declared for candidate in alternatives) for alternatives in requirements[value])
+        for value in values
+    )
 
 
 def _canonical_fact_inventory(
@@ -636,7 +750,7 @@ def _canonical_fact_inventory(
         }
 
     if getattr(canonical, "assumptions", []) or []:
-        warnings.append("free-form canonical assumptions were omitted; typed solver assumptions are required")
+        warnings.append(_FREE_FORM_ASSUMPTION_WARNING)
 
     return explicit, assumptions, warnings
 
@@ -1573,6 +1687,12 @@ def build_explanation_trace_payload(
 
     evidence = result.explanation_evidence if result is not None else None
     explicit, assumptions, canonical_fact_warnings = _canonical_fact_inventory(canonical)
+    if _legacy_assumptions_are_typed(canonical, selected_solver, evidence):
+        canonical_fact_warnings = [
+            warning
+            for warning in canonical_fact_warnings
+            if warning != _FREE_FORM_ASSUMPTION_WARNING
+        ]
     grounding_warnings: list[str] = list(canonical_fact_warnings)
     grounding_valid = evidence is not None and not canonical_fact_warnings
     evidence_explicit_ids: set[str] = set()

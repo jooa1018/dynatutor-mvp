@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import math
-from engine.models import Answer, AnswerItem, CanonicalProblem, SolverResult, StepCard, VerificationReport
+from engine.models import (
+    Answer, AnswerItem, CanonicalProblem, EquationEvidence, SolverResult,
+    StepCard, SubstitutionEvidence, VerificationReport,
+)
 from engine.physics_core.inertia import beta_for_shape
 from engine.physics_core.units import magnitude_si
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.verification.checks import merge_reports, require_no_missing
 from engine.equation_generators.energy_momentum import solve_energy_momentum_system
+from engine.solvers.explanation_evidence import (
+    OutputSpec,
+    assumption_fact,
+    attach_evidence,
+    calculation_frame,
+    flag_fact,
+    gravity_fact,
+    known_fact,
+    semantic_fact,
+)
 
 
 def _optional_evidence_radius(c: CanonicalProblem) -> float | None:
@@ -98,7 +111,7 @@ class PureRollingEnergySolver(BaseSolver):
                 "미끄러짐이 있으면 v=ωR을 쓰면 안 됩니다.",
             ],
         )
-        return SolverResult(
+        result = SolverResult(
             ok=True,
             answer=Answer(symbolic="v = sqrt(v0²+2gh/(1+β))", numeric=round(v, 6), unit="m/s", display=f"v = {v:.3f} m/s (β={beta:g})", output_key="final_velocity"),
             answers=typed_answers,
@@ -107,4 +120,135 @@ class PureRollingEnergySolver(BaseSolver):
             used_equations=["mgh = 1/2mv² + 1/2Iω²", "v=ωR", "I=βmR²"],
             fbd=["중력 mg", "수직항력 N", "정지마찰력 f_s"],
             coordinate_guide=["질량중심 병진 + 질량중심 기준 회전"],
+        )
+        if "h" not in c.knowns:
+            return result
+        if "v0" in c.knowns:
+            initial = known_fact(c, "v0")
+        elif (c.flags or {}).get("starts_from_rest") is True:
+            initial = flag_fact(c, "starts_from_rest")
+        else:
+            return result
+        expected_beta = beta_for_shape(c.body_shape)
+        if expected_beta is None or float(expected_beta) != beta:
+            return result
+
+        gravity = gravity_fact(c)
+        gravity_value = (
+            magnitude_si(c.knowns["g"], "m/s^2")
+            if gravity.fact_id == "known:g"
+            else 9.81
+        )
+        height = known_fact(c, "h")
+        shape = semantic_fact(c, "body_shape")
+        no_slip = assumption_fact("no_slip", "enforced")
+        no_loss = assumption_fact("energy_loss", "none")
+        explicit = [height, shape, initial]
+        assumptions = [no_slip, no_loss]
+        if gravity.classification == "assumed":
+            assumptions.append(gravity)
+        else:
+            explicit.append(gravity)
+
+        beta_facts = (shape.fact_id, no_slip.fact_id)
+        speed_facts = (
+            height.fact_id, gravity.fact_id, initial.fact_id,
+            no_slip.fact_id, no_loss.fact_id,
+        )
+        equations = [
+            EquationEvidence(
+                "rolling.shape-inertia",
+                "beta = I / (m R^2)",
+                "physics_core",
+                "constitutive_law",
+                fact_ids=beta_facts,
+                output_ids=("shape_beta",),
+            ),
+            EquationEvidence(
+                "rolling.energy-speed",
+                "v = sqrt(v0^2 + 2 g h / (1 + beta))",
+                "solver_equation",
+                "conservation_law",
+                fact_ids=speed_facts,
+                input_output_ids=("shape_beta",),
+                output_ids=("final_velocity",),
+            ),
+        ]
+        substitutions = [
+            SubstitutionEvidence(
+                "rolling.shape-inertia.values",
+                "rolling.shape-inertia",
+                f"beta = {beta}",
+                "shape_beta",
+                fact_ids=beta_facts,
+            ),
+            SubstitutionEvidence(
+                "rolling.energy-speed.values",
+                "rolling.energy-speed",
+                f"v = sqrt({initial_speed}^2 + 2 * {gravity_value} * {h} / (1 + {beta})) = {typed_answers[0].numeric} m/s",
+                "final_velocity",
+                fact_ids=speed_facts,
+                input_output_ids=("shape_beta",),
+            ),
+        ]
+        outputs = [
+            OutputSpec(
+                "final_velocity", 0, "final_velocity", "final_velocity",
+                ("rolling.energy-speed",),
+                ("rolling.energy-speed.values",),
+            )
+        ]
+        if len(typed_answers) == 2:
+            radius_key = next(
+                (
+                    key for key in ("R", "r")
+                    if key in c.knowns
+                    and magnitude_si(c.knowns[key], "m") == radius
+                ),
+                None,
+            )
+            if radius_key is None:
+                return result
+            radius_fact = known_fact(c, radius_key)
+            explicit.append(radius_fact)
+            equations.append(
+                EquationEvidence(
+                    "rolling.no-slip-angular-speed",
+                    "omega = v / R",
+                    "solver_equation",
+                    "constraint",
+                    fact_ids=(radius_fact.fact_id, no_slip.fact_id),
+                    input_output_ids=("final_velocity",),
+                    output_ids=("angular_velocity",),
+                )
+            )
+            substitutions.append(
+                SubstitutionEvidence(
+                    "rolling.no-slip-angular-speed.values",
+                    "rolling.no-slip-angular-speed",
+                    f"omega = {typed_answers[0].numeric} / {radius} = {typed_answers[1].numeric} rad/s",
+                    "angular_velocity",
+                    fact_ids=(radius_fact.fact_id, no_slip.fact_id),
+                    input_output_ids=("final_velocity",),
+                )
+            )
+            outputs.append(
+                OutputSpec(
+                    "angular_velocity", 1, "angular_velocity", "angular_velocity",
+                    ("rolling.no-slip-angular-speed",),
+                    ("rolling.no-slip-angular-speed.values",),
+                )
+            )
+        return attach_evidence(
+            result,
+            solver_name=self.name,
+            coordinate_frame=calculation_frame(
+                "pure-rolling.body-frame", "body_fixed_2d",
+                ("x", "theta"), ("down_slope", "clockwise"), ("m", "rad"),
+            ),
+            explicit_facts=explicit,
+            assumptions=assumptions,
+            equations=equations,
+            substitutions=substitutions,
+            outputs=outputs,
         )
