@@ -10,6 +10,7 @@ const BODY_ROLES = ['block', 'wheel', 'cart', 'incline_surface', 'wall', 'ground
 const SHAPE_KINDS = ['rect', 'circle', 'wedge', 'wall', 'spring_coil', 'ground_line'];
 const MOTION_KINDS = ['rest', 'uniform_acceleration', 'oscillation'];
 const FORCE_KINDS = ['weight', 'normal', 'friction', 'spring_restoring', 'impulse'];
+const MOTION_READOUT_MODES = ['numeric', 'direction_only'];
 
 function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -56,6 +57,11 @@ function validateScene(raw) {
   pushIf(errors, raw.status !== 'ready' && raw.status !== 'unavailable', '알 수 없는 status입니다.');
   pushIf(errors, raw.simulation_mode != null && raw.simulation_mode !== 'kinematic_playback',
     '지원하지 않는 simulation_mode입니다.');
+  pushIf(
+    errors,
+    raw.motion_readout_mode != null && !MOTION_READOUT_MODES.includes(raw.motion_readout_mode),
+    '지원하지 않는 motion_readout_mode입니다.',
+  );
 
   const authority = raw.authority;
   const authorityOk = authority && typeof authority === 'object'
