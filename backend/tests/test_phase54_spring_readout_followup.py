@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from app.schemas.visualization_scene import VisualizationSceneModel
 from engine.services import solve_problem
+from engine.visualization.scenes.mass_spring import _playback_timing
 
 
 SPRING_PERIOD = "k=200 N/m 스프링에 질량 2 kg을 달았다. 주기를 구하라."
@@ -45,11 +46,11 @@ def test_explicit_spring_amplitude_keeps_numeric_motion_readout():
 
 
 @pytest.mark.regression
-def test_spring_playback_ends_cleanly_without_loop_boundary_jump():
+def test_spring_loop_boundary_returns_to_the_same_phase():
     _, scene = _spring_scene(SPRING_PERIOD)
     oscillation = next(segment for segment in scene.motion if segment.kind == "oscillation")
 
-    assert scene.timestep.loop is False
+    assert scene.timestep.loop is True
     assert oscillation.t_end == pytest.approx(scene.timestep.duration, abs=1e-12)
 
     period = 2.0 * math.pi / oscillation.omega
@@ -62,3 +63,10 @@ def test_spring_playback_ends_cleanly_without_loop_boundary_jump():
     v_end = -oscillation.amplitude * oscillation.omega * math.sin(phase_end)
     assert x_end == pytest.approx(x_start, abs=1e-10)
     assert v_end == pytest.approx(0.0, abs=1e-10)
+
+
+@pytest.mark.unit
+def test_spring_playback_disables_loop_when_one_period_exceeds_budget():
+    duration, loop = _playback_timing(20.0)
+    assert duration == pytest.approx(16.0)
+    assert loop is False
