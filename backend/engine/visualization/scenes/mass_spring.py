@@ -44,25 +44,24 @@ _MAX_PLAYBACK_S = 16.0
 _MIN_COMPLETE_CYCLES = 2
 
 
-def _complete_cycle_duration(period: float) -> float:
-    """Choose a non-looping duration that ends on a complete oscillation cycle.
+def _playback_timing(period: float) -> tuple[float, bool]:
+    """Return a duration and loop flag without a phase-discontinuous wrap.
 
-    Typical scenes show at least two cycles and at least two seconds.  Very
-    slow oscillations are capped to the largest complete-cycle duration within
-    the existing 16-second presentation budget.  Only periods longer than the
-    whole budget are clipped; playback is still non-looping, so it never jumps
-    back to an unrelated phase.
+    Normal scenes loop only after a complete number of periods.  The display
+    aims for at least two cycles and two seconds, while staying within the
+    existing 16-second presentation budget.  If even one full period exceeds
+    that budget, the scene plays a clipped interval once with looping disabled.
     """
 
     cycles = max(_MIN_COMPLETE_CYCLES, math.ceil(_MIN_PLAYBACK_S / period))
     duration = cycles * period
     if duration <= _MAX_PLAYBACK_S:
-        return duration
+        return duration, True
 
     complete_cycles = math.floor(_MAX_PLAYBACK_S / period)
     if complete_cycles >= 1:
-        return complete_cycles * period
-    return _MAX_PLAYBACK_S
+        return complete_cycles * period, True
+    return _MAX_PLAYBACK_S, False
 
 
 def build(response, canonical, physical_model, selected_solver: str) -> VisualizationSceneModel:
@@ -109,7 +108,7 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
     mass_half = _MASS_HALF * gs
 
     period = 2.0 * math.pi / omega
-    duration = _complete_cycle_duration(period)
+    duration, loop = _playback_timing(period)
 
     mass_y = _GROUND_Y + mass_half
     bodies = [
@@ -234,9 +233,7 @@ def build(response, canonical, physical_model, selected_solver: str) -> Visualiz
         ],
         events=[],
         camera=camera,
-        # Loop only after a complete number of oscillation cycles, so the
-        # wrap returns to the same phase instead of jumping from an arbitrary pose.
-        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=duration, loop=True),
+        timestep=VizTimestepModel(fixed_dt=FIXED_DT, duration=duration, loop=loop),
         answer_overlay=overlay,
         scene_description=(
             "벽에 연결된 스프링-질량계가 평형 위치를 중심으로 단순 조화 진동하는 장면입니다. "
