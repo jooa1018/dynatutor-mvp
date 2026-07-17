@@ -25,6 +25,8 @@ The solve pipeline remains parse → model/route → solve/select → verify →
 
 The builder never parses, routes, solves, selects, verifies, calls an LLM, or changes an answer. A builder exception leaves the product answer intact and attaches a neutral withheld trace.
 
+A successful solver enters this strict projection only when it supplies non-`None` `SolverExplanationEvidence`. A successful unmigrated solver keeps the pre-Phase53 steps, FBD/annotations, coordinate and equation guides, cautions, questions, physical-model payloads, summaries, tips, and equation sheet; its `explanation_trace` remains `None`. This absence is an explicit migration marker, not a claim that legacy prose is trace-grounded. Failed, ambiguous, unsupported, contradictory, and result-gate-demoted responses never use the compatibility path.
+
 ## Grounding policy
 
 `fully_grounded` requires structured solver evidence, a resolved non-default calculation frame, provenance for every equation, linked substitutions, a selected candidate, and exact signed numeric/unit/output-key agreement for every delivered item. Symbol and role must also agree when supplied. Missing, duplicate, unlinked, ambiguous, or mismatched evidence produces partial/withheld output with no definitive derivation.
@@ -41,12 +43,12 @@ Calculation coordinates use explicit source, coordinate-system, axis, positive-d
 
 Each delivered output owns a unique output ID and exactly one output link. Its direct substitutions must all produce that output, use exactly the linked equations, and every linked equation must declare the same output. Cross-wired or reused identities withhold all derivations.
 
-Legacy `used_equations` and `StepCard.math` may appear only as partial machine equations. They cannot create substitutions or a fully grounded trace.
+Legacy `used_equations` and `StepCard.math` cannot create substitutions or a fully grounded trace. On a successful unmigrated solver they remain in the unchanged legacy product projection and no trace is attached. If structured evidence is present but malformed, these legacy fields cannot rescue or augment it.
 
 Ambiguous, unsupported, contradictory, partial, and withheld traces render neutral status/required-input guidance. Rejected candidate values are never projected as answers.
 
-Before projection, Wave 1 clears legacy FBDs, hints, coordinate/equation guides, cautions, questions, and both physical-model payloads. A fully grounded response rebuilds only the coordinate and applicable-equation views represented by the trace; every other state leaves those views empty.
+On the strict path, projection clears legacy FBDs, hints, coordinate/equation guides, cautions, questions, and both physical-model payloads. A fully grounded response rebuilds only the coordinate and applicable-equation views represented by the trace; malformed/partial/withheld structured evidence and all terminal states leave those views empty. The successful unmigrated compatibility path does not call this scrubber.
 
 ## Wave 2 boundary
 
-Wave 1 defines and integrates the contract. Existing solver files are unchanged, so legacy solver results are expected to produce partial traces. Wave 2 must populate `SolverExplanationEvidence` for each migrated solver path, including exact output/candidate links and the calculation coordinate frame; it must not loosen the Wave 1 grounding checks.
+Wave 1 defines and integrates the contract. Existing solver files are unchanged, so successful legacy solver results preserve their established response and leave `explanation_trace=None`. Wave 2 must populate `SolverExplanationEvidence` for each migrated solver path, including exact output/candidate links and the calculation coordinate frame; it must not loosen the Wave 1 grounding checks. Once a solver supplies evidence, malformed or incomplete evidence stays on the strict neutral/scrubbed path instead of silently falling back to legacy prose.

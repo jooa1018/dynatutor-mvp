@@ -300,6 +300,113 @@ def test_service_serialization_scrubs_actual_clarify_and_unsupported_responses(
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ("problem_text", "expected_solver", "expected_equation"),
+    [
+        (
+            "질량 5kg인 블록이 마찰 없는 30도 경사면에서 미끄러진다. 가속도를 구하라.",
+            "incline_no_friction",
+            "mg sinθ",
+        ),
+        (
+            "정지 상태에서 원판이 미끄러지지 않고 경사면을 높이 1.5 m만큼 굴러 내려간다. 속도를 구하라.",
+            "pure_rolling_energy",
+            "v_G = ωR",
+        ),
+    ],
+    ids=("incline", "rolling"),
+)
+def test_real_successful_unmigrated_solver_keeps_legacy_product_projection(
+    problem_text, expected_solver, expected_equation
+):
+    response = services.solve_problem(problem_text)
+
+    assert response.ok is True
+    assert response.diagnosis.selected_solver == expected_solver
+    assert response.answer is not None
+    assert response.explanation_trace is None
+    assert response.steps
+    assert response.equation_sheet
+    assert response.physical_model is not None
+    assert response.diagnosis.physical_model is not None
+    assert response.diagnosis.fbd_diagram_svg is not None
+    assert response.diagnosis.fbd_annotations
+    combined_equations = (
+        response.diagnosis.applicable_equations
+        + response.diagnosis.not_applicable_equations
+        + response.equation_sheet
+    )
+    assert any(expected_equation in equation for equation in combined_equations)
+
+
+@pytest.mark.unit
+def test_direct_finalizer_preserves_all_legacy_fields_only_for_success_without_evidence():
+    answers = [_answer("acceleration", "a", 5.0, "m/s^2")]
+    response = _response(answers)
+    original_answers = [answer.model_dump() for answer in response.answers]
+    _seed_stale_public_physics(response)
+    response.diagnosis.not_applicable_equations = ["legacy equation sentinel"]
+    legacy_step = SimpleNamespace(
+        title="legacy model card",
+        body="legacy solver derivation",
+        math="a = F / m",
+    )
+
+    services._finalize_public_explanation(
+        response,
+        canonical=_canonical(),
+        physical_model={"legacy": True},
+        result=SolverResult(ok=True),
+        selected_solver="unmigrated_legacy_solver",
+        route_decision=SimpleNamespace(status="select", reason="legacy", warnings=[]),
+        legacy_steps=(legacy_step,),
+    )
+
+    assert response.explanation_trace is None
+    assert response.ok is True
+    assert [answer.model_dump() for answer in response.answers] == original_answers
+    assert [step.title for step in response.steps] == ["legacy model card"]
+    assert response.diagnosis.fbd_diagram_svg == f"<svg>{_STALE_PUBLIC_SENTINEL}</svg>"
+    assert response.diagnosis.fbd_annotations == [
+        f"rejected value 987653 {_STALE_PUBLIC_SENTINEL}"
+    ]
+    assert response.diagnosis.physical_model == {
+        "equation": f"z = 530153 {_STALE_PUBLIC_SENTINEL}"
+    }
+    assert response.physical_model == {
+        "internal_id": _STALE_PUBLIC_SENTINEL,
+        "value": 987653,
+    }
+    assert "legacy equation sentinel" in response.equation_sheet
+
+
+@pytest.mark.unit
+def test_failed_unmigrated_result_never_enters_legacy_compatibility_path():
+    response = _response([_answer("acceleration", "a", 5.0, "m/s^2")])
+    _seed_stale_public_physics(response)
+    response.ok = False
+    response.answers = []
+    response.verification.passed = False
+    response.verification.errors.append("result gate rejected final answer")
+
+    services._finalize_public_explanation(
+        response,
+        canonical=_canonical(),
+        physical_model={"legacy": True},
+        result=SolverResult(ok=False),
+        selected_solver="unmigrated_legacy_solver",
+        route_decision=SimpleNamespace(status="select", reason="legacy", warnings=[]),
+        legacy_steps=(
+            SimpleNamespace(title="stale", body=_STALE_PUBLIC_SENTINEL, math=None),
+        ),
+    )
+
+    assert response.explanation_trace is not None
+    assert response.explanation_trace.status == "withheld"
+    _assert_scrubbed_public_physics(response, fully_grounded=False)
+
+
+@pytest.mark.unit
 def test_service_finalizer_rebuilds_fully_grounded_public_fields_only_from_trace():
     answers = [_answer("acceleration", "a", 5.0, "m/s^2")]
     response = _response(answers)
@@ -318,6 +425,36 @@ def test_service_finalizer_rebuilds_fully_grounded_public_fields_only_from_trace
 
     assert response.explanation_trace.status == "fully_grounded"
     _assert_scrubbed_public_physics(response, fully_grounded=True)
+
+
+@pytest.mark.unit
+def test_structured_malformed_evidence_stays_strict_and_scrubs_stale_projection():
+    answers = [_answer("acceleration", "a", 5.0, "m/s^2")]
+    response = _response(answers)
+    _seed_stale_public_physics(response)
+    original_answers = [answer.model_dump() for answer in response.answers]
+    malformed = replace(_evidence(answers), equations=())
+
+    services._finalize_public_explanation(
+        response,
+        canonical=_canonical(),
+        physical_model={"untraced": _STALE_PUBLIC_SENTINEL},
+        result=SolverResult(ok=True, explanation_evidence=malformed),
+        selected_solver="synthetic_solver_internal",
+        route_decision=SimpleNamespace(
+            status="select", reason="structured synthetic route", warnings=[]
+        ),
+        legacy_steps=(
+            SimpleNamespace(title="stale", body=_STALE_PUBLIC_SENTINEL, math=None),
+        ),
+    )
+
+    assert response.ok is True
+    assert [answer.model_dump() for answer in response.answers] == original_answers
+    assert response.explanation_trace is not None
+    assert response.explanation_trace.status != "fully_grounded"
+    assert response.explanation_trace.answer_derivation == []
+    _assert_scrubbed_public_physics(response, fully_grounded=False)
 
 
 @pytest.mark.unit

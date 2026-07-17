@@ -139,10 +139,38 @@ _EQUATION_SHEETS: dict[str, list[str]] = {
 
 
 def build_teacher_summary(response: SolveResponse) -> list[str]:
-    """Project a deterministic summary exclusively from the finalized trace."""
+    """Build the deterministic summary for the active explanation contract.
+
+    A missing trace is the intentional compatibility marker for a successful
+    solver that has not yet migrated to structured Phase 53 evidence.  Keep
+    the exact pre-Phase53 projection for that case.  Structured and terminal
+    responses always carry a trace and therefore use the strict path below.
+    """
 
     trace = response.explanation_trace
-    if trace is None or trace.status != "fully_grounded":
+    if trace is None:
+        c = response.diagnosis.canonical
+        summary: list[str] = []
+        summary.append(f"먼저 이 문제를 '{c.system_type}' 유형으로 구조화했습니다.")
+        if response.diagnosis.selected_solver:
+            summary.append(
+                f"계산은 '{response.diagnosis.selected_solver}' 전용 solver가 맡았습니다."
+            )
+        if c.missing_info:
+            summary.append(
+                "조건이 부족한 부분이 있어 최종 계산보다 추가 조건 확인이 우선입니다."
+            )
+        elif response.answer:
+            summary.append(f"최종 결과는 {response.answer.display} 입니다.")
+        if response.verification.dimension_summary:
+            summary.append(response.verification.dimension_summary)
+        if response.diagnosis.not_applicable_equations:
+            summary.append(
+                "특히 이번 조건에서 쓰면 안 되는 식을 분리해서 표시했습니다. "
+                "이 부분이 동역학 실수를 줄이는 핵심입니다."
+            )
+        return summary
+    if trace.status != "fully_grounded":
         return ["현재 근거로는 계산 과정을 확정해 제시할 수 없습니다."]
     summary = ["조건, 좌표계, 관계식, 대입과 검산이 연결된 풀이입니다."]
     summary.extend(
@@ -154,7 +182,23 @@ def build_teacher_summary(response: SolveResponse) -> list[str]:
 
 def build_concept_summary(response: SolveResponse) -> list[str]:
     trace = response.explanation_trace
-    if trace is None or trace.status != "fully_grounded":
+    if trace is None:
+        ctype = response.diagnosis.canonical.system_type
+        out = list(
+            _CONCEPTS.get(
+                ctype,
+                [
+                    "이 문제는 먼저 모델을 명확히 정하고, 그 모델에 맞는 식만 선택하는 것이 중요합니다."
+                ],
+            )
+        )
+        if response.diagnosis.canonical.assumptions:
+            out.append(
+                "이번 풀이의 기본 가정: "
+                + "; ".join(response.diagnosis.canonical.assumptions[:3])
+            )
+        return out
+    if trace.status != "fully_grounded":
         return ["모형, 사건 조건과 필요한 입력이 확인되기 전에는 특정 계산식을 확정하지 않습니다."]
     out: list[str] = []
     if trace.coordinate_frame is not None:
@@ -175,7 +219,17 @@ def build_concept_summary(response: SolveResponse) -> list[str]:
 
 def build_common_mistakes(response: SolveResponse) -> list[str]:
     trace = response.explanation_trace
-    if trace is None or trace.status != "fully_grounded":
+    if trace is None:
+        ctype = response.diagnosis.canonical.system_type
+        mistakes = list(_COMMON_MISTAKES.get(ctype, []))
+        mistakes.extend(
+            f"이번 조건에서는 '{equation}'를 조심하세요."
+            for equation in response.diagnosis.not_applicable_equations[:2]
+        )
+        return mistakes or [
+            "조건을 새로 가정해서 풀지 말고, 문제에 주어진 정보와 가정 카드를 먼저 확인하세요."
+        ]
+    if trace.status != "fully_grounded":
         return ["확정되지 않은 조건이나 후보 값을 최종 계산처럼 사용하지 마세요."]
     mistakes = ["명시된 조건과 풀이 가정을 서로 섞지 마세요."]
     if trace.coordinate_frame is not None:
@@ -186,6 +240,16 @@ def build_common_mistakes(response: SolveResponse) -> list[str]:
 
 
 def build_study_tips(response: SolveResponse) -> list[str]:
+    if response.explanation_trace is None:
+        ctype = response.diagnosis.canonical.system_type
+        tips = list(_STUDY_TIPS.get(ctype, []))
+        if response.steps:
+            tips.append(
+                "단계별 풀이 카드를 접었다 펴면서, 각 단계가 어떤 식을 쓴 것인지 직접 말로 설명해보세요."
+            )
+        if response.verification.checks:
+            tips.append("마지막에는 검산 카드의 극한상황 체크를 직접 다시 해보세요.")
+        return tips or ["비슷한 예제를 하나 더 골라서, 같은 구조의 FBD와 식을 직접 써보세요."]
     return [
         "조건, 가정, 좌표계, 관계식, 대입, 검산을 서로 연결해 적는 연습을 하세요.",
         "근거가 없는 값이나 식이 추가되지 않았는지 마지막에 확인하세요.",
@@ -194,7 +258,14 @@ def build_study_tips(response: SolveResponse) -> list[str]:
 
 def build_equation_sheet(response: SolveResponse) -> list[str]:
     trace = response.explanation_trace
-    if trace is None or trace.status != "fully_grounded":
+    if trace is None:
+        ctype = response.diagnosis.canonical.system_type
+        equations = list(_EQUATION_SHEETS.get(ctype, []))
+        for equation in response.diagnosis.applicable_equations:
+            if equation not in equations:
+                equations.append(equation)
+        return equations[:8]
+    if trace.status != "fully_grounded":
         return []
     return [equation.expression for equation in trace.equations]
 
@@ -250,6 +321,24 @@ def project_explanation_from_trace(response: SolveResponse) -> None:
             StepCardSchema(title=step.title, body=step.body, math=step.math)
             for step in trace.student_steps
         ]
+    response.teacher_summary = build_teacher_summary(response)
+    response.concept_summary = build_concept_summary(response)
+    response.common_mistakes = build_common_mistakes(response)
+    response.study_tips = build_study_tips(response)
+    response.equation_sheet = build_equation_sheet(response)
+
+
+def project_legacy_explanation(response: SolveResponse, legacy_steps=()) -> None:
+    """Restore the pre-Phase53 deterministic projection for unmigrated success.
+
+    Callers must use this only after the sole result gate has left ``ok`` true
+    and only when the selected solver supplied no structured evidence.  The
+    optional trace remains absent so legacy content is never represented as
+    trace-grounded.
+    """
+
+    response.explanation_trace = None
+    response.steps = [StepCardSchema(**step.__dict__) for step in legacy_steps]
     response.teacher_summary = build_teacher_summary(response)
     response.concept_summary = build_concept_summary(response)
     response.common_mistakes = build_common_mistakes(response)

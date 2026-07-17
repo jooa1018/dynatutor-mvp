@@ -23,7 +23,7 @@ from engine.model_builder import build_physical_model, physical_model_step_cards
 from engine.solvers.registry import SolverRegistry
 from engine.tutor_cards import build_diagnosis_cards
 from engine.feedback import analyze_student_solution
-from engine.explanation import project_explanation_from_trace
+from engine.explanation import project_explanation_from_trace, project_legacy_explanation
 from engine.explanation_trace import (
     build_explanation_trace_payload,
     neutral_explanation_trace_payload,
@@ -346,7 +346,15 @@ def _finalize_public_explanation(
     route_decision,
     legacy_steps=(),
 ):
-    """Attach and project one immutable trace without changing product answers."""
+    """Finalize strict evidence or preserve an unmigrated successful response."""
+
+    # Successful solvers migrate to Phase 53 only when they explicitly supply
+    # structured evidence.  Until then, keep the pre-Phase53 product response
+    # byte/field semantics and leave the additive trace absent.  Failed and
+    # gate-demoted responses must never enter this compatibility branch.
+    if response.ok is True and getattr(result, "explanation_evidence", None) is None:
+        project_legacy_explanation(response, legacy_steps)
+        return
 
     route_reason = getattr(route_decision, "reason", None) or getattr(
         response.diagnosis, "solver_reason", None
