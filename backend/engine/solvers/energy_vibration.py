@@ -171,7 +171,9 @@ class SpringEnergySpeedSolver(BaseSolver):
         kq = c.knowns.get("k")
         xq = c.knowns.get("x") or c.knowns.get("A")
         mq = c.knowns.get("m")
+        typed_requested = set(c.requested_outputs or []) | set(c.unknowns or [])
         requested = set(c.requested_outputs or c.unknowns or [])
+        explicit_energy_only = typed_requested == {"elastic_energy"}
         wants_energy = "elastic_energy" in requested or (
             not mq and "에너지" in (c.raw_text or "")
         )
@@ -219,6 +221,8 @@ class SpringEnergySpeedSolver(BaseSolver):
                     ),
                     used_equations=["E = ½kx²"],
                 )
+                if not explicit_energy_only:
+                    return result
                 displacement_key = "x" if "x" in c.knowns else "A"
                 if kq.unit != "N/m" or c.knowns[displacement_key].unit != "m":
                     return result

@@ -112,6 +112,14 @@ _SEMANTIC_ENUM_VALUES = {
     "pulley_topology": {"atwood", "compound", "fixed", "movable", "table_hanging"},
     "surface_type": {"curved", "flat", "horizontal", "incline", "rough", "smooth", "vertical"},
 }
+_ROLLING_BODY_SHAPES = {
+    "solid_sphere",
+    "hollow_sphere",
+    "solid_cylinder",
+    "disk",
+    "hoop",
+    "ring",
+}
 # This mapping is copied from the checked-in Phase 52 capability registry.  A
 # subtype is meaningful only together with its canonical system type; accepting
 # a globally "normalized" token here would turn solver-authored evidence into a
@@ -184,7 +192,7 @@ _LEGACY_ASSUMPTION_REQUIREMENTS = {
     },
     "pure_rolling_energy": {
         "중력가속도 g = 9.81 m/s² 기본값 사용": (("known:g", "assumption:gravity_acceleration"),),
-        "미끄러지지 않는 순수 구름": (("assumption:no_slip",),),
+        "미끄러지지 않는 순수 구름": (("flag:no_slip",),),
         "정지마찰은 일을 하지 않는 이상적 조건": (("assumption:energy_loss",),),
         "강체 종류 또는 관성모멘트가 필요함": (("semantic:body_shape",),),
     },
@@ -473,6 +481,11 @@ def _valid_semantic_attribute_value(
             isinstance(value, str)
             and value in _SUBTYPE_VALUES_BY_SYSTEM.get(system_type or "", set())
         )
+    if key == "body_shape" and system_type in {
+        "pure_rolling_energy",
+        "rolling_energy_general",
+    }:
+        return isinstance(value, str) and value in _ROLLING_BODY_SHAPES
     return (
         isinstance(value, str)
         and value in _SEMANTIC_ENUM_VALUES.get(key, set())

@@ -5,7 +5,7 @@ from engine.models import (
     Answer, AnswerItem, CanonicalProblem, EquationEvidence, SolverResult,
     StepCard, SubstitutionEvidence, VerificationReport,
 )
-from engine.physics_core.inertia import beta_for_shape
+from engine.physics_core.inertia import INERTIA_BETA, beta_for_shape
 from engine.physics_core.units import magnitude_si
 from engine.solvers.base import BaseSolver, SolverMatch
 from engine.verification.checks import merge_reports, require_no_missing
@@ -20,6 +20,16 @@ from engine.solvers.explanation_evidence import (
     known_fact,
     semantic_fact,
 )
+
+
+_SHAPE_BETA_RELATIONS = {
+    "solid_sphere": ("2 / 5", 2 / 5),
+    "hollow_sphere": ("2 / 3", 2 / 3),
+    "solid_cylinder": ("1 / 2", 1 / 2),
+    "disk": ("1 / 2", 1 / 2),
+    "hoop": ("1", 1.0),
+    "ring": ("1", 1.0),
+}
 
 
 def _optional_evidence_radius(c: CanonicalProblem) -> float | None:
@@ -140,7 +150,15 @@ class PureRollingEnergySolver(BaseSolver):
         else:
             return result
         expected_beta = beta_for_shape(c.body_shape)
-        if expected_beta is None or float(expected_beta) != beta:
+        shape_relation = _SHAPE_BETA_RELATIONS.get(c.body_shape or "")
+        if (
+            expected_beta is None
+            or shape_relation is None
+            or INERTIA_BETA.get(c.body_shape or "") != shape_relation[1]
+            or float(expected_beta) != shape_relation[1]
+            or beta != shape_relation[1]
+            or (c.flags or {}).get("no_slip") is not True
+        ):
             return result
 
         gravity = gravity_fact(c)
@@ -151,16 +169,16 @@ class PureRollingEnergySolver(BaseSolver):
         )
         height = known_fact(c, "h")
         shape = semantic_fact(c, "body_shape")
-        no_slip = assumption_fact("no_slip", "enforced")
+        no_slip = flag_fact(c, "no_slip")
         no_loss = assumption_fact("energy_loss", "none")
-        explicit = [height, shape, initial]
-        assumptions = [no_slip, no_loss]
+        explicit = [height, shape, initial, no_slip]
+        assumptions = [no_loss]
         if gravity.classification == "assumed":
             assumptions.append(gravity)
         else:
             explicit.append(gravity)
 
-        beta_facts = (shape.fact_id, no_slip.fact_id)
+        beta_facts = (shape.fact_id,)
         speed_facts = (
             height.fact_id, gravity.fact_id, initial.fact_id,
             no_slip.fact_id, no_loss.fact_id,
@@ -168,7 +186,7 @@ class PureRollingEnergySolver(BaseSolver):
         equations = [
             EquationEvidence(
                 "rolling.shape-inertia",
-                "beta = I / (m R^2)",
+                f"beta({c.body_shape}) = {shape_relation[0]}",
                 "physics_core",
                 "constitutive_law",
                 fact_ids=beta_facts,
@@ -188,7 +206,7 @@ class PureRollingEnergySolver(BaseSolver):
             SubstitutionEvidence(
                 "rolling.shape-inertia.values",
                 "rolling.shape-inertia",
-                f"beta = {beta}",
+                f"beta({c.body_shape}) = {shape_relation[0]} = {beta}",
                 "shape_beta",
                 fact_ids=beta_facts,
             ),
