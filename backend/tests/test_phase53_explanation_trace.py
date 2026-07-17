@@ -143,7 +143,11 @@ def _evidence(answers: list[AnswerItemModel], *, typed_assumption: bool = False)
             SubstitutionEvidence(
                 substitution_id=substitution_id,
                 equation_id=equation_id,
-                expression=f"{answer.symbol} = 10 / 2 = {answer.numeric:g} {answer.unit}",
+                # ``str(float)`` preserves Python's shortest round-trippable
+                # representation.  ``:g`` defaults to six significant digits
+                # and would fabricate a different last calculation value for
+                # legitimate six-decimal delivery fixtures.
+                expression=f"{answer.symbol} = 10 / 2 = {answer.numeric} {answer.unit}",
                 output_id=output_id,
                 fact_ids=("known:F", "known:m") + assumption_ids,
             )
@@ -974,7 +978,8 @@ def test_raw_delivery_authority_rejects_adversarial_mismatch(case):
     trace = _rebuild_raw_delivery(
         response, evidence, delivery, "constant_acceleration_1d"
     )
-    assert trace.status == "withheld"
+    expected_status = "ambiguous" if case == "raw_ambiguous" else "withheld"
+    assert trace.status == expected_status
     assert trace.answer_derivation == []
 
 
