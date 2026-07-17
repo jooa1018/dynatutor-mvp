@@ -9,8 +9,8 @@ const DT = 1 / 120;
 function inclineScene() {
   return {
     bodies: [
-      { id: 'block', body_type: 'kinematic', initial_position: { x: 0, y: 3 }, initial_angle: -0.3 },
-      { id: 'incline', body_type: 'fixed', initial_position: { x: 0, y: 0 }, initial_angle: 0 },
+      { id: 'block', label: '블록', body_type: 'kinematic', initial_position: { x: 0, y: 3 }, initial_angle: -0.3 },
+      { id: 'incline', label: '경사면', body_type: 'fixed', initial_position: { x: 0, y: 0 }, initial_angle: 0 },
     ],
     motion: [
       {
@@ -26,7 +26,7 @@ function inclineScene() {
 
 function springScene() {
   return {
-    bodies: [{ id: 'mass', body_type: 'kinematic', initial_position: { x: 0.9, y: 0.35 }, initial_angle: 0 }],
+    bodies: [{ id: 'mass', label: '질량', body_type: 'kinematic', initial_position: { x: 0.9, y: 0.35 }, initial_angle: 0 }],
     motion: [{
       id: 'osc', body_id: 'mass', kind: 'oscillation', t_start: 0, t_end: 4,
       origin: { x: 0, y: 0.35 }, axis: { x: 1, y: 0 }, amplitude: 0.9, omega: 10, phase: 0,
@@ -40,8 +40,8 @@ function collisionScene(v1After, v2After) {
   const tC = 2;
   return {
     bodies: [
-      { id: 'b1', body_type: 'kinematic', initial_position: { x: -8.35, y: 0.35 }, initial_angle: 0 },
-      { id: 'b2', body_type: 'kinematic', initial_position: { x: 0.35, y: 0.35 }, initial_angle: 0 },
+      { id: 'b1', label: '물체 1', body_type: 'kinematic', initial_position: { x: -8.35, y: 0.35 }, initial_angle: 0 },
+      { id: 'b2', label: '물체 2', body_type: 'kinematic', initial_position: { x: 0.35, y: 0.35 }, initial_angle: 0 },
     ],
     motion: [
       { id: 'b1-before', body_id: 'b1', kind: 'uniform_acceleration', t_start: 0, t_end: tC, position0: { x: -8.35, y: 0.35 }, velocity0: { x: 4, y: 0 }, acceleration: { x: 0, y: 0 } },
@@ -113,6 +113,25 @@ test('collision timeline switches to backend post velocities at the event', () =
   assert.equal(after2.vx, v2After);
 });
 
+test('motion readouts include every kinematic collision body with a label', () => {
+  const scene = collisionScene(-0.8, 3.2);
+  const readouts = motion.motionReadouts(scene, 2.01);
+
+  assert.deepEqual(readouts.map((item) => item.bodyId), ['b1', 'b2']);
+  assert.deepEqual(readouts.map((item) => item.label), ['물체 1', '물체 2']);
+  assert.equal(readouts[0].speed, 0.8);
+  assert.equal(readouts[1].speed, 3.2);
+  assert.equal(readouts[0].acceleration, 0);
+  assert.equal(readouts[1].acceleration, 0);
+});
+
+test('single-body motion readout remains a single labeled row', () => {
+  const readouts = motion.motionReadouts(inclineScene(), 1);
+  assert.equal(readouts.length, 1);
+  assert.equal(readouts[0].bodyId, 'block');
+  assert.equal(readouts[0].label, '블록');
+});
+
 test('angular playback integrates spin for rolling display', () => {
   const scene = inclineScene();
   scene.motion[0].angle0 = 0;
@@ -141,7 +160,7 @@ test('snapshot times cover start, events, and end for reduced motion', () => {
   const labels = times.map((_, i) => motion.snapshotLabel(scene, i, times));
   assert.ok(labels[0].includes('시작'));
   assert.ok(labels[labels.length - 1].includes('최종'));
-  assert.ok(labels.some((l) => l.includes('충돌')));
+  assert.ok(labels.some((l) => l.includes('충돌'));
 
   const noEvents = inclineScene();
   const times2 = motion.snapshotTimes(noEvents);
