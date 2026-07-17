@@ -10,8 +10,16 @@ export interface BodyState {
   segmentId: string | null;
 }
 
+export interface MotionReadout {
+  bodyId: string;
+  label: string;
+  speed: number;
+  acceleration: number;
+}
+
 export declare function evaluateBody(scene: any, body: any, t: number): BodyState;
 export declare function evaluateAll(scene: any, t: number): Record<string, BodyState>;
+export declare function motionReadouts(scene: any, t: number): MotionReadout[];
 export declare function totalDuration(scene: any): number;
 export declare function totalSteps(scene: any): number;
 export declare function timeAtStep(scene: any, stepIndex: number): number;
