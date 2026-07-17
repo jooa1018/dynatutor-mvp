@@ -249,6 +249,7 @@ function AnimatedViewer({ scene }: { scene: any }) {
   const duration = motionLib.totalDuration(scene);
   const v = Math.hypot(stateRef.current.vx, stateRef.current.vy);
   const a = Math.hypot(stateRef.current.ax, stateRef.current.ay);
+  const showNumericMotionReadout = (scene.motion_readout_mode ?? 'numeric') === 'numeric';
 
   return (
     <div>
@@ -300,8 +301,14 @@ function AnimatedViewer({ scene }: { scene: any }) {
       <div className="viz-values viz-values-anim">
         <p className="col-label">애니메이션 근사값 (정답 아님 · 표시 전용)</p>
         <p className="viz-anim-readout">
-          <code className="math">|v| ≈ {v.toFixed(2)} m/s</code>{' '}
-          <code className="math">|a| ≈ {a.toFixed(2)} m/s²</code>
+          {showNumericMotionReadout ? (
+            <>
+              <code className="math">|v| ≈ {v.toFixed(2)} m/s</code>{' '}
+              <code className="math">|a| ≈ {a.toFixed(2)} m/s²</code>
+            </>
+          ) : (
+            <span>진폭이 주어지지 않아 속도·가속도 크기는 계산하지 않습니다. 화살표는 방향만 보여줍니다.</span>
+          )}
           {!engineReady && !runtimeError ? <span className="viz-loading"> · 물리 엔진 로딩 중…</span> : null}
         </p>
       </div>
