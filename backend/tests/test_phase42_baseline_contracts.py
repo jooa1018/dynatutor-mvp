@@ -17,11 +17,30 @@ from app.schemas.solution import (
     ClarificationModel,
     ClarificationOptionModel,
     DiagnosisResponse,
+    ExplanationAnswerDerivationModel,
+    ExplanationCandidateSummaryModel,
+    ExplanationCoordinateFrameModel,
+    ExplanationEquationModel,
+    ExplanationFactModel,
+    ExplanationStudentStepModel,
+    ExplanationSubstitutionModel,
+    ExplanationTraceModel,
+    ExplanationValidationSummaryModel,
     SolveResponse,
     VerificationReport as VerificationReportModel,
 )
 from engine.extraction.extractor import extract_problem
-from engine.models import CanonicalProblem, SolverResult, VerificationReport
+from engine.models import (
+    CalculationCoordinateFrame,
+    CanonicalProblem,
+    EquationEvidence,
+    OutputEvidenceLink,
+    SemanticFactEvidence,
+    SolverExplanationEvidence,
+    SolverResult,
+    SubstitutionEvidence,
+    VerificationReport,
+)
 from engine.solvers.registry import SolverRegistry
 from engine.services import solve_problem
 from engine.verification.residuals import CHECKERS
@@ -224,6 +243,12 @@ def test_phase42_engine_dataclass_contract():
         "CanonicalProblem": [field.name for field in fields(CanonicalProblem)],
         "SolverResult": [field.name for field in fields(SolverResult)],
         "VerificationReport": [field.name for field in fields(VerificationReport)],
+        "CalculationCoordinateFrame": [field.name for field in fields(CalculationCoordinateFrame)],
+        "SemanticFactEvidence": [field.name for field in fields(SemanticFactEvidence)],
+        "EquationEvidence": [field.name for field in fields(EquationEvidence)],
+        "SubstitutionEvidence": [field.name for field in fields(SubstitutionEvidence)],
+        "OutputEvidenceLink": [field.name for field in fields(OutputEvidenceLink)],
+        "SolverExplanationEvidence": [field.name for field in fields(SolverExplanationEvidence)],
     }
     assert actual == CONTRACT["engine_dataclasses"]
 
@@ -240,8 +265,26 @@ def test_phase42_pydantic_schema_contract():
         "ClarificationOptionModel": _field_names(ClarificationOptionModel),
         "ClarificationModel": _field_names(ClarificationModel),
         "SolveResponse": _field_names(SolveResponse),
+        "ExplanationCoordinateFrameModel": _field_names(ExplanationCoordinateFrameModel),
+        "ExplanationFactModel": _field_names(ExplanationFactModel),
+        "ExplanationEquationModel": _field_names(ExplanationEquationModel),
+        "ExplanationSubstitutionModel": _field_names(ExplanationSubstitutionModel),
+        "ExplanationCandidateSummaryModel": _field_names(ExplanationCandidateSummaryModel),
+        "ExplanationValidationSummaryModel": _field_names(ExplanationValidationSummaryModel),
+        "ExplanationAnswerDerivationModel": _field_names(ExplanationAnswerDerivationModel),
+        "ExplanationStudentStepModel": _field_names(ExplanationStudentStepModel),
+        "ExplanationTraceModel": _field_names(ExplanationTraceModel),
     }
     assert actual == CONTRACT["api_models"]
+
+
+@pytest.mark.unit
+def test_phase53_schema_migration_is_append_only_and_optional():
+    assert CONTRACT["schema_version"] == 6
+    assert CONTRACT["engine_dataclasses"]["SolverResult"][-1] == "explanation_evidence"
+    assert CONTRACT["api_models"]["SolveResponse"][-1] == "explanation_trace"
+    assert SolverResult(ok=False).explanation_evidence is None
+    assert SolveResponse.model_fields["explanation_trace"].default is None
 
 
 @pytest.mark.regression
