@@ -205,7 +205,6 @@ function AnimatedViewer({ scene }: { scene: any }) {
   const [runtimeError, setRuntimeError] = useState<string | null>(null);
   const [engineReady, setEngineReady] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
-  const stateRef = useRef({ vx: 0, vy: 0, ax: 0, ay: 0 });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -218,11 +217,6 @@ function AnimatedViewer({ scene }: { scene: any }) {
         if (cancelled) return;
         setTime(t);
         setPlaying(state.playing);
-        const kinematic = (scene.bodies as any[]).find((b) => b.body_type === 'kinematic');
-        if (kinematic) {
-          const s = motionLib.evaluateBody(scene, kinematic, t);
-          stateRef.current = { vx: s.vx, vy: s.vy, ax: s.ax, ay: s.ay };
-        }
       },
       onError: (message) => {
         if (!cancelled) setRuntimeError(message);
@@ -247,8 +241,7 @@ function AnimatedViewer({ scene }: { scene: any }) {
   }, []);
 
   const duration = motionLib.totalDuration(scene);
-  const v = Math.hypot(stateRef.current.vx, stateRef.current.vy);
-  const a = Math.hypot(stateRef.current.ax, stateRef.current.ay);
+  const readouts = motionLib.motionReadouts(scene, time);
   const showNumericMotionReadout = (scene.motion_readout_mode ?? 'numeric') === 'numeric';
 
   return (
@@ -300,17 +293,29 @@ function AnimatedViewer({ scene }: { scene: any }) {
       </p>
       <div className="viz-values viz-values-anim">
         <p className="col-label">애니메이션 근사값 (정답 아님 · 표시 전용)</p>
-        <p className="viz-anim-readout">
-          {showNumericMotionReadout ? (
-            <>
-              <code className="math">|v| ≈ {v.toFixed(2)} m/s</code>{' '}
-              <code className="math">|a| ≈ {a.toFixed(2)} m/s²</code>
-            </>
+        {showNumericMotionReadout ? (
+          readouts.length > 1 ? (
+            <ul className="list viz-motion-readouts" aria-label="움직이는 물체별 애니메이션 근사값">
+              {readouts.map((item) => (
+                <li key={item.bodyId}>
+                  <strong>{item.label}</strong>{' · '}
+                  <code className="math">|v| ≈ {item.speed.toFixed(2)} m/s</code>{' '}
+                  <code className="math">|a| ≈ {item.acceleration.toFixed(2)} m/s²</code>
+                </li>
+              ))}
+            </ul>
+          ) : readouts.length === 1 ? (
+            <p className="viz-anim-readout">
+              <code className="math">|v| ≈ {readouts[0].speed.toFixed(2)} m/s</code>{' '}
+              <code className="math">|a| ≈ {readouts[0].acceleration.toFixed(2)} m/s²</code>
+            </p>
           ) : (
-            <span>진폭이 주어지지 않아 속도·가속도 크기는 계산하지 않습니다. 화살표는 방향만 보여줍니다.</span>
-          )}
-          {!engineReady && !runtimeError ? <span className="viz-loading"> · 물리 엔진 로딩 중…</span> : null}
-        </p>
+            <p className="viz-anim-readout">움직이는 물체의 상태를 읽을 수 없습니다.</p>
+          )
+        ) : (
+          <p className="viz-anim-readout">진폭이 주어지지 않아 속도·가속도 크기는 계산하지 않습니다. 화살표는 방향만 보여줍니다.</p>
+        )}
+        {!engineReady && !runtimeError ? <p className="viz-loading">물리 엔진 로딩 중…</p> : null}
       </div>
       <p className="viz-legend">
         화살표 구분: <strong>v</strong> 실선+채운 화살촉(속도) · <strong>a</strong> 실선+빈 화살촉(가속도) ·
