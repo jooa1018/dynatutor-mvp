@@ -38,7 +38,7 @@ parse → model → route → solve/select → verify → answer consistency
 | `incline_block` | `incline_no_friction` | θ(deg known), post-gate `acceleration` | 정지 출발은 시각화 가정으로 명시 |
 | `incline_block` | `incline_with_friction` | 위 + `friction_type=="kinetic"` **및** `displacement_direction=="down_slope"`(명시 typed), a>0 | solver evidence guard와 동일 gate. 현 NL extractor는 down_slope를 생성하지 않으므로 product NL 경로에서는 정직하게 unavailable |
 | `mass_spring` | `spring_mass_vibration` | k·m known, post-gate ω/T/f | 진폭 미제시 시 시각화 전용 진폭 명시; 명시 진폭 A는 정확히 사용(배경만 스케일) |
-| `pure_rolling` | `pure_rolling_energy` | h known, body_shape, post-gate `final_velocity` | 반지름 없으면 회전은 render-scale(schematic) |
+| `pure_rolling` | `pure_rolling_energy` | h known, body_shape, 초기 조건(v0 known 또는 명시적 정지 출발 — physics_core `explicitly_starts_from_rest` 재사용), post-gate `final_velocity` | 반지름 없으면 회전은 render-scale(schematic); 반지름 명시 문제는 `rolling_energy_general`로 라우팅되어 장면 없음 |
 | `collision_1d` | `collision_1d` | m1·m2·v1·v2 known, 충돌 유형 typed flag/e, post-gate `v1_after`/`v2_after` | timeline은 backend 전/후 속도 그대로; Rapier 접촉 해석 없음 |
 
 ### 명시적 deferred
