@@ -279,21 +279,130 @@ def diagnose_problem(
     )
 
 
-def solve_problem(problem_text: str, student_solution: str | None = None, clarify_patch: dict | None = None, canonical_patch: dict | None = None) -> SolveResponse:
+class _NoopSolveTraceHooks:
+    """Zero-work hook used by the established product path."""
+
+    @property
+    def current_stage(self):
+        return None
+
+    @staticmethod
+    def _ignore(*args, **kwargs):
+        return None
+
+    def __getattr__(self, name):
+        return self._ignore
+
+
+class _FailOpenSolveTraceHooks:
+    """Prevent an observability failure from changing product behavior."""
+
+    def __init__(self, collector):
+        self._collector = collector
+
+    @property
+    def current_stage(self):
+        try:
+            return self._collector.current_stage
+        except Exception:
+            return None
+
+    def __getattr__(self, name):
+        def call(*args, **kwargs):
+            try:
+                return getattr(self._collector, name)(*args, **kwargs)
+            except Exception:
+                return None
+
+        return call
+
+
+_NOOP_SOLVE_TRACE = _NoopSolveTraceHooks()
+
+
+def _solve_trace_status(response):
+    if response.ok:
+        warnings = getattr(getattr(response, "verification", None), "warnings", [])
+        return "passed_with_warning" if warnings else "passed"
+    if response.clarification is not None:
+        return "inconclusive"
+    if response.unsupported_reason:
+        return "unsupported"
+    return "error"
+
+
+def solve_problem(
+    problem_text: str,
+    student_solution: str | None = None,
+    clarify_patch: dict | None = None,
+    canonical_patch: dict | None = None,
+    *,
+    trace_collector=None,
+) -> SolveResponse:
+    """Solve once, optionally observing the same intermediates with fail-open hooks.
+
+    The first four positional arguments and the returned response are the legacy
+    product contract. The None branch deliberately does not import or execute
+    observability hashing, clocks, or projections.
+    """
+
+    if trace_collector is None:
+        return _solve_problem_impl(
+            problem_text,
+            student_solution,
+            clarify_patch,
+            canonical_patch,
+            _NOOP_SOLVE_TRACE,
+        )
+
+    trace = _FailOpenSolveTraceHooks(trace_collector)
+    trace.begin()
+    trace.capture_input(problem_text, student_solution)
+    try:
+        response = _solve_problem_impl(
+            problem_text,
+            student_solution,
+            clarify_patch,
+            canonical_patch,
+            trace,
+        )
+    except Exception as exc:
+        trace.finalize_error(trace.current_stage or "parse", type(exc).__name__)
+        raise
+    trace.finalize(_solve_trace_status(response))
+    return response
+
+
+def _solve_problem_impl(
+    problem_text: str,
+    student_solution: str | None,
+    clarify_patch: dict | None,
+    canonical_patch: dict | None,
+    trace,
+) -> SolveResponse:
+    # Exclusive timing boundaries: parse=extract/patch; route=model/registry/
+    # diagnosis; solve=solver/candidate selection; verify=suite/serialization/gate.
+    trace.start_stage("parse")
     canonical = extract_problem(problem_text)
     if clarify_patch:
         # 되묻기 선택지 적용. 화이트리스트 밖 patch는 즉시 거절 (API 노출 지점).
         canonical = apply_clarify_patch(canonical, clarify_patch)
     if canonical_patch:
         canonical = apply_clarify_patch(canonical, canonical_patch)
+    trace.capture_canonical(canonical)
+    trace.finish_stage("parse")
+
+    trace.start_stage("route")
     # Phase 35: diagnosis는 반드시 patch가 반영된 canonical 기준으로 만든다.
     # (이전에는 patch 전 원문으로 진단해 selected_solver/physical_model이
     #  사용자가 선택한 해석과 어긋난 채 화면에 남았다.)
     # Phase 45 vertical slices share one typed/legacy model across diagnosis,
     # solving, StepCards, and response serialization.
     physical_model = build_physical_model(canonical)
+    trace.capture_models(physical_model)
     registry = SolverRegistry()
     route_decision = registry.route(canonical)
+    trace.capture_route(route_decision)
     diagnosis = diagnose_problem(
         problem_text,
         student_solution,
@@ -303,8 +412,13 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         route_decision=route_decision,
     )
     solver = registry.select(canonical, decision=route_decision)
+    trace.finish_stage("route")
 
     if not solver:
+        trace.start_stage("solve")
+        trace.capture_solution_candidates(None, None)
+        trace.finish_stage("solve")
+        trace.start_stage("verify")
         verification = VerificationReportSchema(
             passed=False,
             warnings=[
@@ -361,8 +475,13 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
         response.common_mistakes = build_common_mistakes(response)
         response.study_tips = build_study_tips(response)
         response.equation_sheet = build_equation_sheet(response)
+        trace.capture_validation(response.verification)
+        trace.capture_response(response)
+        trace.finish_stage("verify")
         return response
 
+    trace.start_stage("solve")
+    batch = None
     conflicts = list(canonical.canonical_v2.conflicts) if canonical.canonical_v2 is not None else []
     domain_errors = [
         issue.message
@@ -443,11 +562,15 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
                 if result.selection_decision.status == "ambiguous"
                 else "모든 후보 해가 명시된 물리 제약과 출력 계약을 통과하지 못했습니다."
             )
-        # Phase 30/47: only a selected candidate proceeds to the established
-        # dimension, plausibility and governing-equation verification suite.
-        if result.selection_decision.status == "selected":
-            suite_report = verify_result(canonical, result, solver_id=solver.name)
-            result.verification = merge_reports(result.verification, suite_report)
+    trace.capture_solution_candidates(batch, result)
+    trace.finish_stage("solve")
+
+    trace.start_stage("verify")
+    # Phase 30/47: only a selected candidate proceeds to the established
+    # dimension, plausibility and governing-equation verification suite.
+    if getattr(result.selection_decision, "status", None) == "selected":
+        suite_report = verify_result(canonical, result, solver_id=solver.name)
+        result.verification = merge_reports(result.verification, suite_report)
     # 강등은 아래 apply_result_gate 한 곳에서만 수행한다 (Phase 33 통합).
     model_cards = physical_model_step_cards(physical_model)
     all_steps = model_cards + result.steps
@@ -498,6 +621,9 @@ def solve_problem(problem_text: str, student_solution: str | None = None, clarif
     response.common_mistakes = build_common_mistakes(response)
     response.study_tips = build_study_tips(response)
     response.equation_sheet = build_equation_sheet(response)
+    trace.capture_validation(response.verification)
+    trace.capture_response(response)
+    trace.finish_stage("verify")
     return response
 
 
