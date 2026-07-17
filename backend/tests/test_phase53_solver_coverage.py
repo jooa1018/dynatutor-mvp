@@ -24,12 +24,20 @@ def _q(symbol, value, unit, *, provenance_hint=None):
     )
 
 
+def _default_g():
+    return _q("g", 9.81, "m/s^2", provenance_hint="domain_default")
+
+
 def _canonical(case: str) -> CanonicalProblem:
     if case == "incline_no_friction":
         return CanonicalProblem(
             system_type="particle_on_incline",
             subtype="no_friction",
-            knowns={"m": _q("m", 5, "kg"), "theta": _q("theta", 30, "deg")},
+            knowns={
+                "m": _q("m", 5, "kg"),
+                "theta": _q("theta", 30, "deg"),
+                "g": _default_g(),
+            },
             unknowns=["acceleration"],
             requested_outputs=["acceleration"],
             flags={"no_friction": True},
@@ -42,7 +50,11 @@ def _canonical(case: str) -> CanonicalProblem:
             subtype="with_friction",
             friction_type="kinetic",
             displacement_direction="down_slope",
-            knowns={"theta": _q("theta", 30, "deg"), "mu": _q("mu", 0.2, None)},
+            knowns={
+                "theta": _q("theta", 30, "deg"),
+                "mu": _q("mu", 0.2, None),
+                "g": _default_g(),
+            },
             unknowns=["acceleration"],
             requested_outputs=["acceleration"],
             flags={"has_friction": True},
@@ -54,7 +66,7 @@ def _canonical(case: str) -> CanonicalProblem:
             system_type="pure_rolling_energy",
             subtype="rolling_on_incline",
             body_shape="disk",
-            knowns={"h": _q("h", 1.5, "m")},
+            knowns={"h": _q("h", 1.5, "m"), "g": _default_g()},
             unknowns=["final_velocity"],
             requested_outputs=["final_velocity"],
             flags={"starts_from_rest": True, "pure_rolling": True, "no_slip": True},
@@ -120,9 +132,7 @@ def _canonical(case: str) -> CanonicalProblem:
             knowns={
                 "R": _q("R", 50, "m"),
                 "mu": _q("mu", 0.4, None),
-                "g": _q(
-                    "g", 9.81, "m/s^2", provenance_hint="domain_default"
-                ),
+                "g": _default_g(),
             },
             unknowns=["final_velocity"],
             requested_outputs=["final_velocity"],
@@ -132,7 +142,11 @@ def _canonical(case: str) -> CanonicalProblem:
     if case == "banked_curve_no_friction":
         return CanonicalProblem(
             system_type="banked_curve_no_friction",
-            knowns={"R": _q("R", 50, "m"), "theta": _q("theta", 20, "deg")},
+            knowns={
+                "R": _q("R", 50, "m"),
+                "theta": _q("theta", 20, "deg"),
+                "g": _default_g(),
+            },
             unknowns=["final_velocity"],
             requested_outputs=["final_velocity"],
             flags={"no_friction": True},
