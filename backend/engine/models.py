@@ -172,6 +172,94 @@ class VerificationReport:
     policy_version: str | None = None
 
 
+@dataclass(frozen=True)
+class CalculationCoordinateFrame:
+    """Coordinate/sign convention actually used by a solver calculation.
+
+    ``source`` and ``status`` are mandatory provenance.  A physical-model
+    default must be represented as ``status="default"`` (or ``"unresolved"``),
+    never promoted to a resolved calculation frame by the public trace builder.
+    """
+
+    frame_id: str
+    coordinate_system: str
+    axes: tuple[str, ...] = ()
+    positive_directions: tuple[str, ...] = ()
+    units: tuple[str, ...] = ()
+    source: str = "solver_calculation"
+    status: str = "resolved"
+
+
+@dataclass(frozen=True)
+class SemanticFactEvidence:
+    """A normalized semantic fact; never raw problem/student source text."""
+
+    fact_id: str
+    semantic_key: str
+    value: str | float | int | bool | None
+    unit: str | None = None
+    source: str = "canonical"
+    classification: str = "explicit"
+    status: str = "resolved"
+
+
+@dataclass(frozen=True)
+class EquationEvidence:
+    """An equation with explicit provenance and dependency links."""
+
+    equation_id: str
+    expression: str
+    source: str
+    provenance: str
+    fact_ids: tuple[str, ...] = ()
+    input_output_ids: tuple[str, ...] = ()
+    output_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SubstitutionEvidence:
+    """A numeric/symbolic substitution linked to its equation and output."""
+
+    substitution_id: str
+    equation_id: str
+    expression: str
+    output_id: str
+    fact_ids: tuple[str, ...] = ()
+    input_output_ids: tuple[str, ...] = ()
+    source: str = "solver_calculation"
+
+
+@dataclass(frozen=True)
+class OutputEvidenceLink:
+    """Exact selected-candidate link for one delivered response item."""
+
+    output_id: str
+    output_key: str
+    candidate_id: str
+    numeric: float | int
+    unit: str | None
+    symbol: str | None = None
+    role: str | None = None
+    response_index: int | None = None
+    equation_ids: tuple[str, ...] = ()
+    substitution_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class SolverExplanationEvidence:
+    """Immutable solver-produced provenance consumed by ExplanationTrace v1."""
+
+    coordinate_frame: CalculationCoordinateFrame | None = None
+    explicit_facts: tuple[SemanticFactEvidence, ...] = ()
+    assumptions: tuple[SemanticFactEvidence, ...] = ()
+    equations: tuple[EquationEvidence, ...] = ()
+    substitutions: tuple[SubstitutionEvidence, ...] = ()
+    outputs: tuple[OutputEvidenceLink, ...] = ()
+    candidate_summary: str | None = None
+    validation_summary: tuple[str, ...] = ()
+    warnings: tuple[str, ...] = ()
+
+
 @dataclass
 class SolverResult:
     ok: bool
@@ -185,3 +273,6 @@ class SolverResult:
     coordinate_guide: list[str] = field(default_factory=list)
     # Additive Phase 47 diagnostics, serialized through the API adapter.
     selection_decision: Any | None = None
+    # Additive Phase 53 provenance.  Legacy solvers intentionally leave this
+    # unset until their Wave 2 structured-evidence migration.
+    explanation_evidence: SolverExplanationEvidence | None = None

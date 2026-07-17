@@ -1,6 +1,6 @@
 {
-  "schema_version": 5,
-  "source_commit": "99b1b523b9993f95fb31deca7c3033895848cb08",
+  "schema_version": 6,
+  "source_commit": "ef15012209955ab0e0f89d0143b2d61cf6fab496",
   "engine_dataclasses": {
     "CanonicalProblem": [
       "system_type",
@@ -38,7 +38,8 @@
       "used_equations",
       "fbd",
       "coordinate_guide",
-      "selection_decision"
+      "selection_decision",
+      "explanation_evidence"
     ],
     "VerificationReport": [
       "passed",
@@ -48,6 +49,65 @@
       "errors",
       "structured_checks",
       "policy_version"
+    ],
+    "CalculationCoordinateFrame": [
+      "frame_id",
+      "coordinate_system",
+      "axes",
+      "positive_directions",
+      "units",
+      "source",
+      "status"
+    ],
+    "SemanticFactEvidence": [
+      "fact_id",
+      "semantic_key",
+      "value",
+      "unit",
+      "source",
+      "classification",
+      "status"
+    ],
+    "EquationEvidence": [
+      "equation_id",
+      "expression",
+      "source",
+      "provenance",
+      "fact_ids",
+      "input_output_ids",
+      "output_ids"
+    ],
+    "SubstitutionEvidence": [
+      "substitution_id",
+      "equation_id",
+      "expression",
+      "output_id",
+      "fact_ids",
+      "input_output_ids",
+      "source"
+    ],
+    "OutputEvidenceLink": [
+      "output_id",
+      "output_key",
+      "candidate_id",
+      "numeric",
+      "unit",
+      "symbol",
+      "role",
+      "response_index",
+      "equation_ids",
+      "substitution_ids"
+    ],
+    "SolverExplanationEvidence": [
+      "coordinate_frame",
+      "explicit_facts",
+      "assumptions",
+      "equations",
+      "substitutions",
+      "outputs",
+      "candidate_summary",
+      "validation_summary",
+      "warnings"
     ]
   },
   "api_models": {
@@ -154,7 +214,96 @@
       "clarification",
       "route_decision",
       "physical_model",
-      "selection_decision"
+      "selection_decision",
+      "explanation_trace"
+    ],
+    "ExplanationCoordinateFrameModel": [
+      "frame_id",
+      "coordinate_system",
+      "axes",
+      "positive_directions",
+      "units",
+      "source",
+      "status"
+    ],
+    "ExplanationFactModel": [
+      "fact_id",
+      "semantic_key",
+      "value",
+      "unit",
+      "source",
+      "classification",
+      "status"
+    ],
+    "ExplanationEquationModel": [
+      "equation_id",
+      "expression",
+      "source",
+      "provenance",
+      "fact_ids",
+      "input_output_ids",
+      "output_ids"
+    ],
+    "ExplanationSubstitutionModel": [
+      "substitution_id",
+      "equation_id",
+      "expression",
+      "output_id",
+      "fact_ids",
+      "input_output_ids",
+      "source"
+    ],
+    "ExplanationCandidateSummaryModel": [
+      "status",
+      "selected_candidate_id",
+      "selection_policy",
+      "alternative_count",
+      "rejected_count",
+      "branch_fact_ids"
+    ],
+    "ExplanationValidationSummaryModel": [
+      "passed",
+      "policy_version",
+      "check_count",
+      "warning_count",
+      "error_count"
+    ],
+    "ExplanationAnswerDerivationModel": [
+      "output_id",
+      "output_key",
+      "label",
+      "symbol",
+      "role",
+      "numeric",
+      "unit",
+      "display",
+      "candidate_id",
+      "equation_ids",
+      "substitution_ids"
+    ],
+    "ExplanationStudentStepModel": [
+      "kind",
+      "title",
+      "body",
+      "math"
+    ],
+    "ExplanationTraceModel": [
+      "schema",
+      "version",
+      "status",
+      "selected_solver",
+      "route_reason",
+      "coordinate_frame",
+      "explicit_facts",
+      "assumptions",
+      "equation_ids",
+      "equations",
+      "substitutions",
+      "candidate_summary",
+      "validation_summary",
+      "answer_derivation",
+      "warnings",
+      "student_steps"
     ]
   },
   "response_contracts": {
@@ -188,6 +337,7 @@
     "AnswerItem output_key disambiguates colliding display symbols without removing legacy symbol or label fields.",
     "Clarification input_fields adds typed multi-value inputs while needs_value remains for single-value clients.",
     "selection_decision is an additive Phase 47 diagnostic; legacy answer and verification fields remain authoritative compatibility views.",
-    "structured_checks and policy_version are additive Phase 48 verification evidence; legacy checks, warnings, and errors remain compatibility views."
+    "structured_checks and policy_version are additive Phase 48 verification evidence; legacy checks, warnings, and errors remain compatibility views.",
+    "explanation_evidence and explanation_trace are additive Phase 53 provenance views; existing answer fields and the result gate remain authoritative."
   ]
 }

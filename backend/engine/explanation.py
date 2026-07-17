@@ -1,5 +1,5 @@
 from __future__ import annotations
-from app.schemas.solution import SolveResponse
+from app.schemas.solution import SolveResponse, StepCard as StepCardSchema
 
 
 _CONCEPTS: dict[str, list[str]] = {
@@ -139,56 +139,119 @@ _EQUATION_SHEETS: dict[str, list[str]] = {
 
 
 def build_teacher_summary(response: SolveResponse) -> list[str]:
-    """Deterministic teacher-style summary.
+    """Project a deterministic summary exclusively from the finalized trace."""
 
-    This is the safe pre-LLM explanation layer. Later an LLM can rewrite these
-    bullets, but it should not change the physics, equations, or numbers.
-    """
-    c = response.diagnosis.canonical
-    summary: list[str] = []
-    summary.append(f"먼저 이 문제를 '{c.system_type}' 유형으로 구조화했습니다.")
-    if response.diagnosis.selected_solver:
-        summary.append(f"계산은 '{response.diagnosis.selected_solver}' 전용 solver가 맡았습니다.")
-    if c.missing_info:
-        summary.append("조건이 부족한 부분이 있어 최종 계산보다 추가 조건 확인이 우선입니다.")
-    elif response.answer:
-        summary.append(f"최종 결과는 {response.answer.display} 입니다.")
-    if response.verification.dimension_summary:
-        summary.append(response.verification.dimension_summary)
-    if response.diagnosis.not_applicable_equations:
-        summary.append("특히 이번 조건에서 쓰면 안 되는 식을 분리해서 표시했습니다. 이 부분이 동역학 실수를 줄이는 핵심입니다.")
+    trace = response.explanation_trace
+    if trace is None or trace.status != "fully_grounded":
+        return ["현재 근거로는 계산 과정을 확정해 제시할 수 없습니다."]
+    summary = ["조건, 좌표계, 관계식, 대입과 검산이 연결된 풀이입니다."]
+    summary.extend(
+        f"최종 결과: {derivation.display}"
+        for derivation in trace.answer_derivation
+    )
     return summary
 
 
 def build_concept_summary(response: SolveResponse) -> list[str]:
-    ctype = response.diagnosis.canonical.system_type
-    out = list(_CONCEPTS.get(ctype, ["이 문제는 먼저 모델을 명확히 정하고, 그 모델에 맞는 식만 선택하는 것이 중요합니다."]))
-    if response.diagnosis.canonical.assumptions:
-        out.append("이번 풀이의 기본 가정: " + "; ".join(response.diagnosis.canonical.assumptions[:3]))
+    trace = response.explanation_trace
+    if trace is None or trace.status != "fully_grounded":
+        return ["모형, 사건 조건과 필요한 입력이 확인되기 전에는 특정 계산식을 확정하지 않습니다."]
+    out: list[str] = []
+    if trace.coordinate_frame is not None:
+        directions = ", ".join(
+            f"{axis}: {direction}"
+            for axis, direction in zip(
+                trace.coordinate_frame.axes,
+                trace.coordinate_frame.positive_directions,
+            )
+        )
+        coordinate = trace.coordinate_frame.coordinate_system
+        out.append(f"좌표계: {coordinate}" + (f" ({directions})" if directions else ""))
+    out.extend(f"사용한 관계식: {equation.expression}" for equation in trace.equations)
+    if trace.assumptions:
+        out.append("분리해 둔 가정: " + "; ".join(str(fact.value) for fact in trace.assumptions))
     return out
 
 
 def build_common_mistakes(response: SolveResponse) -> list[str]:
-    ctype = response.diagnosis.canonical.system_type
-    mistakes = list(_COMMON_MISTAKES.get(ctype, []))
-    mistakes.extend([f"이번 조건에서는 '{eq}'를 조심하세요." for eq in response.diagnosis.not_applicable_equations[:2]])
-    return mistakes or ["조건을 새로 가정해서 풀지 말고, 문제에 주어진 정보와 가정 카드를 먼저 확인하세요."]
+    trace = response.explanation_trace
+    if trace is None or trace.status != "fully_grounded":
+        return ["확정되지 않은 조건이나 후보 값을 최종 계산처럼 사용하지 마세요."]
+    mistakes = ["명시된 조건과 풀이 가정을 서로 섞지 마세요."]
+    if trace.coordinate_frame is not None:
+        mistakes.append("추적된 좌표계의 양의 방향과 반대로 부호를 바꾸지 마세요.")
+    if trace.equations:
+        mistakes.append("근거가 연결되지 않은 식이나 값을 풀이에 추가하지 마세요.")
+    return mistakes
 
 
 def build_study_tips(response: SolveResponse) -> list[str]:
-    ctype = response.diagnosis.canonical.system_type
-    tips = list(_STUDY_TIPS.get(ctype, []))
-    if response.steps:
-        tips.append("단계별 풀이 카드를 접었다 펴면서, 각 단계가 어떤 식을 쓴 것인지 직접 말로 설명해보세요.")
-    if response.verification.checks:
-        tips.append("마지막에는 검산 카드의 극한상황 체크를 직접 다시 해보세요.")
-    return tips or ["비슷한 예제를 하나 더 골라서, 같은 구조의 FBD와 식을 직접 써보세요."]
+    return [
+        "조건, 가정, 좌표계, 관계식, 대입, 검산을 서로 연결해 적는 연습을 하세요.",
+        "근거가 없는 값이나 식이 추가되지 않았는지 마지막에 확인하세요.",
+    ]
 
 
 def build_equation_sheet(response: SolveResponse) -> list[str]:
-    ctype = response.diagnosis.canonical.system_type
-    equations = list(_EQUATION_SHEETS.get(ctype, []))
-    for eq in response.diagnosis.applicable_equations:
-        if eq not in equations:
-            equations.append(eq)
-    return equations[:8]
+    trace = response.explanation_trace
+    if trace is None or trace.status != "fully_grounded":
+        return []
+    return [equation.expression for equation in trace.equations]
+
+
+def project_explanation_from_trace(response: SolveResponse) -> None:
+    """Replace every physics-bearing student projection from one finalized trace."""
+
+    trace = response.explanation_trace
+    diagnosis = response.diagnosis
+
+    # Phase 53 Wave 1 has no trace representation for FBD geometry or the full
+    # physical-model payload.  Clear every legacy/generic student projection
+    # before rebuilding the small coordinate/equation view that v1 can prove.
+    diagnosis.fbd_diagram_svg = None
+    diagnosis.fbd_annotations = []
+    diagnosis.fbd = []
+    diagnosis.coordinate_guide = []
+    diagnosis.applicable_equations = []
+    diagnosis.not_applicable_equations = []
+    diagnosis.cautions = []
+    diagnosis.next_questions = []
+    diagnosis.physical_model = None
+    diagnosis.legacy_hints.problem_type_candidates = []
+    diagnosis.legacy_hints.applicable_equations = []
+    diagnosis.legacy_hints.not_applicable_equations = []
+    diagnosis.legacy_hints.cautions = []
+    diagnosis.legacy_hints.detected_cues = []
+    response.physical_model = None
+
+    if trace is not None and trace.status == "fully_grounded":
+        if trace.coordinate_frame is not None:
+            diagnosis.coordinate_guide = [trace.coordinate_frame.coordinate_system]
+            diagnosis.coordinate_guide.extend(
+                f"{axis}: {direction}"
+                for axis, direction in zip(
+                    trace.coordinate_frame.axes,
+                    trace.coordinate_frame.positive_directions,
+                )
+            )
+        diagnosis.applicable_equations = [
+            equation.expression for equation in trace.equations
+        ]
+
+    if trace is None:
+        response.steps = [
+            StepCardSchema(
+                title="풀이 상태",
+                body="현재 구조화된 근거만으로 계산 과정을 확정할 수 없습니다.",
+            )
+        ]
+    else:
+        response.steps = [
+            StepCardSchema(title=step.title, body=step.body, math=step.math)
+            for step in trace.student_steps
+        ]
+    response.teacher_summary = build_teacher_summary(response)
+    response.concept_summary = build_concept_summary(response)
+    response.common_mistakes = build_common_mistakes(response)
+    response.study_tips = build_study_tips(response)
+    response.equation_sheet = build_equation_sheet(response)

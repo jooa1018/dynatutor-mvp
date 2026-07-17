@@ -12,6 +12,7 @@ from app.schemas.solution import (
     RouteDecisionModel,
     SelectionDecisionModel,
     SolveResponse,
+    ExplanationTraceModel,
     StepCard as StepCardSchema,
     VerificationReport as VerificationReportSchema,
 )
@@ -22,7 +23,11 @@ from engine.model_builder import build_physical_model, physical_model_step_cards
 from engine.solvers.registry import SolverRegistry
 from engine.tutor_cards import build_diagnosis_cards
 from engine.feedback import analyze_student_solution
-from engine.explanation import build_common_mistakes, build_concept_summary, build_equation_sheet, build_study_tips, build_teacher_summary
+from engine.explanation import project_explanation_from_trace
+from engine.explanation_trace import (
+    build_explanation_trace_payload,
+    neutral_explanation_trace_payload,
+)
 from engine.visualization.fbd import build_fbd_annotations, build_fbd_svg
 from engine.physics_core.answer_validators import validate_solve_response
 from engine.verification.suite import verify_result
@@ -331,6 +336,48 @@ def _solve_trace_status(response):
     return "error"
 
 
+def _finalize_public_explanation(
+    response,
+    *,
+    canonical,
+    physical_model,
+    result,
+    selected_solver,
+    route_decision,
+    legacy_steps=(),
+):
+    """Attach and project one immutable trace without changing product answers."""
+
+    route_reason = getattr(route_decision, "reason", None) or getattr(
+        response.diagnosis, "solver_reason", None
+    )
+    try:
+        payload = build_explanation_trace_payload(
+            response=response,
+            canonical=canonical,
+            physical_model=physical_model,
+            result=result,
+            selected_solver=selected_solver,
+            route_reason=route_reason,
+            route_decision=route_decision,
+            legacy_steps=legacy_steps,
+        )
+        response.explanation_trace = ExplanationTraceModel(**payload)
+    except Exception as exc:
+        # Explanation construction is deliberately fail-open for the product
+        # answer.  Exception messages are not copied into the public payload.
+        response.explanation_trace = ExplanationTraceModel(
+            **neutral_explanation_trace_payload(
+                selected_solver=selected_solver,
+                route_reason=route_reason,
+                warnings=(
+                    f"explanation trace builder failed ({type(exc).__name__}); product answer preserved",
+                ),
+            )
+        )
+    project_explanation_from_trace(response)
+
+
 def solve_problem(
     problem_text: str,
     student_solution: str | None = None,
@@ -456,7 +503,7 @@ def _solve_problem_impl(
             diagnosis=diagnosis,
             answer=None,
             answers=[],
-            steps=_partial_guidance_steps(canonical),
+            steps=[],
             verification=verification,
             unsupported_reason=(
                 clar.question if clar is not None
@@ -470,11 +517,14 @@ def _solve_problem_impl(
             route_decision=_route_decision_model(route_decision),
             physical_model=diagnosis.physical_model,
         )
-        response.teacher_summary = build_teacher_summary(response)
-        response.concept_summary = build_concept_summary(response)
-        response.common_mistakes = build_common_mistakes(response)
-        response.study_tips = build_study_tips(response)
-        response.equation_sheet = build_equation_sheet(response)
+        _finalize_public_explanation(
+            response,
+            canonical=canonical,
+            physical_model=physical_model,
+            result=None,
+            selected_solver=None,
+            route_decision=route_decision,
+        )
         trace.capture_validation(response.verification)
         trace.capture_response(response)
         trace.finish_stage("verify")
@@ -579,7 +629,9 @@ def _solve_problem_impl(
         diagnosis=diagnosis,
         answer=AnswerModel(**result.answer.__dict__) if result.answer else None,
         answers=_answers_from_result(result),
-        steps=[StepCardSchema(**s.__dict__) for s in all_steps],
+        # Student steps are projected only after the result gate from the
+        # finalized ExplanationTrace.  Legacy cards remain partial machine input.
+        steps=[],
         verification=_verification_report_model(result.verification),
         unsupported_reason=result.unsupported_reason,
         route_decision=_route_decision_model(route_decision),
@@ -587,9 +639,6 @@ def _solve_problem_impl(
         selection_decision=_selection_decision_model(result.selection_decision),
     )
     # 실패 응답도 "완전히 못 풂" 대신 현재 가능한 것/필요한 조건을 보여준다.
-    if not response.ok and not response.steps:
-        response.steps = _partial_guidance_steps(canonical)
-
     # 되묻기: solver가 매치됐지만 값 부족 등으로 실패한 경우에도 질문을 제공.
     # (검증 강등 등 missing_info와 무관한 실패에는 규칙이 발동하지 않는다.)
     if not response.ok and response.clarification is None:
@@ -616,11 +665,15 @@ def _solve_problem_impl(
 
     # 유일한 강등 지점: verification.errors 를 보고 ok/passed/unsupported_reason 을 결정.
     apply_result_gate(response)
-    response.teacher_summary = build_teacher_summary(response)
-    response.concept_summary = build_concept_summary(response)
-    response.common_mistakes = build_common_mistakes(response)
-    response.study_tips = build_study_tips(response)
-    response.equation_sheet = build_equation_sheet(response)
+    _finalize_public_explanation(
+        response,
+        canonical=canonical,
+        physical_model=physical_model,
+        result=result,
+        selected_solver=solver.name,
+        route_decision=route_decision,
+        legacy_steps=all_steps,
+    )
     trace.capture_validation(response.verification)
     trace.capture_response(response)
     trace.finish_stage("verify")

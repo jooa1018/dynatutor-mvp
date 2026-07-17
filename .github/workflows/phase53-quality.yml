@@ -1,0 +1,75 @@
+name: Phase 53 explanation trace quality
+
+on:
+  pull_request:
+    paths:
+      - "backend/engine/models.py"
+      - "backend/engine/explanation.py"
+      - "backend/engine/explanation_trace.py"
+      - "backend/engine/services.py"
+      - "backend/app/schemas/solution.py"
+      - "backend/tests/test_phase42_baseline_contracts.py"
+      - "backend/tests/test_phase52_pipeline_trace.py"
+      - "backend/tests/test_phase53_explanation_*.py"
+      - "backend/tests/contracts/phase42_api_schema_contract.json"
+      - ".github/workflows/phase53-quality.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/engine/models.py"
+      - "backend/engine/explanation.py"
+      - "backend/engine/explanation_trace.py"
+      - "backend/engine/services.py"
+      - "backend/app/schemas/solution.py"
+      - "backend/tests/test_phase42_baseline_contracts.py"
+      - "backend/tests/test_phase52_pipeline_trace.py"
+      - "backend/tests/test_phase53_explanation_*.py"
+      - "backend/tests/contracts/phase42_api_schema_contract.json"
+      - ".github/workflows/phase53-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase53-explanation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  explanation-trace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Compile Phase 53 modules
+        run: >-
+          python -m py_compile
+          engine/models.py
+          engine/explanation.py
+          engine/explanation_trace.py
+          engine/services.py
+          app/schemas/solution.py
+
+      - name: Run provenance and compatibility tests
+        run: >-
+          python -m pytest -q
+          tests/test_phase42_baseline_contracts.py
+          tests/test_phase52_pipeline_trace.py
+          tests/test_phase53_explanation_trace.py
+          tests/test_phase53_explanation_adversarial.py
