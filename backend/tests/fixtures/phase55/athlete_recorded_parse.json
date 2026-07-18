@@ -1,0 +1,155 @@
+{
+  "problem_text": "육상 선수가 100m 경주에서 처음 35m까지는 일정하게 가속하고,\n그 다음은 일정한 속도로 달린다.\n처음 35m까지 달리는 데 5.4초가 걸렸다면\n이 육상 선수의 가속도를 구하여라.",
+  "parse": {
+    "schema": "dynatutor.textbook_parse",
+  "version": "2.0",
+    "language": "ko",
+    "parse_status": "complete",
+    "entities": [
+      {
+        "entity_id": "athlete",
+        "kind": "person",
+        "label": "육상 선수",
+        "aliases": ["선수", "이 육상 선수"],
+        "evidence_quote": "육상 선수"
+      }
+    ],
+    "motion_segments": [
+      {
+        "segment_id": "segment_1",
+        "order": 1,
+        "actor_ids": ["athlete"],
+        "motion_model_candidates": ["constant_acceleration_1d"],
+        "start_event_id": "race_start",
+        "end_event_id": "acceleration_end",
+        "relevance": "target",
+        "evidence_quote": "처음 35m까지는 일정하게 가속"
+      },
+      {
+        "segment_id": "segment_2",
+        "order": 2,
+        "actor_ids": ["athlete"],
+        "motion_model_candidates": ["constant_velocity_1d"],
+        "start_event_id": "acceleration_end",
+        "end_event_id": null,
+        "relevance": "context_only",
+        "evidence_quote": "그 다음은 일정한 속도로 달린다"
+      }
+    ],
+    "events": [
+      {
+        "event_id": "race_start",
+        "kind": "start",
+        "subject_ids": ["athlete"],
+        "segment_id": "segment_1",
+        "evidence_quote": "100m 경주에서 처음"
+      },
+      {
+        "event_id": "acceleration_end",
+        "kind": "reaches_position",
+        "subject_ids": ["athlete"],
+        "segment_id": "segment_1",
+        "evidence_quote": "처음 35m까지"
+      }
+    ],
+    "explicit_facts": [
+      {
+        "fact_id": "race_distance",
+        "kind": "scalar",
+        "semantic_key": "distance",
+        "symbol_hint": "s_total",
+        "raw_value": "100",
+        "raw_unit": "m",
+        "subject_id": "athlete",
+        "segment_id": null,
+        "event_id": null,
+        "temporal_role": "interval",
+        "direction": "along_motion",
+        "evidence_quote": "100m 경주",
+        "occurrence_index": 0,
+        "quantity_occurrence_index": 0,
+        "relevance": "context_only"
+      },
+      {
+        "fact_id": "segment_distance",
+        "kind": "scalar",
+        "semantic_key": "distance",
+        "symbol_hint": "s",
+        "raw_value": "35",
+        "raw_unit": "m",
+        "subject_id": "athlete",
+        "segment_id": "segment_1",
+        "event_id": "acceleration_end",
+        "temporal_role": "interval",
+        "direction": "along_motion",
+        "evidence_quote": "처음 35m까지는",
+        "occurrence_index": 0,
+        "quantity_occurrence_index": 0,
+        "relevance": "solver_input"
+      },
+      {
+        "fact_id": "segment_time",
+        "kind": "scalar",
+        "semantic_key": "time",
+        "symbol_hint": "t",
+        "raw_value": "5.4",
+        "raw_unit": "초",
+        "subject_id": "athlete",
+        "segment_id": "segment_1",
+        "event_id": "acceleration_end",
+        "temporal_role": "interval",
+        "direction": "not_applicable",
+        "evidence_quote": "처음 35m까지 달리는 데 5.4초",
+        "occurrence_index": 0,
+        "quantity_occurrence_index": 0,
+        "relevance": "solver_input"
+      }
+    ],
+    "relations": [],
+    "queries": [
+      {
+        "query_id": "query_acceleration",
+        "output_key": "acceleration",
+        "subject_id": "athlete",
+        "segment_id": "segment_1",
+        "event_id": null,
+        "component": "magnitude",
+        "evidence_quote": "이 육상 선수의 가속도를 구하여라"
+      }
+    ],
+    "assumption_proposals": [
+      {
+        "assumption_id": "starts_at_rest",
+        "kind": "starts_from_rest",
+        "subject_id": "athlete",
+        "segment_id": "segment_1",
+        "proposed_semantic_key": "initial_velocity",
+        "proposed_value": "0",
+        "proposed_unit": "m/s",
+        "reason": "100m 경주의 출발 구간이므로 초기속도를 0 m/s로 둔다.",
+        "supporting_quote": "100m 경주에서 처음 35m까지는",
+        "model_confidence": 0.96
+      }
+    ],
+    "interpretation_candidates": [
+      {
+        "candidate_id": "constant_acceleration_target",
+        "system_type": "constant_acceleration_1d",
+        "subtype": null,
+        "target_segment_ids": ["segment_1"],
+        "fact_ids": ["segment_distance", "segment_time"],
+        "query_ids": ["query_acceleration"],
+        "assumption_ids": ["starts_at_rest"],
+        "model_confidence": 0.96,
+        "reason_code": "target_first_acceleration_segment"
+      }
+    ],
+    "ambiguities": [],
+    "figure_dependency": {
+      "level": "none",
+      "missing_information": [],
+      "evidence_quote": null
+    },
+    "unsupported_features": []
+  }
+}

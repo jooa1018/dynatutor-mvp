@@ -1,0 +1,39 @@
+name: Phase 55 live OpenAI smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-smoke:
+    if: ${{ vars.PHASE55_RUN_LIVE_SMOKE == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TEXTBOOK_PARSER_ENABLED: "true"
+      TEXTBOOK_PARSER_MODE: "required"
+      TEXTBOOK_PARSER_MODEL: "gpt-5.4-mini-2026-03-17"
+      TEXTBOOK_PARSER_REASONING_EFFORT: "low"
+      TEXTBOOK_PARSER_STORE: "false"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - run: python -m pip install -r requirements-lock.txt
+      - name: Run bounded staged 8+12 live smoke
+        if: env.OPENAI_API_KEY != ''
+        run: python tools/run_phase55_live_staged.py
+      - name: Report missing key without claiming PASS
+        if: env.OPENAI_API_KEY == ''
+        run: |
+          echo "OPENAI_API_KEY is not configured; live smoke was NOT RUN."
+          exit 1

@@ -47,6 +47,9 @@ class CanonicalProblem:
     # Phase 43: provenance-rich internal contract. Legacy solver fields above remain
     # the compatibility view and the student API intentionally does not serialize it.
     canonical_v2: CanonicalProblemV2 | None = None
+    # Phase 55: validated structured graph and deterministic gate/projection metadata.
+    # This is never a source of calculated answers or verification authority.
+    textbook_parse: dict[str, Any] | None = None
 
 
 @dataclass

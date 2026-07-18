@@ -1,0 +1,8 @@
+{
+  "schema_version": "phase55-private-corpus-manifest-v1",
+  "corpus_kind": "private_textbook",
+  "copyright_status": "user_supplied_not_for_repository",
+  "source_path_env": "PHASE55_PRIVATE_CORPUS_PATH",
+  "required_fields": ["case_id", "problem_text", "gold"],
+  "notes": "Store licensed/private source text outside the repository. The runner reports public seed and private held-out results separately."
+}

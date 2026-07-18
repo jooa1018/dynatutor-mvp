@@ -32,6 +32,18 @@ def normalize_labeled_value(
     unit: str | None,
 ) -> tuple[float, str | None]:
     normalized_unit = compact_unit(unit).lower()
+    korean_units = {
+        "초": "s",
+        "미터": "m",
+        "미터/초": "m/s",
+        "미터/초²": "m/s^2",
+        "미터/초^2": "m/s^2",
+        "킬로그램": "kg",
+        "뉴턴": "N",
+        "줄": "J",
+    }
+    if normalized_unit in korean_units:
+        return value, korean_units[normalized_unit]
     if normalized_unit == "km/h":
         return value / 3.6, "m/s"
     if normalized_unit in {"cm/s^2", "cm/s2"}:

@@ -86,6 +86,8 @@ class DiagnosisResponse(BaseModel):
     cautions: list[str] = Field(default_factory=list)
     next_questions: list[str] = Field(default_factory=list)
     physical_model: dict[str, Any] | None = None
+    # Phase 55 additive, non-answer-authoritative parser summary.
+    textbook_parse: dict[str, Any] | None = None
 
 
 class StepCard(BaseModel):
@@ -328,6 +330,8 @@ class SolveResponse(BaseModel):
     explanation_trace: ExplanationTraceModel | None = None
     # Phase 54: additive, optional, non-authoritative visualization scene.
     visualization_scene: VisualizationSceneModel | None = None
+    # Phase 55 additive, optional semantic graph/validation summary.
+    textbook_parse: dict[str, Any] | None = None
 
 
 class FeedbackResponse(BaseModel):

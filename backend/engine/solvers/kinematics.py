@@ -23,7 +23,10 @@ class ConstantAcceleration1DSolver(BaseSolver):
         return None
 
     def solve(self, c: CanonicalProblem) -> SolverResult:
-        raw = c.raw_text.replace(" ", "")
+        # Phase 55 structured parses are authoritative. Legacy raw-text behavior
+        # remains only for off/shadow rollback compatibility.
+        structured = bool((c.textbook_parse or {}).get("authoritative"))
+        raw = "" if structured else c.raw_text.replace(" ", "")
         unit_by_key = {
             "v0": "m/s",
             "vf": "m/s",
@@ -52,7 +55,7 @@ class ConstantAcceleration1DSolver(BaseSolver):
             )
 
         compact_lower = raw.lower()
-        starts_from_rest = any(
+        starts_from_rest = bool(c.flags.get("starts_from_rest")) or any(
             phrase in compact_lower
             for phrase in (
                 "정지상태에서",
@@ -66,7 +69,7 @@ class ConstantAcceleration1DSolver(BaseSolver):
                 "initiallyatrest",
             )
         )
-        ends_at_rest = any(
+        ends_at_rest = bool(c.flags.get("ends_at_rest")) or any(
             phrase in compact_lower
             for phrase in (
                 "정지할때",
@@ -82,7 +85,7 @@ class ConstantAcceleration1DSolver(BaseSolver):
             known.setdefault("v0", 0.0)
         if ends_at_rest:
             known.setdefault("vf", 0.0)
-        if "v" in known and "v0" not in known and ("초속도" in raw or "처음" in raw):
+        if not structured and "v" in known and "v0" not in known and ("초속도" in raw or "처음" in raw):
             known["v0"] = known["v"]
         pre = require_no_missing(c)
         # 정지 보완 때문에 missing을 다시 판단
@@ -369,8 +372,15 @@ def _select_event_value(c: CanonicalProblem, key: str, values: list[float]) -> f
 
     if key != "t" or not values:
         return None
-    raw = (c.raw_text or "").lower().replace(" ", "")
     positive = [value for value in values if value > 1e-9]
+    if (c.textbook_parse or {}).get("authoritative"):
+        selection = (c.textbook_parse.get("event_selection") or {}).get("time")
+        if selection == "last":
+            return max(positive or values)
+        if selection == "first":
+            return min(positive or values)
+        return None
+    raw = (c.raw_text or "").lower().replace(" ", "")
 
     later_tokens = (
         "다시",
@@ -535,6 +545,9 @@ def _requested_key(c: CanonicalProblem, candidates: list[str]) -> str:
         target = requested_map.get(req)
         if target in candidates:
             return target
+
+    if (c.textbook_parse or {}).get("authoritative"):
+        return candidates[0]
 
     raw = c.raw_text.replace(" ", "")
     # 한국어 문장에서는 이미 주어진 값 이름도 본문에 함께 나오므로,

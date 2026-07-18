@@ -1,0 +1,94 @@
+const EDITABLE_FIELDS = Object.freeze({
+  entities: ['kind', 'label', 'aliases'],
+  motion_segments: ['order', 'actor_ids', 'motion_model_candidates', 'start_event_id', 'end_event_id', 'relevance'],
+  events: ['kind', 'subject_ids', 'segment_id'],
+  explicit_facts: ['semantic_key', 'subject_id', 'segment_id', 'event_id', 'temporal_role', 'direction', 'relevance'],
+  relations: ['kind', 'entity_ids', 'segment_id'],
+  queries: ['output_key', 'subject_id', 'segment_id', 'event_id', 'component'],
+  assumption_proposals: ['kind', 'subject_id', 'segment_id', 'proposed_semantic_key', 'reason'],
+  interpretation_candidates: [
+    'system_type', 'subtype', 'target_segment_ids', 'fact_ids', 'query_ids',
+    'assumption_ids', 'reason_code',
+  ],
+});
+
+const ID_FIELDS = Object.freeze({
+  entities: 'entity_id',
+  motion_segments: 'segment_id',
+  events: 'event_id',
+  explicit_facts: 'fact_id',
+  relations: 'relation_id',
+  queries: 'query_id',
+  assumption_proposals: 'assumption_id',
+  interpretation_candidates: 'candidate_id',
+});
+
+function cloneTextbookParse(parse) {
+  return JSON.parse(JSON.stringify(parse || {}));
+}
+
+function sameValue(left, right) {
+  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+}
+
+function buildTextbookCorrectionPatch(original, edited) {
+  const operations = [];
+  for (const [collection, fields] of Object.entries(EDITABLE_FIELDS)) {
+    const idField = ID_FIELDS[collection];
+    const beforeById = new Map((original?.[collection] || []).map((item) => [item[idField], item]));
+    for (const item of edited?.[collection] || []) {
+      const before = beforeById.get(item[idField]);
+      if (!before) continue;
+      const updates = {};
+      for (const field of fields) {
+        if (!sameValue(before[field], item[field])) updates[field] = item[field];
+      }
+      if (Object.keys(updates).length) {
+        operations.push({ collection, id: item[idField], set: updates });
+      }
+    }
+  }
+  return { operations };
+}
+
+function mergeTextbookCorrectionPatches(previous, next) {
+  const order = [];
+  const merged = new Map();
+  for (const patch of [previous, next]) {
+    for (const operation of patch?.operations || []) {
+      const key = `${operation.collection}\u0000${operation.id}`;
+      if (!merged.has(key)) {
+        order.push(key);
+        merged.set(key, { collection: operation.collection, id: operation.id, set: {} });
+      }
+      Object.assign(merged.get(key).set, cloneTextbookParse(operation.set));
+    }
+  }
+  return {
+    operations: order
+      .map((key) => merged.get(key))
+      .filter((operation) => Object.keys(operation.set).length),
+  };
+}
+
+function buildRevisionApprovalPatch(fingerprint, correction, correctionFingerprint = null) {
+  if (
+    correction?.operations?.length
+    && correctionFingerprint !== fingerprint
+  ) {
+    throw new Error('stale textbook correction fingerprint');
+  }
+  const payload = { textbook_parse_approval: { fingerprint } };
+  if (correction?.operations?.length) {
+    payload.textbook_parse_correction = cloneTextbookParse(correction);
+  }
+  return payload;
+}
+
+module.exports = {
+  EDITABLE_FIELDS,
+  buildTextbookCorrectionPatch,
+  mergeTextbookCorrectionPatches,
+  buildRevisionApprovalPatch,
+  cloneTextbookParse,
+};

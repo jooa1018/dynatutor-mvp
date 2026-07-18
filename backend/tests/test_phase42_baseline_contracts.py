@@ -113,7 +113,7 @@ def test_phase42_capability_matrix_is_complete_and_machine_readable():
         "known_limitations",
     }
     for entry in entries:
-        assert set(entry) == required
+        assert set(entry) == required or set(entry) == required | {"textbook_parser_safe"}
         assert entry["system_type"]
         assert isinstance(entry["subtypes"], list)
         assert set(entry["required_inputs"]) == {"all_of", "any_of", "conditional"}
@@ -122,6 +122,11 @@ def test_phase42_capability_matrix_is_complete_and_machine_readable():
         assert entry["numeric_support"]["independent_time_integration"] is False
         assert entry["visualization_support"]["dynamic_physics"] is False
         assert entry["known_limitations"]
+    assert {
+        entry["analytic_solver"]
+        for entry in entries
+        if entry.get("textbook_parser_safe") is True
+    } == {"constant_acceleration_1d"}
 
 
 @pytest.mark.unit
@@ -282,17 +287,26 @@ def test_phase42_pydantic_schema_contract():
 def test_phase53_schema_migration_is_append_only_and_optional():
     # Phase 54 appended visualization_scene after the Phase 53 field; the
     # Phase 53 guarantees stay intact (explanation_trace immediately before).
-    assert CONTRACT["schema_version"] == 7
+    assert CONTRACT["schema_version"] == 8
     assert CONTRACT["engine_dataclasses"]["SolverResult"][-1] == "explanation_evidence"
-    assert CONTRACT["api_models"]["SolveResponse"][-2] == "explanation_trace"
+    assert CONTRACT["api_models"]["SolveResponse"][-3] == "explanation_trace"
     assert SolverResult(ok=False).explanation_evidence is None
     assert SolveResponse.model_fields["explanation_trace"].default is None
 
 
 @pytest.mark.unit
 def test_phase54_schema_migration_is_append_only_and_optional():
-    assert CONTRACT["api_models"]["SolveResponse"][-1] == "visualization_scene"
+    assert CONTRACT["api_models"]["SolveResponse"][-2] == "visualization_scene"
     assert SolveResponse.model_fields["visualization_scene"].default is None
+
+
+@pytest.mark.unit
+def test_phase55_schema_migration_is_append_only_optional_and_non_authoritative():
+    assert CONTRACT["api_models"]["SolveResponse"][-1] == "textbook_parse"
+    assert CONTRACT["api_models"]["DiagnosisResponse"][-1] == "textbook_parse"
+    assert CONTRACT["engine_dataclasses"]["CanonicalProblem"][-1] == "textbook_parse"
+    assert SolveResponse.model_fields["textbook_parse"].default is None
+    assert CanonicalProblem().textbook_parse is None
 
 
 @pytest.mark.regression
