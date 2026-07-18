@@ -37,11 +37,13 @@ class CapabilityCheck:
 def _accepted_assumption_symbols(
     parse: TextbookProblemParseV1,
     evaluations: tuple[AssumptionEvaluation, ...],
+    candidate_assumption_ids: set[str],
 ) -> set[str]:
     accepted = {
         item.assumption_id
         for item in evaluations
-        if item.disposition in {
+        if item.assumption_id in candidate_assumption_ids
+        and item.disposition in {
             AssumptionDisposition.accepted_default,
             AssumptionDisposition.accepted_visible,
         }
@@ -71,7 +73,9 @@ def check_capability(
         if fact.fact_id in candidate.fact_ids
         if (symbol := canonical_symbol(fact.semantic_key)) is not None
     }
-    symbols |= _accepted_assumption_symbols(parse, evaluations)
+    symbols |= _accepted_assumption_symbols(
+        parse, evaluations, set(candidate.assumption_ids)
+    )
     if entry is None:
         issues.append(
             ValidationIssue(
