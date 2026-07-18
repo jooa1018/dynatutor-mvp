@@ -16,6 +16,7 @@ from app.schemas.solution import (
     StepCard as StepCardSchema,
     VerificationReport as VerificationReportSchema,
 )
+from engine.extraction.extractor import extract_problem
 from engine.models import SolverResult, VerificationReport
 from engine.legacy_hints.rules import make_legacy_hints
 from engine.model_builder import build_physical_model, physical_model_step_cards
@@ -287,7 +288,9 @@ def diagnose_problem(
 ) -> DiagnosisResponse:
     """canonical을 직접 주면 그 기준으로 진단한다 (clarify patch 이후 재진단용)."""
     if canonical is None:
-        canonical = parse_problem_gateway(problem_text).canonical
+        canonical = parse_problem_gateway(
+            problem_text, legacy_extractor=extract_problem
+        ).canonical
     hints = make_legacy_hints(canonical)
     registry = registry or SolverRegistry()
     route_decision = route_decision or registry.route(canonical)
@@ -496,6 +499,7 @@ def _solve_problem_impl(
     parser_gateway = parse_problem_gateway(
         problem_text,
         approved_fingerprint=approved_fingerprint,
+        legacy_extractor=extract_problem,
     )
     canonical = parser_gateway.canonical
     trace.capture_canonical(canonical)
@@ -828,7 +832,7 @@ def _solve_problem_impl(
 
 
 def feedback_on_solution(problem_text: str, student_solution: str) -> FeedbackResponse:
-    gateway = parse_problem_gateway(problem_text)
+    gateway = parse_problem_gateway(problem_text, legacy_extractor=extract_problem)
     if gateway.blocked:
         return FeedbackResponse(
             missing_points=["문제 구조 해석을 먼저 확인해야 풀이 피드백을 제공할 수 있습니다."],
