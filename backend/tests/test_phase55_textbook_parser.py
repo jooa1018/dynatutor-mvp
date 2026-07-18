@@ -116,6 +116,11 @@ def test_candidate_cannot_rebind_solver_fact_to_context_segment():
         fixture["problem_text"],
         TextbookProblemParseV1.model_validate(fixture["parse"]),
     )
+    assert validated.status == ParseDecisionStatus.needs_confirmation
+    assert any(
+        item.code == ErrorCode.invalid_reference and item.referenced_id == "segment_distance"
+        for item in validated.issues
+    )
 
 
 def test_missing_required_figure_abstains_before_solver_selection():
@@ -139,11 +144,6 @@ def test_problem_prompt_injection_is_only_source_content():
     validated = validate_recorded_payload(text, fixture["parse"])
     assert validated.status == ParseDecisionStatus.accepted_with_visible_assumptions
     assert all(fact.raw_value != "999" for fact in validated.parse.explicit_facts)
-    assert validated.status == ParseDecisionStatus.needs_confirmation
-    assert any(
-        item.code == ErrorCode.invalid_reference and item.referenced_id == "segment_distance"
-        for item in validated.issues
-    )
 
 
 def test_dangling_entity_segment_event_and_query_bindings_are_rejected():
