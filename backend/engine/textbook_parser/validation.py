@@ -98,10 +98,21 @@ class ValidatedParse:
 def _candidate_related_issues(
     issues: tuple[ValidationIssue, ...], candidate_ids: set[str]
 ) -> tuple[ValidationIssue, ...]:
+    global_safety_codes = {
+        ErrorCode.answer_authority_field,
+        ErrorCode.evidence_quote_missing,
+        ErrorCode.evidence_occurrence_missing,
+        ErrorCode.invented_explicit_number,
+        ErrorCode.raw_value_mismatch,
+        ErrorCode.raw_unit_mismatch,
+        ErrorCode.contradictory_fact,
+    }
     return tuple(
         issue
         for issue in issues
-        if issue.referenced_id is None or issue.referenced_id in candidate_ids
+        if issue.code in global_safety_codes
+        or issue.referenced_id is None
+        or issue.referenced_id in candidate_ids
     )
 
 
