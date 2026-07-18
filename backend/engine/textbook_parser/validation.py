@@ -158,11 +158,11 @@ def validate_parse(problem_text: str, parse: TextbookProblemParseV1) -> Validate
         ranked = sorted(evaluations, key=lambda item: (-item.score.total, item.candidate_id))
         best = ranked[0]
         selected = best.candidate_id
-        if not best.capability.supported or not best.capability.textbook_parser_safe:
-            status = ParseDecisionStatus.solver_gap
-            selected = None
-        elif best.score.veto_codes:
+        if best.score.veto_codes:
             status = ParseDecisionStatus.needs_confirmation
+            selected = None
+        elif not best.capability.supported or not best.capability.textbook_parser_safe:
+            status = ParseDecisionStatus.solver_gap
             selected = None
         elif len(ranked) > 1 and ranked[1].score.total >= best.score.total - TIE_MARGIN:
             issues.append(
