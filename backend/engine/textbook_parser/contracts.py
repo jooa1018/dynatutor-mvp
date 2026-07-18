@@ -386,6 +386,9 @@ class TextbookProblemParseV1(StrictModel):
         self._unique("ambiguity", [item.ambiguity_id for item in self.ambiguities])
         self._unique("segment order", [str(item.order) for item in self.motion_segments])
 
+        segment_by_id = {item.segment_id: item for item in self.motion_segments}
+        event_by_id = {item.event_id: item for item in self.events}
+
         for segment in self.motion_segments:
             self._require_refs("segment actor", segment.actor_ids, entity_ids)
             self._require_optional_ref("segment start event", segment.start_event_id, event_ids)
@@ -395,10 +398,38 @@ class TextbookProblemParseV1(StrictModel):
         for event in self.events:
             self._require_refs("event subject", event.subject_ids, entity_ids)
             self._require_optional_ref("event segment", event.segment_id, segment_ids)
+            if event.segment_id is not None:
+                actors = set(segment_by_id[event.segment_id].actor_ids)
+                if not set(event.subject_ids).issubset(actors):
+                    raise ValueError(
+                        f"event subject(s) must be actors of segment: {event.event_id}"
+                    )
         for fact in self.explicit_facts:
             self._require_ref("fact subject", fact.subject_id, entity_ids)
             self._require_optional_ref("fact segment", fact.segment_id, segment_ids)
             self._require_optional_ref("fact event", fact.event_id, event_ids)
+            self._validate_subject_segment_event_binding(
+                "fact", fact.fact_id, fact.subject_id, fact.segment_id, fact.event_id,
+                segment_by_id, event_by_id,
+            )
+            if fact.temporal_role in {
+                TemporalRole.before_event,
+                TemporalRole.at_event,
+                TemporalRole.after_event,
+            } and fact.event_id is None:
+                raise ValueError(
+                    f"fact temporal role requires event_id: {fact.fact_id}"
+                )
+            if fact.segment_id is not None and fact.event_id is not None:
+                segment = segment_by_id[fact.segment_id]
+                if fact.temporal_role == TemporalRole.initial and segment.start_event_id != fact.event_id:
+                    raise ValueError(
+                        f"initial fact must bind the segment start event: {fact.fact_id}"
+                    )
+                if fact.temporal_role == TemporalRole.final and segment.end_event_id != fact.event_id:
+                    raise ValueError(
+                        f"final fact must bind the segment end event: {fact.fact_id}"
+                    )
         for relation in self.relations:
             self._require_refs("relation entity", relation.entity_ids, entity_ids)
             self._require_optional_ref("relation segment", relation.segment_id, segment_ids)
@@ -406,9 +437,20 @@ class TextbookProblemParseV1(StrictModel):
             self._require_ref("query subject", query.subject_id, entity_ids)
             self._require_optional_ref("query segment", query.segment_id, segment_ids)
             self._require_optional_ref("query event", query.event_id, event_ids)
+            self._validate_subject_segment_event_binding(
+                "query", query.query_id, query.subject_id, query.segment_id, query.event_id,
+                segment_by_id, event_by_id,
+            )
         for assumption in self.assumption_proposals:
             self._require_ref("assumption subject", assumption.subject_id, entity_ids)
             self._require_optional_ref("assumption segment", assumption.segment_id, segment_ids)
+            if (
+                assumption.segment_id is not None
+                and assumption.subject_id not in segment_by_id[assumption.segment_id].actor_ids
+            ):
+                raise ValueError(
+                    f"assumption subject must be an actor of segment: {assumption.assumption_id}"
+                )
         for candidate in self.interpretation_candidates:
             self._require_refs("candidate target segment", candidate.target_segment_ids, segment_ids)
             self._require_refs("candidate fact", candidate.fact_ids, fact_ids)
@@ -434,7 +476,67 @@ class TextbookProblemParseV1(StrictModel):
         query_segments = {query.segment_id for query in self.queries if query.segment_id is not None}
         if target_segments - query_segments:
             raise ValueError("every target segment must be referenced by a query")
+
+        # A shared boundary event may end an earlier segment and start a later one,
+        # but it must never point backwards in the declared segment order.
+        for event_id in event_ids:
+            starts = [
+                item.order for item in self.motion_segments if item.start_event_id == event_id
+            ]
+            ends = [
+                item.order for item in self.motion_segments if item.end_event_id == event_id
+            ]
+            if starts and ends and max(ends) >= min(starts):
+                raise ValueError(
+                    f"event boundary reverses segment order: {event_id}"
+                )
+        for segment in self.motion_segments:
+            for role, event_id in (
+                ("start", segment.start_event_id),
+                ("end", segment.end_event_id),
+            ):
+                if event_id is None:
+                    continue
+                event = event_by_id[event_id]
+                if not set(event.subject_ids).issubset(set(segment.actor_ids)):
+                    raise ValueError(
+                        f"segment {role} event subject must be a segment actor: {segment.segment_id}"
+                    )
+                if event.segment_id is not None:
+                    linked = {segment.segment_id}
+                    linked.update(
+                        item.segment_id
+                        for item in self.motion_segments
+                        if item.start_event_id == event_id or item.end_event_id == event_id
+                    )
+                    if event.segment_id not in linked:
+                        raise ValueError(
+                            f"segment {role} event binding disagrees: {segment.segment_id}"
+                        )
         return self
+
+    @staticmethod
+    def _validate_subject_segment_event_binding(
+        kind: str,
+        item_id: str,
+        subject_id: str,
+        segment_id: str | None,
+        event_id: str | None,
+        segment_by_id: dict[str, MotionSegment],
+        event_by_id: dict[str, Event],
+    ) -> None:
+        if segment_id is not None and subject_id not in segment_by_id[segment_id].actor_ids:
+            raise ValueError(f"{kind} subject must be an actor of segment: {item_id}")
+        if event_id is not None:
+            event = event_by_id[event_id]
+            if subject_id not in event.subject_ids:
+                raise ValueError(f"{kind} subject must be a subject of event: {item_id}")
+            if (
+                segment_id is not None
+                and event.segment_id is not None
+                and event.segment_id != segment_id
+            ):
+                raise ValueError(f"{kind} segment and event bindings disagree: {item_id}")
 
     @staticmethod
     def _unique(kind: str, values: list[str]) -> set[str]:
