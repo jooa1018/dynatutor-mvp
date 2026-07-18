@@ -310,6 +310,7 @@ export default function HomeClient() {
                 parse={data.textbook_parse}
                 loading={loading}
                 onApprove={(fingerprint) => run(text, null, { textbook_parse_approval: { fingerprint } })}
+                onCorrect={(correction) => run(text, null, { textbook_parse_correction: correction })}
               />
             )}
 
