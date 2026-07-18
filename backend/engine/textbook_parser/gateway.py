@@ -48,9 +48,10 @@ def parse_problem_gateway(
     approved_fingerprint: str | None = None,
     client=None,
     cache=None,
+    legacy_extractor=extract_problem,
 ) -> ParserGatewayResult:
     config = config or TextbookParserConfig.from_env()
-    legacy = extract_problem(problem_text)
+    legacy = legacy_extractor(problem_text)
     if config.mode == ParserMode.off:
         return ParserGatewayResult(legacy, None, False)
 
