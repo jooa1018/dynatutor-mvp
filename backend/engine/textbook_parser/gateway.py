@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from typing import Any
@@ -9,6 +9,7 @@ from engine.extraction.extractor import extract_problem
 from engine.models import CanonicalProblem
 from engine.textbook_parser.canonical_projection import project_canonical
 from engine.textbook_parser.config import ParserMode, TextbookParserConfig
+from engine.textbook_parser.corrections import apply_parse_corrections
 from engine.textbook_parser.orchestrator import ParseOutcome, parse_textbook_problem
 
 
@@ -49,6 +50,7 @@ def parse_problem_gateway(
     client=None,
     cache=None,
     legacy_extractor=extract_problem,
+    parse_correction: dict[str, Any] | None = None,
 ) -> ParserGatewayResult:
     config = config or TextbookParserConfig.from_env()
     legacy = legacy_extractor(problem_text)
@@ -58,6 +60,19 @@ def parse_problem_gateway(
     outcome = parse_textbook_problem(
         problem_text, config=config, client=client, cache=cache
     )
+    if parse_correction is not None and outcome.validated is not None:
+        corrected = apply_parse_corrections(
+            outcome.validated.parse, parse_correction
+        )
+        from engine.textbook_parser.validation import validate_parse
+
+        corrected_validation = validate_parse(problem_text, corrected)
+        outcome = replace(
+            outcome,
+            status=corrected_validation.status,
+            validated=corrected_validation,
+            cache_hit=False,
+        )
     fingerprint = approval_fingerprint(outcome)
     if config.mode == ParserMode.shadow:
         legacy.textbook_parse = {
