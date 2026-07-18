@@ -14,10 +14,13 @@ test('Phase 55 understanding card exposes graph, evidence, and authority boundar
   assert.match(card, /deterministic solver/);
   assert.match(card, /aria-live="polite"/);
   assert.match(card, /aria-label="운동 구간 순서"/);
+  assert.match(card, /구조 수정 적용/);
+  assert.match(card, /onCorrect/);
 });
 
 test('confirm approval is revision-bound and sent through the existing solve request', () => {
   assert.match(card, /approval_fingerprint/);
   assert.match(home, /textbook_parse_approval/);
   assert.match(home, /fingerprint/);
+  assert.match(home, /textbook_parse_correction/);
 });
