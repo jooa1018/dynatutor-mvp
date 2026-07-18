@@ -163,25 +163,32 @@ def run_staged(
 
     outcomes: dict[str, ParseOutcome] = {}
     predictions: dict[str, Prediction] = {}
+    outcome_by_problem_text: dict[str, ParseOutcome] = {}
     measured = 0.0
     conservative = 0.0
 
     def execute(case) -> None:
         nonlocal measured, conservative
-        remaining_budget = COST_LIMIT_USD - conservative
-        if remaining_budget <= 0:
-            raise RuntimeError("conservative cost budget exhausted before request")
-        outcome = parse_case(
-            case.problem_text,
-            config=config,
-            cache=_DisabledCache(),
-            cost_budget_usd=remaining_budget,
-        )
+        outcome = outcome_by_problem_text.get(case.problem_text)
+        reused = outcome is not None
+        if outcome is None:
+            remaining_budget = COST_LIMIT_USD - conservative
+            if remaining_budget <= 0:
+                raise RuntimeError("conservative cost budget exhausted before request")
+            outcome = parse_case(
+                case.problem_text,
+                config=config,
+                cache=_DisabledCache(),
+                cost_budget_usd=remaining_budget,
+            )
+            outcome_by_problem_text[case.problem_text] = outcome
+            measured += outcome.usage.estimated_cost_usd
+            conservative += outcome.conservative_cost_upper_bound_usd
         outcomes[case.case_id] = outcome
         predictions[case.case_id] = _prediction(case, outcome)
-        measured += outcome.usage.estimated_cost_usd
-        conservative += outcome.conservative_cost_upper_bound_usd
-        emit("CASE_SUMMARY=" + json.dumps(_case_summary(case, outcome, predictions[case.case_id]), ensure_ascii=False, sort_keys=True))
+        summary = _case_summary(case, outcome, predictions[case.case_id])
+        summary["staged_reused_parse"] = reused
+        emit("CASE_SUMMARY=" + json.dumps(summary, ensure_ascii=False, sort_keys=True))
 
     for case in targeted:
         execute(case)

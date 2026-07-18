@@ -580,27 +580,31 @@ def _staged_config() -> TextbookParserConfig:
 def test_staged_runner_never_duplicates_targeted_requests():
     manifest = repository_safe_seed_manifest()
     by_text = {item.problem_text: item for item in manifest.cases}
+    by_id = {item.case_id: item for item in manifest.cases}
     calls: list[str] = []
 
     def fake_parse(problem_text, **_kwargs):
-        calls.append(by_text[problem_text].case_id)
+        calls.append(problem_text)
         return _offline_outcome(by_text[problem_text])
 
     result = run_staged(config=_staged_config(), parse_case=fake_parse, emit=lambda _line: None)
     assert result.exit_code == 0
-    assert len(calls) == 20
-    assert len(set(calls)) == 20
-    assert all(calls.count(item) == 1 for item in TARGETED_CASE_IDS)
+    assert len(result.outcomes) == 20
+    assert len(result.predictions) == 20
+    assert len(calls) <= 20
+    assert len(set(calls)) == len(calls)
+    assert all(calls.count(by_id[item].problem_text) == 1 for item in TARGETED_CASE_IDS)
 
 
 def test_staged_runner_stops_after_eight_when_targeted_gate_fails():
     manifest = repository_safe_seed_manifest()
     by_text = {item.problem_text: item for item in manifest.cases}
+    by_id = {item.case_id: item for item in manifest.cases}
     calls: list[str] = []
 
     def fake_parse(problem_text, **_kwargs):
         case = by_text[problem_text]
-        calls.append(case.case_id)
+        calls.append(problem_text)
         outcome = _offline_outcome(case)
         if case.case_id == "figure_001":
             return replace(
@@ -613,4 +617,4 @@ def test_staged_runner_stops_after_eight_when_targeted_gate_fails():
     result = run_staged(config=_staged_config(), parse_case=fake_parse, emit=lambda _line: None)
     assert result.exit_code == 1
     assert not result.stage_1_passed
-    assert calls == list(TARGETED_CASE_IDS)
+    assert calls == [by_id[item].problem_text for item in TARGETED_CASE_IDS]

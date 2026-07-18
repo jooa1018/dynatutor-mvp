@@ -419,7 +419,7 @@ def _collision_binding_parse() -> TextbookProblemParseV1:
     )
     parse["motion_segments"][0]["actor_ids"].append("cart_b")
     parse["motion_segments"][0]["motion_model_candidates"] = ["impulse_interval"]
-    parse["events"][0]["kind"] = "collision_end"
+    parse["events"][0]["kind"] = "collision_start"
     parse["events"][0]["subject_ids"].append("cart_b")
     parse["relations"] = [
         {
@@ -442,8 +442,8 @@ def _collision_binding_parse() -> TextbookProblemParseV1:
     for fact_id, semantic_key, subject_id, temporal_role, event_id in [
         ("mass_a", "mass", "athlete", "timeless", None),
         ("mass_b", "mass", "cart_b", "timeless", None),
-        ("velocity_a", "velocity", "athlete", "after_event", "race_start"),
-        ("velocity_b", "velocity", "cart_b", "after_event", "race_start"),
+        ("velocity_a", "velocity", "athlete", "before_event", "race_start"),
+        ("velocity_b", "velocity", "cart_b", "before_event", "race_start"),
     ]:
         fact = deepcopy(template)
         fact.update(

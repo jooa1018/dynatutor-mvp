@@ -286,7 +286,7 @@ def align_explicit_fact(problem_text: str, fact: ExplicitFact) -> tuple[SourceSp
     if not matching_quantities:
         issues.append(
             ValidationIssue(
-                ErrorCode.quantity_occurrence_missing,
+                ErrorCode.quantity_span_mismatch,
                 Severity.critical,
                 "raw_value and raw_unit are not one source quantity expression",
                 path=f"explicit_facts.{fact.fact_id}",

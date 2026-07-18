@@ -505,13 +505,23 @@ def _validation_repair_issues(
         return ()
     out: list[RepairIssueV1] = []
     seen: set[tuple[str, str, str | None]] = set()
+    candidate_by_id = {
+        item.candidate_id: item for item in validated.candidates
+    }
     for issue in validated.issues:
         if issue.code.value not in REPAIRABLE_CODES:
             continue
-        if issue.code == ErrorCode.capability_missing and not (
-            issue.metadata and issue.metadata.get("missing_symbols")
-        ):
-            continue
+        if issue.code == ErrorCode.capability_missing:
+            candidate = candidate_by_id.get(issue.referenced_id or "")
+            if (
+                not (issue.metadata and issue.metadata.get("missing_symbols"))
+                or candidate is None
+                or not candidate.capability.textbook_parser_safe
+            ):
+                # An accurately parsed but non-textbook-safe family must end in
+                # solver_gap. Asking the model to invent inputs cannot make that
+                # deterministic solver route safe.
+                continue
         item = repair_issue_from_validation(issue, phase="server_validation")
         key = (item.code, item.path, item.referenced_id)
         if key not in seen:
