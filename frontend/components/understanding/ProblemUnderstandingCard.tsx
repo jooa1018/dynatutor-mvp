@@ -70,10 +70,10 @@ export default function ProblemUnderstandingCard({
     const prepared = cloneTextbookParse(draft);
     const queriesById = new Map<string, any>((prepared.queries ?? []).map((item: any) => [item.query_id, item]));
     for (const candidate of prepared.interpretation_candidates ?? []) {
-      const querySegments = candidate.query_ids
+      const querySegments: string[] = candidate.query_ids
         .map((id: string) => queriesById.get(id)?.segment_id)
         .filter(Boolean);
-      if (querySegments.length) candidate.target_segment_ids = [...new Set(querySegments)];
+      if (querySegments.length) candidate.target_segment_ids = Array.from(new Set<string>(querySegments));
     }
     const patch = buildTextbookCorrectionPatch(original, prepared);
     if (patch.operations.length) onCorrect(patch);
