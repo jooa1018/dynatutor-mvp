@@ -20,7 +20,7 @@ from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
 from engine.textbook_parser.validators.semantic import validate_semantics
 
 
-VALIDATOR_POLICY_VERSION = "textbook-validator-v1"
+VALIDATOR_POLICY_VERSION = "textbook-validator-v2"
 SAFETY_VETO_CODES = frozenset(
     {
         ErrorCode.answer_authority_field.value,
