@@ -113,7 +113,7 @@ def test_phase42_capability_matrix_is_complete_and_machine_readable():
         "known_limitations",
     }
     for entry in entries:
-        assert set(entry) in {required, required | {"textbook_parser_safe"}}
+        assert set(entry) == required or set(entry) == required | {"textbook_parser_safe"}
         assert entry["system_type"]
         assert isinstance(entry["subtypes"], list)
         assert set(entry["required_inputs"]) == {"all_of", "any_of", "conditional"}
