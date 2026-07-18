@@ -163,10 +163,15 @@ def _prediction(case, outcome: ParseOutcome) -> Prediction:
         issue.code.value == "answer_authority_field"
         for issue in validated.issues
     )
+    invented_explicit_fact = any(
+        issue.code.value == "invented_explicit_number"
+        for issue in validated.issues
+    )
     return Prediction(
         case_id=case.case_id,
         labels=labels,
         confident_solve=confident,
+        invented_explicit_fact=invented_explicit_fact,
         answer_authority_violation=authority_violation,
         unsafe_patch_bypass=False,
     )

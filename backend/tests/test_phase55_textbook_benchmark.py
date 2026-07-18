@@ -16,6 +16,7 @@ from engine.textbook_parser.benchmark import (
     SemanticSegment,
     evaluate_predictions,
     metamorphic_problem_variants,
+    semantic_signature_diff,
 )
 from engine.textbook_parser.recorded_benchmark import (
     recorded_seed_payload,
@@ -356,9 +357,9 @@ def _evaluate_pair(expected: SemanticGraph, actual: SemanticGraph):
 
 
 def test_semantic_graph_metrics_ignore_all_node_id_spelling_and_array_order():
-    metrics = _evaluate_pair(
-        _semantic_graph(), _renamed_and_reordered(_semantic_graph())
-    )
+    expected = _semantic_graph()
+    actual = _renamed_and_reordered(expected)
+    metrics = _evaluate_pair(expected, actual)
     for field in (
         "entity_accuracy",
         "segment_accuracy",
@@ -372,6 +373,9 @@ def test_semantic_graph_metrics_ignore_all_node_id_spelling_and_array_order():
         "query_accuracy",
     ):
         assert getattr(metrics, field) == 1.0
+    diff = semantic_signature_diff(expected, actual)
+    assert diff["missing_fact_signatures"] == []
+    assert diff["unexpected_fact_signatures"] == []
 
 
 def test_semantic_graph_metrics_ignore_array_order_by_itself():
@@ -425,3 +429,40 @@ def test_repeated_fact_scoring_uses_counter_not_set_semantics():
     metrics = _evaluate_pair(_semantic_graph(), actual)
     assert metrics.explicit_fact_recall == 0.5
     assert metrics.entity_binding_accuracy == 0.5
+
+
+def test_graph_quality_mismatch_is_not_mislabeled_as_invented_fact():
+    expected = _semantic_graph()
+    actual = _renamed_and_reordered(expected)
+    actual.facts[0].semantic_key = "different_but_source_grounded_key"
+    metrics = _evaluate_pair(expected, actual)
+    assert metrics.explicit_fact_precision < 1.0
+    assert metrics.invented_explicit_fact_rate == 0.0
+
+
+def test_invented_fact_safety_metric_uses_validator_signal():
+    graph = _semantic_graph()
+    case = BenchmarkCase(
+        case_id="invented_fact_signal",
+        provenance="repository_safe_generated",
+        category="harness",
+        problem_text="Repository-safe invented fact signal harness.",
+        gold=_labels(graph),
+    )
+    metrics = evaluate_predictions(
+        BenchmarkManifest(
+            schema_version="phase55-benchmark-v4-semantic-graph",
+            corpus_kind="harness",
+            copyright_status="repository_safe_generated",
+            cases=[case],
+        ),
+        [
+            Prediction(
+                case_id=case.case_id,
+                labels=_labels(graph.model_copy(deep=True)),
+                invented_explicit_fact=True,
+            )
+        ],
+    )
+    assert metrics.explicit_fact_precision == 1.0
+    assert metrics.invented_explicit_fact_rate == 1.0
