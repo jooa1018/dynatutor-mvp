@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 
 from engine.textbook_parser.benchmark import (
+    BENCHMARK_SCHEMA_VERSION,
     BenchmarkCase,
     BenchmarkManifest,
     GoldLabels,
@@ -14,10 +15,14 @@ from engine.textbook_parser.benchmark import (
     SemanticQuery,
     SemanticRelation,
     SemanticSegment,
+    core_contract_failure_codes,
     evaluate_predictions,
     metamorphic_problem_variants,
+    semantic_graph_from_labels,
+    semantic_graph_from_parse,
     semantic_signature_diff,
 )
+from engine.textbook_parser.legal_fixtures import legal_graph_fixtures
 from engine.textbook_parser.recorded_benchmark import (
     recorded_seed_payload,
     validate_recorded_seed_manifest,
@@ -53,6 +58,88 @@ def test_recorded_outputs_run_full_validator_route_and_solver_benchmark():
     assert metrics.query_accuracy == 1.0
     assert metrics.segment_accuracy == 1.0
     assert metrics.relation_accuracy == 1.0
+
+
+def test_projectile_seed_recorded_and_legal_graph_share_exact_core_contract():
+    case = next(
+        item
+        for item in repository_safe_seed_manifest().cases
+        if item.case_id == "projectile_001"
+    )
+    prediction = validate_recorded_seed_manifest([case])[0]
+    manifest = BenchmarkManifest(
+        schema_version=BENCHMARK_SCHEMA_VERSION,
+        corpus_kind="projectile_contract",
+        copyright_status="repository_safe_generated",
+        cases=[case],
+    )
+    metrics = evaluate_predictions(manifest, [prediction])
+    for field in (
+        "entity_accuracy",
+        "segment_accuracy",
+        "event_accuracy",
+        "explicit_fact_precision",
+        "explicit_fact_recall",
+        "unit_accuracy",
+        "entity_binding_accuracy",
+        "segment_binding_accuracy",
+        "relation_accuracy",
+        "query_accuracy",
+    ):
+        assert getattr(metrics, field) == 1.0
+
+    gold_graph = semantic_graph_from_labels(case.gold)
+    recorded_graph = semantic_graph_from_labels(prediction.labels)
+    legal = next(item for item in legal_graph_fixtures() if item.fixture_id == "projectile")
+    assert core_contract_failure_codes(gold_graph, recorded_graph) == ()
+    assert core_contract_failure_codes(
+        gold_graph, semantic_graph_from_parse(legal.parse)
+    ) == ()
+
+
+def test_projectile_background_height_wrong_subject_fails_entity_binding():
+    case = next(
+        item
+        for item in repository_safe_seed_manifest().cases
+        if item.case_id == "projectile_001"
+    )
+    payload = recorded_seed_payload(case)
+    background = next(
+        item
+        for item in payload["explicit_facts"]
+        if item["semantic_key"] == "background_height"
+    )
+    background["subject_id"] = "ball"
+    validated = validate_recorded_payload(case.problem_text, payload)
+    failures = core_contract_failure_codes(
+        semantic_graph_from_labels(case.gold),
+        semantic_graph_from_parse(validated.parse),
+    )
+    assert "core_entity_binding_mismatch" in failures
+
+
+def test_projectile_background_height_cannot_become_solver_input():
+    case = next(
+        item
+        for item in repository_safe_seed_manifest().cases
+        if item.case_id == "projectile_001"
+    )
+    payload = recorded_seed_payload(case)
+    background = next(
+        item
+        for item in payload["explicit_facts"]
+        if item["semantic_key"] == "background_height"
+    )
+    payload["interpretation_candidates"][0]["fact_ids"].append(
+        background["fact_id"]
+    )
+    validated = validate_recorded_payload(case.problem_text, payload)
+    assert not validated.accepted
+    assert any(
+        item.code.value == "candidate_binding_mismatch"
+        and item.referenced_id == background["fact_id"]
+        for item in validated.issues
+    )
     assert metrics.entity_binding_accuracy == 1.0
     assert metrics.segment_binding_accuracy == 1.0
     assert metrics.route_accuracy == 1.0
@@ -347,7 +434,7 @@ def _evaluate_pair(expected: SemanticGraph, actual: SemanticGraph):
     )
     return evaluate_predictions(
         BenchmarkManifest(
-            schema_version="phase55-benchmark-v4-semantic-graph",
+            schema_version=BENCHMARK_SCHEMA_VERSION,
             corpus_kind="harness",
             copyright_status="repository_safe_generated",
             cases=[case],
@@ -405,12 +492,108 @@ def test_semantic_segment_binding_change_reduces_binding_score():
     assert _evaluate_pair(_semantic_graph(), actual).segment_binding_accuracy < 1.0
 
 
-def test_semantic_relation_participant_role_change_reduces_relation_accuracy():
+def test_connected_by_rope_participant_reversal_is_equivalent():
     actual = _renamed_and_reordered(_semantic_graph())
     actual.relations[0].participant_ids = tuple(
         reversed(actual.relations[0].participant_ids)
     )
-    assert _evaluate_pair(_semantic_graph(), actual).relation_accuracy < 1.0
+    assert _evaluate_pair(_semantic_graph(), actual).relation_accuracy == 1.0
+
+
+def test_point_on_body_participant_reversal_is_not_equivalent():
+    expected = _semantic_graph()
+    expected.relations[0].kind = "point_on_body"
+    actual = expected.model_copy(deep=True)
+    actual.relations[0].participant_ids = tuple(
+        reversed(actual.relations[0].participant_ids)
+    )
+    assert _evaluate_pair(expected, actual).relation_accuracy < 1.0
+
+
+def _pulley_relation_graph(participants: tuple[str, ...]) -> SemanticGraph:
+    return SemanticGraph(
+        entities=[
+            SemanticEntity(entity_id="mass_a", kind="block"),
+            SemanticEntity(entity_id="mass_b", kind="block"),
+            SemanticEntity(entity_id="pulley", kind="pulley"),
+        ],
+        relations=[
+            SemanticRelation(
+                relation_id="pulley_relation",
+                kind="passes_over_pulley",
+                participant_ids=participants,
+            )
+        ],
+    )
+
+
+def test_passes_over_pulley_mass_order_is_equivalent():
+    expected = _pulley_relation_graph(("mass_a", "mass_b", "pulley"))
+    actual = _pulley_relation_graph(("mass_b", "mass_a", "pulley"))
+    assert _evaluate_pair(expected, actual).relation_accuracy == 1.0
+
+
+def test_passes_over_pulley_role_change_is_not_equivalent():
+    expected = _pulley_relation_graph(("mass_a", "mass_b", "pulley"))
+    actual = _pulley_relation_graph(("mass_a", "pulley", "mass_b"))
+    assert _evaluate_pair(expected, actual).relation_accuracy < 1.0
+
+
+def test_source_grounded_context_entity_preserves_core_metrics():
+    expected = _semantic_graph()
+    actual = expected.model_copy(deep=True)
+    actual.entities.append(SemanticEntity(entity_id="sign", kind="other"))
+    actual.facts.append(
+        SemanticFact(
+            fact_id="sign_height",
+            semantic_key="background_height",
+            raw_value="6",
+            raw_unit="m",
+            subject_id="sign",
+            relevance="context_only",
+        )
+    )
+    metrics = _evaluate_pair(expected, actual)
+    for field in (
+        "entity_accuracy",
+        "segment_accuracy",
+        "explicit_fact_precision",
+        "explicit_fact_recall",
+        "entity_binding_accuracy",
+        "segment_binding_accuracy",
+        "relation_accuracy",
+        "query_accuracy",
+    ):
+        assert getattr(metrics, field) == 1.0
+
+
+def test_extra_solver_input_or_target_segment_fails_core_gate():
+    expected = _semantic_graph()
+    solver_extra = expected.model_copy(deep=True)
+    solver_extra.entities.append(SemanticEntity(entity_id="extra", kind="other"))
+    solver_extra.facts.append(
+        SemanticFact(
+            fact_id="extra_force",
+            semantic_key="force",
+            raw_value="9",
+            raw_unit="N",
+            subject_id="extra",
+            segment_id="motion",
+            relevance="solver_input",
+        )
+    )
+    assert _evaluate_pair(expected, solver_extra).segment_accuracy < 1.0
+
+    target_extra = expected.model_copy(deep=True)
+    target_extra.segments.append(
+        SemanticSegment(
+            segment_id="unexpected_target",
+            order=2,
+            relevance="target",
+            actor_ids=("body",),
+        )
+    )
+    assert _evaluate_pair(expected, target_extra).segment_accuracy < 1.0
 
 
 def test_semantic_query_subject_or_segment_change_reduces_query_accuracy():

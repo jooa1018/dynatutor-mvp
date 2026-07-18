@@ -582,18 +582,55 @@ def test_staged_runner_never_duplicates_targeted_requests():
     by_text = {item.problem_text: item for item in manifest.cases}
     by_id = {item.case_id: item for item in manifest.cases}
     calls: list[str] = []
+    emitted: list[str] = []
 
     def fake_parse(problem_text, **_kwargs):
         calls.append(problem_text)
         return _offline_outcome(by_text[problem_text])
 
-    result = run_staged(config=_staged_config(), parse_case=fake_parse, emit=lambda _line: None)
+    result = run_staged(config=_staged_config(), parse_case=fake_parse, emit=emitted.append)
     assert result.exit_code == 0
     assert len(result.outcomes) == 20
     assert len(result.predictions) == 20
     assert len(calls) <= 20
     assert len(set(calls)) == len(calls)
     assert all(calls.count(by_id[item].problem_text) == 1 for item in TARGETED_CASE_IDS)
+    assert "HARNESS_PREFLIGHT=" + json.dumps(
+        {"case_count": 20, "passed": True}, sort_keys=True
+    ) in emitted
+
+
+def test_staged_preflight_failure_makes_zero_api_calls(monkeypatch):
+    manifest = repository_safe_seed_manifest().model_copy(deep=True)
+    projectile = next(
+        item for item in manifest.cases if item.case_id == "projectile_001"
+    )
+    projectile.gold.queries = ["max_height:sign:motion_1"]
+    monkeypatch.setattr(
+        "tools.run_phase55_live_staged.repository_safe_seed_manifest",
+        lambda: manifest,
+    )
+    calls: list[str] = []
+    emitted: list[str] = []
+
+    def forbidden_parse(problem_text, **_kwargs):
+        calls.append(problem_text)
+        raise AssertionError("preflight failure must prevent every API parse")
+
+    result = run_staged(
+        config=_staged_config(), parse_case=forbidden_parse, emit=emitted.append
+    )
+    assert result.exit_code == 2
+    assert calls == []
+    assert result.measured_cost_usd == 0.0
+    assert result.conservative_cost_upper_bound_usd == 0.0
+    failure_line = next(
+        item for item in emitted if item.startswith("HARNESS_CONTRACT_FAILURE=")
+    )
+    failures = json.loads(failure_line.split("=", 1)[1])["failures"]
+    assert failures
+    assert all(set(item) == {"case_id", "failure_code"} for item in failures)
+    assert all("problem_text" not in item for item in failures)
 
 
 def test_staged_runner_stops_after_eight_when_targeted_gate_fails():

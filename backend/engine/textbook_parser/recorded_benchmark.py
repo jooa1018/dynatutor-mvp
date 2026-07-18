@@ -21,6 +21,7 @@ from engine.textbook_parser.canonical_projection import project_canonical
 from engine.textbook_parser.contracts import TextbookProblemParseV1
 from engine.textbook_parser.contracts import SCHEMA_VERSION
 from engine.textbook_parser.orchestrator import validate_recorded_payload
+from engine.textbook_parser.relation_policy import normalize_relation_participants
 from engine.textbook_parser.validation import ParseDecisionStatus
 
 
@@ -39,7 +40,7 @@ _CATEGORY = {
         "events": ("start",),
     },
     "포물선·곡선·극좌표": {
-        "entity": "object",
+        "entity": "ball",
         "model": "projectile_free_flight",
         "system": "projectile_motion",
         "query": "max_height",
@@ -171,7 +172,14 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
     spec = _CATEGORY[case.category]
     text = case.problem_text
     entity_id = str(spec["entity"])
-    if case.category == "도르래·구속조건":
+    fact_segments = ["motion_1"] * len(tuple(spec["facts"]))
+    if case.category == "포물선·곡선·극좌표":
+        entity_specs = [("ball", "particle"), ("sign", "other")]
+        actor_ids = ["ball"]
+        fact_subjects = ["ball", "ball", "sign"]
+        fact_segments = ["motion_1", "motion_1", None]
+        relations = []
+    elif case.category == "도르래·구속조건":
         entity_specs = [
             ("system", "system"),
             ("mass_a", "block"),
@@ -193,6 +201,7 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
                 "segment_id": "motion_1",
             },
         ]
+        actor_ids = [item[0] for item in entity_specs]
     elif case.category == "강체 속도·가속도":
         entity_specs = [("body", "rigid_body"), ("point", "point")]
         fact_subjects = ["body", "point"]
@@ -204,11 +213,12 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
                 "segment_id": "motion_1",
             }
         ]
+        actor_ids = [item[0] for item in entity_specs]
     else:
         entity_specs = [(entity_id, "point" if entity_id == "point" else "other")]
         fact_subjects = [entity_id] * len(tuple(spec["facts"]))
         relations = []
-    actor_ids = [item[0] for item in entity_specs]
+        actor_ids = [item[0] for item in entity_specs]
     quantities = list(_QUANTITY_RE.finditer(text))
     semantic_keys = tuple(spec["facts"])
     if len(quantities) != len(semantic_keys):
@@ -229,7 +239,7 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
                 "raw_value": match.group("value"),
                 "raw_unit": match.group("unit"),
                 "subject_id": fact_subjects[index - 1],
-                "segment_id": "motion_1",
+                "segment_id": fact_segments[index - 1],
                 "event_id": "event_1" if endpoint_initial else None,
                 "temporal_role": "initial" if endpoint_initial else "interval",
                 "direction": "not_applicable",
@@ -397,7 +407,12 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
         fact_entity_binding={item.fact_id: item.subject_id for item in parse.explicit_facts},
         fact_segment_binding={item.fact_id: item.segment_id for item in parse.explicit_facts},
         relations=[
-            f"{item.kind.value}:" + ":".join(sorted(item.entity_ids))
+            f"{item.kind.value}:"
+            + ":".join(
+                normalize_relation_participants(
+                    item.kind.value, item.entity_ids
+                )
+            )
             for item in parse.relations
         ],
         queries=[

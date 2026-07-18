@@ -8,9 +8,14 @@ from typing import Any, Callable, Iterable
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from engine.textbook_parser.contracts import TextbookProblemParseV1
+from engine.textbook_parser.relation_policy import (
+    normalize_relation_participants,
+    relation_participant_role,
+    relation_policy_defined,
+)
 
 
-BENCHMARK_SCHEMA_VERSION = "phase55-benchmark-v4-semantic-graph"
+BENCHMARK_SCHEMA_VERSION = "phase55-benchmark-v5-core-context"
 _NUMBER_RE = re.compile(r"(?<![\d.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?![\d.])")
 
 
@@ -214,6 +219,7 @@ def _normalize_unit(unit: str) -> str:
         .replace("²", "^2")
         .replace("³", "^3")
         .replace("·", "*")
+        .replace("도", "deg")
         .replace(" ", "")
         .casefold()
     )
@@ -457,7 +463,14 @@ def _query_shape_compatible(
 
 def _relation_roles(graph: SemanticGraph, entity_id: str) -> Counter:
     return Counter(
-        (relation.kind, position)
+        (
+            relation.kind,
+            relation_participant_role(
+                relation.kind, position, len(relation.participant_ids)
+            )
+            if relation_policy_defined(relation.kind)
+            else f"undefined:{position}",
+        )
         for relation in graph.relations
         for position, participant in enumerate(relation.participant_ids)
         if participant == entity_id
@@ -623,25 +636,103 @@ def _fact_pairs(
     return preferred
 
 
-def _relation_exact(
+def _relation_pairs(
     expected: SemanticGraph,
     actual: SemanticGraph,
     entity_map: dict[str, str],
     segment_map: dict[str, str],
-) -> bool:
+) -> dict[int, int]:
     def compatible(left: SemanticRelation, right: SemanticRelation) -> bool:
         participants = _mapped_tuple(left.participant_ids, entity_map)
         return (
             left.kind == right.kind
+            and relation_policy_defined(left.kind)
             and None not in participants
-            and participants == right.participant_ids
+            and normalize_relation_participants(left.kind, participants)
+            == normalize_relation_participants(right.kind, right.participant_ids)
             and (
                 left.segment_id is None
                 or segment_map.get(left.segment_id) == right.segment_id
             )
         )
 
-    return _multiset_compatible(expected.relations, actual.relations, compatible)
+    return _maximum_pairs(expected.relations, actual.relations, compatible)
+
+
+@dataclass(frozen=True)
+class _ContextAllowance:
+    safe: bool
+    entity_ids: frozenset[str]
+    fact_indices: frozenset[int]
+    relation_indices: frozenset[int]
+
+
+def _context_allowance(
+    expected: SemanticGraph,
+    actual: SemanticGraph,
+    entity_map: dict[str, str],
+    fact_pairs: dict[int, int],
+    relation_pairs: dict[int, int],
+) -> _ContextAllowance:
+    mapped_entity_ids = set(entity_map.values())
+    extra_entity_ids = {
+        item.entity_id for item in actual.entities if item.entity_id not in mapped_entity_ids
+    }
+    matched_fact_indices = set(fact_pairs.values())
+    extra_fact_indices = {
+        index for index in range(len(actual.facts)) if index not in matched_fact_indices
+    }
+    matched_relation_indices = set(relation_pairs.values())
+    extra_relation_indices = {
+        index
+        for index in range(len(actual.relations))
+        if index not in matched_relation_indices
+    }
+
+    facts_are_context = all(
+        actual.facts[index].subject_id in extra_entity_ids
+        and actual.facts[index].relevance in {"context_only", "unused"}
+        and actual.facts[index].segment_id is None
+        and actual.facts[index].event_id is None
+        for index in extra_fact_indices
+    )
+    relations_are_context = all(
+        relation_policy_defined(actual.relations[index].kind)
+        and bool(actual.relations[index].participant_ids)
+        and set(actual.relations[index].participant_ids) <= extra_entity_ids
+        and actual.relations[index].segment_id is None
+        for index in extra_relation_indices
+    )
+    referenced_by_core = any(
+        entity_id in segment.actor_ids
+        for entity_id in extra_entity_ids
+        for segment in actual.segments
+    ) or any(
+        entity_id in event.subject_ids
+        for entity_id in extra_entity_ids
+        for event in actual.events
+    ) or any(
+        query.subject_id in extra_entity_ids for query in actual.queries
+    )
+    grounded_context_entities = {
+        actual.facts[index].subject_id for index in extra_fact_indices
+    } | {
+        participant
+        for index in extra_relation_indices
+        for participant in actual.relations[index].participant_ids
+    }
+    safe = (
+        facts_are_context
+        and relations_are_context
+        and not referenced_by_core
+        and extra_entity_ids <= grounded_context_entities
+    )
+    return _ContextAllowance(
+        safe=safe,
+        entity_ids=frozenset(extra_entity_ids if safe else ()),
+        fact_indices=frozenset(extra_fact_indices if safe else ()),
+        relation_indices=frozenset(extra_relation_indices if safe else ()),
+    )
 
 
 def _query_exact(
@@ -693,6 +784,10 @@ def compare_semantic_graphs(
     fact_pairs = _fact_pairs(
         expected, actual, entity_map, segment_map, event_map
     )
+    relation_pairs = _relation_pairs(expected, actual, entity_map, segment_map)
+    context = _context_allowance(
+        expected, actual, entity_map, fact_pairs, relation_pairs
+    )
 
     entity_binding_matches = 0
     segment_binding_matches = 0
@@ -712,22 +807,29 @@ def compare_semantic_graphs(
 
     return GraphComparison(
         entity_exact=(
-            len(entity_map) == len(expected.entities) == len(actual.entities)
+            len(entity_map) == len(expected.entities) and context.safe
         ),
         segment_exact=(
             len(segment_map) == len(expected.segments) == len(actual.segments)
+            and context.safe
         ),
         event_exact=(
             len(event_map) == len(expected.events) == len(actual.events)
+            and context.safe
         ),
-        relation_exact=_relation_exact(
-            expected, actual, entity_map, segment_map
+        relation_exact=(
+            len(relation_pairs) == len(expected.relations)
+            and (
+                len(relation_pairs) + len(context.relation_indices)
+                == len(actual.relations)
+            )
+            and context.safe
         ),
         query_exact=_query_exact(
             expected, actual, entity_map, segment_map, event_map
         ),
         fact_matches=len(fact_pairs),
-        predicted_fact_count=len(actual.facts),
+        predicted_fact_count=len(actual.facts) - len(context.fact_indices),
         gold_fact_count=len(expected.facts),
         unit_matches=unit_matches,
         unit_total=len(expected.facts),
@@ -736,8 +838,43 @@ def compare_semantic_graphs(
         segment_binding_matches=segment_binding_matches,
         segment_binding_total=len(expected.facts),
         expected_signatures=tuple(sorted(_signature(item) for item in expected.facts)),
-        actual_signatures=tuple(sorted(_signature(item) for item in actual.facts)),
+        actual_signatures=tuple(
+            sorted(
+                _signature(item)
+                for index, item in enumerate(actual.facts)
+                if index not in context.fact_indices
+            )
+        ),
     )
+
+
+def core_contract_failure_codes(
+    expected: SemanticGraph, actual: SemanticGraph
+) -> tuple[str, ...]:
+    comparison = compare_semantic_graphs(expected, actual)
+    failures: list[str] = []
+    if not comparison.entity_exact:
+        failures.append("core_entity_mismatch")
+    if not comparison.segment_exact:
+        failures.append("core_segment_mismatch")
+    if not comparison.event_exact:
+        failures.append("core_event_mismatch")
+    if not comparison.relation_exact:
+        failures.append("core_relation_mismatch")
+    if not comparison.query_exact:
+        failures.append("core_query_mismatch")
+    if (
+        comparison.fact_matches != comparison.gold_fact_count
+        or comparison.predicted_fact_count != comparison.gold_fact_count
+    ):
+        failures.append("core_fact_mismatch")
+    if comparison.unit_matches != comparison.unit_total:
+        failures.append("core_unit_mismatch")
+    if comparison.entity_binding_matches != comparison.entity_binding_total:
+        failures.append("core_entity_binding_mismatch")
+    if comparison.segment_binding_matches != comparison.segment_binding_total:
+        failures.append("core_segment_binding_mismatch")
+    return tuple(failures)
 
 
 def semantic_signature_diff(
@@ -750,6 +887,10 @@ def semantic_signature_diff(
     fact_pairs = _fact_pairs(
         expected, actual, entity_map, segment_map, event_map
     )
+    relation_pairs = _relation_pairs(expected, actual, entity_map, segment_map)
+    context = _context_allowance(
+        expected, actual, entity_map, fact_pairs, relation_pairs
+    )
     matched_actual = set(fact_pairs.values())
     return {
         "missing_fact_signatures": sorted(
@@ -760,7 +901,7 @@ def semantic_signature_diff(
         "unexpected_fact_signatures": sorted(
             _signature(item)
             for index, item in enumerate(actual.facts)
-            if index not in matched_actual
+            if index not in matched_actual and index not in context.fact_indices
         ),
         "mismatched_graph_components": [
             name
@@ -1082,6 +1223,7 @@ __all__ = [
     "SemanticRelation",
     "SemanticSegment",
     "compare_semantic_graphs",
+    "core_contract_failure_codes",
     "evaluate_predictions",
     "harness_integrity_report",
     "metamorphic_problem_variants",

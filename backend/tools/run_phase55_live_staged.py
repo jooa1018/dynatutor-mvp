@@ -9,11 +9,22 @@ from typing import Callable
 from engine.textbook_parser.benchmark import (
     BenchmarkManifest,
     Prediction,
+    core_contract_failure_codes,
     evaluate_predictions,
     harness_integrity_report,
+    semantic_graph_from_labels,
 )
 from engine.textbook_parser.config import ParserMode, TextbookParserConfig
+from engine.textbook_parser.contracts import RelationKind
 from engine.textbook_parser.orchestrator import ParseOutcome, parse_textbook_problem
+from engine.textbook_parser.recorded_benchmark import (
+    prediction_from_recorded_seed,
+    recorded_seed_payload,
+)
+from engine.textbook_parser.relation_policy import (
+    RELATION_PARTICIPANT_POLICIES,
+    relation_policy_defined,
+)
 from engine.textbook_parser.seed_corpus import repository_safe_seed_manifest
 from tools.run_phase55_live_smoke import (
     COST_LIMIT_USD,
@@ -53,6 +64,115 @@ class StagedRunResult:
     measured_cost_usd: float
     conservative_cost_upper_bound_usd: float
     failures: tuple[dict[str, str], ...]
+
+
+def _projectile_contract_matches(case, payload: dict[str, object]) -> bool:
+    if case.category != "포물선·곡선·극좌표":
+        return True
+    facts = payload.get("explicit_facts", [])
+    segments = payload.get("motion_segments", [])
+    candidates = payload.get("interpretation_candidates", [])
+    entities = payload.get("entities", [])
+    background = next(
+        (
+            item
+            for item in facts
+            if isinstance(item, dict)
+            and item.get("semantic_key") == "background_height"
+        ),
+        None,
+    )
+    return bool(
+        case.gold.entities == ["ball", "sign"]
+        and list(case.gold.fact_entity_binding.values()) == ["ball", "ball", "sign"]
+        and list(case.gold.fact_segment_binding.values())
+        == ["motion_1", "motion_1", None]
+        and case.gold.queries == ["max_height:ball:motion_1"]
+        and [
+            (item.get("entity_id"), item.get("kind"))
+            for item in entities
+            if isinstance(item, dict)
+        ]
+        == [("ball", "particle"), ("sign", "other")]
+        and len(segments) == 1
+        and isinstance(segments[0], dict)
+        and segments[0].get("actor_ids") == ["ball"]
+        and isinstance(background, dict)
+        and background.get("subject_id") == "sign"
+        and background.get("segment_id") is None
+        and background.get("relevance") == "context_only"
+        and len(candidates) == 1
+        and isinstance(candidates[0], dict)
+        and background.get("fact_id") not in candidates[0].get("fact_ids", [])
+    )
+
+
+def preflight_staged_cases(selected, targeted, remaining) -> tuple[dict[str, str], ...]:
+    failures: list[dict[str, str]] = []
+    selected_ids = [item.case_id for item in selected]
+    targeted_ids = [item.case_id for item in targeted]
+    remaining_ids = [item.case_id for item in remaining]
+    if len(selected) != 20 or len(set(selected_ids)) != 20:
+        failures.append({"case_id": "aggregate", "failure_code": "selected_case_count"})
+    if targeted_ids != list(TARGETED_CASE_IDS):
+        failures.append({"case_id": "aggregate", "failure_code": "targeted_composition"})
+    if (
+        len(remaining) != 12
+        or set(targeted_ids) & set(remaining_ids)
+        or set(targeted_ids) | set(remaining_ids) != set(selected_ids)
+    ):
+        failures.append({"case_id": "aggregate", "failure_code": "remaining_composition"})
+    if set(RELATION_PARTICIPANT_POLICIES) != {item.value for item in RelationKind}:
+        failures.append({"case_id": "aggregate", "failure_code": "relation_policy_incomplete"})
+    if not all(harness_integrity_report().values()):
+        failures.append({"case_id": "aggregate", "failure_code": "harness_integrity"})
+
+    for case in selected:
+        try:
+            payload = recorded_seed_payload(case)
+            prediction = prediction_from_recorded_seed(case)
+        except Exception:
+            failures.append(
+                {"case_id": case.case_id, "failure_code": "recorded_graph_invalid"}
+            )
+            continue
+        expected_graph = semantic_graph_from_labels(case.gold)
+        actual_graph = semantic_graph_from_labels(prediction.labels)
+        failures.extend(
+            {"case_id": case.case_id, "failure_code": code}
+            for code in core_contract_failure_codes(expected_graph, actual_graph)
+        )
+        if (
+            prediction.labels.expected_system_type
+            != case.gold.expected_system_type
+        ):
+            failures.append(
+                {"case_id": case.case_id, "failure_code": "expected_system_type"}
+            )
+        if (
+            prediction.labels.expected_terminal_status
+            != case.gold.expected_terminal_status
+        ):
+            failures.append(
+                {"case_id": case.case_id, "failure_code": "expected_terminal"}
+            )
+        if any(
+            not relation_policy_defined(item.kind)
+            for graph in (expected_graph, actual_graph)
+            for item in graph.relations
+        ):
+            failures.append(
+                {"case_id": case.case_id, "failure_code": "relation_policy_undefined"}
+            )
+        if not _projectile_contract_matches(case, payload):
+            failures.append(
+                {"case_id": case.case_id, "failure_code": "projectile_context_binding"}
+            )
+
+    unique = {
+        (item["case_id"], item["failure_code"]): item for item in failures
+    }
+    return tuple(unique[key] for key in sorted(unique))
 
 
 def _hard_safety_failures(cases_by_id, outcomes, predictions) -> list[dict[str, str]]:
@@ -120,10 +240,15 @@ def _full_gate_failures(manifest, predictions) -> list[dict[str, str]]:
     metrics = evaluate_predictions(manifest, predictions)
     failures: list[dict[str, str]] = []
     required_perfect = (
+        metrics.entity_accuracy,
+        metrics.explicit_fact_precision,
+        metrics.explicit_fact_recall,
+        metrics.unit_accuracy,
         metrics.entity_binding_accuracy,
         metrics.segment_binding_accuracy,
         metrics.segment_accuracy,
         metrics.relation_accuracy,
+        metrics.query_accuracy,
         metrics.clarification_accuracy,
         metrics.figure_dependency_accuracy,
         metrics.route_accuracy,
@@ -158,8 +283,26 @@ def run_staged(
     cases_by_id = {item.case_id: item for item in selected}
     targeted = [cases_by_id[item] for item in TARGETED_CASE_IDS]
     remaining = [item for item in selected if item.case_id not in TARGETED_CASE_IDS]
-    if len(targeted) != 8 or len(remaining) != 12:
-        raise RuntimeError("staged corpus must contain exactly 8 targeted and 12 remaining cases")
+    preflight_failures = preflight_staged_cases(selected, targeted, remaining)
+    if preflight_failures:
+        emit(
+            "HARNESS_CONTRACT_FAILURE="
+            + json.dumps({"failures": preflight_failures}, sort_keys=True)
+        )
+        return StagedRunResult(
+            2,
+            False,
+            False,
+            {},
+            {},
+            0.0,
+            0.0,
+            preflight_failures,
+        )
+    emit(
+        "HARNESS_PREFLIGHT="
+        + json.dumps({"passed": True, "case_count": len(selected)}, sort_keys=True)
+    )
 
     outcomes: dict[str, ParseOutcome] = {}
     predictions: dict[str, Prediction] = {}

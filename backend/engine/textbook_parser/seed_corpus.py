@@ -113,8 +113,12 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 "projectile_motion",
                 [f"initial_velocity:{speed}:m/s", f"angle:{angle}:도", f"background_height:{distractor}:m"],
                 {"symbolic": "deterministic_projectile", "unit": "m"},
+                entity="ball",
+                entities=["ball", "sign"],
+                fact_entities=["ball", "ball", "sign"],
+                fact_segments=["motion_1", "motion_1", None],
                 assumptions=["no_air_resistance", "constant_gravity"],
-                query="max_height:object:motion_1",
+                query="max_height:ball:motion_1",
             )
         )
     for index in range(1, 26):
