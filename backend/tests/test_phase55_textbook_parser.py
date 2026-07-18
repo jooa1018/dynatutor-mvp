@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from types import SimpleNamespace
 import time
+import threading
 
 import pytest
 from pydantic import ValidationError
@@ -153,6 +155,82 @@ def test_dangling_entity_segment_event_and_query_bindings_are_rejected():
         TextbookProblemParseV1.model_validate(fixture["parse"])
 
 
+def test_existing_but_wrong_entity_segment_event_cross_bindings_are_rejected():
+    fixture = _fixture()
+    fixture["parse"]["entities"].append(
+        {
+            "entity_id": "spectator",
+            "kind": "person",
+            "label": "관중",
+            "aliases": [],
+            "evidence_quote": "100m 경주",
+        }
+    )
+    fixture["parse"]["queries"][0]["subject_id"] = "spectator"
+    with pytest.raises(ValidationError, match="actor of segment"):
+        TextbookProblemParseV1.model_validate(fixture["parse"])
+
+    fixture = _fixture()
+    fixture["parse"]["events"][1]["subject_ids"] = ["athlete"]
+    fixture["parse"]["explicit_facts"][1]["subject_id"] = "athlete"
+    fixture["parse"]["explicit_facts"][1]["event_id"] = "race_start"
+    fixture["parse"]["explicit_facts"][1]["segment_id"] = "segment_1"
+    # Event and entity exist, but the final/initial temporal role must agree
+    # with the segment boundary it references.
+    fixture["parse"]["explicit_facts"][1]["temporal_role"] = "final"
+    with pytest.raises(ValidationError, match="segment end event"):
+        TextbookProblemParseV1.model_validate(fixture["parse"])
+
+
+def test_shared_event_cannot_reverse_declared_segment_order():
+    fixture = _fixture()
+    fixture["parse"]["motion_segments"][0]["order"] = 2
+    fixture["parse"]["motion_segments"][1]["order"] = 1
+    with pytest.raises(ValidationError, match="reverses segment order"):
+        TextbookProblemParseV1.model_validate(fixture["parse"])
+
+
+def test_unit_substrings_and_wrong_semantic_dimensions_are_critical_vetoes():
+    fixture = _fixture()
+    fixture["problem_text"] = "참고 속력은 5m/s이다.\n" + fixture["problem_text"]
+    context = fixture["parse"]["explicit_facts"][0]
+    context.update(
+        {
+            "semantic_key": "distance",
+            "raw_value": "5",
+            "raw_unit": "m",
+            "evidence_quote": "5m/s",
+        }
+    )
+    validated = validate_parse(
+        fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
+    )
+    assert validated.status == ParseDecisionStatus.needs_confirmation
+    assert any(
+        item.code == ErrorCode.raw_unit_mismatch and item.referenced_id == "race_distance"
+        for item in validated.issues
+    )
+
+    fixture = _fixture()
+    fixture["parse"]["explicit_facts"][2]["semantic_key"] = "distance"
+    validated = validate_parse(
+        fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
+    )
+    assert validated.status == ParseDecisionStatus.needs_confirmation
+    assert any("dimensionally incompatible" in item.message for item in validated.issues)
+
+
+def test_capability_uses_only_candidate_referenced_assumptions():
+    fixture = _fixture()
+    fixture["parse"]["interpretation_candidates"][0]["assumption_ids"] = []
+    validated = validate_parse(
+        fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
+    )
+    assert validated.status == ParseDecisionStatus.solver_gap
+    assert "v0" not in validated.candidates[0].capability.supplied_symbols
+    assert validated.candidates[0].capability.missing_inputs
+
+
 def test_structural_correction_is_whitelisted_and_schema_revalidated():
     fixture = _fixture()
     parse = TextbookProblemParseV1.model_validate(fixture["parse"])
@@ -293,6 +371,40 @@ def test_schema_failure_gets_exactly_one_repair_call(tmp_path):
     assert outcome.status == ParseDecisionStatus.accepted_with_visible_assumptions
     assert outcome.retry_count == 1
     assert client.calls == 2
+
+
+def test_official_client_preserves_sdk_pydantic_failure_for_one_repair(tmp_path):
+    from engine.textbook_parser.openai_client import OpenAITextbookParserClient
+
+    fixture = _fixture()
+    parsed = TextbookProblemParseV1.model_validate(fixture["parse"])
+
+    class Responses:
+        calls = 0
+
+        def parse(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                TextbookProblemParseV1.model_validate({"schema": "wrong"})
+            assert "schema_error" in str(kwargs["input"])
+            return SimpleNamespace(
+                output=[], output_parsed=parsed, usage=None, id="sdk-repair"
+            )
+
+    official = object.__new__(OpenAITextbookParserClient)
+    official.config = _config(ParserMode.required)
+    official.api_key = "test-only"
+    official._client = SimpleNamespace(responses=Responses())
+    official._semaphore = threading.BoundedSemaphore(1)
+    outcome = parse_textbook_problem(
+        fixture["problem_text"],
+        config=_config(ParserMode.required),
+        client=official,
+        cache=ParserCache(path=str(tmp_path / "sdk-schema-repair.sqlite3")),
+    )
+    assert outcome.status == ParseDecisionStatus.accepted_with_visible_assumptions
+    assert outcome.retry_count == 1
+    assert official._client.responses.calls == 2
 
 
 def test_schema_repair_failure_stops_after_second_call(tmp_path):
