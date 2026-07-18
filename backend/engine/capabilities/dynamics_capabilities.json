@@ -708,6 +708,7 @@
     },
     {
       "system_type": "constant_acceleration_1d",
+      "textbook_parser_safe": true,
       "subtypes": [],
       "required_inputs": {
         "all_of": [],
