@@ -48,6 +48,7 @@ test('Phase 55 correction controls render as native keyboard controls', () => {
   const built = esbuild.buildSync({
     stdin: { contents: entry, resolveDir: root, sourcefile: 'phase55-render.tsx', loader: 'tsx' },
     bundle: true, platform: 'node', format: 'cjs', target: 'node20', write: false,
+    jsx: 'automatic',
     external: ['react', 'react-dom/server'],
   }).outputFiles[0].text;
   const compiled = new Module(path.join(root, 'tests', 'phase55-rendered.cjs'), module);

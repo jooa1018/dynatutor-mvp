@@ -241,7 +241,6 @@ def evaluate_candidate_bindings(
             fact.relevance in {FactRelevance.solver_input, FactRelevance.constraint}
             and fact.segment_id in target_segments
             and fact.subject_id in relevant_entities
-            and symbol is not None
         )
         if candidate.system_type == "constant_acceleration_1d":
             valid = valid and fact.subject_id in query_subjects
@@ -263,6 +262,11 @@ def evaluate_candidate_bindings(
                     referenced_id=fact_id,
                 )
             )
+            continue
+        # An ontology gap is a capability-completeness problem, not proof that
+        # the graph identity binding is wrong. It remains unsupplied and cannot
+        # enter canonical projection; the deterministic capability gate abstains.
+        if symbol is None:
             continue
         binding = InputBinding(
             fact_id=fact.fact_id,
