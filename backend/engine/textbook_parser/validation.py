@@ -20,7 +20,7 @@ from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
 from engine.textbook_parser.validators.semantic import validate_semantics
 
 
-VALIDATOR_POLICY_VERSION = "textbook-validator-v2"
+VALIDATOR_POLICY_VERSION = "textbook-validator-v3"
 SAFETY_VETO_CODES = frozenset(
     {
         ErrorCode.answer_authority_field.value,
@@ -170,7 +170,26 @@ def validate_parse(problem_text: str, parse: TextbookProblemParseV1) -> Validate
         ranked = sorted(evaluations, key=lambda item: (-item.score.total, item.candidate_id))
         best = ranked[0]
         selected = best.candidate_id
+        by_id = {item.assumption_id: item for item in assumptions}
+        candidate = next(
+            item
+            for item in parse.interpretation_candidates
+            if item.candidate_id == best.candidate_id
+        )
+        candidate_assumptions = [by_id[item] for item in candidate.assumption_ids]
+        has_blocking_assumption = any(
+            item.disposition
+            in {AssumptionDisposition.needs_confirmation, AssumptionDisposition.rejected}
+            for item in candidate_assumptions
+        )
         if set(best.score.veto_codes) & SAFETY_VETO_CODES:
+            status = ParseDecisionStatus.needs_confirmation
+            selected = None
+        elif has_blocking_assumption:
+            # A candidate that relies on a rejected or unconfirmed assumption must
+            # be shown to the user even when removing that assumption also makes
+            # the deterministic solver capability incomplete.  This keeps a GPT
+            # supplied quantity mismatch from being hidden as a generic solver gap.
             status = ParseDecisionStatus.needs_confirmation
             selected = None
         elif not best.capability.supported or not best.capability.textbook_parser_safe:
@@ -195,19 +214,7 @@ def validate_parse(problem_text: str, parse: TextbookProblemParseV1) -> Validate
             status = ParseDecisionStatus.needs_confirmation
             selected = None
         else:
-            by_id = {item.assumption_id: item for item in assumptions}
-            candidate = next(
-                item for item in parse.interpretation_candidates if item.candidate_id == selected
-            )
-            candidate_assumptions = [by_id[item] for item in candidate.assumption_ids]
-            if any(
-                item.disposition
-                in {AssumptionDisposition.needs_confirmation, AssumptionDisposition.rejected}
-                for item in candidate_assumptions
-            ):
-                status = ParseDecisionStatus.needs_confirmation
-                selected = None
-            elif parse.ambiguities or parse.parse_status == ParseStatus.ambiguous:
+            if parse.ambiguities or parse.parse_status == ParseStatus.ambiguous:
                 status = ParseDecisionStatus.needs_confirmation
                 selected = None
             elif any(
