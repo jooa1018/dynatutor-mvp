@@ -16,7 +16,7 @@ import TokenSettings from './TokenSettings';
 import SymbolPad from './SymbolPad';
 import UnderstandingCard from './UnderstandingCard';
 import ProblemUnderstandingCard from './understanding/ProblemUnderstandingCard';
-import { buildRevisionApprovalPatch } from '../lib/textbookCorrections';
+import { buildRevisionApprovalPatch, mergeTextbookCorrectionPatches } from '../lib/textbookCorrections';
 
 type ExampleProblem = {
   id: string;
@@ -71,7 +71,14 @@ export default function HomeClient() {
   const [toast, setToast] = useState('');
   const [tokenModal, setTokenModal] = useState(false);
   const [wakeMessage, setWakeMessage] = useState('');
-  const [textbookCorrection, setTextbookCorrection] = useState<any>(null);
+  const [textbookRevision, setTextbookRevision] = useState<any>(null);
+
+  function replaceProblemText(nextText: string) {
+    setText(nextText);
+    setTextbookRevision((current: any) => (
+      current?.problemText === nextText ? current : null
+    ));
+  }
 
   // 401 응답은 어디서 나든 토큰 안내 모달로 이어진다.
   function handleError(e: any, fallbackMsg: string) {
@@ -87,7 +94,7 @@ export default function HomeClient() {
     listExamples().then((out) => {
       if (out.examples?.length) {
         setExamples(out.examples);
-        setText(out.examples[0].problem_text);
+        replaceProblemText(out.examples[0].problem_text);
       }
     }).catch(() => {});
     refreshNotebook();
@@ -110,15 +117,23 @@ export default function HomeClient() {
     const wakeTimer = window.setTimeout(() => {
       setWakeMessage('서버를 깨우는 중입니다. 무료 Render 서버라 첫 요청은 조금 걸릴 수 있습니다. 자동으로 다시 시도하고 있어요.');
     }, 2500);
-    if (canonicalPatch?.textbook_parse_correction) {
-      setTextbookCorrection(canonicalPatch.textbook_parse_correction);
-    } else if (!canonicalPatch?.textbook_parse_approval) {
-      setTextbookCorrection(null);
+    if (
+      !canonicalPatch?.textbook_parse_correction
+      && !canonicalPatch?.textbook_parse_approval
+    ) {
+      setTextbookRevision(null);
     }
     try {
       const out = await solveProblem(problem, student, clarifyPatch ?? null, canonicalPatch ?? null);
-      setText(problem);
+      replaceProblemText(problem);
       setData(out);
+      if (canonicalPatch?.textbook_parse_correction) {
+        setTextbookRevision({
+          problemText: problem,
+          correction: canonicalPatch.textbook_parse_correction,
+          approvalFingerprint: out?.textbook_parse?.approval_fingerprint ?? null,
+        });
+      }
       setAiExplanation(null);
       if (student.trim()) setFeedback(await feedbackProblem(problem, student));
       else setFeedback(null);
@@ -285,7 +300,10 @@ export default function HomeClient() {
               id="problem-input"
               className="main"
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => {
+                const nextText = e.target.value;
+                replaceProblemText(nextText);
+              }}
               onKeyDown={(e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter' && !loading) {
                   e.preventDefault();
@@ -293,7 +311,9 @@ export default function HomeClient() {
                 }
               }}
             />
-            <SymbolPad targetId="problem-input" onInsert={setText} />
+            <SymbolPad targetId="problem-input" onInsert={(nextText) => {
+              replaceProblemText(nextText);
+            }} />
 
             <div className="row-gap">
               <label className="field-label" htmlFor="student-input">내 풀이 <i>(선택)</i></label>
@@ -316,10 +336,22 @@ export default function HomeClient() {
               <ProblemUnderstandingCard
                 parse={data.textbook_parse}
                 loading={loading}
-                onApprove={(fingerprint) => run(text, null, buildRevisionApprovalPatch(fingerprint, textbookCorrection))}
+                onApprove={(fingerprint) => {
+                  const current = textbookRevision?.problemText === text ? textbookRevision : null;
+                  return run(text, null, buildRevisionApprovalPatch(
+                    fingerprint,
+                    current?.correction ?? null,
+                    current?.correction?.operations?.length
+                      ? current.approvalFingerprint
+                      : null,
+                  ));
+                }}
                 onCorrect={(correction) => {
-                  setTextbookCorrection(correction);
-                  return run(text, null, { textbook_parse_correction: correction });
+                  const previous = textbookRevision?.problemText === text
+                    ? textbookRevision.correction
+                    : null;
+                  const cumulative = mergeTextbookCorrectionPatches(previous, correction);
+                  return run(text, null, { textbook_parse_correction: cumulative });
                 }}
               />
             )}

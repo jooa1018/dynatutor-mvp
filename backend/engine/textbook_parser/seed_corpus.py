@@ -245,6 +245,7 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 entity="point",
                 status="needs_figure",
                 terminal="needs_figure",
+                clarify=True,
                 figure="required",
                 query="final_velocity:point:motion_1",
             )

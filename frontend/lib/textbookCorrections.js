@@ -51,7 +51,33 @@ function buildTextbookCorrectionPatch(original, edited) {
   return { operations };
 }
 
-function buildRevisionApprovalPatch(fingerprint, correction) {
+function mergeTextbookCorrectionPatches(previous, next) {
+  const order = [];
+  const merged = new Map();
+  for (const patch of [previous, next]) {
+    for (const operation of patch?.operations || []) {
+      const key = `${operation.collection}\u0000${operation.id}`;
+      if (!merged.has(key)) {
+        order.push(key);
+        merged.set(key, { collection: operation.collection, id: operation.id, set: {} });
+      }
+      Object.assign(merged.get(key).set, cloneTextbookParse(operation.set));
+    }
+  }
+  return {
+    operations: order
+      .map((key) => merged.get(key))
+      .filter((operation) => Object.keys(operation.set).length),
+  };
+}
+
+function buildRevisionApprovalPatch(fingerprint, correction, correctionFingerprint = null) {
+  if (
+    correction?.operations?.length
+    && correctionFingerprint !== fingerprint
+  ) {
+    throw new Error('stale textbook correction fingerprint');
+  }
   const payload = { textbook_parse_approval: { fingerprint } };
   if (correction?.operations?.length) {
     payload.textbook_parse_correction = cloneTextbookParse(correction);
@@ -62,6 +88,7 @@ function buildRevisionApprovalPatch(fingerprint, correction) {
 module.exports = {
   EDITABLE_FIELDS,
   buildTextbookCorrectionPatch,
+  mergeTextbookCorrectionPatches,
   buildRevisionApprovalPatch,
   cloneTextbookParse,
 };

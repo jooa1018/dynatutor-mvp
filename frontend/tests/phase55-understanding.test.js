@@ -8,7 +8,12 @@ const esbuild = require('esbuild');
 const root = path.resolve(__dirname, '..');
 const card = fs.readFileSync(path.join(root, 'components', 'understanding', 'ProblemUnderstandingCard.tsx'), 'utf8');
 const home = fs.readFileSync(path.join(root, 'components', 'HomeClient.tsx'), 'utf8');
-const { buildRevisionApprovalPatch, buildTextbookCorrectionPatch, cloneTextbookParse } = require('../lib/textbookCorrections');
+const {
+  buildRevisionApprovalPatch,
+  buildTextbookCorrectionPatch,
+  cloneTextbookParse,
+  mergeTextbookCorrectionPatches,
+} = require('../lib/textbookCorrections');
 
 test('Phase 55 understanding card exposes graph, evidence, and authority boundary', () => {
   for (const label of ['대상', '운동 구간', '명시 조건', '추론 조건', '구할 값', '검증 경고']) {
@@ -67,18 +72,69 @@ test('confirm approval is revision-bound and sent through the existing solve req
   assert.match(home, /textbook_parse_approval/);
   assert.match(home, /fingerprint/);
   assert.match(home, /textbook_parse_correction/);
-  assert.match(home, /buildRevisionApprovalPatch\(fingerprint, textbookCorrection\)/);
+  assert.match(home, /buildRevisionApprovalPatch\(/);
+  assert.match(home, /current\.approvalFingerprint/);
+  assert.match(home, /mergeTextbookCorrectionPatches\(previous, correction\)/);
 });
 
 test('corrected revision is replayed together with approval in one API payload', () => {
   const correction = { operations: [{ collection: 'queries', id: 'q1', set: { subject_id: 'b' } }] };
-  assert.deepEqual(buildRevisionApprovalPatch('revision-123', correction), {
+  assert.deepEqual(buildRevisionApprovalPatch('revision-123', correction, 'revision-123'), {
     textbook_parse_approval: { fingerprint: 'revision-123' },
     textbook_parse_correction: correction,
   });
   assert.deepEqual(buildRevisionApprovalPatch('revision-456', null), {
     textbook_parse_approval: { fingerprint: 'revision-456' },
   });
+});
+
+test('two corrections merge cumulatively from the original revision and last field wins', () => {
+  const first = {
+    operations: [{ collection: 'queries', id: 'q1', set: { segment_id: 's2', subject_id: 'a' } }],
+  };
+  const second = {
+    operations: [
+      { collection: 'queries', id: 'q1', set: { subject_id: 'b' } },
+      { collection: 'entities', id: 'b', set: { label: 'Cart B' } },
+    ],
+  };
+  assert.deepEqual(mergeTextbookCorrectionPatches(first, second), {
+    operations: [
+      { collection: 'queries', id: 'q1', set: { segment_id: 's2', subject_id: 'b' } },
+      { collection: 'entities', id: 'b', set: { label: 'Cart B' } },
+    ],
+  });
+});
+
+test('approval carries cumulative correction and blocks a stale correction fingerprint', () => {
+  const cumulative = {
+    operations: [
+      { collection: 'queries', id: 'q1', set: { segment_id: 's2', subject_id: 'b' } },
+    ],
+  };
+  assert.deepEqual(buildRevisionApprovalPatch('latest', cumulative, 'latest'), {
+    textbook_parse_approval: { fingerprint: 'latest' },
+    textbook_parse_correction: cumulative,
+  });
+  assert.throws(
+    () => buildRevisionApprovalPatch('latest', cumulative, 'stale'),
+    /stale textbook correction fingerprint/,
+  );
+  assert.throws(
+    () => buildRevisionApprovalPatch('latest', cumulative),
+    /stale textbook correction fingerprint/,
+  );
+  assert.deepEqual(buildRevisionApprovalPatch('latest', { operations: [] }, 'stale'), {
+    textbook_parse_approval: { fingerprint: 'latest' },
+  });
+});
+
+test('problem text changes reset the bound correction state on keyboard and symbol input', () => {
+  assert.match(home, /current\?\.problemText === nextText \? current : null/);
+  assert.match(home, /replaceProblemText\(out\.examples\[0\]\.problem_text\)/);
+  assert.match(home, /onChange=\{\(e\) => \{/);
+  assert.match(home, /onInsert=\{\(nextText\) => \{/);
+  assert.equal((home.match(/setText\(/g) || []).length, 1);
 });
 
 test('structural correction builder covers every safe editable binding without numeric edits', () => {

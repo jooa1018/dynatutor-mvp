@@ -175,6 +175,7 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
 
     facts = []
     for index, (semantic_key, match) in enumerate(zip(semantic_keys, quantities), start=1):
+        endpoint_initial = semantic_key in {"initial_velocity", "velocity_before"}
         facts.append(
             {
                 "fact_id": f"fact_{index}",
@@ -185,11 +186,12 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
                 "raw_unit": match.group("unit"),
                 "subject_id": entity_id,
                 "segment_id": "motion_1",
-                "event_id": None,
-                "temporal_role": "interval",
+                "event_id": "event_1" if endpoint_initial else None,
+                "temporal_role": "initial" if endpoint_initial else "interval",
                 "direction": "not_applicable",
                 "evidence_quote": match.group(0),
                 "occurrence_index": 0,
+                "quantity_occurrence_index": 0,
                 "relevance": (
                     "context_only" if semantic_key == "background_height" else "solver_input"
                 ),
@@ -236,7 +238,7 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
     figure_required = case.category == "그림 필요"
     return {
         "schema": "dynatutor.textbook_parse",
-        "version": "1.0",
+        "version": "1.1",
         "language": "ko",
         "parse_status": spec.get("status", "complete"),
         "entities": [
@@ -303,22 +305,30 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
         if candidate_evaluation is not None
         else None
     )
-    system_type = (
-        parse.interpretation_candidates[0].system_type
-        if parse.interpretation_candidates
-        else None
+    selected_candidate = (
+        validated.selected_candidate
+        or (
+            parse.interpretation_candidates[0]
+            if parse.interpretation_candidates
+            else None
+        )
     )
+    system_type = selected_candidate.system_type if selected_candidate is not None else None
     answer = None
     terminal = None
     confident = validated.accepted
     if validated.accepted:
         # Only capability families explicitly marked textbook_parser_safe can
         # reach this branch. Execute the real deterministic registry path.
-        from engine.solvers.kinematics import ConstantAcceleration1DSolver
+        from engine.solvers.registry import SolverRegistry
 
         canonical = project_canonical(case.problem_text, validated)
-        result = ConstantAcceleration1DSolver().solve(canonical)
-        if not result.ok or result.answer is None:
+        registry = SolverRegistry()
+        route_decision = registry.route(canonical)
+        solver = registry.select(canonical, decision=route_decision)
+        solver_id = route_decision.selected_solver_id
+        result = solver.solve(canonical) if solver is not None else None
+        if result is None or not result.ok or result.answer is None:
             confident = False
             terminal = "solver_error"
         else:
@@ -339,7 +349,10 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
         ],
         fact_entity_binding={item.fact_id: item.subject_id for item in parse.explicit_facts},
         fact_segment_binding={item.fact_id: item.segment_id for item in parse.explicit_facts},
-        relations=[],
+        relations=[
+            f"{item.kind.value}:" + ":".join(sorted(item.entity_ids))
+            for item in parse.relations
+        ],
         queries=[
             f"{item.output_key.value}:{item.subject_id}:{item.segment_id}"
             for item in parse.queries
@@ -349,6 +362,7 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
         in {
             ParseDecisionStatus.needs_confirmation,
             ParseDecisionStatus.insufficient_information,
+            ParseDecisionStatus.needs_figure,
         },
         figure_dependency=parse.figure_dependency.level.value,
         expected_system_type=system_type,

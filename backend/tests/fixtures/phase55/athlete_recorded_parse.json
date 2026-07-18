@@ -2,7 +2,7 @@
   "problem_text": "육상 선수가 100m 경주에서 처음 35m까지는 일정하게 가속하고,\n그 다음은 일정한 속도로 달린다.\n처음 35m까지 달리는 데 5.4초가 걸렸다면\n이 육상 선수의 가속도를 구하여라.",
   "parse": {
     "schema": "dynatutor.textbook_parse",
-    "version": "1.0",
+    "version": "1.1",
     "language": "ko",
     "parse_status": "complete",
     "entities": [
@@ -67,6 +67,7 @@
         "direction": "along_motion",
         "evidence_quote": "100m 경주",
         "occurrence_index": 0,
+        "quantity_occurrence_index": 0,
         "relevance": "context_only"
       },
       {
@@ -83,6 +84,7 @@
         "direction": "along_motion",
         "evidence_quote": "처음 35m까지는",
         "occurrence_index": 0,
+        "quantity_occurrence_index": 0,
         "relevance": "solver_input"
       },
       {
@@ -99,6 +101,7 @@
         "direction": "not_applicable",
         "evidence_quote": "처음 35m까지 달리는 데 5.4초",
         "occurrence_index": 0,
+        "quantity_occurrence_index": 0,
         "relevance": "solver_input"
       }
     ],

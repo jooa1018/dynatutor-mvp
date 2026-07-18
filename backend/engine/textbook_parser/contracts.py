@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_vali
 
 
 SCHEMA_NAME = "dynatutor.textbook_parse"
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 Identifier = Annotated[
     str,
@@ -285,6 +285,7 @@ class ExplicitFact(StrictModel):
     direction: Direction
     evidence_quote: EvidenceQuote
     occurrence_index: int = Field(ge=0, le=99)
+    quantity_occurrence_index: int = Field(ge=0, le=99)
     relevance: FactRelevance
 
 

@@ -51,12 +51,25 @@ def _prediction(case, outcome):
     if outcome.validated is None:
         return Prediction(
             case_id=case.case_id,
-            labels=case.gold.model_copy(
-                update={
-                    "supported_status": outcome.status.value,
-                    "expected_end_to_end_answer": None,
-                    "expected_terminal_status": outcome.status.value,
-                }
+            labels=GoldLabels(
+                entities=[],
+                segments=[],
+                events=[],
+                explicit_facts=[],
+                fact_entity_binding={},
+                fact_segment_binding={},
+                relations=[],
+                queries=[],
+                assumptions=[],
+                required_clarification=outcome.status.value in {
+                    "needs_confirmation", "insufficient_information", "needs_figure"
+                },
+                figure_dependency="unknown",
+                expected_system_type=None,
+                expected_solver=None,
+                supported_status=outcome.status.value,
+                expected_end_to_end_answer=None,
+                expected_terminal_status=outcome.status.value,
             ),
             confident_solve=False,
         )
@@ -64,17 +77,26 @@ def _prediction(case, outcome):
     parse = validated.parse
     selected = next(
         (item for item in validated.candidates if item.candidate_id == validated.selected_candidate_id),
-        None,
+        validated.candidates[0] if validated.candidates else None,
     )
-    candidate = validated.selected_candidate
+    candidate = (
+        validated.selected_candidate
+        or (parse.interpretation_candidates[0] if parse.interpretation_candidates else None)
+    )
     answer = None
     terminal = None if validated.accepted else validated.status.value
     confident = validated.accepted
+    solver_id = selected.capability.solver_id if selected is not None else None
     if validated.accepted:
-        from engine.solvers.kinematics import ConstantAcceleration1DSolver
+        from engine.solvers.registry import SolverRegistry
 
-        result = ConstantAcceleration1DSolver().solve(project_canonical(case.problem_text, validated))
-        if result.ok and result.answer is not None:
+        canonical = project_canonical(case.problem_text, validated)
+        registry = SolverRegistry()
+        decision = registry.route(canonical)
+        solver = registry.select(canonical, decision=decision)
+        solver_id = decision.selected_solver_id
+        result = solver.solve(canonical) if solver is not None else None
+        if result is not None and result.ok and result.answer is not None:
             answer = {
                 "numeric": round(float(result.answer.numeric), 6),
                 "unit": result.answer.unit.replace("²", "^2").replace("³", "^3"),
@@ -83,12 +105,10 @@ def _prediction(case, outcome):
             confident = False
             terminal = "solver_error"
     fact_entity_binding = {
-        f"fact_{index}": item.subject_id
-        for index, item in enumerate(parse.explicit_facts, start=1)
+        item.fact_id: item.subject_id for item in parse.explicit_facts
     }
     fact_segment_binding = {
-        f"fact_{index}": item.segment_id
-        for index, item in enumerate(parse.explicit_facts, start=1)
+        item.fact_id: item.segment_id for item in parse.explicit_facts
     }
     labels = GoldLabels(
         entities=[item.entity_id for item in parse.entities],
@@ -97,13 +117,15 @@ def _prediction(case, outcome):
         explicit_facts=[f"{item.semantic_key}:{item.raw_value}:{item.raw_unit}" for item in parse.explicit_facts],
         fact_entity_binding=fact_entity_binding,
         fact_segment_binding=fact_segment_binding,
-        relations=[f"{item.kind.value}:" + ":".join(item.entity_ids) for item in parse.relations],
+        relations=[f"{item.kind.value}:" + ":".join(sorted(item.entity_ids)) for item in parse.relations],
         queries=[f"{item.output_key.value}:{item.subject_id}:{item.segment_id}" for item in parse.queries],
         assumptions=[item.kind.value for item in parse.assumption_proposals],
-        required_clarification=validated.status.value in {"needs_confirmation", "insufficient_information"},
+        required_clarification=validated.status.value in {
+            "needs_confirmation", "insufficient_information", "needs_figure"
+        },
         figure_dependency=parse.figure_dependency.level.value,
         expected_system_type=candidate.system_type if candidate is not None else None,
-        expected_solver=selected.capability.solver_id if selected is not None else None,
+        expected_solver=solver_id,
         supported_status="supported" if validated.accepted else validated.status.value,
         expected_end_to_end_answer=answer,
         expected_terminal_status=terminal,

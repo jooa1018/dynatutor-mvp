@@ -7,14 +7,15 @@ from engine.textbook_parser.contracts import (
     FactRelevance,
     InterpretationCandidate,
     MotionModel,
-    TemporalRole,
+    RelationKind,
     TextbookProblemParseV1,
 )
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
 from engine.textbook_parser.ontology import canonical_symbol
+from engine.textbook_parser.temporal_bindings import resolve_fact_symbol
 
 
-BINDING_POLICY_VERSION = "candidate-binding-v1"
+BINDING_POLICY_VERSION = "candidate-binding-v2"
 
 
 @dataclass(frozen=True)
@@ -61,63 +62,197 @@ _SYSTEM_MOTION_MODELS: dict[str, frozenset[MotionModel]] = {
     "constant_force_work": frozenset({MotionModel.energy_interval}),
 }
 
+_SYSTEM_RELATION_KINDS: dict[str, frozenset[RelationKind]] = {
+    "impulse_momentum": frozenset({RelationKind.collides_with, RelationKind.contact_with}),
+    "pulley_atwood": frozenset({RelationKind.connected_by_rope, RelationKind.passes_over_pulley}),
+    "pulley_table_hanging": frozenset({RelationKind.connected_by_rope, RelationKind.passes_over_pulley}),
+    "pulley_incline_hanging": frozenset({RelationKind.connected_by_rope, RelationKind.passes_over_pulley}),
+    "massive_pulley_atwood": frozenset({RelationKind.connected_by_rope, RelationKind.passes_over_pulley}),
+}
 
-def _ordered_roles(parse: TextbookProblemParseV1, target_segments: set[str]) -> tuple[str, ...]:
-    """Resolve body roles from declared relations before falling back to actor order."""
 
-    target_actors: list[str] = []
-    for segment in sorted(parse.motion_segments, key=lambda item: item.order):
-        if segment.segment_id not in target_segments:
-            continue
-        for entity_id in segment.actor_ids:
-            if entity_id not in target_actors:
-                target_actors.append(entity_id)
-    connected = set(target_actors)
+@dataclass(frozen=True)
+class RoleResolution:
+    roles: tuple[str, ...]
+    relevant_entities: frozenset[str]
+    system_query_subjects: frozenset[str]
+    relation_ids: tuple[str, ...]
+    issues: tuple[ValidationIssue, ...]
+
+
+def _ordered_roles(
+    parse: TextbookProblemParseV1,
+    candidate: InterpretationCandidate,
+    target_segments: set[str],
+) -> RoleResolution:
+    """Assign roles from query/fact semantics, never input array order or IDs."""
+
+    segment_by_id = {item.segment_id: item for item in parse.motion_segments}
+    fact_by_id = {item.fact_id: item for item in parse.explicit_facts}
+    query_by_id = {item.query_id: item for item in parse.queries}
+    assumption_by_id = {item.assumption_id: item for item in parse.assumption_proposals}
+    target_actors = {
+        entity_id
+        for segment_id in target_segments
+        for entity_id in segment_by_id[segment_id].actor_ids
+    }
+    solver_facts = [
+        fact_by_id[item]
+        for item in candidate.fact_ids
+        if fact_by_id[item].relevance in {FactRelevance.solver_input, FactRelevance.constraint}
+    ]
+    query_subjects = {query_by_id[item].subject_id for item in candidate.query_ids}
+    fact_subjects = {item.subject_id for item in solver_facts}
+    system_query_subjects = (
+        query_subjects - fact_subjects
+        if candidate.system_type in _SYSTEM_RELATION_KINDS and len(fact_subjects) >= 2
+        else set()
+    )
+    role_query_subjects = query_subjects - system_query_subjects
+    assumption_subjects = {
+        assumption_by_id[item].subject_id for item in candidate.assumption_ids
+    }
+    relevant_entities = (
+        role_query_subjects
+        | fact_subjects
+        | (assumption_subjects - system_query_subjects)
+    ) & target_actors
+    allowed_kinds = _SYSTEM_RELATION_KINDS.get(candidate.system_type, frozenset())
     relevant_relations = []
-    changed = True
-    while changed:
-        changed = False
-        for relation in parse.relations:
-            if relation.segment_id is not None and relation.segment_id not in target_segments:
-                continue
-            if not (set(relation.entity_ids) & connected):
-                continue
-            if relation not in relevant_relations:
-                relevant_relations.append(relation)
-            before = len(connected)
-            connected.update(relation.entity_ids)
-            changed = changed or len(connected) != before
-    ordered: list[str] = []
-    for relation in relevant_relations:
-        for entity_id in relation.entity_ids:
-            if entity_id in connected and entity_id not in ordered:
-                ordered.append(entity_id)
-    for entity_id in target_actors:
-        if entity_id not in ordered:
-            ordered.append(entity_id)
-    return tuple(ordered)
+    for relation in parse.relations:
+        if relation.segment_id is not None and relation.segment_id not in target_segments:
+            continue
+        participants = set(relation.entity_ids) & relevant_entities
+        if len(participants) < 2 or relation.kind not in allowed_kinds:
+            continue
+        relevant_relations.append(relation)
+
+    issues: list[ValidationIssue] = []
+    roles_are_closed = True
+    if len(relevant_entities) > 1:
+        connected: set[str] = set()
+        if relevant_relations:
+            seed_candidates = role_query_subjects & relevant_entities
+            seed = (
+                next(iter(seed_candidates))
+                if len(seed_candidates) == 1
+                else sorted(relevant_entities)[0]
+            )
+            connected.add(seed)
+            changed = True
+            while changed:
+                changed = False
+                for relation in relevant_relations:
+                    participants = set(relation.entity_ids) & relevant_entities
+                    if participants & connected and not participants <= connected:
+                        connected.update(participants)
+                        changed = True
+        if connected != relevant_entities:
+            roles_are_closed = False
+            issues.append(
+                ValidationIssue(
+                    ErrorCode.relation_binding_missing,
+                    Severity.error,
+                    "multi-entity solver inputs lack an explicit allowed relation closure",
+                    path=f"interpretation_candidates.{candidate.candidate_id}",
+                    referenced_id=candidate.candidate_id,
+                )
+            )
+
+    def signature(entity_id: str) -> tuple[object, ...]:
+        fact_signature = tuple(
+            sorted(
+                (
+                    item.semantic_key,
+                    item.temporal_role.value,
+                    item.direction.value,
+                    segment_by_id[item.segment_id].order if item.segment_id else 0,
+                )
+                for item in solver_facts
+                if item.subject_id == entity_id
+            )
+        )
+        query_signature = tuple(
+            sorted(
+                (
+                    query_by_id[item].output_key.value,
+                    query_by_id[item].component.value,
+                    segment_by_id[query_by_id[item].segment_id].order,
+                )
+                for item in candidate.query_ids
+                if query_by_id[item].subject_id == entity_id
+            )
+        )
+        assumption_signature = tuple(
+            sorted(
+                assumption_by_id[item].kind.value
+                for item in candidate.assumption_ids
+                if assumption_by_id[item].subject_id == entity_id
+            )
+        )
+        relation_signature = tuple(
+            sorted(
+                relation.kind.value
+                for relation in relevant_relations
+                if entity_id in relation.entity_ids
+            )
+        )
+        entity = next(item for item in parse.entities if item.entity_id == entity_id)
+        return (
+            0 if entity_id in role_query_subjects else 1,
+            query_signature,
+            fact_signature,
+            assumption_signature,
+            relation_signature,
+            entity.kind.value,
+        )
+
+    by_signature: dict[tuple[object, ...], list[str]] = {}
+    for entity_id in relevant_entities:
+        by_signature.setdefault(signature(entity_id), []).append(entity_id)
+    if any(len(items) > 1 for items in by_signature.values()):
+        roles_are_closed = False
+        issues.append(
+            ValidationIssue(
+                ErrorCode.relation_binding_missing,
+                Severity.error,
+                "symmetric multi-body roles are not distinguishable from typed query/fact semantics",
+                path=f"interpretation_candidates.{candidate.candidate_id}",
+                referenced_id=candidate.candidate_id,
+            )
+        )
+    if roles_are_closed:
+        roles = tuple(
+            entity_ids[0]
+            for _, entity_ids in sorted(by_signature.items(), key=lambda item: item[0])
+        )
+    else:
+        roles = ()
+    relation_ids = tuple(
+        item.relation_id
+        for item in sorted(
+            relevant_relations,
+            key=lambda item: (
+                item.kind.value,
+                segment_by_id[item.segment_id].order if item.segment_id else 0,
+                item.relation_id,
+            ),
+        )
+    )
+    return RoleResolution(
+        roles,
+        frozenset(relevant_entities),
+        frozenset(system_query_subjects),
+        relation_ids,
+        tuple(issues),
+    )
 
 
-def _fact_symbol(fact, role_by_entity: dict[str, int]) -> str | None:
+def _fact_symbol(fact, role_by_entity: dict[str, int], role_count: int) -> str | None:
     symbol = canonical_symbol(fact.semantic_key)
     role = role_by_entity.get(fact.subject_id)
-    if symbol == "m" and role is not None and len(role_by_entity) > 1:
+    if symbol == "m" and role is not None and role_count > 1:
         return f"m{role}"
-    if symbol == "v" and role is not None and len(role_by_entity) > 1:
-        if fact.temporal_role in {TemporalRole.final, TemporalRole.after_event}:
-            return f"v{role}_after"
-        return f"v{role}"
-    if symbol == "v" and fact.temporal_role in {
-        TemporalRole.initial,
-        TemporalRole.before_event,
-    }:
-        return "v0"
-    if symbol == "v" and fact.temporal_role in {
-        TemporalRole.final,
-        TemporalRole.after_event,
-        TemporalRole.at_event,
-    }:
-        return "vf"
     return symbol
 
 
@@ -136,16 +271,13 @@ def evaluate_candidate_bindings(
     query_subjects = {
         query_by_id[item].subject_id for item in candidate.query_ids
     }
-    roles = _ordered_roles(parse, target_segments)
+    role_resolution = _ordered_roles(parse, candidate, target_segments)
+    roles = role_resolution.roles
     role_by_entity = {entity_id: index for index, entity_id in enumerate(roles, start=1)}
-    relevant_entities = set(roles)
-    relation_ids = tuple(
-        item.relation_id
-        for item in parse.relations
-        if item.segment_id is None or item.segment_id in target_segments
-        if set(item.entity_ids) & relevant_entities
-    )
-    issues: list[ValidationIssue] = []
+    relevant_entities = set(role_resolution.relevant_entities)
+    system_query_subjects = set(role_resolution.system_query_subjects)
+    relation_ids = role_resolution.relation_ids
+    issues: list[ValidationIssue] = list(role_resolution.issues)
     bindings: list[InputBinding] = []
     completed = 0
     total = (
@@ -170,7 +302,7 @@ def evaluate_candidate_bindings(
             )
 
     allowed_models = _SYSTEM_MOTION_MODELS.get(candidate.system_type)
-    for segment_id in target_segments:
+    for segment_id in sorted(target_segments, key=lambda item: segment_by_id[item].order):
         segment = segment_by_id[segment_id]
         compatible = allowed_models is None or bool(
             set(segment.motion_model_candidates) & allowed_models
@@ -195,7 +327,10 @@ def evaluate_candidate_bindings(
 
     for query_id in candidate.query_ids:
         query = query_by_id[query_id]
-        valid = query.segment_id in target_segments and query.subject_id in relevant_entities
+        valid_subject = query.subject_id in relevant_entities or (
+            query.subject_id in system_query_subjects and bool(relation_ids)
+        )
+        valid = query.segment_id in target_segments and valid_subject
         if query.event_id is not None:
             event = event_by_id[query.event_id]
             valid = valid and event.segment_id in {None, query.segment_id}
@@ -214,9 +349,12 @@ def evaluate_candidate_bindings(
 
     for assumption_id in candidate.assumption_ids:
         assumption = assumption_by_id[assumption_id]
+        valid_subject = assumption.subject_id in relevant_entities or (
+            assumption.subject_id in system_query_subjects and bool(relation_ids)
+        )
         valid = (
             assumption.segment_id in target_segments
-            and assumption.subject_id in relevant_entities
+            and valid_subject
         )
         if candidate.system_type == "constant_acceleration_1d":
             valid = valid and assumption.subject_id in query_subjects
@@ -234,9 +372,32 @@ def evaluate_candidate_bindings(
             )
 
     symbol_owner: dict[str, InputBinding] = {}
-    for fact_id in candidate.fact_ids:
+    ordered_fact_ids = sorted(
+        candidate.fact_ids,
+        key=lambda item: (
+            role_by_entity.get(fact_by_id[item].subject_id, 0),
+            fact_by_id[item].semantic_key,
+            fact_by_id[item].temporal_role.value,
+            fact_by_id[item].direction.value,
+        ),
+    )
+    for fact_id in ordered_fact_ids:
         fact = fact_by_id[fact_id]
-        symbol = _fact_symbol(fact, role_by_entity)
+        temporal = resolve_fact_symbol(
+            parse,
+            fact,
+            target_segment_ids=target_segments,
+            role=role_by_entity.get(fact.subject_id),
+            role_count=len(relevant_entities),
+        )
+        symbol = (
+            temporal.symbol
+            if fact.semantic_key
+            in {"velocity", "velocity_before", "velocity_after", "initial_velocity", "final_velocity"}
+            else _fact_symbol(fact, role_by_entity, len(relevant_entities))
+        )
+        if temporal.issue is not None:
+            issues.append(temporal.issue)
         valid = (
             fact.relevance in {FactRelevance.solver_input, FactRelevance.constraint}
             and fact.segment_id in target_segments
@@ -258,6 +419,20 @@ def evaluate_candidate_bindings(
                     ErrorCode.candidate_binding_mismatch,
                     Severity.error,
                     "candidate fact does not close over the solver target segment, subject, event, temporal role, and direction",
+                    path=f"interpretation_candidates.{candidate.candidate_id}.fact_ids",
+                    referenced_id=fact_id,
+                )
+            )
+            continue
+        if (
+            len(relevant_entities) > 1
+            and role_by_entity.get(fact.subject_id) is None
+        ):
+            issues.append(
+                ValidationIssue(
+                    ErrorCode.relation_binding_missing,
+                    Severity.error,
+                    "multi-body fact has no deterministic closed semantic role",
                     path=f"interpretation_candidates.{candidate.candidate_id}.fact_ids",
                     referenced_id=fact_id,
                 )

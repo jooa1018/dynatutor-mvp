@@ -76,7 +76,7 @@ class ParseOutcome:
             "status": self.status.value,
             "source": "gpt_structured_outputs",
             "schema": parse.schema if parse is not None else "dynatutor.textbook_parse",
-            "version": parse.version if parse is not None else "1.0",
+            "version": parse.version if parse is not None else "1.1",
             "model": self.model,
             "prompt_version": self.prompt_version,
             "entities": [item.model_dump(mode="json") for item in parse.entities] if parse else [],

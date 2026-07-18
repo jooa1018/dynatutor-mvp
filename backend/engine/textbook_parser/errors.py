@@ -20,6 +20,8 @@ class ErrorCode(str, Enum):
     invented_explicit_number = "invented_explicit_number"
     raw_value_mismatch = "raw_value_mismatch"
     raw_unit_mismatch = "raw_unit_mismatch"
+    quantity_span_mismatch = "quantity_span_mismatch"
+    quantity_occurrence_reused = "quantity_occurrence_reused"
     invalid_reference = "invalid_reference"
     duplicate_id = "duplicate_id"
     contradictory_fact = "contradictory_fact"
@@ -44,6 +46,7 @@ class ErrorCode(str, Enum):
     canonical_symbol_collision = "canonical_symbol_collision"
     motion_model_mismatch = "motion_model_mismatch"
     relation_binding_missing = "relation_binding_missing"
+    temporal_binding_ambiguous = "temporal_binding_ambiguous"
     authoritative_patch_rejected = "authoritative_patch_rejected"
 
 

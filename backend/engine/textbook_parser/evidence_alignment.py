@@ -8,9 +8,14 @@ from engine.textbook_parser.contracts import ExplicitFact, TextbookProblemParseV
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
 
 
-_NUMBER_RE = re.compile(
-    r"(?<![\d.])[+−-]?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*/\s*\d+(?:\.\d+)?)?(?![\d.])"
+_NUMBER_PATTERN = (
+    r"(?<![A-Za-z\d.^])[+−-]?(?:\d+(?:\.\d+)?|\.\d+)"
+    r"(?:[ \t]*/[ \t]*\d+(?:\.\d+)?|"
+    r"(?:[ \t]*[eE][ \t]*[+−-]?[ \t]*\d+)|"
+    r"(?:[ \t]*[×x][ \t]*10[ \t]*(?:\^[ \t]*[+−-]?[ \t]*\d+|[⁺⁻]?[⁰¹²³⁴⁵⁶⁷⁸⁹]+)))?"
+    r"(?![\d.])"
 )
+_NUMBER_RE = re.compile(_NUMBER_PATTERN)
 
 _UNIT_ALIASES = {
     "": "dimensionless",
@@ -82,6 +87,7 @@ _SEMANTIC_DIMENSIONS = {
     "final_velocity": {"velocity"},
     "velocity": {"velocity"},
     "velocity_before": {"velocity"},
+    "velocity_after": {"velocity"},
     "mass": {"mass"},
     "mass_1": {"mass"},
     "mass_2": {"mass"},
@@ -96,6 +102,26 @@ _SEMANTIC_DIMENSIONS = {
     "restitution_coefficient": {"dimensionless"},
 }
 
+_SOURCE_UNIT_TOKENS = tuple(
+    sorted(
+        {
+            "%", "1", "kg*m^2", "kg*m2", "kg·m^2", "kg·m²", "kg·m2",
+            "m/s^2", "m/s2", "m/s²", "m·s^-2", "m*s^-2", "rad/s^2",
+            "rad/s2", "rad/s²", "m/s", "m·s^-1", "m*s^-1", "km/h",
+            "rad/s", "n*m", "n·m", "n*s", "n·s", "n/m", "rpm", "hz",
+            "kn", "kg", "km", "cm", "mm", "sec", "min", "rad", "deg",
+            "미터", "시간", "초", "분", "도", "m", "s", "h", "g", "n", "j", "°",
+        },
+        key=lambda item: (-len(item), item),
+    )
+)
+_UNIT_AFTER_NUMBER_RE = re.compile(
+    r"^[ \t]*(?P<unit>" + "|".join(re.escape(item) for item in _SOURCE_UNIT_TOKENS) + r")"
+    r"(?![A-Za-z/^*·²³⁰¹⁴⁵⁶⁷⁸⁹])",
+    flags=re.IGNORECASE,
+)
+_SUPERSCRIPT_TRANSLATION = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻", "0123456789+-")
+
 
 @dataclass(frozen=True)
 class SourceSpan:
@@ -108,13 +134,36 @@ class SourceSpan:
 
 
 @dataclass(frozen=True)
+class SourceQuantity:
+    start: int
+    end: int
+    raw_value: str
+    raw_unit: str
+
+
+@dataclass(frozen=True)
 class EvidenceValidation:
     fact_spans: dict[str, SourceSpan]
     issues: tuple[ValidationIssue, ...]
 
 
-def _normalized_token(value: str) -> str:
-    return unicodedata.normalize("NFKC", value).replace("−", "-").replace(" ", "")
+def _normalized_number(value: str) -> str:
+    compact = value.translate(_SUPERSCRIPT_TRANSLATION)
+    compact = unicodedata.normalize("NFKC", compact).replace("−", "-")
+    compact = re.sub(r"\s+", "", compact)
+    scientific = re.fullmatch(
+        r"(?P<mantissa>[+-]?(?:\d+(?:\.\d+)?|\.\d+))[×x]10\^?(?P<exponent>[+-]?\d+)",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    if scientific:
+        return f"{scientific.group('mantissa')}e{scientific.group('exponent')}"
+    return re.sub(r"E", "e", compact)
+
+
+def _normalized_unit(unit: str) -> str:
+    compact = unicodedata.normalize("NFKC", unit).replace(" ", "").lower()
+    return compact.replace("^2", "2").replace("^3", "3")
 
 
 def quote_occurrences(problem_text: str, quote: str) -> list[SourceSpan]:
@@ -132,7 +181,28 @@ def quote_occurrences(problem_text: str, quote: str) -> list[SourceSpan]:
 
 
 def _numeric_tokens(text: str) -> list[str]:
-    return [_normalized_token(match.group(0)) for match in _NUMBER_RE.finditer(text)]
+    return [_normalized_number(match.group(0)) for match in _NUMBER_RE.finditer(text)]
+
+
+def quantity_occurrences(quote: str) -> list[SourceQuantity]:
+    """Parse adjacent value-unit grammar spans; naked numbers are dimensionless."""
+
+    out: list[SourceQuantity] = []
+    for match in _NUMBER_RE.finditer(quote):
+        unit_match = _UNIT_AFTER_NUMBER_RE.match(quote[match.end():])
+        if unit_match is None:
+            out.append(SourceQuantity(match.start(), match.end(), match.group(0), ""))
+            continue
+        unit = unit_match.group("unit")
+        out.append(
+            SourceQuantity(
+                match.start(),
+                match.end() + unit_match.end(),
+                match.group(0),
+                unit,
+            )
+        )
+    return out
 
 
 def _unit_occurs(quote: str, unit: str) -> bool:
@@ -153,9 +223,7 @@ def _unit_occurs(quote: str, unit: str) -> bool:
 
 
 def _unit_dimension(unit: str) -> str | None:
-    compact = unicodedata.normalize("NFKC", unit).replace(" ", "").lower()
-    compact = compact.replace("^2", "2").replace("^3", "3")
-    return _UNIT_ALIASES.get(compact)
+    return _UNIT_ALIASES.get(_normalized_unit(unit))
 
 
 def _dimension_matches(fact: ExplicitFact) -> bool:
@@ -195,7 +263,7 @@ def align_explicit_fact(problem_text: str, fact: ExplicitFact) -> tuple[SourceSp
 
     source_numbers = _numeric_tokens(problem_text)
     quote_numbers = _numeric_tokens(fact.evidence_quote)
-    raw_number = _normalized_token(fact.raw_value)
+    raw_number = _normalized_number(fact.raw_value)
     if raw_number not in source_numbers:
         issues.append(
             ValidationIssue(
@@ -240,7 +308,41 @@ def align_explicit_fact(problem_text: str, fact: ExplicitFact) -> tuple[SourceSp
                 },
             )
         )
-    return occurrences[fact.occurrence_index], issues
+
+    matching_quantities = [
+        item
+        for item in quantity_occurrences(fact.evidence_quote)
+        if _normalized_number(item.raw_value) == raw_number
+        and _normalized_unit(item.raw_unit) == _normalized_unit(fact.raw_unit)
+    ]
+    if not matching_quantities:
+        issues.append(
+            ValidationIssue(
+                ErrorCode.quantity_span_mismatch,
+                Severity.critical,
+                "raw_value and raw_unit are not one source quantity expression",
+                path=f"explicit_facts.{fact.fact_id}",
+                referenced_id=fact.fact_id,
+            )
+        )
+        return None, issues
+    if fact.quantity_occurrence_index >= len(matching_quantities):
+        issues.append(
+            ValidationIssue(
+                ErrorCode.quantity_span_mismatch,
+                Severity.critical,
+                "quantity_occurrence_index does not identify a matching source quantity",
+                path=f"explicit_facts.{fact.fact_id}.quantity_occurrence_index",
+                referenced_id=fact.fact_id,
+                metadata={"quantity_occurrence_count": len(matching_quantities)},
+            )
+        )
+        return None, issues
+    quote_span = occurrences[fact.occurrence_index]
+    quantity = matching_quantities[fact.quantity_occurrence_index]
+    start = quote_span.start + quantity.start
+    end = quote_span.start + quantity.end
+    return SourceSpan(start, end, problem_text[start:end]), issues
 
 
 def _quoted_fields(parse: TextbookProblemParseV1):
@@ -280,10 +382,26 @@ def validate_evidence(problem_text: str, parse: TextbookProblemParseV1) -> Evide
                     path=path,
                 )
             )
+    claimed_quantity_spans: dict[tuple[int, int], str] = {}
     for fact in parse.explicit_facts:
         span, fact_issues = align_explicit_fact(problem_text, fact)
         issues.extend(fact_issues)
         if span is not None:
+            key = (span.start, span.end)
+            previous = claimed_quantity_spans.get(key)
+            if previous is not None:
+                issues.append(
+                    ValidationIssue(
+                        ErrorCode.quantity_occurrence_reused,
+                        Severity.critical,
+                        "one source quantity occurrence cannot ground multiple explicit facts",
+                        path=f"explicit_facts.{fact.fact_id}",
+                        referenced_id=fact.fact_id,
+                        metadata={"fact_ids": [previous, fact.fact_id], "source_span": list(key)},
+                    )
+                )
+            else:
+                claimed_quantity_spans[key] = fact.fact_id
             spans[fact.fact_id] = span
     return EvidenceValidation(spans, tuple(issues))
 
@@ -292,6 +410,7 @@ __all__ = [
     "EvidenceValidation",
     "SourceSpan",
     "align_explicit_fact",
+    "quantity_occurrences",
     "quote_occurrences",
     "validate_evidence",
 ]

@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import MappingProxyType
 
 
-ONTOLOGY_VERSION = "textbook-ontology-v1"
+ONTOLOGY_VERSION = "textbook-ontology-v2"
 
 SEMANTIC_TO_CANONICAL_SYMBOL = MappingProxyType(
     {
@@ -28,6 +28,8 @@ SEMANTIC_TO_CANONICAL_SYMBOL = MappingProxyType(
         "time": "t",
         "torque": "tau",
         "velocity": "v",
+        "velocity_before": "v",
+        "velocity_after": "v",
         "work": "W",
     }
 )

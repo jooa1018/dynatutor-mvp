@@ -237,8 +237,8 @@ def test_multi_body_relation_roles_assign_distinct_mass_and_velocity_symbols():
     for fact_id, semantic_key, subject_id, temporal_role, event_id in [
         ("mass_a", "mass", "athlete", "timeless", None),
         ("mass_b", "mass", "cart_b", "timeless", None),
-        ("velocity_a", "velocity", "athlete", "before_event", "race_start"),
-        ("velocity_b", "velocity", "cart_b", "before_event", "race_start"),
+        ("velocity_a", "velocity", "athlete", "after_event", "race_start"),
+        ("velocity_b", "velocity", "cart_b", "after_event", "race_start"),
     ]:
         fact = dict(template)
         fact.update(

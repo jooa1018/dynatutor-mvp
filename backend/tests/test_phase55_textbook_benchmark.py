@@ -77,6 +77,29 @@ def test_benchmark_gate_fails_when_an_entity_binding_is_wrong():
     assert metrics.route_accuracy == 1.0
 
 
+def test_benchmark_binding_metrics_ignore_fact_id_spelling_but_not_wrong_bindings():
+    manifest = binding_stress_manifest()
+    predictions = []
+    for item in manifest.cases:
+        labels = item.gold.model_copy(deep=True)
+        labels.fact_entity_binding = {
+            f"model_fact_{index}": value
+            for index, value in enumerate(labels.fact_entity_binding.values(), start=1)
+        }
+        labels.fact_segment_binding = {
+            f"model_fact_{index}": value
+            for index, value in enumerate(labels.fact_segment_binding.values(), start=1)
+        }
+        predictions.append(Prediction(case_id=item.case_id, labels=labels))
+    metrics = evaluate_predictions(manifest, predictions)
+    assert metrics.entity_binding_accuracy == 1.0
+    assert metrics.segment_binding_accuracy == 1.0
+
+    first_key = next(iter(predictions[0].labels.fact_entity_binding))
+    predictions[0].labels.fact_entity_binding[first_key] = "definitely_wrong_entity"
+    assert evaluate_predictions(manifest, predictions).entity_binding_accuracy < 1.0
+
+
 def test_benchmark_gate_fails_when_segments_or_relations_are_omitted():
     manifest = binding_stress_manifest()
     predictions = [
@@ -100,6 +123,16 @@ def test_recorded_benchmark_adapter_never_projects_gold_labels():
     payload = recorded_seed_payload(manifest.cases[0])
     assert payload["explicit_facts"]
     assert payload["interpretation_candidates"]
+
+
+def test_needs_figure_is_an_explicit_required_clarification_terminal():
+    manifest = repository_safe_seed_manifest()
+    figure_cases = [item for item in manifest.cases if item.category == "그림 필요"]
+    assert figure_cases
+    assert all(item.gold.required_clarification for item in figure_cases)
+    predictions = validate_recorded_seed_manifest(figure_cases)
+    assert all(item.labels.required_clarification for item in predictions)
+    assert all(item.labels.expected_terminal_status == "needs_figure" for item in predictions)
 
 
 def test_metamorphic_seed_variants_remain_grounded_and_safe():

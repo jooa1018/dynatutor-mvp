@@ -288,9 +288,31 @@ def diagnose_problem(
 ) -> DiagnosisResponse:
     """canonical을 직접 주면 그 기준으로 진단한다 (clarify patch 이후 재진단용)."""
     if canonical is None:
-        canonical = parse_problem_gateway(
+        parser_gateway = parse_problem_gateway(
             problem_text, legacy_extractor=extract_problem
-        ).canonical
+        )
+        canonical = parser_gateway.canonical
+        if parser_gateway.blocked:
+            return DiagnosisResponse(
+                ok=False,
+                canonical=_canonical_model(canonical),
+                legacy_hints=LegacyHintModel(),
+                selected_solver=None,
+                solver_reason=None,
+                route_decision=None,
+                fbd_diagram_svg=None,
+                fbd_annotations=[],
+                fbd=[],
+                coordinate_guide=[],
+                applicable_equations=[],
+                not_applicable_equations=[],
+                cautions=[
+                    "구조화된 문제 해석이 안전 계산 gate를 통과하기 전에는 물리 모델을 만들지 않습니다."
+                ],
+                next_questions=["문제 해석 또는 필요한 그림 정보를 먼저 확인해 주세요."],
+                physical_model=None,
+                textbook_parse=parser_gateway.summary,
+            )
     hints = make_legacy_hints(canonical)
     registry = registry or SolverRegistry()
     route_decision = route_decision or registry.route(canonical)

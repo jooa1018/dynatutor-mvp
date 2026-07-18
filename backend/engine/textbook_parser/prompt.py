@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-PROMPT_VERSION = "textbook-parser-v1"
-PROMPT_PATH = Path(__file__).with_name("prompts") / "textbook_parser_v1.txt"
+PROMPT_VERSION = "textbook-parser-v2"
+PROMPT_PATH = Path(__file__).with_name("prompts") / "textbook_parser_v2.txt"
 
 
 def load_prompt() -> str:

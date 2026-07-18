@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import Counter
 import re
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-BENCHMARK_SCHEMA_VERSION = "phase55-benchmark-v2"
+BENCHMARK_SCHEMA_VERSION = "phase55-benchmark-v3"
 _NUMBER_RE = re.compile(r"(?<![\d.])[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?![\d.])")
 
 
@@ -102,6 +103,18 @@ def _ratio(numerator: int, denominator: int) -> float:
     return round(numerator / denominator, 6) if denominator else 1.0
 
 
+def _fact_binding_pairs(labels: GoldLabels, binding: dict[str, Any]) -> Counter:
+    """Align bindings by fact meaning so model-chosen fact IDs do not affect metrics."""
+
+    fact_ids = list(binding)
+    if len(fact_ids) != len(labels.explicit_facts):
+        return Counter()
+    return Counter(
+        (fact_signature, binding[fact_id])
+        for fact_signature, fact_id in zip(labels.explicit_facts, fact_ids)
+    )
+
+
 def metamorphic_problem_variants(problem_text: str) -> tuple[str, ...]:
     """Meaning-preserving/adversarial variants used by the offline gate."""
 
@@ -189,12 +202,14 @@ def evaluate_predictions(
             totals["predicted_facts"] += 1
             if any(number not in _NUMBER_RE.findall(case.problem_text) for number in numbers):
                 totals["invented"] += 1
-        for fact_id, entity_id in gold.fact_entity_binding.items():
-            totals["entity_binding_total"] += 1
-            totals["entity_binding_ok"] += actual.fact_entity_binding.get(fact_id) == entity_id
-        for fact_id, segment_id in gold.fact_segment_binding.items():
-            totals["segment_binding_total"] += 1
-            totals["segment_binding_ok"] += actual.fact_segment_binding.get(fact_id) == segment_id
+        gold_entity_pairs = _fact_binding_pairs(gold, gold.fact_entity_binding)
+        actual_entity_pairs = _fact_binding_pairs(actual, actual.fact_entity_binding)
+        totals["entity_binding_total"] += sum(gold_entity_pairs.values())
+        totals["entity_binding_ok"] += sum((gold_entity_pairs & actual_entity_pairs).values())
+        gold_segment_pairs = _fact_binding_pairs(gold, gold.fact_segment_binding)
+        actual_segment_pairs = _fact_binding_pairs(actual, actual.fact_segment_binding)
+        totals["segment_binding_total"] += sum(gold_segment_pairs.values())
+        totals["segment_binding_ok"] += sum((gold_segment_pairs & actual_segment_pairs).values())
         tp_assumptions, predicted_assumptions, _ = _set_prf(gold.assumptions, actual.assumptions)
         totals["assumption_tp"] += tp_assumptions
         totals["assumption_pred"] += predicted_assumptions

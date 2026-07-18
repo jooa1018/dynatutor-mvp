@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fractions import Fraction
+import re
 
 from engine.canonical.adapter import attach_canonical_v2
 from engine.extraction.units import normalize_labeled_value
@@ -17,12 +18,20 @@ from engine.textbook_parser.contracts import (
 from engine.textbook_parser.validation import ValidatedParse
 
 
-PROJECTION_VERSION = "textbook-canonical-projection-v3"
+PROJECTION_VERSION = "textbook-canonical-projection-v4"
 
 def _raw_number(value: str) -> float:
-    compact = value.strip().replace("−", "-").replace(",", "").replace(" ", "")
+    compact = value.translate(str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻", "0123456789+-"))
+    compact = compact.strip().replace("−", "-").replace(",", "").replace(" ", "")
     if "/" in compact:
         return float(Fraction(compact))
+    scientific = re.fullmatch(
+        r"(?P<mantissa>[+-]?(?:\d+(?:\.\d+)?|\.\d+))[×x]10\^?(?P<exponent>[+-]?\d+)",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    if scientific:
+        return float(scientific.group("mantissa")) * 10 ** int(scientific.group("exponent"))
     return float(compact)
 
 
@@ -87,7 +96,7 @@ def project_canonical(problem_text: str, validated: ValidatedParse) -> Canonical
             matched_text=span.quote,
             provenance_hint="unit_normalization" if (value != _raw_number(fact.raw_value) or unit != (fact.raw_unit or None)) else None,
             subject_evidence={
-                "binding_rule": "textbook_parse_v1",
+                "binding_rule": "textbook_parse_v1_1_event_boundary",
                 "resolved_subject_id": fact.subject_id,
                 "segment_id": fact.segment_id,
                 "event_id": fact.event_id,
