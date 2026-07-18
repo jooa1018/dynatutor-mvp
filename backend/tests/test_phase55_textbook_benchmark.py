@@ -2,7 +2,21 @@ from __future__ import annotations
 
 from collections import Counter
 
-from engine.textbook_parser.benchmark import Prediction, evaluate_predictions, metamorphic_problem_variants
+from engine.textbook_parser.benchmark import (
+    BenchmarkCase,
+    BenchmarkManifest,
+    GoldLabels,
+    Prediction,
+    SemanticEntity,
+    SemanticEvent,
+    SemanticFact,
+    SemanticGraph,
+    SemanticQuery,
+    SemanticRelation,
+    SemanticSegment,
+    evaluate_predictions,
+    metamorphic_problem_variants,
+)
 from engine.textbook_parser.recorded_benchmark import (
     recorded_seed_payload,
     validate_recorded_seed_manifest,
@@ -151,3 +165,263 @@ def test_metamorphic_seed_variants_remain_grounded_and_safe():
                 item.code.value == "invented_explicit_number"
                 for item in validated.issues
             )
+
+
+def _semantic_graph() -> SemanticGraph:
+    return SemanticGraph(
+        entities=[
+            SemanticEntity(entity_id="body", kind="block"),
+            SemanticEntity(entity_id="counterweight", kind="pulley"),
+        ],
+        segments=[
+            SemanticSegment(
+                segment_id="motion",
+                order=1,
+                relevance="target",
+                motion_models=("constant_acceleration_1d",),
+                actor_ids=("body", "counterweight"),
+                start_event_id="start",
+                end_event_id="finish",
+            )
+        ],
+        events=[
+            SemanticEvent(
+                event_id="start",
+                kind="start",
+                subject_ids=("body", "counterweight"),
+                segment_id="motion",
+            ),
+            SemanticEvent(
+                event_id="finish",
+                kind="finish",
+                subject_ids=("body", "counterweight"),
+                segment_id="motion",
+            ),
+        ],
+        facts=[
+            SemanticFact(
+                fact_id="mass_a",
+                semantic_key="mass",
+                raw_value="2",
+                raw_unit="kg",
+                subject_id="body",
+                segment_id="motion",
+                temporal_role="timeless",
+                direction="not_applicable",
+                quantity_occurrence_index=0,
+                relevance="solver_input",
+            ),
+            SemanticFact(
+                fact_id="mass_b",
+                semantic_key="mass",
+                raw_value="2",
+                raw_unit="kg",
+                subject_id="counterweight",
+                segment_id="motion",
+                temporal_role="timeless",
+                direction="not_applicable",
+                quantity_occurrence_index=1,
+                relevance="solver_input",
+            ),
+        ],
+        queries=[
+            SemanticQuery(
+                query_id="target",
+                output_key="acceleration",
+                component="magnitude",
+                subject_id="body",
+                segment_id="motion",
+                event_id="finish",
+            )
+        ],
+        relations=[
+            SemanticRelation(
+                relation_id="rope",
+                kind="connected_by_rope",
+                participant_ids=("body", "counterweight"),
+                segment_id="motion",
+            )
+        ],
+    )
+
+
+def _renamed_and_reordered(graph: SemanticGraph) -> SemanticGraph:
+    entity = {"body": "model_x", "counterweight": "model_y"}
+    segment = {"motion": "model_segment"}
+    event = {"start": "model_start", "finish": "model_finish"}
+    return SemanticGraph(
+        entities=[
+            SemanticEntity(entity_id="model_y", kind="pulley"),
+            SemanticEntity(entity_id="model_x", kind="block"),
+        ],
+        segments=[
+            SemanticSegment(
+                segment_id="model_segment",
+                order=1,
+                relevance="target",
+                motion_models=("constant_acceleration_1d",),
+                actor_ids=tuple(entity[item] for item in graph.segments[0].actor_ids),
+                start_event_id=event["start"],
+                end_event_id=event["finish"],
+            )
+        ],
+        events=[
+            SemanticEvent(
+                event_id=event[item.event_id],
+                kind=item.kind,
+                subject_ids=tuple(entity[value] for value in item.subject_ids),
+                segment_id=segment[item.segment_id],
+            )
+            for item in reversed(graph.events)
+        ],
+        facts=[
+            SemanticFact(
+                **{
+                    **item.model_dump(),
+                    "fact_id": f"model_{item.fact_id}",
+                    "subject_id": entity[item.subject_id],
+                    "segment_id": segment[item.segment_id],
+                    "event_id": (
+                        event[item.event_id] if item.event_id is not None else None
+                    ),
+                }
+            )
+            for item in reversed(graph.facts)
+        ],
+        queries=[
+            SemanticQuery(
+                **{
+                    **item.model_dump(),
+                    "query_id": "model_query",
+                    "subject_id": entity[item.subject_id],
+                    "segment_id": segment[item.segment_id],
+                    "event_id": event[item.event_id],
+                }
+            )
+            for item in reversed(graph.queries)
+        ],
+        relations=[
+            SemanticRelation(
+                relation_id="model_relation",
+                kind=item.kind,
+                participant_ids=tuple(
+                    entity[value] for value in item.participant_ids
+                ),
+                segment_id=segment[item.segment_id],
+            )
+            for item in reversed(graph.relations)
+        ],
+    )
+
+
+def _labels(graph: SemanticGraph) -> GoldLabels:
+    return GoldLabels(
+        entities=[],
+        segments=[],
+        events=[],
+        explicit_facts=[],
+        fact_entity_binding={},
+        fact_segment_binding={},
+        relations=[],
+        queries=[],
+        assumptions=[],
+        required_clarification=True,
+        figure_dependency="none",
+        expected_system_type=None,
+        expected_solver=None,
+        supported_status="needs_confirmation",
+        expected_end_to_end_answer=None,
+        expected_terminal_status="needs_confirmation",
+        semantic_graph=graph,
+    )
+
+
+def _evaluate_pair(expected: SemanticGraph, actual: SemanticGraph):
+    case = BenchmarkCase(
+        case_id="semantic_graph_case",
+        provenance="repository_safe_generated",
+        category="harness",
+        problem_text="Repository-safe semantic graph harness case.",
+        gold=_labels(expected),
+    )
+    return evaluate_predictions(
+        BenchmarkManifest(
+            schema_version="phase55-benchmark-v4-semantic-graph",
+            corpus_kind="harness",
+            copyright_status="repository_safe_generated",
+            cases=[case],
+        ),
+        [Prediction(case_id=case.case_id, labels=_labels(actual))],
+    )
+
+
+def test_semantic_graph_metrics_ignore_all_node_id_spelling_and_array_order():
+    metrics = _evaluate_pair(
+        _semantic_graph(), _renamed_and_reordered(_semantic_graph())
+    )
+    for field in (
+        "entity_accuracy",
+        "segment_accuracy",
+        "event_accuracy",
+        "explicit_fact_precision",
+        "explicit_fact_recall",
+        "unit_accuracy",
+        "entity_binding_accuracy",
+        "segment_binding_accuracy",
+        "relation_accuracy",
+        "query_accuracy",
+    ):
+        assert getattr(metrics, field) == 1.0
+
+
+def test_semantic_graph_metrics_ignore_array_order_by_itself():
+    expected = _semantic_graph()
+    actual = expected.model_copy(deep=True)
+    actual.entities.reverse()
+    actual.events.reverse()
+    actual.facts.reverse()
+    actual.queries.reverse()
+    actual.relations.reverse()
+    metrics = _evaluate_pair(expected, actual)
+    assert metrics.entity_accuracy == 1.0
+    assert metrics.event_accuracy == 1.0
+    assert metrics.explicit_fact_recall == 1.0
+    assert metrics.query_accuracy == 1.0
+
+
+def test_semantic_entity_binding_change_reduces_only_real_binding_score():
+    actual = _renamed_and_reordered(_semantic_graph())
+    actual.facts[0].subject_id = "model_x"
+    assert _evaluate_pair(_semantic_graph(), actual).entity_binding_accuracy < 1.0
+
+
+def test_semantic_segment_binding_change_reduces_binding_score():
+    actual = _renamed_and_reordered(_semantic_graph())
+    actual.facts[0].segment_id = None
+    assert _evaluate_pair(_semantic_graph(), actual).segment_binding_accuracy < 1.0
+
+
+def test_semantic_relation_participant_role_change_reduces_relation_accuracy():
+    actual = _renamed_and_reordered(_semantic_graph())
+    actual.relations[0].participant_ids = tuple(
+        reversed(actual.relations[0].participant_ids)
+    )
+    assert _evaluate_pair(_semantic_graph(), actual).relation_accuracy < 1.0
+
+
+def test_semantic_query_subject_or_segment_change_reduces_query_accuracy():
+    wrong_subject = _renamed_and_reordered(_semantic_graph())
+    wrong_subject.queries[0].subject_id = "model_y"
+    assert _evaluate_pair(_semantic_graph(), wrong_subject).query_accuracy < 1.0
+
+    wrong_segment = _renamed_and_reordered(_semantic_graph())
+    wrong_segment.queries[0].segment_id = None
+    assert _evaluate_pair(_semantic_graph(), wrong_segment).query_accuracy < 1.0
+
+
+def test_repeated_fact_scoring_uses_counter_not_set_semantics():
+    actual = _renamed_and_reordered(_semantic_graph())
+    actual.facts.pop()
+    metrics = _evaluate_pair(_semantic_graph(), actual)
+    assert metrics.explicit_fact_recall == 0.5
+    assert metrics.entity_binding_accuracy == 0.5

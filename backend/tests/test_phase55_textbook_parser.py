@@ -19,13 +19,22 @@ from engine.textbook_parser.canonical_projection import project_canonical
 from engine.textbook_parser.config import ParserMode, TextbookParserConfig
 from engine.textbook_parser.contracts import TextbookProblemParseV1
 from engine.textbook_parser.corrections import apply_parse_corrections
-from engine.textbook_parser.errors import ErrorCode, ParserUnavailableError
+from engine.textbook_parser.errors import (
+    ErrorCode,
+    ParserUnavailableError,
+    TextbookParserError,
+)
 from engine.textbook_parser.gateway import parse_problem_gateway
 from engine.textbook_parser.orchestrator import (
     parse_textbook_problem,
     validate_recorded_payload,
 )
-from engine.textbook_parser.telemetry import UsageSummary, estimate_cost
+from engine.textbook_parser.prompt import load_prompt
+from engine.textbook_parser.telemetry import (
+    UsageSummary,
+    conservative_attempt_cost_upper_bound,
+    estimate_cost,
+)
 from engine.textbook_parser.validation import ParseDecisionStatus, validate_parse
 from engine.routing.clarify import ClarifyPatchError
 
@@ -722,6 +731,13 @@ def test_schema_failure_gets_exactly_one_repair_call(tmp_path):
     )
     assert outcome.status == ParseDecisionStatus.accepted_with_visible_assumptions
     assert outcome.retry_count == 1
+    assert outcome.request_attempt_count == 2
+    assert outcome.usage_unavailable is True
+    assert (
+        outcome.conservative_cost_upper_bound_usd
+        > outcome.usage.estimated_cost_usd
+    )
+    assert outcome.attempt_diagnostics[0].exception_category == "value_error"
     assert client.calls == 2
 
 
@@ -761,6 +777,12 @@ def test_validation_retry_aggregates_all_attempt_usage_and_latency(tmp_path):
     assert outcome.usage.output_tokens == 600
     assert outcome.usage.estimated_cost_usd > 0
     assert outcome.parser_latency_ms > 0
+    assert outcome.request_attempt_count == 2
+    assert outcome.usage_unavailable is False
+    assert (
+        outcome.conservative_cost_upper_bound_usd
+        == outcome.usage.estimated_cost_usd
+    )
 
 
 def test_official_client_preserves_sdk_pydantic_failure_for_one_repair(tmp_path):
@@ -815,7 +837,188 @@ def test_schema_repair_failure_stops_after_second_call(tmp_path):
     )
     assert outcome.status == ParseDecisionStatus.parser_error
     assert outcome.failure_code == ErrorCode.repair_failed.value
+    assert outcome.request_attempt_count == 2
+    assert outcome.retry_count == 1
+    assert outcome.usage_unavailable is True
+    assert outcome.usage.estimated_cost_usd == 0.0
+    assert outcome.conservative_cost_upper_bound_usd > 0.0
+    assert [
+        item.exception_category for item in outcome.attempt_diagnostics
+    ] == ["value_error", "value_error"]
+    assert outcome.repair_error_codes == ("schema_error",)
     assert client.calls == 2
+
+
+def test_validation_repair_failure_keeps_measured_and_unknown_cost(tmp_path):
+    fixture = _fixture()
+    invalid_payload = _fixture()["parse"]
+    invalid_payload["explicit_facts"][1]["occurrence_index"] = 99
+    invalid = TextbookProblemParseV1.model_validate(invalid_payload)
+
+    class ValidationThenFailure:
+        calls = 0
+
+        def parse(self, problem_text, *, repair_error_codes=()):
+            from engine.textbook_parser.openai_client import StructuredParseResponse
+
+            self.calls += 1
+            if self.calls == 1:
+                return StructuredParseResponse(
+                    invalid,
+                    UsageSummary(input_tokens=100, output_tokens=200),
+                    "first",
+                )
+            assert "evidence_occurrence_missing" in repair_error_codes
+            raise ValueError("private response must never enter diagnostics")
+
+    outcome = parse_textbook_problem(
+        fixture["problem_text"],
+        config=_config(ParserMode.required),
+        client=ValidationThenFailure(),
+        cache=ParserCache(path=str(tmp_path / "validation-failure.sqlite3")),
+    )
+    assert outcome.failure_code == ErrorCode.repair_failed.value
+    assert outcome.request_attempt_count == 2
+    assert outcome.retry_count == 1
+    assert outcome.usage.input_tokens == 100
+    assert outcome.usage.output_tokens == 200
+    assert outcome.usage_unavailable is True
+    assert (
+        outcome.conservative_cost_upper_bound_usd
+        > outcome.usage.estimated_cost_usd
+    )
+    assert "evidence_occurrence_missing" in outcome.repair_error_codes
+    assert outcome.attempt_diagnostics[-1].phase == "validation_repair"
+
+
+@pytest.mark.parametrize(
+    "code",
+    [ErrorCode.parser_timeout, ErrorCode.parser_rate_limited],
+)
+def test_api_timeout_and_rate_limit_reserve_unknown_usage(tmp_path, code):
+    fixture = _fixture()
+
+    class Unavailable:
+        calls = 0
+
+        def parse(self, problem_text, *, repair_error_codes=()):
+            self.calls += 1
+            error = ParserUnavailableError("must not be copied to diagnostics")
+            error.code = code
+            raise error
+
+    client = Unavailable()
+    outcome = parse_textbook_problem(
+        fixture["problem_text"],
+        config=_config(ParserMode.required),
+        client=client,
+        cache=ParserCache(path=str(tmp_path / f"{code.value}.sqlite3")),
+    )
+    assert outcome.failure_code == code.value
+    assert outcome.request_attempt_count == 1
+    assert outcome.retry_count == 0
+    assert outcome.usage_unavailable is True
+    assert outcome.conservative_cost_upper_bound_usd > 0
+    assert outcome.attempt_diagnostics[0].exception_category == code.value
+
+
+def test_exception_usage_is_aggregated_when_sdk_exposes_it(tmp_path):
+    fixture = _fixture()
+    recovered = estimate_cost(
+        "gpt-5.4-mini-2026-03-17",
+        input_tokens=321,
+        cached_input_tokens=0,
+        output_tokens=123,
+    )
+
+    class FailureWithUsage:
+        def parse(self, problem_text, *, repair_error_codes=()):
+            error = TextbookParserError("private response omitted")
+            error.usage_summary = recovered
+            raise error
+
+    outcome = parse_textbook_problem(
+        fixture["problem_text"],
+        config=_config(ParserMode.required),
+        client=FailureWithUsage(),
+        cache=ParserCache(path=str(tmp_path / "recovered-usage.sqlite3")),
+    )
+    assert outcome.request_attempt_count == 1
+    assert outcome.usage.input_tokens == 321
+    assert outcome.usage.output_tokens == 123
+    assert outcome.usage_unavailable is False
+    assert (
+        outcome.conservative_cost_upper_bound_usd
+        == outcome.usage.estimated_cost_usd
+    )
+
+
+def test_pydantic_diagnostics_only_keep_field_paths_and_error_types(tmp_path):
+    fixture = _fixture()
+
+    class InvalidSchema:
+        def parse(self, problem_text, *, repair_error_codes=()):
+            TextbookProblemParseV1.model_validate({"schema": "wrong"})
+            raise AssertionError("unreachable")
+
+    outcome = parse_textbook_problem(
+        fixture["problem_text"],
+        config=_config(ParserMode.required),
+        client=InvalidSchema(),
+        cache=ParserCache(path=str(tmp_path / "pydantic-diagnostics.sqlite3")),
+    )
+    assert outcome.failure_code == ErrorCode.repair_failed.value
+    assert outcome.request_attempt_count == 2
+    assert all(
+        item.exception_category == "pydantic_validation_error"
+        for item in outcome.attempt_diagnostics
+    )
+    serialized = json.dumps(
+        [item.to_dict() for item in outcome.attempt_diagnostics]
+    )
+    assert "input_value" not in serialized
+    assert "wrong" not in serialized
+    assert all(
+        detail.field_path and detail.error_type
+        for item in outcome.attempt_diagnostics
+        for detail in item.validation_errors
+    )
+
+
+def test_conservative_budget_reservation_can_block_repair_request(tmp_path):
+    fixture = _fixture()
+    parsed = TextbookProblemParseV1.model_validate(fixture["parse"])
+    config = _config(ParserMode.required)
+    first_reservation = conservative_attempt_cost_upper_bound(
+        config.model,
+        input_character_budget=(
+            len(load_prompt()) + len(fixture["problem_text"])
+        ),
+        max_output_tokens=config.max_output_tokens,
+    )
+
+    class SchemaThenSuccess(_RecordedClient):
+        def parse(self, problem_text, *, repair_error_codes=()):
+            self.calls += 1
+            if self.calls == 1:
+                raise ValueError("schema failure")
+            return super().parse(
+                problem_text, repair_error_codes=repair_error_codes
+            )
+
+    client = SchemaThenSuccess(parsed)
+    outcome = parse_textbook_problem(
+        fixture["problem_text"],
+        config=config,
+        client=client,
+        cache=ParserCache(path=str(tmp_path / "budget-reservation.sqlite3")),
+        cost_budget_usd=first_reservation * 1.1,
+    )
+    assert outcome.failure_code == ErrorCode.parser_budget_exceeded.value
+    assert outcome.request_attempt_count == 1
+    assert outcome.retry_count == 0
+    assert client.calls == 1
+    assert outcome.usage_unavailable is True
 
 
 @pytest.mark.parametrize(

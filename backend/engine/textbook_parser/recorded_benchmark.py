@@ -11,7 +11,12 @@ Structured Outputs client.
 import re
 from typing import Any
 
-from engine.textbook_parser.benchmark import BenchmarkCase, GoldLabels, Prediction
+from engine.textbook_parser.benchmark import (
+    BenchmarkCase,
+    GoldLabels,
+    Prediction,
+    semantic_graph_from_parse,
+)
 from engine.textbook_parser.canonical_projection import project_canonical
 from engine.textbook_parser.contracts import TextbookProblemParseV1
 from engine.textbook_parser.orchestrator import validate_recorded_payload
@@ -370,6 +375,7 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
         supported_status="supported" if validated.accepted else validated.status.value,
         expected_end_to_end_answer=answer,
         expected_terminal_status=terminal,
+        semantic_graph=semantic_graph_from_parse(parse),
     )
     return Prediction(case_id=case.case_id, labels=labels, confident_solve=confident)
 

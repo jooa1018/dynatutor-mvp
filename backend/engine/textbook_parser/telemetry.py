@@ -65,6 +65,29 @@ def aggregate_usage(model: str, *attempts: UsageSummary) -> UsageSummary:
     )
 
 
+def conservative_attempt_cost_upper_bound(
+    model: str,
+    *,
+    input_character_budget: int,
+    max_output_tokens: int,
+) -> float:
+    """Reserve a privacy-safe upper estimate before an API request.
+
+    One input token per source/prompt character is intentionally conservative.
+    A successful response replaces this reservation with measured SDK usage. An
+    exception without usage metadata retains the reservation, so missing usage
+    can never make the bounded live runner appear cheaper than it may have been.
+    """
+
+    estimate = estimate_cost(
+        model,
+        input_tokens=max(input_character_budget, 0),
+        cached_input_tokens=0,
+        output_tokens=max(max_output_tokens, 0),
+    )
+    return estimate.estimated_cost_usd
+
+
 def text_hash(normalized_problem_text: str) -> str:
     return hashlib.sha256(normalized_problem_text.encode("utf-8")).hexdigest()
 
@@ -74,6 +97,7 @@ __all__ = [
     "PRICING_VERSION",
     "UsageSummary",
     "aggregate_usage",
+    "conservative_attempt_cost_upper_bound",
     "estimate_cost",
     "text_hash",
 ]

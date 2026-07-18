@@ -24,6 +24,7 @@ class StructuredParseResponse:
     parsed: TextbookProblemParseV1
     usage: UsageSummary
     response_id: str | None
+    usage_available: bool = True
 
 
 class OpenAITextbookParserClient:
@@ -95,60 +96,101 @@ class OpenAITextbookParserClient:
                 tools=[],
                 max_output_tokens=self.config.max_output_tokens,
             )
-        except ValidationError:
+        except ValidationError as exc:
             # Structured Outputs can be syntactically valid JSON while failing
             # the Pydantic graph contract. Preserve that typed signal so the
             # orchestrator performs its one and only schema-repair attempt.
+            usage_summary = self._usage_from_object(
+                getattr(exc, "response", None)
+            )
+            if usage_summary is not None:
+                try:
+                    setattr(exc, "usage_summary", usage_summary)
+                except (AttributeError, TypeError):
+                    pass
             raise
         except Exception as exc:
-            self._raise_mapped(exc)
+            self._raise_mapped(
+                exc,
+                usage_summary=self._usage_from_object(
+                    getattr(exc, "response", None)
+                ),
+            )
             raise
         finally:
             self._semaphore.release()
 
+        recovered_usage = self._usage_from_object(response)
+        usage_summary = recovered_usage or UsageSummary()
         for item in getattr(response, "output", ()) or ():
             for content in getattr(item, "content", ()) or ():
                 if getattr(content, "type", None) == "refusal" or getattr(content, "refusal", None):
-                    raise ParserRefusalError("model refused the structured parse request")
+                    error = ParserRefusalError(
+                        "model refused the structured parse request"
+                    )
+                    if recovered_usage is not None:
+                        error.usage_summary = recovered_usage
+                    raise error
         parsed = getattr(response, "output_parsed", None)
         if parsed is None:
-            raise TextbookParserError("structured response did not contain output_parsed")
-        usage = getattr(response, "usage", None)
+            error = TextbookParserError(
+                "structured response did not contain output_parsed"
+            )
+            if recovered_usage is not None:
+                error.usage_summary = recovered_usage
+            raise error
+        return StructuredParseResponse(
+            parsed=parsed,
+            usage=usage_summary,
+            response_id=getattr(response, "id", None),
+            usage_available=recovered_usage is not None,
+        )
+
+    def _usage_from_object(self, response: Any) -> UsageSummary | None:
+        usage = getattr(response, "usage", None) if response is not None else None
+        if usage is None:
+            return None
         input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
         output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
         input_details = getattr(usage, "input_tokens_details", None)
         output_details = getattr(usage, "output_tokens_details", None)
-        usage_summary = estimate_cost(
+        return estimate_cost(
             self.config.model,
             input_tokens=input_tokens,
             cached_input_tokens=int(getattr(input_details, "cached_tokens", 0) or 0),
             output_tokens=output_tokens,
             reasoning_tokens=int(getattr(output_details, "reasoning_tokens", 0) or 0),
         )
-        return StructuredParseResponse(
-            parsed=parsed,
-            usage=usage_summary,
-            response_id=getattr(response, "id", None),
-        )
 
     @staticmethod
-    def _raise_mapped(exc: Exception) -> None:
+    def _raise_mapped(
+        exc: Exception, *, usage_summary: UsageSummary | None = None
+    ) -> None:
+        def attach(error: TextbookParserError) -> TextbookParserError:
+            if usage_summary is not None:
+                error.usage_summary = usage_summary
+            return error
+
         name = type(exc).__name__.lower()
         status = getattr(exc, "status_code", None)
         if status == 401 or "authentication" in name:
             error = ParserUnavailableError("parser authentication failed")
             error.code = ErrorCode.parser_auth
-            raise error from exc
+            raise attach(error) from exc
         if status == 429:
             message = str(exc).lower()
             error = ParserUnavailableError("parser quota or rate limit rejected the request")
             error.code = ErrorCode.parser_quota if "quota" in message else ErrorCode.parser_rate_limited
-            raise error from exc
+            raise attach(error) from exc
         if "timeout" in name:
             error = ParserUnavailableError("parser request timed out")
             error.code = ErrorCode.parser_timeout
-            raise error from exc
-        raise TextbookParserError(f"parser request failed: {type(exc).__name__}") from exc
+            raise attach(error) from exc
+        raise attach(
+            TextbookParserError(
+                f"parser request failed: {type(exc).__name__}"
+            )
+        ) from exc
 
 
 __all__ = ["OpenAITextbookParserClient", "StructuredParseResponse"]
