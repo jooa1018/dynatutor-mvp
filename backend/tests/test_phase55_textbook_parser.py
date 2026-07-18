@@ -371,15 +371,16 @@ def test_unit_substrings_and_wrong_semantic_dimensions_are_critical_vetoes():
     assert any("dimensionally incompatible" in item.message for item in validated.issues)
 
 
-def test_capability_uses_only_candidate_referenced_assumptions():
+def test_capability_auto_closes_a_unique_server_accepted_required_assumption():
     fixture = _fixture()
     fixture["parse"]["interpretation_candidates"][0]["assumption_ids"] = []
     validated = validate_parse(
         fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
     )
-    assert validated.status == ParseDecisionStatus.solver_gap
-    assert "v0" not in validated.candidates[0].capability.supplied_symbols
-    assert validated.candidates[0].capability.missing_inputs
+    assert validated.status == ParseDecisionStatus.accepted_with_visible_assumptions
+    assert "v0" in validated.candidates[0].capability.supplied_symbols
+    assert not validated.candidates[0].capability.missing_inputs
+    assert validated.candidates[0].auto_attached_assumption_ids == ("starts_at_rest",)
 
 
 @pytest.mark.parametrize(

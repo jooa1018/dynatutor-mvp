@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
+import json
 import time
 from typing import Any, Protocol
 
@@ -8,11 +10,21 @@ from pydantic import ValidationError
 
 from engine.textbook_parser.cache import CacheEntry, ParserCache, build_cache_key
 from engine.textbook_parser.config import TextbookParserConfig
-from engine.textbook_parser.contracts import TextbookProblemParseV1
+from engine.textbook_parser.contracts import (
+    SCHEMA_VERSION,
+    TextbookProblemParseV1,
+    TextbookProblemParseWireV2,
+)
 from engine.textbook_parser.errors import (
     ErrorCode,
     ParserBudgetError,
+    RepairIssueV1,
     TextbookParserError,
+    repair_issue_from_validation,
+)
+from engine.textbook_parser.normalization import (
+    WireNormalizationError,
+    normalize_wire_parse,
 )
 from engine.textbook_parser.openai_client import (
     OpenAITextbookParserClient,
@@ -36,16 +48,29 @@ from engine.textbook_parser.validators.safety import validate_payload_authority
 REPAIRABLE_CODES = frozenset(
     {
         ErrorCode.schema_error.value,
+        ErrorCode.invalid_enum.value,
         ErrorCode.invalid_reference.value,
+        ErrorCode.duplicate_id.value,
         ErrorCode.evidence_quote_missing.value,
         ErrorCode.evidence_occurrence_missing.value,
+        ErrorCode.quantity_occurrence_missing.value,
+        ErrorCode.quantity_span_mismatch.value,
+        ErrorCode.candidate_binding_mismatch.value,
+        ErrorCode.relation_binding_missing.value,
+        ErrorCode.motion_model_mismatch.value,
+        ErrorCode.temporal_binding_ambiguous.value,
+        ErrorCode.capability_missing.value,
     }
 )
 
 
 class StructuredParserClient(Protocol):
     def parse(
-        self, problem_text: str, *, repair_error_codes: tuple[str, ...] = ()
+        self,
+        problem_text: str,
+        *,
+        repair_error_codes: tuple[str, ...] = (),
+        repair_issues: tuple[RepairIssueV1, ...] = (),
     ) -> StructuredParseResponse: ...
 
 
@@ -68,6 +93,10 @@ class AttemptDiagnostic:
     exception_category: str
     validation_errors: tuple[ValidationErrorDetail, ...] = ()
     usage_unavailable: bool = False
+    request_id: str | None = None
+    response_status: int | str | None = None
+    incomplete_reason: str | None = None
+    repair_issues: tuple[RepairIssueV1, ...] = ()
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -78,6 +107,10 @@ class AttemptDiagnostic:
                 item.to_dict() for item in self.validation_errors
             ],
             "usage_unavailable": self.usage_unavailable,
+            "request_id": self.request_id,
+            "response_status": self.response_status,
+            "incomplete_reason": self.incomplete_reason,
+            "repair_issues": [item.to_dict() for item in self.repair_issues],
         }
 
 
@@ -98,6 +131,7 @@ class ParseOutcome:
     usage_unavailable: bool = False
     attempt_diagnostics: tuple[AttemptDiagnostic, ...] = ()
     repair_error_codes: tuple[str, ...] = ()
+    repair_issues: tuple[RepairIssueV1, ...] = ()
     failure_code: str | None = None
 
     def diagnostic_context(self) -> dict[str, object]:
@@ -116,20 +150,13 @@ class ParseOutcome:
                 selected = self.validated.candidates[0]
             selected_candidate = self.validated.selected_candidate
             if selected_candidate is None and selected is not None:
-                selected_candidate = next(
-                    (
-                        item
-                        for item in self.validated.parse.interpretation_candidates
-                        if item.candidate_id == selected.candidate_id
-                    ),
-                    None,
-                )
+                selected_candidate = selected.effective_candidate
         capability = selected.capability if selected is not None else None
         score = selected.score if selected is not None else None
         binding = capability.binding.to_dict() if capability is not None else {}
         return {
             "selected_system_type": (
-                selected_candidate.system_type
+                selected_candidate.system_type.value
                 if selected_candidate is not None
                 else None
             ),
@@ -146,6 +173,33 @@ class ParseOutcome:
             "binding_completeness": binding.get("completeness"),
             "validation_veto_codes": (
                 list(score.veto_codes) if score is not None else []
+            ),
+            "candidate_exists": selected_candidate is not None,
+            "candidate_fact_id_count": (
+                len(selected_candidate.fact_ids) if selected_candidate else 0
+            ),
+            "candidate_query_id_count": (
+                len(selected_candidate.query_ids) if selected_candidate else 0
+            ),
+            "candidate_assumption_id_count": (
+                len(selected_candidate.assumption_ids) if selected_candidate else 0
+            ),
+            "auto_attached_assumption_ids": (
+                list(selected.auto_attached_assumption_ids) if selected else []
+            ),
+            "graph_counts": (
+                {
+                    "entities": len(self.validated.parse.entities),
+                    "segments": len(self.validated.parse.motion_segments),
+                    "events": len(self.validated.parse.events),
+                    "facts": len(self.validated.parse.explicit_facts),
+                    "relations": len(self.validated.parse.relations),
+                    "queries": len(self.validated.parse.queries),
+                    "assumptions": len(self.validated.parse.assumption_proposals),
+                    "candidates": len(self.validated.parse.interpretation_candidates),
+                }
+                if self.validated is not None
+                else None
             ),
         }
 
@@ -175,7 +229,7 @@ class ParseOutcome:
             "schema": (
                 parse.schema if parse is not None else "dynatutor.textbook_parse"
             ),
-            "version": parse.version if parse is not None else "1.1",
+            "version": parse.version if parse is not None else SCHEMA_VERSION,
             "model": self.model,
             "prompt_version": self.prompt_version,
             "entities": [
@@ -253,6 +307,7 @@ class ParseOutcome:
             "request_attempt_count": self.request_attempt_count,
             "retry_count": self.retry_count,
             "repair_error_codes": list(self.repair_error_codes),
+            "repair_issues": [item.to_dict() for item in self.repair_issues],
             "attempt_diagnostics": [
                 item.to_dict() for item in self.attempt_diagnostics
             ],
@@ -267,13 +322,75 @@ def validate_recorded_payload(
     authority_issues = validate_payload_authority(payload)
     if authority_issues:
         raise ValueError(authority_issues[0].message)
-    parse = TextbookProblemParseV1.model_validate(payload)
+    recorded = dict(payload)
+    if recorded.get("version") == "1.1":
+        recorded["version"] = SCHEMA_VERSION
+    wire = TextbookProblemParseWireV2.model_validate(recorded)
+    parse = normalize_wire_parse(problem_text, wire)
     return validate_parse(problem_text, parse)
 
 
 def _exception_usage(exc: Exception) -> UsageSummary | None:
     usage = getattr(exc, "usage_summary", None)
     return usage if isinstance(usage, UsageSummary) else None
+
+
+def _path_text(path: tuple[str | int, ...]) -> str:
+    return ".".join(str(item) for item in path)
+
+
+def _repair_issues_from_exception(
+    exc: Exception, *, phase: str
+) -> tuple[RepairIssueV1, ...]:
+    if isinstance(exc, WireNormalizationError):
+        return exc.issues
+    if isinstance(exc, ValidationError):
+        out: list[RepairIssueV1] = []
+        for item in exc.errors():
+            path = tuple(item.get("loc", ()))
+            error_type = str(item.get("type", "validation_error"))
+            code = (
+                ErrorCode.invalid_enum.value
+                if "enum" in error_type or "literal" in error_type
+                else ErrorCode.schema_error.value
+            )
+            context = item.get("ctx") or {}
+            expected = context.get("expected")
+            out.append(
+                RepairIssueV1(
+                    phase=phase,
+                    code=code,
+                    path=_path_text(path),
+                    error_type=error_type,
+                    reason_code=error_type,
+                    allowed_metadata=(
+                        {"expected_enum": str(expected)}
+                        if expected is not None
+                        else None
+                    ),
+                )
+            )
+        return tuple(out)
+    if isinstance(exc, TextbookParserError) and exc.repairable:
+        return (
+            RepairIssueV1(
+                phase=phase,
+                code=exc.code.value,
+                path="",
+                reason_code=exc.incomplete_reason or exc.code.value,
+            ),
+        )
+    if isinstance(exc, ValueError):
+        return (
+            RepairIssueV1(
+                phase=phase,
+                code=ErrorCode.schema_error.value,
+                path="",
+                error_type="value_error",
+                reason_code="value_error",
+            ),
+        )
+    return ()
 
 
 def _sanitized_exception(
@@ -293,6 +410,8 @@ def _sanitized_exception(
             )
             for item in exc.errors()
         )
+    elif isinstance(exc, WireNormalizationError):
+        category = "wire_normalization_error"
     elif isinstance(exc, TextbookParserError):
         category = exc.code.value
     elif isinstance(exc, ValueError):
@@ -305,6 +424,10 @@ def _sanitized_exception(
         exception_category=category,
         validation_errors=validation_errors,
         usage_unavailable=usage_unavailable,
+        request_id=getattr(exc, "request_id", None),
+        response_status=getattr(exc, "response_status", None),
+        incomplete_reason=getattr(exc, "incomplete_reason", None),
+        repair_issues=_repair_issues_from_exception(exc, phase=phase),
     )
 
 
@@ -333,6 +456,7 @@ def _failure_outcome(
     validation_latency_ms: float,
     diagnostics: list[AttemptDiagnostic],
     repair_error_codes: tuple[str, ...] = (),
+    repair_issues: tuple[RepairIssueV1, ...] = (),
     validated: ValidatedParse | None = None,
 ) -> ParseOutcome:
     usage = aggregate_usage(config.model, *attempt_usages)
@@ -354,8 +478,46 @@ def _failure_outcome(
         usage_unavailable=bool(unknown_reservations),
         attempt_diagnostics=tuple(diagnostics),
         repair_error_codes=repair_error_codes,
+        repair_issues=repair_issues,
         failure_code=code,
     )
+
+
+def _validation_repair_issues(
+    validated: ValidatedParse,
+) -> tuple[RepairIssueV1, ...]:
+    parse = validated.parse
+    if (
+        parse.parse_status.value in {
+            "needs_figure",
+            "insufficient_information",
+            "unsupported",
+        }
+        or parse.figure_dependency.level.value == "required"
+        or parse.unsupported_features
+    ):
+        return ()
+    if any(
+        issue.code
+        in {ErrorCode.invented_explicit_number, ErrorCode.contradictory_fact}
+        for issue in validated.issues
+    ):
+        return ()
+    out: list[RepairIssueV1] = []
+    seen: set[tuple[str, str, str | None]] = set()
+    for issue in validated.issues:
+        if issue.code.value not in REPAIRABLE_CODES:
+            continue
+        if issue.code == ErrorCode.capability_missing and not (
+            issue.metadata and issue.metadata.get("missing_symbols")
+        ):
+            continue
+        item = repair_issue_from_validation(issue, phase="server_validation")
+        key = (item.code, item.path, item.referenced_id)
+        if key not in seen:
+            seen.add(key)
+            out.append(item)
+    return tuple(out)
 
 
 def parse_textbook_problem(
@@ -436,12 +598,20 @@ def parse_textbook_problem(
     def request(
         *,
         repair_error_codes: tuple[str, ...] = (),
+        repair_issues: tuple[RepairIssueV1, ...] = (),
         phase: str,
     ) -> StructuredParseResponse:
         nonlocal request_attempt_count, parser_latency_ms
         repair_overhead = (
-            512 + sum(len(item) for item in repair_error_codes)
-            if repair_error_codes
+            512
+            + len(
+                json.dumps(
+                    [item.to_dict() for item in repair_issues],
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            )
+            if repair_issues
             else 0
         )
         reservation = conservative_attempt_cost_upper_bound(
@@ -464,9 +634,12 @@ def parse_textbook_problem(
         request_attempt_count += 1
         request_started = time.perf_counter()
         try:
-            response = parser_client.parse(
-                problem_text, repair_error_codes=repair_error_codes
-            )
+            kwargs: dict[str, object] = {
+                "repair_error_codes": repair_error_codes,
+            }
+            if "repair_issues" in inspect.signature(parser_client.parse).parameters:
+                kwargs["repair_issues"] = repair_issues
+            response = parser_client.parse(problem_text, **kwargs)
         except (TextbookParserError, ValidationError, ValueError) as exc:
             recovered = _exception_usage(exc)
             if recovered is not None:
@@ -492,25 +665,24 @@ def parse_textbook_problem(
             unknown_reservations.append(reservation)
         return response
 
+    schema_repair_count = 0
+    initial_repair_issues: tuple[RepairIssueV1, ...] = ()
     try:
         structured = request(phase="initial_schema_parse")
-    except TextbookParserError as exc:
-        return _failure_outcome(
-            config=config,
-            code=exc.code.value,
-            problem_digest=problem_digest,
-            attempt_usages=attempt_usages,
-            unknown_reservations=unknown_reservations,
-            request_attempt_count=request_attempt_count,
-            parser_latency_ms=parser_latency_ms,
-            validation_latency_ms=validation_latency_ms,
-            diagnostics=diagnostics,
+    except (TextbookParserError, ValidationError, WireNormalizationError, ValueError) as exc:
+        initial_repair_issues = _repair_issues_from_exception(
+            exc, phase="initial_schema_parse"
         )
-    except (ValidationError, ValueError):
-        if config.max_retries != 1:
+        repair_codes = tuple(sorted({item.code for item in initial_repair_issues}))
+        if config.max_retries != 1 or not initial_repair_issues:
+            code = (
+                exc.code.value
+                if isinstance(exc, TextbookParserError)
+                else ErrorCode.schema_error.value
+            )
             return _failure_outcome(
                 config=config,
-                code=ErrorCode.schema_error.value,
+                code=code,
                 problem_digest=problem_digest,
                 attempt_usages=attempt_usages,
                 unknown_reservations=unknown_reservations,
@@ -518,17 +690,19 @@ def parse_textbook_problem(
                 parser_latency_ms=parser_latency_ms,
                 validation_latency_ms=validation_latency_ms,
                 diagnostics=diagnostics,
-                repair_error_codes=(ErrorCode.schema_error.value,),
+                repair_error_codes=repair_codes,
+                repair_issues=initial_repair_issues,
             )
         try:
             structured = request(
-                repair_error_codes=(ErrorCode.schema_error.value,),
+                repair_error_codes=repair_codes,
+                repair_issues=initial_repair_issues,
                 phase="schema_repair",
             )
-        except ParserBudgetError as exc:
+        except ParserBudgetError as budget_error:
             return _failure_outcome(
                 config=config,
-                code=exc.code.value,
+                code=budget_error.code.value,
                 problem_digest=problem_digest,
                 attempt_usages=attempt_usages,
                 unknown_reservations=unknown_reservations,
@@ -536,9 +710,10 @@ def parse_textbook_problem(
                 parser_latency_ms=parser_latency_ms,
                 validation_latency_ms=validation_latency_ms,
                 diagnostics=diagnostics,
-                repair_error_codes=(ErrorCode.schema_error.value,),
+                repair_error_codes=repair_codes,
+                repair_issues=initial_repair_issues,
             )
-        except (TextbookParserError, ValidationError, ValueError):
+        except (TextbookParserError, ValidationError, WireNormalizationError, ValueError):
             return _failure_outcome(
                 config=config,
                 code=ErrorCode.repair_failed.value,
@@ -549,30 +724,27 @@ def parse_textbook_problem(
                 parser_latency_ms=parser_latency_ms,
                 validation_latency_ms=validation_latency_ms,
                 diagnostics=diagnostics,
-                repair_error_codes=(ErrorCode.schema_error.value,),
+                repair_error_codes=repair_codes,
+                repair_issues=initial_repair_issues,
             )
         schema_repair_count = 1
-    else:
-        schema_repair_count = 0
 
     validation_started = time.perf_counter()
     validated = validate_parse(problem_text, structured.parsed)
     validation_latency_ms += (
         time.perf_counter() - validation_started
     ) * 1000
+    validation_repair_issues = _validation_repair_issues(validated)
     repair_codes = tuple(
-        sorted(
-            {
-                issue.code.value
-                for issue in validated.issues
-                if issue.code.value in REPAIRABLE_CODES
-            }
-        )
+        sorted({item.code for item in validation_repair_issues})
     )
-    if repair_codes and config.max_retries == 1 and schema_repair_count == 0:
+    used_repair_issues = initial_repair_issues
+    if validation_repair_issues and config.max_retries == 1 and schema_repair_count == 0:
+        used_repair_issues = validation_repair_issues
         try:
             structured = request(
                 repair_error_codes=repair_codes,
+                repair_issues=validation_repair_issues,
                 phase="validation_repair",
             )
             validation_started = time.perf_counter()
@@ -592,9 +764,10 @@ def parse_textbook_problem(
                 validation_latency_ms=validation_latency_ms,
                 diagnostics=diagnostics,
                 repair_error_codes=repair_codes,
+                repair_issues=validation_repair_issues,
                 validated=validated,
             )
-        except (TextbookParserError, ValidationError, ValueError):
+        except (TextbookParserError, ValidationError, WireNormalizationError, ValueError):
             return _failure_outcome(
                 config=config,
                 code=ErrorCode.repair_failed.value,
@@ -606,9 +779,46 @@ def parse_textbook_problem(
                 validation_latency_ms=validation_latency_ms,
                 diagnostics=diagnostics,
                 repair_error_codes=repair_codes,
+                repair_issues=validation_repair_issues,
                 validated=validated,
             )
+        remaining_repair_issues = _validation_repair_issues(validated)
+        if remaining_repair_issues:
+            return _failure_outcome(
+                config=config,
+                code=ErrorCode.repair_failed.value,
+                problem_digest=problem_digest,
+                attempt_usages=attempt_usages,
+                unknown_reservations=unknown_reservations,
+                request_attempt_count=request_attempt_count,
+                parser_latency_ms=parser_latency_ms,
+                validation_latency_ms=validation_latency_ms,
+                diagnostics=diagnostics,
+                repair_error_codes=tuple(
+                    sorted({item.code for item in remaining_repair_issues})
+                ),
+                repair_issues=remaining_repair_issues,
+                validated=validated,
+            )
+    elif validation_repair_issues and schema_repair_count == 1:
+        return _failure_outcome(
+            config=config,
+            code=ErrorCode.repair_failed.value,
+            problem_digest=problem_digest,
+            attempt_usages=attempt_usages,
+            unknown_reservations=unknown_reservations,
+            request_attempt_count=request_attempt_count,
+            parser_latency_ms=parser_latency_ms,
+            validation_latency_ms=validation_latency_ms,
+            diagnostics=diagnostics,
+            repair_error_codes=repair_codes,
+            repair_issues=validation_repair_issues,
+            validated=validated,
+        )
 
+    final_repair_codes = repair_codes or tuple(
+        sorted({item.code for item in initial_repair_issues})
+    )
     aggregate = aggregate_usage(config.model, *attempt_usages)
     outcome = ParseOutcome(
         status=validated.status,
@@ -627,7 +837,8 @@ def parse_textbook_problem(
         ),
         usage_unavailable=bool(unknown_reservations),
         attempt_diagnostics=tuple(diagnostics),
-        repair_error_codes=repair_codes,
+        repair_error_codes=final_repair_codes,
+        repair_issues=used_repair_issues,
     )
     cache.put(
         cache_key,

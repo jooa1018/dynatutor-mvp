@@ -21,13 +21,16 @@ from engine.textbook_parser.canonical_projection import PROJECTION_VERSION
 from engine.textbook_parser.confidence import DECISION_POLICY_VERSION
 from engine.textbook_parser.corrections import CORRECTION_POLICY_VERSION
 from engine.textbook_parser.ontology import ONTOLOGY_VERSION
+from engine.textbook_parser.graph_validation import GRAPH_POLICY_VERSION
+from engine.textbook_parser.normalization import NORMALIZATION_POLICY_VERSION
 from engine.textbook_parser.prompt import PROMPT_VERSION, load_prompt
+from engine.textbook_parser.repair import REPAIR_POLICY_VERSION
 from engine.textbook_parser.telemetry import UsageSummary
 from engine.textbook_parser.validation import VALIDATOR_POLICY_VERSION
 from engine.textbook_parser.temporal_bindings import TEMPORAL_BINDING_POLICY_VERSION
 
 
-CACHE_FORMAT_VERSION = "textbook-cache-v3"
+CACHE_FORMAT_VERSION = "textbook-cache-v4-wire-v2"
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,9 @@ def build_cache_key(problem_text: str, model: str) -> str:
         DECISION_POLICY_VERSION,
         CORRECTION_POLICY_VERSION,
         TEMPORAL_BINDING_POLICY_VERSION,
+        GRAPH_POLICY_VERSION,
+        NORMALIZATION_POLICY_VERSION,
+        REPAIR_POLICY_VERSION,
     )
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
 
@@ -164,6 +170,9 @@ class ParserCache:
             "decision_policy_version": DECISION_POLICY_VERSION,
             "correction_policy_version": CORRECTION_POLICY_VERSION,
             "temporal_binding_policy_version": TEMPORAL_BINDING_POLICY_VERSION,
+            "graph_policy_version": GRAPH_POLICY_VERSION,
+            "normalization_policy_version": NORMALIZATION_POLICY_VERSION,
+            "repair_policy_version": REPAIR_POLICY_VERSION,
             "prompt_content_hash": hashlib.sha256(load_prompt().encode("utf-8")).hexdigest(),
             "usage": entry.usage.to_dict(),
         }

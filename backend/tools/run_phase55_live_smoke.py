@@ -127,7 +127,7 @@ def _prediction(case, outcome: ParseOutcome) -> Prediction:
         ],
         events=[item.kind.value for item in parse.events],
         explicit_facts=[
-            f"{item.semantic_key}:{item.raw_value}:{item.raw_unit}"
+            f"{item.semantic_key.value}:{item.raw_value}:{item.raw_unit}"
             for item in parse.explicit_facts
         ],
         fact_entity_binding={
@@ -149,7 +149,7 @@ def _prediction(case, outcome: ParseOutcome) -> Prediction:
         in {"needs_confirmation", "insufficient_information", "needs_figure"},
         figure_dependency=parse.figure_dependency.level.value,
         expected_system_type=(
-            candidate.system_type if candidate is not None else None
+            candidate.system_type.value if candidate is not None else None
         ),
         expected_solver=solver_id,
         supported_status=(

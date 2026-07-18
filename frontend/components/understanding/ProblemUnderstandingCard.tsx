@@ -46,6 +46,7 @@ export default function ProblemUnderstandingCard({
   const directFacts = (parse.explicit_facts ?? []).filter((fact: any) => ['solver_input', 'constraint'].includes(fact.relevance));
   const contextFacts = (parse.explicit_facts ?? []).filter((fact: any) => ['context_only', 'unused'].includes(fact.relevance));
   const assumptions = parse.accepted_assumptions ?? [];
+  const autoAttachedAssumptions = new Set<string>(parse.auto_attached_assumption_ids ?? []);
   const canApprove = parse.requires_approval && parse.approval_fingerprint && ['accepted', 'accepted_with_visible_assumptions'].includes(parse.status);
 
   const draftSegments = draft?.motion_segments ?? [];
@@ -128,7 +129,7 @@ export default function ProblemUnderstandingCard({
         </div>
         <div>
           <p className="col-label">추론 조건</p>
-          <List items={assumptions.map((item: any) => `${item.reason} (${item.proposed_value} ${item.proposed_unit})`)} />
+          <List items={assumptions.map((item: any) => `${item.reason} (${item.proposed_value} ${item.proposed_unit})${autoAttachedAssumptions.has(item.assumption_id) ? ' · 서버 자동 연결' : ''}`)} />
         </div>
         <div>
           <p className="col-label">이번 계산에 직접 사용하지 않는 조건</p>

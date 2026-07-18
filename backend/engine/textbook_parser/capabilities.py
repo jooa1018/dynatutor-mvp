@@ -9,7 +9,100 @@ from engine.textbook_parser.contracts import InterpretationCandidate, TextbookPr
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
 
 
-CAPABILITY_POLICY_VERSION = "textbook-capability-v3"
+CAPABILITY_POLICY_VERSION = "textbook-capability-v4-assumption-closure"
+
+
+@dataclass(frozen=True)
+class CandidateAssumptionClosure:
+    candidate: InterpretationCandidate
+    auto_attached_assumption_ids: tuple[str, ...]
+
+
+def _missing_requirements(entry, symbols: set[str]) -> list[str]:
+    requirements = entry.get("required_inputs") or {}
+    missing: list[str] = []
+    for symbol in requirements.get("all_of") or []:
+        if symbol not in symbols:
+            missing.append(symbol)
+    any_of = list(requirements.get("any_of") or [])
+    if any_of and not (set(any_of) & symbols):
+        missing.append("one_of:" + "|".join(any_of))
+    for rule in requirements.get("conditional") or []:
+        conditional_symbols = list(rule.get("symbols") or [])
+        minimum = int(rule.get("minimum_present") or 0)
+        if conditional_symbols and len(set(conditional_symbols) & symbols) < minimum:
+            missing.append(f"{minimum}_of:" + "|".join(conditional_symbols))
+    return missing
+
+
+def close_candidate_assumptions(
+    parse: TextbookProblemParseV1,
+    candidate: InterpretationCandidate,
+    evaluations: tuple[AssumptionEvaluation, ...],
+    *,
+    matrix: CapabilityMatrix | None = None,
+) -> CandidateAssumptionClosure:
+    """Attach only unambiguous server-accepted inputs required by capability."""
+
+    matrix = matrix or load_capability_matrix()
+    entry = matrix.for_problem(candidate.system_type, candidate.subtype)
+    if entry is None:
+        return CandidateAssumptionClosure(candidate, ())
+    binding = evaluate_candidate_bindings(parse, candidate)
+    symbols = {item.symbol for item in binding.bindings}
+    missing_before = _missing_requirements(entry, symbols)
+    if not missing_before:
+        return CandidateAssumptionClosure(candidate, ())
+
+    proposal_by_id = {item.assumption_id: item for item in parse.assumption_proposals}
+    evaluation_by_id = {item.assumption_id: item for item in evaluations}
+    query_by_id = {item.query_id: item for item in parse.queries}
+    query_subjects = {
+        query_by_id[item].subject_id
+        for item in candidate.query_ids
+        if item in query_by_id
+    }
+    targets = set(candidate.target_segment_ids)
+    eligible_by_symbol: dict[str, list[str]] = {}
+    for assumption_id, evaluation in evaluation_by_id.items():
+        if assumption_id in candidate.assumption_ids:
+            continue
+        if evaluation.disposition not in {
+            AssumptionDisposition.accepted_default,
+            AssumptionDisposition.accepted_visible,
+        }:
+            continue
+        symbol = evaluation.resolved_symbol
+        proposal = proposal_by_id.get(assumption_id)
+        if symbol is None or proposal is None:
+            continue
+        if len(query_subjects) != 1 or proposal.subject_id not in query_subjects:
+            continue
+        if proposal.segment_id not in targets:
+            continue
+        if len(_missing_requirements(entry, symbols | {symbol})) >= len(missing_before):
+            continue
+        eligible_by_symbol.setdefault(symbol, []).append(assumption_id)
+
+    attached: list[str] = []
+    for symbol in sorted(eligible_by_symbol):
+        ids = eligible_by_symbol[symbol]
+        if len(ids) != 1:
+            continue
+        assumption_id = ids[0]
+        if len(_missing_requirements(entry, symbols | {symbol})) < len(
+            _missing_requirements(entry, symbols)
+        ):
+            attached.append(assumption_id)
+            symbols.add(symbol)
+    if not attached:
+        return CandidateAssumptionClosure(candidate, ())
+    return CandidateAssumptionClosure(
+        candidate.model_copy(
+            update={"assumption_ids": [*candidate.assumption_ids, *attached]}
+        ),
+        tuple(attached),
+    )
 
 
 @dataclass(frozen=True)
@@ -117,19 +210,7 @@ def check_capability(
             tuple(issues),
         )
 
-    requirements = entry.get("required_inputs") or {}
-    missing: list[str] = []
-    for symbol in requirements.get("all_of") or []:
-        if symbol not in symbols:
-            missing.append(symbol)
-    any_of = list(requirements.get("any_of") or [])
-    if any_of and not (set(any_of) & symbols):
-        missing.append("one_of:" + "|".join(any_of))
-    for rule in requirements.get("conditional") or []:
-        conditional_symbols = list(rule.get("symbols") or [])
-        minimum = int(rule.get("minimum_present") or 0)
-        if len(set(conditional_symbols) & symbols) < minimum:
-            missing.append(f"{minimum}_of:" + "|".join(conditional_symbols))
+    missing = _missing_requirements(entry, symbols)
 
     queries = [query for query in parse.queries if query.query_id in candidate.query_ids]
     allowed_outputs = set(entry.get("requested_outputs") or [])
@@ -155,7 +236,7 @@ def check_capability(
                 "deterministic solver inputs are incomplete",
                 path=f"interpretation_candidates.{candidate.candidate_id}.fact_ids",
                 referenced_id=candidate.candidate_id,
-                metadata={"missing_inputs": missing},
+                metadata={"missing_symbols": missing},
             )
         )
     safe = bool(entry.get("textbook_parser_safe", False))
@@ -181,4 +262,10 @@ def check_capability(
     )
 
 
-__all__ = ["CAPABILITY_POLICY_VERSION", "CapabilityCheck", "check_capability"]
+__all__ = [
+    "CAPABILITY_POLICY_VERSION",
+    "CandidateAssumptionClosure",
+    "CapabilityCheck",
+    "check_capability",
+    "close_candidate_assumptions",
+]

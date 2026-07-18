@@ -9,7 +9,7 @@ from engine.textbook_parser.errors import Severity, ValidationIssue
 from engine.textbook_parser.errors import ErrorCode
 
 
-DECISION_POLICY_VERSION = "textbook-decision-v3"
+DECISION_POLICY_VERSION = "textbook-decision-v4-closure"
 TIE_MARGIN = 0.08
 
 
@@ -44,12 +44,15 @@ def score_candidate(
         ErrorCode.answer_authority_field,
         ErrorCode.evidence_quote_missing,
         ErrorCode.evidence_occurrence_missing,
+        ErrorCode.quantity_occurrence_missing,
         ErrorCode.invented_explicit_number,
         ErrorCode.raw_value_mismatch,
         ErrorCode.raw_unit_mismatch,
         ErrorCode.quantity_span_mismatch,
         ErrorCode.quantity_occurrence_reused,
         ErrorCode.contradictory_fact,
+        ErrorCode.invalid_reference,
+        ErrorCode.duplicate_id,
         ErrorCode.candidate_binding_mismatch,
         ErrorCode.canonical_symbol_collision,
         ErrorCode.motion_model_mismatch,

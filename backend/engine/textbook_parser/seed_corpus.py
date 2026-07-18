@@ -23,6 +23,10 @@ def _case(
     answer: dict[str, Any] | None,
     *,
     entity: str = "object",
+    entities: list[str] | None = None,
+    segments: list[str] | None = None,
+    fact_entities: list[str] | None = None,
+    fact_segments: list[str | None] | None = None,
     query: str = "requested_output:object:motion_1",
     events: list[str] | None = None,
     relations: list[str] | None = None,
@@ -49,12 +53,18 @@ def _case(
         category=category,
         problem_text=text,
         gold=GoldLabels(
-            entities=[entity],
-            segments=["motion_1:target"],
-            events=events or ["start"],
+            entities=entities or [entity],
+            segments=["motion_1:target"] if segments is None else segments,
+            events=["start"] if events is None else events,
             explicit_facts=facts,
-            fact_entity_binding={item: entity for item in fact_ids},
-            fact_segment_binding={item: "motion_1" for item in fact_ids},
+            fact_entity_binding={
+                item: (fact_entities[index] if fact_entities else entity)
+                for index, item in enumerate(fact_ids)
+            },
+            fact_segment_binding={
+                item: (fact_segments[index] if fact_segments else "motion_1")
+                for index, item in enumerate(fact_ids)
+            },
             relations=relations or [],
             queries=[query],
             assumptions=assumptions or [],
@@ -136,6 +146,12 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 [f"mass_1:{mass_1}:kg", f"mass_2:{mass_2}:kg"],
                 {"symbolic": "deterministic_atwood", "unit": "m/s^2"},
                 entity="system",
+                entities=["system", "mass_a", "mass_b", "pulley"],
+                fact_entities=["mass_a", "mass_b"],
+                relations=[
+                    "connected_by_rope:mass_a:mass_b",
+                    "passes_over_pulley:mass_a:mass_b:pulley",
+                ],
                 assumptions=["massless_rope", "frictionless"],
                 query="acceleration:system:motion_1",
             )
@@ -184,6 +200,9 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 [f"angular_velocity:{omega}:rad/s", f"radius:{radius}:m"],
                 {"numeric": radius * omega, "unit": "m/s"},
                 entity="point",
+                entities=["body", "point"],
+                fact_entities=["body", "point"],
+                relations=["point_on_body:body:point"],
                 query="tangential_velocity:point:motion_1",
             )
         )
@@ -230,7 +249,9 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 status="insufficient_information",
                 terminal="insufficient_information",
                 clarify=True,
-                query="time:object:motion_1",
+                segments=[],
+                events=[],
+                query="time:object:",
             )
         )
         cases.append(
@@ -247,7 +268,9 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 terminal="needs_figure",
                 clarify=True,
                 figure="required",
-                query="final_velocity:point:motion_1",
+                segments=[],
+                events=[],
+                query="final_velocity:point:",
             )
         )
         force = index + 1

@@ -30,6 +30,8 @@ test('Phase 55 understanding card exposes graph, evidence, and authority boundar
   assert.match(card, /data-correction="candidate-selection"/);
   assert.match(card, /type="checkbox"/);
   assert.match(card, /candidate_id} system type/);
+  assert.match(card, /auto_attached_assumption_ids/);
+  assert.match(card, /서버 자동 연결/);
 });
 
 test('Phase 55 correction controls render as native keyboard controls', () => {

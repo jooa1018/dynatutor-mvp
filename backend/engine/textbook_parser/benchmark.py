@@ -253,7 +253,7 @@ def semantic_graph_from_parse(parse: TextbookProblemParseV1) -> SemanticGraph:
         facts=[
             SemanticFact(
                 fact_id=item.fact_id,
-                semantic_key=item.semantic_key,
+                semantic_key=item.semantic_key.value,
                 raw_value=_normalize_value(item.raw_value),
                 raw_unit=_normalize_unit(item.raw_unit),
                 subject_id=item.subject_id,

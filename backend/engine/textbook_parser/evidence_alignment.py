@@ -6,6 +6,7 @@ import unicodedata
 
 from engine.textbook_parser.contracts import ExplicitFact, TextbookProblemParseV1
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
+from engine.textbook_parser.ontology import semantic_dimensions
 
 
 _NUMBER_PATTERN = (
@@ -67,39 +68,6 @@ _UNIT_ALIASES = {
     "kg·m^2": "moment_of_inertia",
     "kg·m²": "moment_of_inertia",
     "kg·m2": "moment_of_inertia",
-}
-
-_SEMANTIC_DIMENSIONS = {
-    "acceleration": {"acceleration"},
-    "angular_acceleration": {"angular_acceleration"},
-    "angular_velocity": {"angular_velocity"},
-    "angle": {"angle"},
-    "coefficient_of_friction": {"dimensionless"},
-    "displacement": {"length"},
-    "distance": {"length"},
-    "background_height": {"length"},
-    "height": {"length"},
-    "radius": {"length"},
-    "duration": {"time"},
-    "period": {"time"},
-    "time": {"time"},
-    "initial_velocity": {"velocity"},
-    "final_velocity": {"velocity"},
-    "velocity": {"velocity"},
-    "velocity_before": {"velocity"},
-    "velocity_after": {"velocity"},
-    "mass": {"mass"},
-    "mass_1": {"mass"},
-    "mass_2": {"mass"},
-    "force": {"force"},
-    "frequency": {"frequency"},
-    "work": {"energy", "energy_or_torque"},
-    "energy": {"energy", "energy_or_torque"},
-    "torque": {"energy_or_torque"},
-    "impulse": {"impulse"},
-    "spring_constant": {"spring_constant"},
-    "moment_of_inertia": {"moment_of_inertia"},
-    "restitution_coefficient": {"dimensionless"},
 }
 
 _SOURCE_UNIT_TOKENS = tuple(
@@ -227,7 +195,7 @@ def _unit_dimension(unit: str) -> str | None:
 
 
 def _dimension_matches(fact: ExplicitFact) -> bool:
-    expected = _SEMANTIC_DIMENSIONS.get(fact.semantic_key)
+    expected = semantic_dimensions(fact.semantic_key)
     if expected is None:
         return True
     actual = _unit_dimension(fact.raw_unit)
@@ -318,7 +286,7 @@ def align_explicit_fact(problem_text: str, fact: ExplicitFact) -> tuple[SourceSp
     if not matching_quantities:
         issues.append(
             ValidationIssue(
-                ErrorCode.quantity_span_mismatch,
+                ErrorCode.quantity_occurrence_missing,
                 Severity.critical,
                 "raw_value and raw_unit are not one source quantity expression",
                 path=f"explicit_facts.{fact.fact_id}",
@@ -347,15 +315,20 @@ def align_explicit_fact(problem_text: str, fact: ExplicitFact) -> tuple[SourceSp
 
 def _quoted_fields(parse: TextbookProblemParseV1):
     for item in parse.entities:
-        yield f"entities.{item.entity_id}.evidence_quote", item.evidence_quote
+        if item.evidence_quote:
+            yield f"entities.{item.entity_id}.evidence_quote", item.evidence_quote
     for item in parse.motion_segments:
-        yield f"motion_segments.{item.segment_id}.evidence_quote", item.evidence_quote
+        if item.evidence_quote:
+            yield f"motion_segments.{item.segment_id}.evidence_quote", item.evidence_quote
     for item in parse.events:
-        yield f"events.{item.event_id}.evidence_quote", item.evidence_quote
+        if item.evidence_quote:
+            yield f"events.{item.event_id}.evidence_quote", item.evidence_quote
     for item in parse.relations:
-        yield f"relations.{item.relation_id}.evidence_quote", item.evidence_quote
+        if item.evidence_quote:
+            yield f"relations.{item.relation_id}.evidence_quote", item.evidence_quote
     for item in parse.queries:
-        yield f"queries.{item.query_id}.evidence_quote", item.evidence_quote
+        if item.evidence_quote:
+            yield f"queries.{item.query_id}.evidence_quote", item.evidence_quote
     for item in parse.assumption_proposals:
         if item.supporting_quote:
             yield f"assumption_proposals.{item.assumption_id}.supporting_quote", item.supporting_quote

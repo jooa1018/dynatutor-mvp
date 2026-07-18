@@ -8,20 +8,28 @@ from typing import Any
 from pydantic import ValidationError
 
 from engine.textbook_parser.config import TextbookParserConfig
-from engine.textbook_parser.contracts import TextbookProblemParseV1
+from engine.textbook_parser.contracts import (
+    TextbookProblemParseV2,
+    TextbookProblemParseWireV2,
+)
 from engine.textbook_parser.errors import (
     ErrorCode,
+    ParserIncompleteError,
+    ParserOutputMissingError,
     ParserRefusalError,
     ParserUnavailableError,
+    RepairIssueV1,
     TextbookParserError,
 )
+from engine.textbook_parser.normalization import normalize_wire_parse
 from engine.textbook_parser.prompt import load_prompt
+from engine.textbook_parser.repair import format_repair_request
 from engine.textbook_parser.telemetry import UsageSummary, estimate_cost
 
 
 @dataclass(frozen=True)
 class StructuredParseResponse:
-    parsed: TextbookProblemParseV1
+    parsed: TextbookProblemParseV2
     usage: UsageSummary
     response_id: str | None
     usage_available: bool = True
@@ -61,6 +69,7 @@ class OpenAITextbookParserClient:
         problem_text: str,
         *,
         repair_error_codes: tuple[str, ...] = (),
+        repair_issues: tuple[RepairIssueV1, ...] = (),
     ) -> StructuredParseResponse:
         if len(problem_text) > self.config.max_problem_chars:
             error = TextbookParserError("problem exceeds parser input character budget")
@@ -68,18 +77,21 @@ class OpenAITextbookParserClient:
             raise error
         instructions = load_prompt()
         input_payload: Any = problem_text
-        if repair_error_codes:
-            input_payload = [
-                {
-                    "role": "user",
-                    "content": (
-                        "Re-parse the original problem. Correct only these validator codes: "
-                        + ", ".join(repair_error_codes)
-                        + "\n\nORIGINAL PROBLEM:\n"
-                        + problem_text
-                    ),
-                }
-            ]
+        if repair_issues:
+            input_payload = format_repair_request(problem_text, repair_issues)
+        elif repair_error_codes:
+            input_payload = format_repair_request(
+                problem_text,
+                tuple(
+                    RepairIssueV1(
+                        phase="legacy_repair",
+                        code=code,
+                        path="",
+                        reason_code=code,
+                    )
+                    for code in repair_error_codes
+                ),
+            )
         acquired = self._semaphore.acquire(timeout=self.config.timeout_seconds)
         if not acquired:
             error = ParserUnavailableError("parser concurrency budget is saturated")
@@ -90,7 +102,7 @@ class OpenAITextbookParserClient:
                 model=self.config.model,
                 instructions=instructions,
                 input=input_payload,
-                text_format=TextbookProblemParseV1,
+                text_format=TextbookProblemParseWireV2,
                 reasoning={"effort": self.config.reasoning_effort},
                 store=False,
                 tools=[],
@@ -122,6 +134,16 @@ class OpenAITextbookParserClient:
 
         recovered_usage = self._usage_from_object(response)
         usage_summary = recovered_usage or UsageSummary()
+        response_status = getattr(response, "status", None)
+        incomplete_details = getattr(response, "incomplete_details", None)
+        if response_status == "incomplete" or incomplete_details is not None:
+            error = ParserIncompleteError("structured response was incomplete")
+            error.response_status = response_status
+            error.incomplete_reason = getattr(incomplete_details, "reason", None)
+            error.request_id = getattr(response, "id", None)
+            if recovered_usage is not None:
+                error.usage_summary = recovered_usage
+            raise error
         for item in getattr(response, "output", ()) or ():
             for content in getattr(item, "content", ()) or ():
                 if getattr(content, "type", None) == "refusal" or getattr(content, "refusal", None):
@@ -133,14 +155,17 @@ class OpenAITextbookParserClient:
                     raise error
         parsed = getattr(response, "output_parsed", None)
         if parsed is None:
-            error = TextbookParserError(
+            error = ParserOutputMissingError(
                 "structured response did not contain output_parsed"
             )
+            error.response_status = response_status
+            error.request_id = getattr(response, "id", None)
             if recovered_usage is not None:
                 error.usage_summary = recovered_usage
             raise error
+        normalized = normalize_wire_parse(problem_text, parsed)
         return StructuredParseResponse(
-            parsed=parsed,
+            parsed=normalized,
             usage=usage_summary,
             response_id=getattr(response, "id", None),
             usage_available=recovered_usage is not None,
@@ -167,12 +192,28 @@ class OpenAITextbookParserClient:
         exc: Exception, *, usage_summary: UsageSummary | None = None
     ) -> None:
         def attach(error: TextbookParserError) -> TextbookParserError:
+            error.request_id = (
+                getattr(exc, "request_id", None)
+                or getattr(getattr(exc, "response", None), "id", None)
+            )
+            error.response_status = status
+            details = getattr(getattr(exc, "response", None), "incomplete_details", None)
+            if getattr(details, "reason", None) is not None:
+                error.incomplete_reason = getattr(details, "reason", None)
             if usage_summary is not None:
                 error.usage_summary = usage_summary
             return error
 
         name = type(exc).__name__.lower()
         status = getattr(exc, "status_code", None)
+        if "lengthfinishreason" in name or "length_finish" in name:
+            error = ParserIncompleteError("structured response reached its output limit")
+            error.code = ErrorCode.parser_length_finish
+            error.incomplete_reason = "max_output_tokens"
+            raise attach(error) from exc
+        if "refusal" in name or "contentfilter" in name or "content_filter" in name:
+            error = ParserRefusalError("model refused the structured parse request")
+            raise attach(error) from exc
         if status == 401 or "authentication" in name:
             error = ParserUnavailableError("parser authentication failed")
             error.code = ErrorCode.parser_auth
@@ -186,11 +227,12 @@ class OpenAITextbookParserClient:
             error = ParserUnavailableError("parser request timed out")
             error.code = ErrorCode.parser_timeout
             raise attach(error) from exc
-        raise attach(
-            TextbookParserError(
-                f"parser request failed: {type(exc).__name__}"
-            )
-        ) from exc
+        error = TextbookParserError(
+            f"parser request failed: {type(exc).__name__}"
+        )
+        if status is not None:
+            error.code = ErrorCode.parser_api_status
+        raise attach(error) from exc
 
 
 __all__ = ["OpenAITextbookParserClient", "StructuredParseResponse"]

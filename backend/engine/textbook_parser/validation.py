@@ -8,30 +8,38 @@ from engine.textbook_parser.assumption_policy import (
     AssumptionEvaluation,
     evaluate_assumptions,
 )
-from engine.textbook_parser.capabilities import CapabilityCheck, check_capability
+from engine.textbook_parser.capabilities import (
+    CapabilityCheck,
+    check_capability,
+    close_candidate_assumptions,
+)
 from engine.textbook_parser.confidence import CandidateScore, TIE_MARGIN, score_candidate
 from engine.textbook_parser.contracts import (
     FigureDependencyLevel,
+    InterpretationCandidate,
     ParseStatus,
     TextbookProblemParseV1,
 )
 from engine.textbook_parser.evidence_alignment import EvidenceValidation, validate_evidence
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
+from engine.textbook_parser.graph_validation import validate_graph_contract
 from engine.textbook_parser.validators.semantic import validate_semantics
 
 
-VALIDATOR_POLICY_VERSION = "textbook-validator-v5"
+VALIDATOR_POLICY_VERSION = "textbook-validator-v6-field-paths"
 SAFETY_VETO_CODES = frozenset(
     {
         ErrorCode.answer_authority_field.value,
         ErrorCode.evidence_quote_missing.value,
         ErrorCode.evidence_occurrence_missing.value,
+        ErrorCode.quantity_occurrence_missing.value,
         ErrorCode.invented_explicit_number.value,
         ErrorCode.raw_value_mismatch.value,
         ErrorCode.raw_unit_mismatch.value,
         ErrorCode.quantity_span_mismatch.value,
         ErrorCode.quantity_occurrence_reused.value,
         ErrorCode.invalid_reference.value,
+        ErrorCode.duplicate_id.value,
         ErrorCode.contradictory_fact.value,
         ErrorCode.candidate_binding_mismatch.value,
         ErrorCode.canonical_symbol_collision.value,
@@ -56,12 +64,18 @@ class ParseDecisionStatus(str, Enum):
 @dataclass(frozen=True)
 class CandidateEvaluation:
     candidate_id: str
+    effective_candidate: InterpretationCandidate
+    auto_attached_assumption_ids: tuple[str, ...]
     capability: CapabilityCheck
     score: CandidateScore
 
     def to_dict(self) -> dict[str, object]:
         return {
             "candidate_id": self.candidate_id,
+            "effective_candidate": self.effective_candidate.model_dump(mode="json"),
+            "auto_attached_assumption_ids": list(
+                self.auto_attached_assumption_ids
+            ),
             "capability": self.capability.to_dict(),
             "score": self.score.to_dict(),
         }
@@ -89,8 +103,8 @@ class ValidatedParse:
         if self.selected_candidate_id is None:
             return None
         return next(
-            item
-            for item in self.parse.interpretation_candidates
+            item.effective_candidate
+            for item in self.candidates
             if item.candidate_id == self.selected_candidate_id
         )
 
@@ -121,12 +135,15 @@ def _candidate_related_issues(
         ErrorCode.answer_authority_field,
         ErrorCode.evidence_quote_missing,
         ErrorCode.evidence_occurrence_missing,
+        ErrorCode.quantity_occurrence_missing,
         ErrorCode.invented_explicit_number,
         ErrorCode.raw_value_mismatch,
         ErrorCode.raw_unit_mismatch,
         ErrorCode.quantity_span_mismatch,
         ErrorCode.quantity_occurrence_reused,
         ErrorCode.contradictory_fact,
+        ErrorCode.invalid_reference,
+        ErrorCode.duplicate_id,
         ErrorCode.candidate_binding_mismatch,
         ErrorCode.canonical_symbol_collision,
         ErrorCode.motion_model_mismatch,
@@ -145,27 +162,44 @@ def _candidate_related_issues(
 def validate_parse(problem_text: str, parse: TextbookProblemParseV1) -> ValidatedParse:
     evidence = validate_evidence(problem_text, parse)
     assumptions = evaluate_assumptions(problem_text, parse)
-    issues: list[ValidationIssue] = list(evidence.issues)
+    graph_issues = validate_graph_contract(parse)
+    issues: list[ValidationIssue] = list(graph_issues)
+    issues.extend(evidence.issues)
     issues.extend(validate_semantics(parse))
 
     evaluations: list[CandidateEvaluation] = []
-    for candidate in parse.interpretation_candidates:
-        capability = check_capability(parse, candidate, assumptions)
+    graph_blocks_evaluation = any(
+        item.code in {ErrorCode.invalid_reference, ErrorCode.duplicate_id}
+        and item.severity in {Severity.error, Severity.critical}
+        for item in graph_issues
+    )
+    for candidate in (() if graph_blocks_evaluation else parse.interpretation_candidates):
+        closure = close_candidate_assumptions(parse, candidate, assumptions)
+        effective_candidate = closure.candidate
+        capability = check_capability(parse, effective_candidate, assumptions)
         issues.extend(capability.issues)
         related_ids = (
-            set(candidate.fact_ids)
-            | set(candidate.query_ids)
-            | set(candidate.assumption_ids)
-            | {candidate.candidate_id}
+            set(effective_candidate.fact_ids)
+            | set(effective_candidate.query_ids)
+            | set(effective_candidate.assumption_ids)
+            | {effective_candidate.candidate_id}
         )
         score = score_candidate(
             parse,
-            candidate,
+            effective_candidate,
             issues=_candidate_related_issues(tuple(issues), related_ids),
             assumptions=assumptions,
             capability=capability,
         )
-        evaluations.append(CandidateEvaluation(candidate.candidate_id, capability, score))
+        evaluations.append(
+            CandidateEvaluation(
+                candidate.candidate_id,
+                effective_candidate,
+                closure.auto_attached_assumption_ids,
+                capability,
+                score,
+            )
+        )
 
     if parse.figure_dependency.level == FigureDependencyLevel.required:
         status = ParseDecisionStatus.needs_figure
@@ -185,11 +219,7 @@ def validate_parse(problem_text: str, parse: TextbookProblemParseV1) -> Validate
         best = ranked[0]
         selected = best.candidate_id
         by_id = {item.assumption_id: item for item in assumptions}
-        candidate = next(
-            item
-            for item in parse.interpretation_candidates
-            if item.candidate_id == best.candidate_id
-        )
+        candidate = best.effective_candidate
         candidate_assumptions = [by_id[item] for item in candidate.assumption_ids]
         has_blocking_assumption = any(
             item.disposition

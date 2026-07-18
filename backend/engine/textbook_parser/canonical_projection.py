@@ -18,7 +18,7 @@ from engine.textbook_parser.contracts import (
 from engine.textbook_parser.validation import ValidatedParse
 
 
-PROJECTION_VERSION = "textbook-canonical-projection-v4"
+PROJECTION_VERSION = "textbook-canonical-projection-v5-boundary-closure"
 
 def _raw_number(value: str) -> float:
     compact = value.translate(str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻", "0123456789+-"))
@@ -96,7 +96,7 @@ def project_canonical(problem_text: str, validated: ValidatedParse) -> Canonical
             matched_text=span.quote,
             provenance_hint="unit_normalization" if (value != _raw_number(fact.raw_value) or unit != (fact.raw_unit or None)) else None,
             subject_evidence={
-                "binding_rule": "textbook_parse_v1_1_event_boundary",
+                "binding_rule": "textbook_parse_v2_temporal_boundary_v2",
                 "resolved_subject_id": fact.subject_id,
                 "segment_id": fact.segment_id,
                 "event_id": fact.event_id,
@@ -144,7 +144,7 @@ def project_canonical(problem_text: str, validated: ValidatedParse) -> Canonical
                 event_selection[query.output_key.value] = "last"
 
     canonical = CanonicalProblem(
-        system_type=candidate.system_type,
+        system_type=candidate.system_type.value,
         subtype=candidate.subtype,
         language=parse.language,
         objects=[

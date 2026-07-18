@@ -11,11 +11,12 @@ from engine.textbook_parser.contracts import (
     TextbookProblemParseV1,
 )
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
+from engine.textbook_parser.graph_validation import adjacent_boundary_target
 from engine.textbook_parser.ontology import canonical_symbol
 from engine.textbook_parser.temporal_bindings import resolve_fact_symbol
 
 
-BINDING_POLICY_VERSION = "candidate-binding-v2"
+BINDING_POLICY_VERSION = "candidate-binding-v3-actor-query"
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,7 @@ _SYSTEM_MOTION_MODELS: dict[str, frozenset[MotionModel]] = {
 }
 
 _SYSTEM_RELATION_KINDS: dict[str, frozenset[RelationKind]] = {
+    "fixed_axis_rotation": frozenset({RelationKind.point_on_body}),
     "impulse_momentum": frozenset({RelationKind.collides_with, RelationKind.contact_with}),
     "pulley_atwood": frozenset({RelationKind.connected_by_rope, RelationKind.passes_over_pulley}),
     "pulley_table_hanging": frozenset({RelationKind.connected_by_rope, RelationKind.passes_over_pulley}),
@@ -383,12 +385,20 @@ def evaluate_candidate_bindings(
     )
     for fact_id in ordered_fact_ids:
         fact = fact_by_id[fact_id]
+        adjacent_target = adjacent_boundary_target(parse, fact, target_segments)
+        effective_target_segment_id = (
+            fact.segment_id
+            if fact.segment_id in target_segments
+            else adjacent_target.segment_id if adjacent_target is not None else None
+        )
         temporal = resolve_fact_symbol(
             parse,
             fact,
             target_segment_ids=target_segments,
             role=role_by_entity.get(fact.subject_id),
             role_count=len(relevant_entities),
+            system_type=candidate.system_type,
+            effective_target_segment_id=effective_target_segment_id,
         )
         symbol = (
             temporal.symbol
@@ -400,14 +410,18 @@ def evaluate_candidate_bindings(
             issues.append(temporal.issue)
         valid = (
             fact.relevance in {FactRelevance.solver_input, FactRelevance.constraint}
-            and fact.segment_id in target_segments
+            and effective_target_segment_id in target_segments
             and fact.subject_id in relevant_entities
         )
         if candidate.system_type == "constant_acceleration_1d":
             valid = valid and fact.subject_id in query_subjects
         if fact.event_id is not None:
             event = event_by_id[fact.event_id]
-            valid = valid and event.segment_id in {None, fact.segment_id}
+            valid = valid and event.segment_id in {
+                None,
+                fact.segment_id,
+                effective_target_segment_id,
+            }
         if fact.kind.value == "vector_component" and fact.direction in {
             Direction.unspecified,
             Direction.not_applicable,

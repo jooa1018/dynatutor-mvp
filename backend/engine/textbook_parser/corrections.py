@@ -6,7 +6,7 @@ from typing import Any
 from engine.textbook_parser.contracts import TextbookProblemParseV1
 
 
-CORRECTION_POLICY_VERSION = "textbook-correction-v2"
+CORRECTION_POLICY_VERSION = "textbook-correction-v3-controlled-vocabulary"
 _ID_FIELDS = {
     "entities": "entity_id",
     "motion_segments": "segment_id",

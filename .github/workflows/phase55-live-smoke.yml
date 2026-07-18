@@ -8,6 +8,7 @@ permissions:
 
 jobs:
   live-smoke:
+    if: ${{ vars.PHASE55_RUN_LIVE_SMOKE == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -28,9 +29,9 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements-lock.txt
       - run: python -m pip install -r requirements-lock.txt
-      - name: Run bounded 20-case live smoke
+      - name: Run bounded staged 8+12 live smoke
         if: env.OPENAI_API_KEY != ''
-        run: python tools/run_phase55_live_smoke.py
+        run: python tools/run_phase55_live_staged.py
       - name: Report missing key without claiming PASS
         if: env.OPENAI_API_KEY == ''
         run: |

@@ -8,7 +8,7 @@ import re
 from engine.textbook_parser.contracts import AssumptionKind, AssumptionProposal, TextbookProblemParseV1
 
 
-ASSUMPTION_POLICY_VERSION = "assumption-policy-v2"
+ASSUMPTION_POLICY_VERSION = "assumption-policy-v3-server-closure"
 
 
 class AssumptionDisposition(str, Enum):

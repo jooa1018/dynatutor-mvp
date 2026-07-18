@@ -8,6 +8,7 @@ from engine.textbook_parser.contracts import (
     TextbookProblemParseV1,
 )
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
+from engine.textbook_parser.graph_validation import adjacent_boundary_target
 
 
 def validate_semantics(parse: TextbookProblemParseV1) -> list[ValidationIssue]:
@@ -45,11 +46,18 @@ def validate_semantics(parse: TextbookProblemParseV1) -> list[ValidationIssue]:
     for candidate in parse.interpretation_candidates:
         target_segments = set(candidate.target_segment_ids)
         for fact_id in candidate.fact_ids:
-            fact = fact_by_id[fact_id]
+            fact = fact_by_id.get(fact_id)
+            # The graph validator owns dangling-reference diagnostics.  Keep
+            # this semantic pass total so malformed model output can reach the
+            # single field-level repair path instead of raising KeyError.
+            if fact is None:
+                continue
+            adjacent_target = adjacent_boundary_target(parse, fact, target_segments)
             if (
                 fact.relevance in {FactRelevance.solver_input, FactRelevance.constraint}
                 and fact.segment_id is not None
                 and fact.segment_id not in target_segments
+                and adjacent_target is None
             ):
                 issues.append(
                     ValidationIssue(
@@ -61,8 +69,13 @@ def validate_semantics(parse: TextbookProblemParseV1) -> list[ValidationIssue]:
                     )
                 )
             if fact.event_id is not None and fact.segment_id is not None:
-                event = event_by_id[fact.event_id]
-                if event.segment_id is not None and event.segment_id != fact.segment_id:
+                event = event_by_id.get(fact.event_id)
+                if (
+                    event is not None
+                    and event.segment_id is not None
+                    and event.segment_id != fact.segment_id
+                    and adjacent_target is None
+                ):
                     issues.append(
                         ValidationIssue(
                             ErrorCode.invalid_reference,
@@ -73,7 +86,9 @@ def validate_semantics(parse: TextbookProblemParseV1) -> list[ValidationIssue]:
                         )
                     )
         for query_id in candidate.query_ids:
-            query = query_by_id[query_id]
+            query = query_by_id.get(query_id)
+            if query is None:
+                continue
             if query.segment_id is not None and query.segment_id not in target_segments:
                 issues.append(
                     ValidationIssue(
@@ -85,7 +100,9 @@ def validate_semantics(parse: TextbookProblemParseV1) -> list[ValidationIssue]:
                     )
                 )
         for assumption_id in candidate.assumption_ids:
-            assumption = assumption_by_id[assumption_id]
+            assumption = assumption_by_id.get(assumption_id)
+            if assumption is None:
+                continue
             if assumption.segment_id is not None and assumption.segment_id not in target_segments:
                 issues.append(
                     ValidationIssue(

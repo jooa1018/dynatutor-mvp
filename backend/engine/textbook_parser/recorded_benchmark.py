@@ -19,6 +19,7 @@ from engine.textbook_parser.benchmark import (
 )
 from engine.textbook_parser.canonical_projection import project_canonical
 from engine.textbook_parser.contracts import TextbookProblemParseV1
+from engine.textbook_parser.contracts import SCHEMA_VERSION
 from engine.textbook_parser.orchestrator import validate_recorded_payload
 from engine.textbook_parser.validation import ParseDecisionStatus
 
@@ -170,6 +171,44 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
     spec = _CATEGORY[case.category]
     text = case.problem_text
     entity_id = str(spec["entity"])
+    if case.category == "도르래·구속조건":
+        entity_specs = [
+            ("system", "system"),
+            ("mass_a", "block"),
+            ("mass_b", "block"),
+            ("pulley", "pulley"),
+        ]
+        fact_subjects = ["mass_a", "mass_b"]
+        relations = [
+            {
+                "relation_id": "relation_rope",
+                "kind": "connected_by_rope",
+                "entity_ids": ["mass_a", "mass_b"],
+                "segment_id": "motion_1",
+            },
+            {
+                "relation_id": "relation_pulley",
+                "kind": "passes_over_pulley",
+                "entity_ids": ["mass_a", "mass_b", "pulley"],
+                "segment_id": "motion_1",
+            },
+        ]
+    elif case.category == "강체 속도·가속도":
+        entity_specs = [("body", "rigid_body"), ("point", "point")]
+        fact_subjects = ["body", "point"]
+        relations = [
+            {
+                "relation_id": "relation_point",
+                "kind": "point_on_body",
+                "entity_ids": ["body", "point"],
+                "segment_id": "motion_1",
+            }
+        ]
+    else:
+        entity_specs = [(entity_id, "point" if entity_id == "point" else "other")]
+        fact_subjects = [entity_id] * len(tuple(spec["facts"]))
+        relations = []
+    actor_ids = [item[0] for item in entity_specs]
     quantities = list(_QUANTITY_RE.finditer(text))
     semantic_keys = tuple(spec["facts"])
     if len(quantities) != len(semantic_keys):
@@ -189,7 +228,7 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
                 "symbol_hint": None,
                 "raw_value": match.group("value"),
                 "raw_unit": match.group("unit"),
-                "subject_id": entity_id,
+                "subject_id": fact_subjects[index - 1],
                 "segment_id": "motion_1",
                 "event_id": "event_1" if endpoint_initial else None,
                 "temporal_role": "initial" if endpoint_initial else "interval",
@@ -204,22 +243,24 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
         )
 
     event_kinds = tuple(spec["events"])
+    terminal_minimal = case.category in {"그림 필요", "조건 부족"}
     events = [
         {
             "event_id": f"event_{index}",
             "kind": kind,
-            "subject_ids": [entity_id],
+            "subject_ids": actor_ids,
             "segment_id": "motion_1",
             "evidence_quote": text,
         }
         for index, kind in enumerate(event_kinds, start=1)
+        if not terminal_minimal
     ]
     assumptions = [_assumption(kind, entity_id, text) for kind in spec["assumptions"]]
     query = {
         "query_id": "query_1",
         "output_key": spec["query"],
         "subject_id": entity_id,
-        "segment_id": "motion_1",
+        "segment_id": None if terminal_minimal else "motion_1",
         "event_id": None,
         "component": "magnitude",
         "evidence_quote": text,
@@ -243,23 +284,24 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
     figure_required = case.category == "그림 필요"
     return {
         "schema": "dynatutor.textbook_parse",
-        "version": "1.1",
+        "version": SCHEMA_VERSION,
         "language": "ko",
         "parse_status": spec.get("status", "complete"),
         "entities": [
             {
-                "entity_id": entity_id,
-                "kind": "point" if entity_id == "point" else "other",
-                "label": entity_id,
+                "entity_id": item_id,
+                "kind": item_kind,
+                "label": item_id,
                 "aliases": [],
                 "evidence_quote": text,
             }
+            for item_id, item_kind in entity_specs
         ],
-        "motion_segments": [
+        "motion_segments": [] if terminal_minimal else [
             {
                 "segment_id": "motion_1",
                 "order": 1,
-                "actor_ids": [entity_id],
+                "actor_ids": actor_ids,
                 "motion_model_candidates": [spec["model"]],
                 "start_event_id": "event_1",
                 "end_event_id": "event_2" if len(events) > 1 else None,
@@ -269,7 +311,7 @@ def recorded_seed_payload(case: BenchmarkCase) -> dict[str, Any]:
         ],
         "events": events,
         "explicit_facts": facts,
-        "relations": [],
+        "relations": relations,
         "queries": [query],
         "assumption_proposals": assumptions,
         "interpretation_candidates": candidates,
@@ -318,7 +360,7 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
             else None
         )
     )
-    system_type = selected_candidate.system_type if selected_candidate is not None else None
+    system_type = selected_candidate.system_type.value if selected_candidate is not None else None
     answer = None
     terminal = None
     confident = validated.accepted
@@ -349,7 +391,7 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
         segments=[f"{item.segment_id}:{item.relevance.value}" for item in parse.motion_segments],
         events=[item.kind.value for item in parse.events],
         explicit_facts=[
-            f"{item.semantic_key}:{item.raw_value}:{item.raw_unit}"
+            f"{item.semantic_key.value}:{item.raw_value}:{item.raw_unit}"
             for item in parse.explicit_facts
         ],
         fact_entity_binding={item.fact_id: item.subject_id for item in parse.explicit_facts},
