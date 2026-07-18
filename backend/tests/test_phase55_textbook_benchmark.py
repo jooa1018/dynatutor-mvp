@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from collections import Counter
 
-from engine.textbook_parser.benchmark import Prediction, evaluate_predictions
+from engine.textbook_parser.benchmark import evaluate_predictions, metamorphic_problem_variants
+from engine.textbook_parser.recorded_benchmark import (
+    recorded_seed_payload,
+    validate_recorded_seed_manifest,
+)
+from engine.textbook_parser.orchestrator import validate_recorded_payload
 from engine.textbook_parser.seed_corpus import repository_safe_seed_manifest
 
 
@@ -23,16 +28,9 @@ def test_repository_safe_seed_corpus_has_required_size_and_distribution():
     assert all(item.provenance.startswith("repository_safe") for item in manifest.cases)
 
 
-def test_benchmark_metric_calculator_passes_exact_recorded_gold_projection():
+def test_recorded_outputs_run_full_validator_route_and_solver_benchmark():
     manifest = repository_safe_seed_manifest()
-    predictions = [
-        Prediction(
-            case_id=item.case_id,
-            labels=item.gold,
-            confident_solve=item.gold.supported_status == "supported",
-        )
-        for item in manifest.cases
-    ]
+    predictions = validate_recorded_seed_manifest(manifest.cases)
     metrics = evaluate_predictions(manifest, predictions)
     assert metrics.case_count == 192
     assert metrics.explicit_fact_precision == 1.0
@@ -45,3 +43,33 @@ def test_benchmark_metric_calculator_passes_exact_recorded_gold_projection():
     assert metrics.safe_abstention == 1.0
     assert metrics.confident_wrong_solve == 0.0
     assert metrics.invented_explicit_fact_rate == 0.0
+
+
+def test_recorded_benchmark_adapter_never_projects_gold_labels():
+    import inspect
+    import engine.textbook_parser.recorded_benchmark as recorded
+
+    source = inspect.getsource(recorded.recorded_seed_payload)
+    assert ".gold" not in source
+    manifest = repository_safe_seed_manifest()
+    payload = recorded_seed_payload(manifest.cases[0])
+    assert payload["explicit_facts"]
+    assert payload["interpretation_candidates"]
+
+
+def test_metamorphic_seed_variants_remain_grounded_and_safe():
+    manifest = repository_safe_seed_manifest()
+    for case in manifest.cases[:10]:
+        baseline = validate_recorded_payload(
+            case.problem_text, recorded_seed_payload(case)
+        )
+        for variant_text in metamorphic_problem_variants(case.problem_text):
+            variant = case.model_copy(update={"problem_text": variant_text})
+            validated = validate_recorded_payload(
+                variant_text, recorded_seed_payload(variant)
+            )
+            assert validated.status == baseline.status
+            assert not any(
+                item.code.value == "invented_explicit_number"
+                for item in validated.issues
+            )
