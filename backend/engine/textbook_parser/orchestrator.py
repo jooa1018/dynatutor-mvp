@@ -87,6 +87,7 @@ class ParseOutcome:
             "rejected_assumptions": rejected_assumptions,
             "assumption_evaluations": validation.get("assumption_evaluations", []),
             "queries": [item.model_dump(mode="json") for item in parse.queries] if parse else [],
+            "interpretation_candidates": [item.model_dump(mode="json") for item in parse.interpretation_candidates] if parse else [],
             "ambiguities": [item.model_dump(mode="json") for item in parse.ambiguities] if parse else [],
             "figure_dependency": parse.figure_dependency.model_dump(mode="json") if parse else None,
             "warnings": [
@@ -179,13 +180,25 @@ def parse_textbook_problem(
             validation_latency_ms=round((time.perf_counter() - validation_started) * 1000, 3),
         )
 
+    parser_client = None
     try:
         parser_client = client or OpenAITextbookParserClient(config)
         structured = parser_client.parse(problem_text)
     except TextbookParserError as exc:
         return _failure_outcome(config=config, started=started, code=exc.code.value)
     except (ValidationError, ValueError):
-        return _failure_outcome(config=config, started=started, code=ErrorCode.schema_error.value)
+        if config.max_retries != 1 or parser_client is None:
+            return _failure_outcome(config=config, started=started, code=ErrorCode.schema_error.value)
+        try:
+            structured = parser_client.parse(
+                problem_text,
+                repair_error_codes=(ErrorCode.schema_error.value,),
+            )
+            schema_repair_count = 1
+        except (TextbookParserError, ValidationError, ValueError):
+            return _failure_outcome(config=config, started=started, code=ErrorCode.repair_failed.value)
+    else:
+        schema_repair_count = 0
 
     parser_elapsed = (time.perf_counter() - started) * 1000
     validation_started = time.perf_counter()
@@ -199,8 +212,8 @@ def parse_textbook_problem(
             }
         )
     )
-    retry_count = 0
-    if repair_codes and config.max_retries == 1:
+    retry_count = schema_repair_count
+    if repair_codes and config.max_retries == 1 and schema_repair_count == 0:
         retry_count = 1
         try:
             structured = parser_client.parse(
