@@ -148,7 +148,9 @@ def evaluate_predictions(
             if len(pieces) >= 3:
                 totals["unit_total"] += 1
                 totals["unit_ok"] += fact in gold.explicit_facts
-            numbers = _NUMBER_RE.findall(fact)
+            # Gold/prediction fact wire form is semantic_key:raw_value:raw_unit.
+            # Digits in semantic keys (mass_1, v2_after) are never source values.
+            numbers = _NUMBER_RE.findall(pieces[1]) if len(pieces) >= 2 else []
             totals["predicted_facts"] += 1
             if any(number not in _NUMBER_RE.findall(case.problem_text) for number in numbers):
                 totals["invented"] += 1
