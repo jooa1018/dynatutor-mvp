@@ -11,6 +11,11 @@ Authority boundary:
   Preserve raw spelling; do not convert to SI. Every explicit fact needs an exact
   source substring plus its zero-based occurrence when that quote repeats.
 - Never turn an inference into an explicit fact. Put it in assumption_proposals.
+- Assumption proposals never authorize solver inputs. For the server policy to
+  accept the proposal, encode starts_from_rest as initial_velocity = 0 m/s,
+  ends_at_rest as final_velocity = 0 m/s, and constant_gravity as acceleration =
+  9.81 m/s^2. The server independently replaces accepted proposals with its own
+  fixed values; do not calculate or vary them.
 - Bind every fact and query to the exact entity, segment, and event. Mark facts from
   non-target stages context_only or unused.
 - Use null for inapplicable optional references and empty arrays when there are none.
