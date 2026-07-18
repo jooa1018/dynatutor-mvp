@@ -83,6 +83,8 @@ class ParseOutcome:
             "segments": [item.model_dump(mode="json") for item in parse.motion_segments] if parse else [],
             "events": [item.model_dump(mode="json") for item in parse.events] if parse else [],
             "explicit_facts": [item.model_dump(mode="json") for item in parse.explicit_facts] if parse else [],
+            "relations": [item.model_dump(mode="json") for item in parse.relations] if parse else [],
+            "assumption_proposals": [item.model_dump(mode="json") for item in parse.assumption_proposals] if parse else [],
             "accepted_assumptions": accepted_assumptions,
             "rejected_assumptions": rejected_assumptions,
             "assumption_evaluations": validation.get("assumption_evaluations", []),
