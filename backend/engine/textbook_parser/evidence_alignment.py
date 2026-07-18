@@ -12,6 +12,90 @@ _NUMBER_RE = re.compile(
     r"(?<![\d.])[+−-]?(?:\d+(?:\.\d+)?|\.\d+)(?:\s*/\s*\d+(?:\.\d+)?)?(?![\d.])"
 )
 
+_UNIT_ALIASES = {
+    "": "dimensionless",
+    "1": "dimensionless",
+    "%": "dimensionless",
+    "m": "length",
+    "cm": "length",
+    "mm": "length",
+    "km": "length",
+    "미터": "length",
+    "s": "time",
+    "sec": "time",
+    "초": "time",
+    "min": "time",
+    "분": "time",
+    "h": "time",
+    "시간": "time",
+    "m/s": "velocity",
+    "m·s^-1": "velocity",
+    "m*s^-1": "velocity",
+    "km/h": "velocity",
+    "m/s^2": "acceleration",
+    "m/s2": "acceleration",
+    "m/s²": "acceleration",
+    "m·s^-2": "acceleration",
+    "m*s^-2": "acceleration",
+    "kg": "mass",
+    "g": "mass",
+    "n": "force",
+    "kn": "force",
+    "deg": "angle",
+    "도": "angle",
+    "°": "angle",
+    "rad": "angle",
+    "rad/s": "angular_velocity",
+    "rpm": "angular_velocity",
+    "rad/s^2": "angular_acceleration",
+    "rad/s2": "angular_acceleration",
+    "rad/s²": "angular_acceleration",
+    "hz": "frequency",
+    "j": "energy",
+    "n*m": "energy_or_torque",
+    "n·m": "energy_or_torque",
+    "n*s": "impulse",
+    "n·s": "impulse",
+    "n/m": "spring_constant",
+    "kg*m^2": "moment_of_inertia",
+    "kg*m2": "moment_of_inertia",
+    "kg·m^2": "moment_of_inertia",
+    "kg·m²": "moment_of_inertia",
+    "kg·m2": "moment_of_inertia",
+}
+
+_SEMANTIC_DIMENSIONS = {
+    "acceleration": {"acceleration"},
+    "angular_acceleration": {"angular_acceleration"},
+    "angular_velocity": {"angular_velocity"},
+    "angle": {"angle"},
+    "coefficient_of_friction": {"dimensionless"},
+    "displacement": {"length"},
+    "distance": {"length"},
+    "background_height": {"length"},
+    "height": {"length"},
+    "radius": {"length"},
+    "duration": {"time"},
+    "period": {"time"},
+    "time": {"time"},
+    "initial_velocity": {"velocity"},
+    "final_velocity": {"velocity"},
+    "velocity": {"velocity"},
+    "velocity_before": {"velocity"},
+    "mass": {"mass"},
+    "mass_1": {"mass"},
+    "mass_2": {"mass"},
+    "force": {"force"},
+    "frequency": {"frequency"},
+    "work": {"energy", "energy_or_torque"},
+    "energy": {"energy", "energy_or_torque"},
+    "torque": {"energy_or_torque"},
+    "impulse": {"impulse"},
+    "spring_constant": {"spring_constant"},
+    "moment_of_inertia": {"moment_of_inertia"},
+    "restitution_coefficient": {"dimensionless"},
+}
+
 
 @dataclass(frozen=True)
 class SourceSpan:
@@ -56,7 +140,30 @@ def _unit_occurs(quote: str, unit: str) -> bool:
         return True
     normalized_quote = unicodedata.normalize("NFKC", quote).replace(" ", "")
     normalized_unit = unicodedata.normalize("NFKC", unit).replace(" ", "")
-    return normalized_unit in normalized_quote
+    normalized_quote = normalized_quote.replace("^2", "2").replace("^3", "3")
+    normalized_unit = normalized_unit.replace("^2", "2").replace("^3", "3")
+    # Unit symbols must match as a complete expression. In particular `m`
+    # cannot be accepted from `m/s`, and `s` cannot be accepted from `m/s`.
+    unit_chars = r"A-Za-z/^*·²³"
+    return re.search(
+        rf"(?<![{unit_chars}]){re.escape(normalized_unit)}(?![{unit_chars}])",
+        normalized_quote,
+        flags=re.IGNORECASE,
+    ) is not None
+
+
+def _unit_dimension(unit: str) -> str | None:
+    compact = unicodedata.normalize("NFKC", unit).replace(" ", "").lower()
+    compact = compact.replace("^2", "2").replace("^3", "3")
+    return _UNIT_ALIASES.get(compact)
+
+
+def _dimension_matches(fact: ExplicitFact) -> bool:
+    expected = _SEMANTIC_DIMENSIONS.get(fact.semantic_key)
+    if expected is None:
+        return True
+    actual = _unit_dimension(fact.raw_unit)
+    return actual in expected
 
 
 def align_explicit_fact(problem_text: str, fact: ExplicitFact) -> tuple[SourceSpan | None, list[ValidationIssue]]:
@@ -117,6 +224,20 @@ def align_explicit_fact(problem_text: str, fact: ExplicitFact) -> tuple[SourceSp
                 "raw_unit does not occur in its evidence quote",
                 path=f"explicit_facts.{fact.fact_id}.raw_unit",
                 referenced_id=fact.fact_id,
+            )
+        )
+    if not _dimension_matches(fact):
+        issues.append(
+            ValidationIssue(
+                ErrorCode.raw_unit_mismatch,
+                Severity.critical,
+                "raw_unit is dimensionally incompatible with semantic_key",
+                path=f"explicit_facts.{fact.fact_id}.raw_unit",
+                referenced_id=fact.fact_id,
+                metadata={
+                    "semantic_key": fact.semantic_key,
+                    "raw_unit": fact.raw_unit,
+                },
             )
         )
     return occurrences[fact.occurrence_index], issues
