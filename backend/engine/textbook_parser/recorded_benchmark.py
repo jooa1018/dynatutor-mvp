@@ -349,7 +349,6 @@ def prediction_from_recorded_seed(case: BenchmarkCase) -> Prediction:
         in {
             ParseDecisionStatus.needs_confirmation,
             ParseDecisionStatus.insufficient_information,
-            ParseDecisionStatus.needs_figure,
         },
         figure_dependency=parse.figure_dependency.level.value,
         expected_system_type=system_type,

@@ -100,7 +100,7 @@ def _prediction(case, outcome):
         relations=[f"{item.kind.value}:" + ":".join(item.entity_ids) for item in parse.relations],
         queries=[f"{item.output_key.value}:{item.subject_id}:{item.segment_id}" for item in parse.queries],
         assumptions=[item.kind.value for item in parse.assumption_proposals],
-        required_clarification=validated.status.value in {"needs_confirmation", "insufficient_information", "needs_figure"},
+        required_clarification=validated.status.value in {"needs_confirmation", "insufficient_information"},
         figure_dependency=parse.figure_dependency.level.value,
         expected_system_type=candidate.system_type if candidate is not None else None,
         expected_solver=selected.capability.solver_id if selected is not None else None,
