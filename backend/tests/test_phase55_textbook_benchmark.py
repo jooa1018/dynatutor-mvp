@@ -58,6 +58,16 @@ def test_recorded_outputs_run_full_validator_route_and_solver_benchmark():
     assert metrics.query_accuracy == 1.0
     assert metrics.segment_accuracy == 1.0
     assert metrics.relation_accuracy == 1.0
+    assert metrics.entity_binding_accuracy == 1.0
+    assert metrics.segment_binding_accuracy == 1.0
+    assert metrics.route_accuracy == 1.0
+    assert metrics.clarification_accuracy == 1.0
+    assert metrics.figure_dependency_accuracy == 1.0
+    assert metrics.terminal_accuracy == 1.0
+    assert metrics.end_to_end_solve_success == 1.0
+    assert metrics.safe_abstention == 1.0
+    assert metrics.confident_wrong_solve == 0.0
+    assert metrics.invented_explicit_fact_rate == 0.0
 
 
 def test_projectile_seed_recorded_and_legal_graph_share_exact_core_contract():
@@ -140,16 +150,6 @@ def test_projectile_background_height_cannot_become_solver_input():
         and item.referenced_id == background["fact_id"]
         for item in validated.issues
     )
-    assert metrics.entity_binding_accuracy == 1.0
-    assert metrics.segment_binding_accuracy == 1.0
-    assert metrics.route_accuracy == 1.0
-    assert metrics.clarification_accuracy == 1.0
-    assert metrics.figure_dependency_accuracy == 1.0
-    assert metrics.terminal_accuracy == 1.0
-    assert metrics.end_to_end_solve_success == 1.0
-    assert metrics.safe_abstention == 1.0
-    assert metrics.confident_wrong_solve == 0.0
-    assert metrics.invented_explicit_fact_rate == 0.0
 
 
 def test_binding_stress_manifest_covers_required_closure_dimensions():
