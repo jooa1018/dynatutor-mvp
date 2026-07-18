@@ -16,7 +16,6 @@ from app.schemas.solution import (
     StepCard as StepCardSchema,
     VerificationReport as VerificationReportSchema,
 )
-from engine.extraction.extractor import extract_problem
 from engine.models import SolverResult, VerificationReport
 from engine.legacy_hints.rules import make_legacy_hints
 from engine.model_builder import build_physical_model, physical_model_step_cards
@@ -42,6 +41,7 @@ from engine.physics_core.validators import (
     candidate_from_solver_result,
     validate_output_candidates,
 )
+from engine.textbook_parser.gateway import parse_problem_gateway
 
 
 
@@ -165,6 +165,10 @@ def _canonical_model(c):
     )
 
 
+def _textbook_parse_summary(c):
+    return (c.textbook_parse or {}).get("public_summary")
+
+
 def _route_decision_model(decision):
     if decision is None:
         return None
@@ -283,7 +287,7 @@ def diagnose_problem(
 ) -> DiagnosisResponse:
     """canonical을 직접 주면 그 기준으로 진단한다 (clarify patch 이후 재진단용)."""
     if canonical is None:
-        canonical = extract_problem(problem_text)
+        canonical = parse_problem_gateway(problem_text).canonical
     hints = make_legacy_hints(canonical)
     registry = registry or SolverRegistry()
     route_decision = route_decision or registry.route(canonical)
@@ -309,6 +313,7 @@ def diagnose_problem(
         cautions=cards.cautions,
         next_questions=cards.next_questions,
         physical_model=_physical_model_payload(physical_model.to_dict(), route_decision),
+        textbook_parse=_textbook_parse_summary(canonical),
     )
 
 
@@ -439,13 +444,16 @@ def solve_problem(
     """
 
     if trace_collector is None:
-        return _solve_problem_impl(
+        response = _solve_problem_impl(
             problem_text,
             student_solution,
             clarify_patch,
             canonical_patch,
             _NOOP_SOLVE_TRACE,
         )
+        if response.textbook_parse is None:
+            response.textbook_parse = response.diagnosis.textbook_parse
+        return response
 
     trace = _FailOpenSolveTraceHooks(trace_collector)
     trace.begin()
@@ -462,6 +470,8 @@ def solve_problem(
         trace.finalize_error(trace.current_stage or "parse", type(exc).__name__)
         raise
     trace.finalize(_solve_trace_status(response))
+    if response.textbook_parse is None:
+        response.textbook_parse = response.diagnosis.textbook_parse
     return response
 
 
@@ -475,12 +485,69 @@ def _solve_problem_impl(
     # Exclusive timing boundaries: parse=extract/patch; route=model/registry/
     # diagnosis; solve=solver/candidate selection; verify=suite/serialization/gate.
     trace.start_stage("parse")
-    canonical = extract_problem(problem_text)
+    effective_canonical_patch = dict(canonical_patch or {})
+    approval_value = effective_canonical_patch.pop("textbook_parse_approval", None)
+    if isinstance(approval_value, dict):
+        approved_fingerprint = approval_value.get("fingerprint")
+    elif isinstance(approval_value, str):
+        approved_fingerprint = approval_value
+    else:
+        approved_fingerprint = None
+    parser_gateway = parse_problem_gateway(
+        problem_text,
+        approved_fingerprint=approved_fingerprint,
+    )
+    canonical = parser_gateway.canonical
+    trace.capture_canonical(canonical)
+    if parser_gateway.blocked:
+        trace.finish_stage("parse")
+        trace.start_stage("route")
+        diagnosis = diagnose_problem(problem_text, student_solution, canonical=canonical)
+        trace.finish_stage("route")
+        trace.start_stage("solve")
+        trace.capture_solution_candidates(None, None)
+        trace.finish_stage("solve")
+        trace.start_stage("verify")
+        status = (
+            parser_gateway.outcome.status.value
+            if parser_gateway.outcome is not None
+            else "parser_error"
+        )
+        response = SolveResponse(
+            ok=False,
+            diagnosis=diagnosis,
+            answer=None,
+            answers=[],
+            steps=[
+                StepCardSchema(
+                    title="문제 해석 확인",
+                    body="구조화된 문제 해석이 안전 계산 gate를 통과해야 풀이를 시작합니다.",
+                )
+            ],
+            verification=VerificationReportSchema(
+                passed=False,
+                checks=[],
+                warnings=["GPT는 답을 계산하지 않았으며 deterministic solver도 실행되지 않았습니다."],
+                errors=[],
+            ),
+            unsupported_reason={
+                "needs_confirmation": "계산 전에 문제 해석 또는 가정을 확인해 주세요.",
+                "needs_figure": "계산에 필요한 그림 정보가 없습니다.",
+                "insufficient_information": "계산에 필요한 조건이 부족합니다.",
+                "solver_gap": "문제 구조는 확인했지만 안전 승인된 solver가 없습니다.",
+                "parser_unavailable": "구조화 파서를 사용할 수 없어 풀이를 안전하게 보류했습니다.",
+            }.get(status, "문제를 안전하게 구조화하지 못해 풀이를 보류했습니다."),
+            textbook_parse=parser_gateway.summary,
+        )
+        trace.capture_validation(response.verification)
+        trace.capture_response(response)
+        trace.finish_stage("verify")
+        return response
     if clarify_patch:
         # 되묻기 선택지 적용. 화이트리스트 밖 patch는 즉시 거절 (API 노출 지점).
         canonical = apply_clarify_patch(canonical, clarify_patch)
-    if canonical_patch:
-        canonical = apply_clarify_patch(canonical, canonical_patch)
+    if effective_canonical_patch:
+        canonical = apply_clarify_patch(canonical, effective_canonical_patch)
     trace.capture_canonical(canonical)
     trace.finish_stage("parse")
 
@@ -761,6 +828,13 @@ def _solve_problem_impl(
 
 
 def feedback_on_solution(problem_text: str, student_solution: str) -> FeedbackResponse:
-    canonical = extract_problem(problem_text)
+    gateway = parse_problem_gateway(problem_text)
+    if gateway.blocked:
+        return FeedbackResponse(
+            missing_points=["문제 구조 해석을 먼저 확인해야 풀이 피드백을 제공할 수 있습니다."],
+            misconceptions=[],
+            corrected_steps=[],
+        )
+    canonical = gateway.canonical
     fb = analyze_student_solution(canonical, student_solution)
     return FeedbackResponse(**fb)
