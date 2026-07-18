@@ -5,7 +5,10 @@ from fractions import Fraction
 from engine.canonical.adapter import attach_canonical_v2
 from engine.extraction.units import normalize_labeled_value
 from engine.models import CanonicalProblem, Quantity
-from engine.textbook_parser.assumption_policy import AssumptionDisposition
+from engine.textbook_parser.assumption_policy import (
+    AssumptionDisposition,
+    AssumptionEvaluation,
+)
 from engine.textbook_parser.contracts import (
     AssumptionKind,
     EventKind,
@@ -16,7 +19,7 @@ from engine.textbook_parser.ontology import canonical_symbol
 from engine.textbook_parser.validation import ValidatedParse
 
 
-PROJECTION_VERSION = "textbook-canonical-projection-v1"
+PROJECTION_VERSION = "textbook-canonical-projection-v2"
 
 
 def _fact_symbol(fact) -> str | None:
@@ -42,14 +45,11 @@ def _raw_number(value: str) -> float:
     return float(compact)
 
 
-def _assumption_quantity(kind: AssumptionKind, value: str, unit: str) -> tuple[str, Quantity] | None:
-    symbol_by_kind = {
-        AssumptionKind.starts_from_rest: "v0",
-        AssumptionKind.ends_at_rest: "vf",
-        AssumptionKind.constant_gravity: "g",
-    }
-    symbol = symbol_by_kind.get(kind)
-    if symbol is None:
+def _assumption_quantity(evaluation: AssumptionEvaluation) -> tuple[str, Quantity] | None:
+    symbol = evaluation.resolved_symbol
+    value = evaluation.resolved_value
+    unit = evaluation.resolved_unit
+    if symbol is None or value is None or unit is None:
         return None
     normalized_value, normalized_unit = normalize_labeled_value(_raw_number(value), unit or None)
     return (
@@ -117,9 +117,7 @@ def project_canonical(problem_text: str, validated: ValidatedParse) -> Canonical
         }:
             continue
         proposal = assumption_by_id[assumption_id]
-        projected = _assumption_quantity(
-            proposal.kind, proposal.proposed_value, proposal.proposed_unit
-        )
+        projected = _assumption_quantity(evaluation)
         if projected is not None:
             symbol, quantity = projected
             knowns.setdefault(symbol, quantity)
