@@ -1,8 +1,8 @@
 # Phase 55 — GPT-first textbook problem parser plan
 
-Status: implementation plan under independent review  
+Status: independent Planning Checker PASS; implementation authorized  
 Author / Maker ID: `codex-root-019f7308`  
-Planning Checker ID: pending independent assignment  
+Planning Checker ID: `phase55-planning-checker-019f7308` (first review: FAIL; revised-plan re-review: PASS; valid findings: 0)  
 Authoritative base: `main@00b3a60de6e13756d089655879a02e4094122047`  
 Work branch: `codex/phase55-gpt-first-textbook-parser`  
 
@@ -18,7 +18,7 @@ Only server validators may accept source evidence, normalize units, score interp
 
 `POST /solve` → `engine.services.solve_problem` → `_solve_problem_impl` → rule-based `extract_problem` → `CanonicalProblem`/`CanonicalProblemV2` → physical model → `SolverRegistry.route/select` → deterministic solver → candidate validation → verification suite/result gate → ExplanationTrace → VisualizationScene.
 
-The integration seam is `_solve_problem_impl`'s parse stage. The parser orchestration result must be terminal or projected before model building and routing; parser errors must be classified and must never surface as an HTTP 500.
+The primary integration seam is `_solve_problem_impl`'s parse stage, but it is not the only text entry point. A shared `parse_textbook_problem_gateway` will own parser-mode selection, validation, and projection for `/solve`, `/diagnose`, `/feedback`, and explanation paths that invoke solve. All general-text entry points must reuse the same validated graph or explicit rule-only rollback mode. The parser orchestration result must be terminal or projected before model building and routing; parser errors must be classified and must never surface as an HTTP 500.
 
 ### Current OpenAI client
 
@@ -35,7 +35,7 @@ The rule extractor and canonical adapter legitimately inspect raw text for evide
 - `engine/solvers/energy_vibration.py`, `advanced_motion.py`, `advanced_dynamics.py`, pulley and rigid-body solvers.
 - verification residuals, registry evidence, rolling visualization, and feedback helpers.
 
-Phase 55 will migrate the constant-acceleration branch exercised by the golden fixture to typed canonical inputs. The required invariant is identical canonical data plus different raw text producing the same constant-acceleration result. Other production dependencies remain recorded as follow-up debt unless the new GPT path reaches them and requires typed migration in this phase.
+Phase 55 will migrate the constant-acceleration branch exercised by the golden fixture to typed canonical inputs. The required invariant is identical canonical data plus different raw text producing the same constant-acceleration result. A versioned capability flag, `textbook_parser_safe`, blocks `auto` and `required` projection for every family that has not passed an equivalent raw-text invariance audit. Such parses end as `solver_gap` (or remain diagnostic in shadow mode); GPT structure is never handed to a solver that can silently reinterpret its bindings from raw text. Other production dependencies remain recorded as follow-up debt and cannot become auto-authoritative until migrated and tested.
 
 ### Benchmark baseline
 
@@ -75,6 +75,8 @@ It contains:
 
 Validated wrappers keep source spans, validation issues, accepted/rejected assumptions, a server-recomputed interpretation score, usage, model/prompt/schema versions, and the terminal decision. The public response exposes only a safe additive summary.
 
+All strings and arrays are bounded, not only top-level collections. Entity labels/IDs/aliases, evidence quotes, reasons, ambiguity text, and unsupported-feature text have explicit maximum lengths. The existing 10,000-character request cap remains the absolute input limit; the parser applies a smaller documented token/output budget and returns a safe terminal status when exceeded.
+
 ## Validation invariants
 
 1. Every referenced entity, segment, event, fact, query, relation, and assumption ID exists and is unique.
@@ -88,9 +90,15 @@ Validated wrappers keep source spans, validation issues, accepted/rejected assum
 9. Prompt-injection text in the problem is data. No tools, web search, code interpreter, or function calls are enabled.
 10. Parser output cannot overwrite deterministic answer, verification, selection, explanation, or visualization authority.
 
+## Interpretation decision policy
+
+Candidate selection uses a versioned deterministic policy with required vetoes before scoring. Invalid evidence, invented numeric facts, broken bindings, figure-required state, dangerous assumptions, unsupported output keys, and missing capability inputs are hard vetoes. Remaining candidates receive documented weights for evidence coverage, binding completeness, query match, safe assumptions, capability completeness, and rule-extractor agreement. GPT confidence is retained only as non-authoritative diagnostics and never breaks a tie. Multiple solver families, critical conflicts, or a score gap below the versioned tie margin produce `needs_confirmation`. Every decision records policy version, factor scores, veto/error codes, and a server reason code.
+
 ## Parser orchestration and failure policy
 
-The official SDK client is configured with the parser snapshot, `reasoning={"effort": "low"}`, `store=False`, `tools=[]`, an application retry budget of at most one repair, SDK retries disabled, and a 20-second default timeout. Refusal, timeout, 429/quota/auth, transport failure, schema failure, repair failure, and cache corruption map to typed error codes.
+The official SDK client is configured with the parser snapshot, `reasoning={"effort": "low"}`, `store=False`, `tools=[]`, an application retry budget of at most one repair, SDK retries disabled, a 20-second default timeout, and an explicit `max_output_tokens` budget sized below the 1,500-token complex-case diagnostic target. Parser calls have a separate bounded concurrency semaphore, rate budget, and estimated-request cost guard. Budget or concurrency exhaustion maps to a safe terminal status without rule fallback in `required` mode.
+
+The runtime and lock files pin the verified SDK exactly as `openai==2.45.0`. Dependency-consistency tests assert the pin and a fake-client contract asserts the supported `responses.parse`, `text_format`, `reasoning`, `store`, `tools`, timeout, refusal, and usage surfaces without a network call.
 
 Repair is allowed only for schema errors, invalid references, evidence mismatch, or required structural omission. It receives the original problem and validator error codes, uses the same schema, and runs once at most.
 
@@ -104,6 +112,10 @@ Modes:
 
 Code defaults to `off` to preserve offline CI and existing response behavior. Deployment handoff recommends `confirm`; this PR changes no production variables.
 
+## Prompt artifact
+
+`backend/engine/textbook_parser/prompts/textbook_parser_v1.txt` is versioned as `textbook-parser-v1`; its content hash participates in cache identity and tests. A stable prefix contains the parser-only authority boundary, enums, injection isolation, and five no-calculation few-shots: single constant acceleration, the multi-segment athlete, two-body collision, friction-direction confirmation, and a figure-required rigid-body problem. The untrusted problem text is delimited and appended last for prompt caching. Snapshot tests forbid answer/calculation instructions and verify that every explicit fact requires an exact quote.
+
 ## Canonical projection and golden fixture
 
 Projection selects only validated solver-input/constraint facts from the chosen interpretation, applies accepted assumptions, normalizes units deterministically, fills compatibility knowns/flags/coordinate metadata/requested outputs, records provenance, and preserves the whole validated parse graph on the internal canonical object.
@@ -112,13 +124,15 @@ For the athlete golden fixture, projection must create `s=35 m`, `t=5.4 s`, the 
 
 ## Cache, telemetry, and privacy
 
-The cache key is SHA256 of normalized problem text plus model snapshot, prompt, schema, ontology, and validator-policy versions. L1 is bounded process LRU; L2 is SQLite with corruption fail-open deletion of only the invalid entry. Render SQLite ephemerality is documented.
+The cache key is SHA256 of normalized problem text plus model snapshot, prompt, schema, ontology, normalizer, validator, assumption, capability, projection, and decision-policy versions. L1 is bounded process LRU; L2 is SQLite with corruption fail-open deletion of only the invalid entry. Every hit is revalidated against the current schema/version envelope before use. Render SQLite ephemerality is documented.
 
-Stored cache data is the validated parse, validation summary, versions, usage, and creation time. API keys, raw model responses, secrets, and unnecessary raw student/problem text are forbidden. Production telemetry stores a normalized text hash, mode/model/versions, outcomes, latency stages, retries, token buckets, estimated cost, cache state, and failure code. Pricing is versioned configuration, not correctness logic.
+Stored cache data is the minimum validated graph/evidence needed for safe reuse, validation summary, versions, usage, and creation time. The cache has an explicit TTL, row/byte cap, LRU eviction, namespace separation, and restrictive best-effort file permissions. API keys, raw model responses, secrets, and unnecessary raw student/problem text are forbidden. Production telemetry stores a normalized text hash, mode/model/versions, outcomes, latency stages, retries, token buckets, estimated cost, cache state, and failure code. Pricing is versioned configuration, not correctness logic.
 
 ## Benchmark and test plan
 
 Add a safe paraphrased seed corpus of at least 160 cases with a gold schema, private-corpus manifest/import contract, evaluator, metric calculator, metamorphic transforms, and adversarial cases. It is explicitly not a real-textbook held-out corpus. Metrics include entity/fact/unit/binding/event/query/assumption/route accuracy, solve success, safe abstention, confident wrong solve, and invented explicit numerical fact rate.
+
+The evaluator always reports the source-of-truth release targets: numerical fact precision ≥99%, fact/unit recall ≥97%, query ≥99%, entity binding ≥97%, segment binding ≥95%, supported route ≥95%, supported end-to-end ≥92%, unsupported/insufficient safe abstention ≥98%, wrong critical assumption <1%, confident wrong solve <0.5%, and invented explicit numerical facts exactly 0. Threshold failure blocks Phase completion for the recorded offline corpus. Live-model results are reported in a separate table and, when unavailable, production readiness remains explicitly unproven; recorded fixtures are validator/orchestration evidence, not a claim about live parser quality.
 
 Offline CI uses recorded structured outputs and fakes; no API key is required. Focused tests cover contracts, evidence/numeric/unit validation, graph references, assumption policy, capability gate, projection, all modes, refusal/retry/failure classification, cache, telemetry/cost, prompt injection, athlete golden solve, metamorphic invariance/counterexamples, and typed-solver raw-text invariance.
 
@@ -126,9 +140,11 @@ Acceptance also runs the existing default/full backend suites, fast/benchmark/au
 
 ## API and frontend
 
-`POST /solve` remains compatible. `SolveResponse.textbook_parse` is additive and optional. It contains the terminal status, safe graph summary, evidence, assumption decisions, queries, warnings, and usage summary, but no raw model response, prompt, key, or answer authority.
+`POST /solve` remains compatible. `SolveResponse.textbook_parse` is additive and optional. It contains the terminal status, safe graph summary, evidence, assumption decisions, queries, warnings, usage summary, parse fingerprint, and source-text hash, but no raw model response, prompt, key, or answer authority.
 
-The Understanding UI adds an accessible problem-understanding card with entities, segment timeline, explicit/context facts, evidence, inferred assumptions, query target, figure/unsupported state, and server-templated confirmation. Simple numeric/unit corrections use a validated whitelist patch without a new model call. Existing answer, verification, ExplanationTrace, and VisualizationScene components remain unchanged.
+Confirm mode uses a typed approval/correction request bound to the normalized source hash, parse fingerprint, model snapshot, prompt/schema/ontology/validator/assumption/capability/projection-policy versions, and a short expiry. Stale, expired, wrong-text, or wrong-version approvals are rejected. Every correction—numeric or structural—re-runs schema, evidence, reference, contradiction, assumption, capability, and decision gates before projection. Structural operations cover entity kind/name, fact entity/segment/event binding, segment order, event, relation, direction, initial conditions, friction state, and query subject/segment/event. Large structural changes trigger a reparse or a fully validated typed patch; no free-form GPT confirmation question is accepted.
+
+The Understanding UI adds an accessible problem-understanding card with entities, segment timeline, explicit/context facts, evidence, inferred assumptions, query target, figure/unsupported state, and server-templated confirmation. Simple numeric/unit corrections use a validated whitelist patch without a new model call; typed structural corrections follow the revision-bound contract above. Tests cover mobile viewport layout, keyboard-only focus order, semantic headings/ARIA labels, screen-reader status announcements, confirmation persistence, and stale approval recovery. Existing answer, verification, ExplanationTrace, and VisualizationScene components remain unchanged.
 
 ## Delivery and rollback
 
@@ -138,4 +154,4 @@ Because the current desktop environment cannot spawn local shell processes, GitH
 
 ## Independent review gates
 
-The Planning Checker is read-only and must have a different ID from the Maker. Implementation starts only after valid planning findings are incorporated. A different Final Checker reviews answer authority, invented facts, evidence bypass, bindings, assumptions, figure safety, injection, failures, retry bounds, cache/privacy, raw-text branches, regressions, frontend UX, benchmark claims, and cost. Phase 55 is not complete while any valid finding remains.
+The Planning Checker is read-only and must have a different ID from the Maker. It returned PASS after all first-review findings were incorporated. A different Final Checker reviews answer authority, invented facts, evidence bypass, bindings, assumptions, figure safety, injection, failures, retry bounds, cache/privacy, raw-text branches, regressions, frontend UX, benchmark claims, and cost. Phase 55 is not complete while any valid finding remains.
