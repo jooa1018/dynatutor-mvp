@@ -6,6 +6,7 @@ from engine.textbook_parser.assumption_policy import AssumptionDisposition, Assu
 from engine.textbook_parser.capabilities import CapabilityCheck
 from engine.textbook_parser.contracts import InterpretationCandidate, TextbookProblemParseV1
 from engine.textbook_parser.errors import Severity, ValidationIssue
+from engine.textbook_parser.errors import ErrorCode
 
 
 DECISION_POLICY_VERSION = "textbook-decision-v1"
@@ -39,12 +40,26 @@ def score_candidate(
     rule_agreement: bool | None = None,
 ) -> CandidateScore:
     candidate_ids = set(candidate.fact_ids) | set(candidate.query_ids) | set(candidate.assumption_ids)
+    global_safety_codes = {
+        ErrorCode.answer_authority_field,
+        ErrorCode.evidence_quote_missing,
+        ErrorCode.evidence_occurrence_missing,
+        ErrorCode.invented_explicit_number,
+        ErrorCode.raw_value_mismatch,
+        ErrorCode.raw_unit_mismatch,
+        ErrorCode.contradictory_fact,
+    }
     veto = sorted(
         {
             issue.code.value
             for issue in issues
             if issue.severity in {Severity.error, Severity.critical}
-            and (issue.referenced_id is None or issue.referenced_id in candidate_ids or issue.referenced_id == candidate.candidate_id)
+            and (
+                issue.code in global_safety_codes
+                or issue.referenced_id is None
+                or issue.referenced_id in candidate_ids
+                or issue.referenced_id == candidate.candidate_id
+            )
         }
     )
     assumption_by_id = {item.assumption_id: item for item in assumptions}
