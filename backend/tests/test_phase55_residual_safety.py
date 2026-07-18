@@ -602,7 +602,7 @@ def test_system_query_can_use_component_facts_only_through_explicit_allowed_rela
 
     with_system_assumption = related.model_dump(mode="json")
     with_system_assumption["interpretation_candidates"][0]["assumption_ids"] = [
-        "starts_from_rest"
+        "starts_at_rest"
     ]
     typed_with_assumption = TextbookProblemParseV1.model_validate(with_system_assumption)
     assumption_report = evaluate_candidate_bindings(

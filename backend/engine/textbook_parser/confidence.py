@@ -9,7 +9,7 @@ from engine.textbook_parser.errors import Severity, ValidationIssue
 from engine.textbook_parser.errors import ErrorCode
 
 
-DECISION_POLICY_VERSION = "textbook-decision-v2"
+DECISION_POLICY_VERSION = "textbook-decision-v3"
 TIE_MARGIN = 0.08
 
 
@@ -47,11 +47,14 @@ def score_candidate(
         ErrorCode.invented_explicit_number,
         ErrorCode.raw_value_mismatch,
         ErrorCode.raw_unit_mismatch,
+        ErrorCode.quantity_span_mismatch,
+        ErrorCode.quantity_occurrence_reused,
         ErrorCode.contradictory_fact,
         ErrorCode.candidate_binding_mismatch,
         ErrorCode.canonical_symbol_collision,
         ErrorCode.motion_model_mismatch,
         ErrorCode.relation_binding_missing,
+        ErrorCode.temporal_binding_ambiguous,
     }
     veto = sorted(
         {
