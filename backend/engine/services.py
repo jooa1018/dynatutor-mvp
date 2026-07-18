@@ -490,17 +490,22 @@ def _solve_problem_impl(
     trace.start_stage("parse")
     effective_canonical_patch = dict(canonical_patch or {})
     approval_value = effective_canonical_patch.pop("textbook_parse_approval", None)
+    parse_correction = effective_canonical_patch.pop("textbook_parse_correction", None)
     if isinstance(approval_value, dict):
         approved_fingerprint = approval_value.get("fingerprint")
     elif isinstance(approval_value, str):
         approved_fingerprint = approval_value
     else:
         approved_fingerprint = None
-    parser_gateway = parse_problem_gateway(
-        problem_text,
-        approved_fingerprint=approved_fingerprint,
-        legacy_extractor=extract_problem,
-    )
+    try:
+        parser_gateway = parse_problem_gateway(
+            problem_text,
+            approved_fingerprint=approved_fingerprint,
+            legacy_extractor=extract_problem,
+            parse_correction=parse_correction,
+        )
+    except ValueError as exc:
+        raise ClarifyPatchError(f"textbook parse correction rejected: {exc}") from exc
     canonical = parser_gateway.canonical
     trace.capture_canonical(canonical)
     if parser_gateway.blocked:
