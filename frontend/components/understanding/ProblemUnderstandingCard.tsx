@@ -30,7 +30,10 @@ export default function ProblemUnderstandingCard({
   onApprove: (fingerprint: string) => void;
   onCorrect: (patch: any) => void;
 }) {
-  const [draft, setDraft] = useState<any>(null);
+  const [draft, setDraft] = useState<any>(() => parse ? cloneTextbookParse({
+    ...parse,
+    motion_segments: parse.motion_segments ?? parse.segments ?? [],
+  }) : null);
   useEffect(() => {
     if (!parse) return setDraft(null);
     setDraft(cloneTextbookParse({
@@ -60,6 +63,17 @@ export default function ProblemUnderstandingCard({
 
   function csv(value: string) {
     return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+
+  function toggleCandidateSelection(index: number, field: string, id: string) {
+    setDraft((current: any) => {
+      const next = cloneTextbookParse(current);
+      const selected = new Set<string>(next.interpretation_candidates[index][field] ?? []);
+      if (selected.has(id)) selected.delete(id);
+      else selected.add(id);
+      next.interpretation_candidates[index][field] = Array.from(selected);
+      return next;
+    });
   }
 
   function correctStructure() {
@@ -204,6 +218,22 @@ export default function ProblemUnderstandingCard({
             <label><span className="field-label">가정 구간</span><select value={item.segment_id ?? ''} onChange={(e) => setField('assumption_proposals', index, 'segment_id', e.target.value || null)} aria-label={`${item.assumption_id} 가정 구간`}><option value="">없음</option>{segmentIds.map((id: string) => <option key={id}>{id}</option>)}</select></label>
             <label><span className="field-label">가정 의미</span><input value={item.proposed_semantic_key} onChange={(e) => setField('assumption_proposals', index, 'proposed_semantic_key', e.target.value)} aria-label={`${item.assumption_id} 가정 의미`} /></label>
           </div>
+        ))}
+
+        {(draft?.interpretation_candidates ?? []).map((item: any, index: number) => (
+          <fieldset key={item.candidate_id} data-correction="candidate-selection">
+            <legend>후보 해석 ({item.candidate_id})</legend>
+            <div className="two-col">
+              <label><span className="field-label">system type</span><input value={item.system_type} onChange={(e) => setField('interpretation_candidates', index, 'system_type', e.target.value)} aria-label={`${item.candidate_id} system type`} /></label>
+              <label><span className="field-label">subtype</span><input value={item.subtype ?? ''} onChange={(e) => setField('interpretation_candidates', index, 'subtype', e.target.value || null)} aria-label={`${item.candidate_id} subtype`} /></label>
+              <label><span className="field-label">대상 구간</span><input value={(item.target_segment_ids ?? []).join(', ')} onChange={(e) => setField('interpretation_candidates', index, 'target_segment_ids', csv(e.target.value))} aria-label={`${item.candidate_id} 대상 구간 선택`} /></label>
+            </div>
+            <div className="two-col">
+              <div><span className="field-label">사용할 명시 조건</span>{(draft?.explicit_facts ?? []).map((fact: any) => <label key={fact.fact_id}><input type="checkbox" checked={(item.fact_ids ?? []).includes(fact.fact_id)} onChange={() => toggleCandidateSelection(index, 'fact_ids', fact.fact_id)} />{fact.fact_id}</label>)}</div>
+              <div><span className="field-label">사용할 질문</span>{(draft?.queries ?? []).map((query: any) => <label key={query.query_id}><input type="checkbox" checked={(item.query_ids ?? []).includes(query.query_id)} onChange={() => toggleCandidateSelection(index, 'query_ids', query.query_id)} />{query.query_id}</label>)}</div>
+              <div><span className="field-label">사용할 가정</span>{(draft?.assumption_proposals ?? []).map((assumption: any) => <label key={assumption.assumption_id}><input type="checkbox" checked={(item.assumption_ids ?? []).includes(assumption.assumption_id)} onChange={() => toggleCandidateSelection(index, 'assumption_ids', assumption.assumption_id)} />{assumption.assumption_id}</label>)}</div>
+            </div>
+          </fieldset>
         ))}
         <div className="mini-actions">
           <button className="mini-btn" disabled={loading} onClick={correctStructure}>구조 수정 적용</button>

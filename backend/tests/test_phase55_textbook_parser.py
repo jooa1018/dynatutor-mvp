@@ -12,7 +12,9 @@ from pydantic import ValidationError
 
 from engine.models import CanonicalProblem, Quantity
 from engine.solvers.kinematics import ConstantAcceleration1DSolver
+from engine.services import solve_problem
 from engine.textbook_parser.cache import CacheEntry, ParserCache, build_cache_key
+from engine.textbook_parser.bindings import evaluate_candidate_bindings
 from engine.textbook_parser.canonical_projection import project_canonical
 from engine.textbook_parser.config import ParserMode, TextbookParserConfig
 from engine.textbook_parser.contracts import TextbookProblemParseV1
@@ -25,6 +27,7 @@ from engine.textbook_parser.orchestrator import (
 )
 from engine.textbook_parser.telemetry import UsageSummary, estimate_cost
 from engine.textbook_parser.validation import ParseDecisionStatus, validate_parse
+from engine.routing.clarify import ClarifyPatchError
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "phase55" / "athlete_recorded_parse.json"
@@ -114,15 +117,154 @@ def test_candidate_cannot_rebind_solver_fact_to_context_segment():
     fixture = _fixture()
     fixture["parse"]["explicit_facts"][1]["segment_id"] = "segment_2"
     fixture["parse"]["explicit_facts"][1]["event_id"] = None
+    with pytest.raises(ValidationError, match="candidate solver fact must bind a target segment"):
+        TextbookProblemParseV1.model_validate(fixture["parse"])
+
+
+def test_candidate_rejects_same_symbol_mixed_across_two_segments():
+    fixture = _fixture()
+    second = dict(fixture["parse"]["explicit_facts"][1])
+    second.update(
+        {
+            "fact_id": "distance_from_second_segment",
+            "segment_id": "segment_2",
+            "event_id": None,
+        }
+    )
+    fixture["parse"]["explicit_facts"].append(second)
+    fixture["parse"]["interpretation_candidates"][0]["fact_ids"].append(
+        second["fact_id"]
+    )
+    with pytest.raises(ValidationError, match="candidate solver fact must bind a target segment"):
+        TextbookProblemParseV1.model_validate(fixture["parse"])
+
+
+def test_candidate_binding_preserves_identity_and_rejects_wrong_subject():
+    fixture = _fixture()
+    fixture["parse"]["entities"].append(
+        {
+            "entity_id": "other_runner",
+            "kind": "person",
+            "label": "다른 선수",
+            "aliases": [],
+            "evidence_quote": "육상 선수",
+        }
+    )
+    fixture["parse"]["motion_segments"][0]["actor_ids"].append("other_runner")
+    fixture["parse"]["relations"].append(
+        {
+            "relation_id": "runner_relation",
+            "kind": "moves_relative_to",
+            "entity_ids": ["athlete", "other_runner"],
+            "segment_id": "segment_1",
+            "evidence_quote": "육상 선수",
+        }
+    )
+    fact = fixture["parse"]["explicit_facts"][2]
+    fact["subject_id"] = "other_runner"
+    fact["event_id"] = None
     validated = validate_parse(
-        fixture["problem_text"],
-        TextbookProblemParseV1.model_validate(fixture["parse"]),
+        fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
+    )
+    capability = validated.candidates[0].capability
+    assert validated.status == ParseDecisionStatus.needs_confirmation
+    assert capability.binding.completeness < 1.0
+    assert any(
+        item.code == ErrorCode.candidate_binding_mismatch
+        for item in capability.binding.issues
+    )
+    assert all(
+        item.subject_id == "athlete" for item in capability.binding.bindings
+    )
+
+
+def test_canonical_symbol_collision_is_a_critical_veto_not_an_overwrite():
+    fixture = _fixture()
+    duplicate = dict(fixture["parse"]["explicit_facts"][1])
+    duplicate["fact_id"] = "duplicate_segment_distance"
+    fixture["parse"]["explicit_facts"].append(duplicate)
+    fixture["parse"]["interpretation_candidates"][0]["fact_ids"].append(
+        duplicate["fact_id"]
+    )
+    validated = validate_parse(
+        fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
+    )
+    assert validated.status == ParseDecisionStatus.needs_confirmation
+    assert ErrorCode.canonical_symbol_collision.value in validated.candidates[0].score.veto_codes
+
+
+def test_system_type_must_match_target_segment_motion_model():
+    fixture = _fixture()
+    fixture["parse"]["motion_segments"][0]["motion_model_candidates"] = [
+        "constant_velocity_1d"
+    ]
+    validated = validate_parse(
+        fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
     )
     assert validated.status == ParseDecisionStatus.needs_confirmation
     assert any(
-        item.code == ErrorCode.invalid_reference and item.referenced_id == "segment_distance"
-        for item in validated.issues
+        item.code == ErrorCode.motion_model_mismatch
+        for item in validated.candidates[0].capability.binding.issues
     )
+
+
+def test_multi_body_relation_roles_assign_distinct_mass_and_velocity_symbols():
+    fixture = _fixture()
+    parse = fixture["parse"]
+    parse["entities"].append(
+        {
+            "entity_id": "cart_b",
+            "kind": "particle",
+            "label": "수레 B",
+            "aliases": [],
+            "evidence_quote": "육상 선수",
+        }
+    )
+    parse["motion_segments"][0]["actor_ids"].append("cart_b")
+    parse["motion_segments"][0]["motion_model_candidates"] = ["impulse_interval"]
+    parse["events"][0]["subject_ids"].append("cart_b")
+    parse["relations"] = [
+        {
+            "relation_id": "collision_pair",
+            "kind": "collides_with",
+            "entity_ids": ["athlete", "cart_b"],
+            "segment_id": "segment_1",
+            "evidence_quote": "육상 선수",
+        }
+    ]
+    template = parse["explicit_facts"][1]
+    facts = []
+    for fact_id, semantic_key, subject_id, temporal_role, event_id in [
+        ("mass_a", "mass", "athlete", "timeless", None),
+        ("mass_b", "mass", "cart_b", "timeless", None),
+        ("velocity_a", "velocity", "athlete", "before_event", "race_start"),
+        ("velocity_b", "velocity", "cart_b", "before_event", "race_start"),
+    ]:
+        fact = dict(template)
+        fact.update(
+            {
+                "fact_id": fact_id,
+                "semantic_key": semantic_key,
+                "subject_id": subject_id,
+                "temporal_role": temporal_role,
+                "event_id": event_id,
+            }
+        )
+        facts.append(fact)
+    parse["explicit_facts"] = facts
+    candidate = parse["interpretation_candidates"][0]
+    candidate.update(
+        {
+            "system_type": "impulse_momentum",
+            "fact_ids": [item["fact_id"] for item in facts],
+            "assumption_ids": [],
+        }
+    )
+    typed = TextbookProblemParseV1.model_validate(parse)
+    report = evaluate_candidate_bindings(typed, typed.interpretation_candidates[0])
+    assert {item.symbol for item in report.bindings} == {"m1", "m2", "v1", "v2"}
+    assert report.relation_ids == ("collision_pair",)
+    assert report.completeness == 1.0
 
 
 def test_missing_required_figure_abstains_before_solver_selection():
@@ -369,6 +511,153 @@ def test_parser_modes_off_shadow_confirm_auto_and_required(tmp_path):
         assert result.canonical.system_type == "constant_acceleration_1d"
 
 
+def test_confirm_replays_corrected_revision_on_approval(tmp_path):
+    fixture = _fixture()
+    parsed = TextbookProblemParseV1.model_validate(fixture["parse"])
+    client = _RecordedClient(parsed)
+    cache = ParserCache(path=str(tmp_path / "revision.sqlite3"))
+    correction = {
+        "operations": [
+            {
+                "collection": "queries",
+                "id": "query_acceleration",
+                "set": {"component": "x"},
+            }
+        ]
+    }
+    corrected = parse_problem_gateway(
+        fixture["problem_text"],
+        config=_config(ParserMode.confirm),
+        client=client,
+        cache=cache,
+        parse_correction=correction,
+    )
+    assert corrected.blocked and corrected.approval_fingerprint
+    stale = parse_problem_gateway(
+        fixture["problem_text"],
+        config=_config(ParserMode.confirm),
+        client=client,
+        cache=cache,
+        approved_fingerprint=corrected.approval_fingerprint,
+    )
+    assert stale.blocked
+    approved = parse_problem_gateway(
+        fixture["problem_text"],
+        config=_config(ParserMode.confirm),
+        client=client,
+        cache=cache,
+        approved_fingerprint=corrected.approval_fingerprint,
+        parse_correction=correction,
+    )
+    assert not approved.blocked
+    assert approved.canonical.textbook_parse["authoritative"] is True
+    assert approved.summary["correction_applied"] is True
+
+
+def test_service_round_trip_carries_correction_with_approval(tmp_path, monkeypatch):
+    fixture = _fixture()
+    parsed = TextbookProblemParseV1.model_validate(fixture["parse"])
+    client = _RecordedClient(parsed)
+    cache = ParserCache(path=str(tmp_path / "service-revision.sqlite3"))
+    real_gateway = parse_problem_gateway
+
+    def configured_gateway(
+        problem_text,
+        *,
+        approved_fingerprint=None,
+        parse_correction=None,
+        **_kwargs,
+    ):
+        return real_gateway(
+            problem_text,
+            config=_config(ParserMode.confirm),
+            approved_fingerprint=approved_fingerprint,
+            parse_correction=parse_correction,
+            client=client,
+            cache=cache,
+        )
+
+    monkeypatch.setattr("engine.services.parse_problem_gateway", configured_gateway)
+    correction = {
+        "operations": [
+            {
+                "collection": "queries",
+                "id": "query_acceleration",
+                "set": {"component": "x"},
+            }
+        ]
+    }
+    first = solve_problem(
+        fixture["problem_text"],
+        canonical_patch={"textbook_parse_correction": correction},
+    )
+    assert not first.ok
+    fingerprint = first.textbook_parse["approval_fingerprint"]
+    approved = solve_problem(
+        fixture["problem_text"],
+        canonical_patch={
+            "textbook_parse_correction": correction,
+            "textbook_parse_approval": {"fingerprint": fingerprint},
+        },
+    )
+    assert approved.ok
+    assert approved.textbook_parse["correction_applied"] is True
+
+
+def test_blocked_modes_never_call_legacy_interpreter_or_build_physics(tmp_path, monkeypatch):
+    fixture = _fixture()
+    parsed = TextbookProblemParseV1.model_validate(fixture["parse"])
+    calls = 0
+
+    def forbidden_legacy(_problem_text):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("legacy interpreter must not run in confirm mode")
+
+    blocked = parse_problem_gateway(
+        fixture["problem_text"],
+        config=_config(ParserMode.confirm),
+        client=_RecordedClient(parsed),
+        cache=ParserCache(path=str(tmp_path / "blocked.sqlite3")),
+        legacy_extractor=forbidden_legacy,
+    )
+    assert blocked.blocked and calls == 0
+    monkeypatch.setattr("engine.services.parse_problem_gateway", lambda *args, **kwargs: blocked)
+    response = solve_problem(fixture["problem_text"])
+    assert not response.ok
+    assert response.diagnosis.selected_solver is None
+    assert response.diagnosis.route_decision is None
+    assert response.diagnosis.fbd_diagram_svg is None
+    assert response.diagnosis.fbd == []
+    assert response.diagnosis.applicable_equations == []
+    assert response.diagnosis.physical_model is None
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"system_type": "projectile_motion"},
+        {"knowns": {"s": {"value": 999, "unit": "m"}}},
+        {"requested_outputs": ["time"]},
+    ],
+)
+def test_authoritative_parse_rejects_post_gate_canonical_patch(
+    patch, tmp_path, monkeypatch
+):
+    fixture = _fixture()
+    parsed = TextbookProblemParseV1.model_validate(fixture["parse"])
+    accepted = parse_problem_gateway(
+        fixture["problem_text"],
+        config=_config(ParserMode.auto),
+        client=_RecordedClient(parsed),
+        cache=ParserCache(path=str(tmp_path / "authoritative.sqlite3")),
+    )
+    assert not accepted.blocked
+    monkeypatch.setattr("engine.services.parse_problem_gateway", lambda *args, **kwargs: accepted)
+    with pytest.raises(ClarifyPatchError, match="authoritative textbook parse"):
+        solve_problem(fixture["problem_text"], canonical_patch=patch)
+
+
 def test_cache_key_is_versioned_and_l2_never_stores_problem_text(tmp_path):
     fixture = _fixture()
     parse = TextbookProblemParseV1.model_validate(fixture["parse"])
@@ -379,6 +668,16 @@ def test_cache_key_is_versioned_and_l2_never_stores_problem_text(tmp_path):
     cache.put(key, entry)
     assert cache.get(key) is not None
     assert fixture["problem_text"].encode("utf-8") not in cache_path.read_bytes()
+
+
+def test_cache_key_includes_prompt_content_hash(monkeypatch):
+    import engine.textbook_parser.cache as cache_module
+
+    monkeypatch.setattr(cache_module, "load_prompt", lambda: "prompt revision A")
+    first = cache_module.build_cache_key("물체가 1m 이동한다.", "model")
+    monkeypatch.setattr(cache_module, "load_prompt", lambda: "prompt revision B")
+    second = cache_module.build_cache_key("물체가 1m 이동한다.", "model")
+    assert first != second
 
 
 def test_corrupt_sqlite_cache_entry_fails_open_and_is_deleted(tmp_path):
@@ -424,6 +723,44 @@ def test_schema_failure_gets_exactly_one_repair_call(tmp_path):
     assert outcome.status == ParseDecisionStatus.accepted_with_visible_assumptions
     assert outcome.retry_count == 1
     assert client.calls == 2
+
+
+def test_validation_retry_aggregates_all_attempt_usage_and_latency(tmp_path):
+    fixture = _fixture()
+    invalid_payload = _fixture()["parse"]
+    invalid_payload["explicit_facts"][1]["occurrence_index"] = 99
+    invalid = TextbookProblemParseV1.model_validate(invalid_payload)
+    valid = TextbookProblemParseV1.model_validate(fixture["parse"])
+
+    class ValidationThenSuccess:
+        calls = 0
+
+        def parse(self, problem_text, *, repair_error_codes=()):
+            from engine.textbook_parser.openai_client import StructuredParseResponse
+
+            self.calls += 1
+            if self.calls == 1:
+                return StructuredParseResponse(
+                    invalid, UsageSummary(input_tokens=100, output_tokens=200), "first"
+                )
+            assert "evidence_occurrence_missing" in repair_error_codes
+            return StructuredParseResponse(
+                valid, UsageSummary(input_tokens=300, output_tokens=400), "repair"
+            )
+
+    client = ValidationThenSuccess()
+    outcome = parse_textbook_problem(
+        fixture["problem_text"],
+        config=_config(ParserMode.required),
+        client=client,
+        cache=ParserCache(path=str(tmp_path / "usage.sqlite3")),
+    )
+    assert client.calls == 2
+    assert outcome.retry_count == 1
+    assert outcome.usage.input_tokens == 400
+    assert outcome.usage.output_tokens == 600
+    assert outcome.usage.estimated_cost_usd > 0
+    assert outcome.parser_latency_ms > 0
 
 
 def test_official_client_preserves_sdk_pydantic_failure_for_one_repair(tmp_path):

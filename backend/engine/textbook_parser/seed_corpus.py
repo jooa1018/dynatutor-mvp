@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from engine.textbook_parser.benchmark import BenchmarkCase, BenchmarkManifest, GoldLabels
+from engine.textbook_parser.benchmark import (
+    BENCHMARK_SCHEMA_VERSION,
+    BenchmarkCase,
+    BenchmarkManifest,
+    GoldLabels,
+)
 
 
 PROVENANCE = "repository_safe_independently_authored_paraphrase"
@@ -131,7 +136,6 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 [f"mass_1:{mass_1}:kg", f"mass_2:{mass_2}:kg"],
                 {"symbolic": "deterministic_atwood", "unit": "m/s^2"},
                 entity="system",
-                relations=["connected_by_rope:A:B", "passes_over_pulley:rope:pulley"],
                 assumptions=["massless_rope", "frictionless"],
                 query="acceleration:system:motion_1",
             )
@@ -180,7 +184,6 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 [f"angular_velocity:{omega}:rad/s", f"radius:{radius}:m"],
                 {"numeric": radius * omega, "unit": "m/s"},
                 entity="point",
-                relations=["point_on_body:point:body"],
                 query="tangential_velocity:point:motion_1",
             )
         )
@@ -262,11 +265,107 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
             )
         )
     return BenchmarkManifest(
-        schema_version="phase55-benchmark-v1",
+        schema_version=BENCHMARK_SCHEMA_VERSION,
         corpus_kind="repository_safe_paraphrased_seed",
         copyright_status="independently_authored_no_textbook_source_copied",
         cases=cases,
     )
 
 
-__all__ = ["PROVENANCE", "repository_safe_seed_manifest"]
+def binding_stress_manifest() -> BenchmarkManifest:
+    """Focused gold cases for identity, segment, temporal, direction, and relation closure."""
+
+    specs = [
+        (
+            "binding_multi_entity",
+            "수레 A와 B가 충돌 직전에 각각 오른쪽 3m/s와 왼쪽 2m/s로 움직인다.",
+            ["cart_a", "cart_b"],
+            ["collision:target"],
+            ["velocity:3:m/s", "velocity:2:m/s"],
+            {"fact_1": "cart_a", "fact_2": "cart_b"},
+            {"fact_1": "collision", "fact_2": "collision"},
+            ["collides_with:cart_a:cart_b"],
+            ["just_before_collision"],
+        ),
+        (
+            "binding_multi_segment",
+            "물체가 첫 구간에서 4m 이동한 뒤 둘째 구간에서 6m 이동한다.",
+            ["object"],
+            ["segment_1:required_context", "segment_2:target"],
+            ["distance:4:m", "distance:6:m"],
+            {"fact_1": "object", "fact_2": "object"},
+            {"fact_1": "segment_1", "fact_2": "segment_2"},
+            [],
+            ["reaches_position"],
+        ),
+        (
+            "binding_before_after",
+            "충돌 직전 속력은 5m/s이고 충돌 직후 속력은 1m/s이다.",
+            ["object"],
+            ["collision:target"],
+            ["velocity:5:m/s", "velocity:1:m/s"],
+            {"fact_1": "object", "fact_2": "object"},
+            {"fact_1": "collision", "fact_2": "collision"},
+            [],
+            ["just_before_collision", "just_after_collision"],
+        ),
+        (
+            "binding_repeated_symbol_direction",
+            "두 물체의 같은 속력 3m/s가 각각 오른쪽과 왼쪽을 향한다.",
+            ["object_a", "object_b"],
+            ["motion_1:target"],
+            ["velocity:3:m/s", "velocity:3:m/s"],
+            {"fact_1": "object_a", "fact_2": "object_b"},
+            {"fact_1": "motion_1", "fact_2": "motion_1"},
+            ["moves_relative_to:object_a:object_b"],
+            ["start"],
+        ),
+        (
+            "binding_relation_role",
+            "질량 2kg인 추 A와 4kg인 추 B가 한 줄로 연결되어 있다.",
+            ["mass_a", "mass_b"],
+            ["constraint:target"],
+            ["mass:2:kg", "mass:4:kg"],
+            {"fact_1": "mass_a", "fact_2": "mass_b"},
+            {"fact_1": "constraint", "fact_2": "constraint"},
+            ["connected_by_rope:mass_a:mass_b"],
+            ["start"],
+        ),
+    ]
+    cases = []
+    for case_id, text, entities, segments, facts, entity_binding, segment_binding, relations, events in specs:
+        cases.append(
+            BenchmarkCase(
+                case_id=case_id,
+                provenance=PROVENANCE,
+                category="binding_closure_stress",
+                problem_text=text,
+                gold=GoldLabels(
+                    entities=entities,
+                    segments=segments,
+                    events=events,
+                    explicit_facts=facts,
+                    fact_entity_binding=entity_binding,
+                    fact_segment_binding=segment_binding,
+                    relations=relations,
+                    queries=[f"impulse:{entities[0]}:{segments[-1].split(':')[0]}"],
+                    assumptions=[],
+                    required_clarification=False,
+                    figure_dependency="none",
+                    expected_system_type="impulse_momentum",
+                    expected_solver=None,
+                    supported_status="solver_gap",
+                    expected_end_to_end_answer=None,
+                    expected_terminal_status="solver_gap",
+                ),
+            )
+        )
+    return BenchmarkManifest(
+        schema_version=BENCHMARK_SCHEMA_VERSION,
+        corpus_kind="repository_safe_binding_stress",
+        copyright_status="independently_authored_no_textbook_source_copied",
+        cases=cases,
+    )
+
+
+__all__ = ["PROVENANCE", "binding_stress_manifest", "repository_safe_seed_manifest"]

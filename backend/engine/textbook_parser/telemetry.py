@@ -53,6 +53,18 @@ def estimate_cost(
     )
 
 
+def aggregate_usage(model: str, *attempts: UsageSummary) -> UsageSummary:
+    """Aggregate every successful parser attempt, including repair attempts."""
+
+    return estimate_cost(
+        model,
+        input_tokens=sum(item.input_tokens for item in attempts),
+        cached_input_tokens=sum(item.cached_input_tokens for item in attempts),
+        output_tokens=sum(item.output_tokens for item in attempts),
+        reasoning_tokens=sum(item.reasoning_tokens for item in attempts),
+    )
+
+
 def text_hash(normalized_problem_text: str) -> str:
     return hashlib.sha256(normalized_problem_text.encode("utf-8")).hexdigest()
 
@@ -61,6 +73,7 @@ __all__ = [
     "MODEL_PRICING_USD_PER_MILLION",
     "PRICING_VERSION",
     "UsageSummary",
+    "aggregate_usage",
     "estimate_cost",
     "text_hash",
 ]

@@ -388,6 +388,11 @@ class TextbookProblemParseV1(StrictModel):
 
         segment_by_id = {item.segment_id: item for item in self.motion_segments}
         event_by_id = {item.event_id: item for item in self.events}
+        fact_by_id = {item.fact_id: item for item in self.explicit_facts}
+        query_by_id = {item.query_id: item for item in self.queries}
+        assumption_by_id = {
+            item.assumption_id: item for item in self.assumption_proposals
+        }
 
         for segment in self.motion_segments:
             self._require_refs("segment actor", segment.actor_ids, entity_ids)
@@ -456,6 +461,34 @@ class TextbookProblemParseV1(StrictModel):
             self._require_refs("candidate fact", candidate.fact_ids, fact_ids)
             self._require_refs("candidate query", candidate.query_ids, query_ids)
             self._require_refs("candidate assumption", candidate.assumption_ids, assumption_ids)
+            targets = set(candidate.target_segment_ids)
+            candidate_queries = [query_by_id[item] for item in candidate.query_ids]
+            if any(
+                query.segment_id is None or query.segment_id not in targets
+                for query in candidate_queries
+            ):
+                raise ValueError(
+                    f"candidate query must bind a target segment: {candidate.candidate_id}"
+                )
+            if targets - {query.segment_id for query in candidate_queries}:
+                raise ValueError(
+                    f"every candidate target segment must be query-bound: {candidate.candidate_id}"
+                )
+            for fact_id in candidate.fact_ids:
+                fact = fact_by_id[fact_id]
+                if (
+                    fact.relevance in {FactRelevance.solver_input, FactRelevance.constraint}
+                    and (fact.segment_id is None or fact.segment_id not in targets)
+                ):
+                    raise ValueError(
+                        f"candidate solver fact must bind a target segment: {fact_id}"
+                    )
+            for assumption_id in candidate.assumption_ids:
+                assumption = assumption_by_id[assumption_id]
+                if assumption.segment_id is not None and assumption.segment_id not in targets:
+                    raise ValueError(
+                        f"candidate assumption must bind a target segment: {assumption_id}"
+                    )
         for ambiguity in self.ambiguities:
             allowed_ids = (
                 entity_ids

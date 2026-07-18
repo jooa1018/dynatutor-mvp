@@ -40,6 +40,11 @@ class ErrorCode(str, Enum):
     repair_failed = "repair_failed"
     cache_corrupt = "cache_corrupt"
     stale_approval = "stale_approval"
+    candidate_binding_mismatch = "candidate_binding_mismatch"
+    canonical_symbol_collision = "canonical_symbol_collision"
+    motion_model_mismatch = "motion_model_mismatch"
+    relation_binding_missing = "relation_binding_missing"
+    authoritative_patch_rejected = "authoritative_patch_rejected"
 
 
 @dataclass(frozen=True)

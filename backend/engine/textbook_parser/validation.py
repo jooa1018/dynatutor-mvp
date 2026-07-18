@@ -20,7 +20,7 @@ from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
 from engine.textbook_parser.validators.semantic import validate_semantics
 
 
-VALIDATOR_POLICY_VERSION = "textbook-validator-v3"
+VALIDATOR_POLICY_VERSION = "textbook-validator-v4"
 SAFETY_VETO_CODES = frozenset(
     {
         ErrorCode.answer_authority_field.value,
@@ -31,6 +31,10 @@ SAFETY_VETO_CODES = frozenset(
         ErrorCode.raw_unit_mismatch.value,
         ErrorCode.invalid_reference.value,
         ErrorCode.contradictory_fact.value,
+        ErrorCode.candidate_binding_mismatch.value,
+        ErrorCode.canonical_symbol_collision.value,
+        ErrorCode.motion_model_mismatch.value,
+        ErrorCode.relation_binding_missing.value,
     }
 )
 
@@ -118,6 +122,10 @@ def _candidate_related_issues(
         ErrorCode.raw_value_mismatch,
         ErrorCode.raw_unit_mismatch,
         ErrorCode.contradictory_fact,
+        ErrorCode.candidate_binding_mismatch,
+        ErrorCode.canonical_symbol_collision,
+        ErrorCode.motion_model_mismatch,
+        ErrorCode.relation_binding_missing,
     }
     return tuple(
         issue

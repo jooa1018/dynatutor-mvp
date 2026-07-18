@@ -6,7 +6,7 @@ from typing import Any
 from engine.textbook_parser.contracts import TextbookProblemParseV1
 
 
-CORRECTION_POLICY_VERSION = "textbook-correction-v1"
+CORRECTION_POLICY_VERSION = "textbook-correction-v2"
 _ID_FIELDS = {
     "entities": "entity_id",
     "motion_segments": "segment_id",
@@ -35,7 +35,8 @@ def apply_parse_corrections(
     """Apply bounded structural edits, then rerun the full schema/gate externally.
 
     Explicit values, units, and source evidence are immutable in this graph patch.
-    Existing typed canonical_patch handles direct numeric corrections without GPT.
+    Every accepted correction is revision-bound and must pass the same authoritative
+    schema, evidence, assumption, binding, capability, and safe-solver gates.
     """
 
     if set(patch) != {"operations"} or not isinstance(patch["operations"], list):

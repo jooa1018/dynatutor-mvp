@@ -15,7 +15,7 @@ from engine.textbook_parser.openai_client import (
     StructuredParseResponse,
 )
 from engine.textbook_parser.prompt import PROMPT_VERSION
-from engine.textbook_parser.telemetry import UsageSummary, text_hash
+from engine.textbook_parser.telemetry import UsageSummary, aggregate_usage, text_hash
 from engine.textbook_parser.validation import (
     ParseDecisionStatus,
     ValidatedParse,
@@ -96,6 +96,14 @@ class ParseOutcome:
                 item for item in validation.get("issues", []) if item.get("severity") in {"warning", "error", "critical"}
             ],
             "usage_summary": self.usage.to_dict(),
+            "parser_latency_ms": self.parser_latency_ms,
+            "validation_latency_ms": self.validation_latency_ms,
+            "total_latency_ms": round(
+                self.parser_latency_ms
+                if self.parser_latency_ms > 0
+                else self.validation_latency_ms,
+                3,
+            ),
             "cache_hit": self.cache_hit,
             "retry_count": self.retry_count,
             "failure_code": self.failure_code,
@@ -183,9 +191,11 @@ def parse_textbook_problem(
         )
 
     parser_client = None
+    attempt_usages: list[UsageSummary] = []
     try:
         parser_client = client or OpenAITextbookParserClient(config)
         structured = parser_client.parse(problem_text)
+        attempt_usages.append(structured.usage)
     except TextbookParserError as exc:
         return _failure_outcome(config=config, started=started, code=exc.code.value)
     except (ValidationError, ValueError):
@@ -196,13 +206,13 @@ def parse_textbook_problem(
                 problem_text,
                 repair_error_codes=(ErrorCode.schema_error.value,),
             )
+            attempt_usages.append(structured.usage)
             schema_repair_count = 1
         except (TextbookParserError, ValidationError, ValueError):
             return _failure_outcome(config=config, started=started, code=ErrorCode.repair_failed.value)
     else:
         schema_repair_count = 0
 
-    parser_elapsed = (time.perf_counter() - started) * 1000
     validation_started = time.perf_counter()
     validated = validate_parse(problem_text, structured.parsed)
     repair_codes = tuple(
@@ -221,6 +231,7 @@ def parse_textbook_problem(
             structured = parser_client.parse(
                 problem_text, repair_error_codes=repair_codes
             )
+            attempt_usages.append(structured.usage)
             validated = validate_parse(problem_text, structured.parsed)
         except (TextbookParserError, ValidationError, ValueError):
             return ParseOutcome(
@@ -228,21 +239,23 @@ def parse_textbook_problem(
                 validated=validated,
                 model=config.model,
                 prompt_version=PROMPT_VERSION,
-                usage=structured.usage,
+                usage=aggregate_usage(config.model, *attempt_usages),
                 cache_hit=False,
                 retry_count=1,
                 problem_hash=problem_digest,
-                parser_latency_ms=round(parser_elapsed, 3),
+                parser_latency_ms=round((time.perf_counter() - started) * 1000, 3),
                 validation_latency_ms=round((time.perf_counter() - validation_started) * 1000, 3),
                 failure_code=ErrorCode.repair_failed.value,
             )
 
+    parser_elapsed = (time.perf_counter() - started) * 1000
+    aggregate = aggregate_usage(config.model, *attempt_usages)
     outcome = ParseOutcome(
         status=validated.status,
         validated=validated,
         model=config.model,
         prompt_version=PROMPT_VERSION,
-        usage=structured.usage,
+        usage=aggregate,
         cache_hit=False,
         retry_count=retry_count,
         problem_hash=problem_digest,
@@ -255,7 +268,7 @@ def parse_textbook_problem(
             parse=structured.parsed,
             validation_summary=validated.to_summary(),
             model=config.model,
-            usage=structured.usage,
+            usage=aggregate,
             created_at=time.time(),
         ),
     )

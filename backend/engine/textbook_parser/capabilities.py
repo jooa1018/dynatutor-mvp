@@ -4,12 +4,12 @@ from dataclasses import dataclass
 
 from engine.capabilities.loader import CapabilityMatrix, load_capability_matrix
 from engine.textbook_parser.assumption_policy import AssumptionDisposition, AssumptionEvaluation
+from engine.textbook_parser.bindings import BindingReport, evaluate_candidate_bindings
 from engine.textbook_parser.contracts import InterpretationCandidate, TextbookProblemParseV1
 from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
-from engine.textbook_parser.ontology import canonical_symbol
 
 
-CAPABILITY_POLICY_VERSION = "textbook-capability-v2"
+CAPABILITY_POLICY_VERSION = "textbook-capability-v3"
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class CapabilityCheck:
     textbook_parser_safe: bool
     supplied_symbols: tuple[str, ...]
     missing_inputs: tuple[str, ...]
+    binding: BindingReport
     issues: tuple[ValidationIssue, ...]
 
     def to_dict(self) -> dict[str, object]:
@@ -30,6 +31,7 @@ class CapabilityCheck:
             "textbook_parser_safe": self.textbook_parser_safe,
             "supplied_symbols": list(self.supplied_symbols),
             "missing_inputs": list(self.missing_inputs),
+            "binding": self.binding.to_dict(),
             "issues": [issue.to_dict() for issue in self.issues],
         }
 
@@ -37,12 +39,19 @@ class CapabilityCheck:
 def _accepted_assumption_symbols(
     parse: TextbookProblemParseV1,
     evaluations: tuple[AssumptionEvaluation, ...],
-    candidate_assumption_ids: set[str],
-) -> set[str]:
+    candidate: InterpretationCandidate,
+) -> tuple[set[str], tuple[ValidationIssue, ...]]:
     out: set[str] = set()
+    issues: list[ValidationIssue] = []
+    proposal_by_id = {
+        item.assumption_id: item for item in parse.assumption_proposals
+    }
+    query_subjects = {
+        item.subject_id for item in parse.queries if item.query_id in candidate.query_ids
+    }
     for evaluation in evaluations:
         if (
-            evaluation.assumption_id in candidate_assumption_ids
+            evaluation.assumption_id in set(candidate.assumption_ids)
             and evaluation.disposition
             in {
                 AssumptionDisposition.accepted_default,
@@ -50,8 +59,23 @@ def _accepted_assumption_symbols(
             }
             and evaluation.resolved_symbol is not None
         ):
+            proposal = proposal_by_id[evaluation.assumption_id]
+            if (
+                candidate.system_type == "constant_acceleration_1d"
+                and proposal.subject_id not in query_subjects
+            ):
+                issues.append(
+                    ValidationIssue(
+                        ErrorCode.candidate_binding_mismatch,
+                        Severity.error,
+                        "candidate assumption subject does not match the solver query subject",
+                        path=f"interpretation_candidates.{candidate.candidate_id}.assumption_ids",
+                        referenced_id=evaluation.assumption_id,
+                    )
+                )
+                continue
             out.add(evaluation.resolved_symbol)
-    return out
+    return out, tuple(issues)
 
 
 def check_capability(
@@ -64,15 +88,14 @@ def check_capability(
     matrix = matrix or load_capability_matrix()
     entry = matrix.for_problem(candidate.system_type, candidate.subtype)
     issues: list[ValidationIssue] = []
-    symbols = {
-        symbol
-        for fact in parse.explicit_facts
-        if fact.fact_id in candidate.fact_ids
-        if (symbol := canonical_symbol(fact.semantic_key)) is not None
-    }
-    symbols |= _accepted_assumption_symbols(
-        parse, evaluations, set(candidate.assumption_ids)
+    binding = evaluate_candidate_bindings(parse, candidate)
+    issues.extend(binding.issues)
+    symbols = {item.symbol for item in binding.bindings}
+    assumption_symbols, assumption_binding_issues = _accepted_assumption_symbols(
+        parse, evaluations, candidate
     )
+    symbols |= assumption_symbols
+    issues.extend(assumption_binding_issues)
     if entry is None:
         issues.append(
             ValidationIssue(
@@ -90,6 +113,7 @@ def check_capability(
             False,
             tuple(sorted(symbols)),
             (),
+            binding,
             tuple(issues),
         )
 
@@ -152,6 +176,7 @@ def check_capability(
         safe,
         tuple(sorted(symbols)),
         tuple(missing),
+        binding,
         tuple(issues),
     )
 

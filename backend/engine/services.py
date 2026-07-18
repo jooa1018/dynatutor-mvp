@@ -511,7 +511,12 @@ def _solve_problem_impl(
     if parser_gateway.blocked:
         trace.finish_stage("parse")
         trace.start_stage("route")
-        diagnosis = diagnose_problem(problem_text, student_solution, canonical=canonical)
+        diagnosis = DiagnosisResponse(
+            ok=False,
+            canonical=_canonical_model(canonical),
+            legacy_hints=LegacyHintModel(),
+            textbook_parse=parser_gateway.summary,
+        )
         trace.finish_stage("route")
         trace.start_stage("solve")
         trace.capture_solution_candidates(None, None)
@@ -552,6 +557,14 @@ def _solve_problem_impl(
         trace.capture_response(response)
         trace.finish_stage("verify")
         return response
+    if (canonical.textbook_parse or {}).get("authoritative") and (
+        clarify_patch or effective_canonical_patch
+    ):
+        raise ClarifyPatchError(
+            "authoritative textbook parse cannot be changed by canonical_patch; "
+            "submit textbook_parse_correction so schema, evidence, assumption, "
+            "binding, capability, and safe-solver gates run again"
+        )
     if clarify_patch:
         # 되묻기 선택지 적용. 화이트리스트 밖 patch는 즉시 거절 (API 노출 지점).
         canonical = apply_clarify_patch(canonical, clarify_patch)

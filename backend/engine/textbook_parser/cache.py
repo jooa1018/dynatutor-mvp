@@ -14,13 +14,19 @@ from typing import Any
 
 from engine.extraction.normalizer import normalize
 from engine.textbook_parser.contracts import SCHEMA_VERSION, TextbookProblemParseV1
+from engine.textbook_parser.assumption_policy import ASSUMPTION_POLICY_VERSION
+from engine.textbook_parser.bindings import BINDING_POLICY_VERSION
+from engine.textbook_parser.capabilities import CAPABILITY_POLICY_VERSION
+from engine.textbook_parser.canonical_projection import PROJECTION_VERSION
+from engine.textbook_parser.confidence import DECISION_POLICY_VERSION
+from engine.textbook_parser.corrections import CORRECTION_POLICY_VERSION
 from engine.textbook_parser.ontology import ONTOLOGY_VERSION
-from engine.textbook_parser.prompt import PROMPT_VERSION
+from engine.textbook_parser.prompt import PROMPT_VERSION, load_prompt
 from engine.textbook_parser.telemetry import UsageSummary
 from engine.textbook_parser.validation import VALIDATOR_POLICY_VERSION
 
 
-CACHE_FORMAT_VERSION = "textbook-cache-v1"
+CACHE_FORMAT_VERSION = "textbook-cache-v2"
 
 
 @dataclass(frozen=True)
@@ -33,13 +39,21 @@ class CacheEntry:
 
 
 def build_cache_key(problem_text: str, model: str) -> str:
+    prompt_content_hash = hashlib.sha256(load_prompt().encode("utf-8")).hexdigest()
     parts = (
         normalize(problem_text),
         model,
         PROMPT_VERSION,
+        prompt_content_hash,
         SCHEMA_VERSION,
         ONTOLOGY_VERSION,
         VALIDATOR_POLICY_VERSION,
+        ASSUMPTION_POLICY_VERSION,
+        BINDING_POLICY_VERSION,
+        CAPABILITY_POLICY_VERSION,
+        PROJECTION_VERSION,
+        DECISION_POLICY_VERSION,
+        CORRECTION_POLICY_VERSION,
     )
     return hashlib.sha256("\x1f".join(parts).encode("utf-8")).hexdigest()
 
@@ -141,6 +155,13 @@ class ParserCache:
             "schema_version": SCHEMA_VERSION,
             "ontology_version": ONTOLOGY_VERSION,
             "validator_policy_version": VALIDATOR_POLICY_VERSION,
+            "assumption_policy_version": ASSUMPTION_POLICY_VERSION,
+            "binding_policy_version": BINDING_POLICY_VERSION,
+            "capability_policy_version": CAPABILITY_POLICY_VERSION,
+            "projection_version": PROJECTION_VERSION,
+            "decision_policy_version": DECISION_POLICY_VERSION,
+            "correction_policy_version": CORRECTION_POLICY_VERSION,
+            "prompt_content_hash": hashlib.sha256(load_prompt().encode("utf-8")).hexdigest(),
             "usage": entry.usage.to_dict(),
         }
         encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

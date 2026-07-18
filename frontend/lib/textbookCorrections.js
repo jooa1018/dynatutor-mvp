@@ -6,7 +6,10 @@ const EDITABLE_FIELDS = Object.freeze({
   relations: ['kind', 'entity_ids', 'segment_id'],
   queries: ['output_key', 'subject_id', 'segment_id', 'event_id', 'component'],
   assumption_proposals: ['kind', 'subject_id', 'segment_id', 'proposed_semantic_key', 'reason'],
-  interpretation_candidates: ['target_segment_ids'],
+  interpretation_candidates: [
+    'system_type', 'subtype', 'target_segment_ids', 'fact_ids', 'query_ids',
+    'assumption_ids', 'reason_code',
+  ],
 });
 
 const ID_FIELDS = Object.freeze({
@@ -48,8 +51,17 @@ function buildTextbookCorrectionPatch(original, edited) {
   return { operations };
 }
 
+function buildRevisionApprovalPatch(fingerprint, correction) {
+  const payload = { textbook_parse_approval: { fingerprint } };
+  if (correction?.operations?.length) {
+    payload.textbook_parse_correction = cloneTextbookParse(correction);
+  }
+  return payload;
+}
+
 module.exports = {
   EDITABLE_FIELDS,
   buildTextbookCorrectionPatch,
+  buildRevisionApprovalPatch,
   cloneTextbookParse,
 };

@@ -13,30 +13,11 @@ from engine.textbook_parser.contracts import (
     AssumptionKind,
     EventKind,
     FactRelevance,
-    TemporalRole,
 )
-from engine.textbook_parser.ontology import canonical_symbol
 from engine.textbook_parser.validation import ValidatedParse
 
 
-PROJECTION_VERSION = "textbook-canonical-projection-v2"
-
-
-def _fact_symbol(fact) -> str | None:
-    symbol = canonical_symbol(fact.semantic_key)
-    if symbol == "v" and fact.temporal_role in {
-        TemporalRole.initial,
-        TemporalRole.before_event,
-    }:
-        return "v0"
-    if symbol == "v" and fact.temporal_role in {
-        TemporalRole.final,
-        TemporalRole.after_event,
-        TemporalRole.at_event,
-    }:
-        return "vf"
-    return symbol
-
+PROJECTION_VERSION = "textbook-canonical-projection-v3"
 
 def _raw_number(value: str) -> float:
     compact = value.strip().replace("−", "-").replace(",", "").replace(" ", "")
@@ -73,6 +54,12 @@ def project_canonical(problem_text: str, validated: ValidatedParse) -> Canonical
     fact_by_id = {item.fact_id: item for item in parse.explicit_facts}
     assumption_by_id = {item.assumption_id: item for item in parse.assumption_proposals}
     evaluation_by_id = {item.assumption_id: item for item in validated.assumptions}
+    selected_evaluation = next(
+        item for item in validated.candidates if item.candidate_id == candidate.candidate_id
+    )
+    binding_by_fact_id = {
+        item.fact_id: item for item in selected_evaluation.capability.binding.bindings
+    }
     knowns: dict[str, Quantity] = {}
     flags: dict[str, bool] = {}
     assumption_labels: list[str] = []
@@ -81,10 +68,15 @@ def project_canonical(problem_text: str, validated: ValidatedParse) -> Canonical
         fact = fact_by_id[fact_id]
         if fact.relevance not in {FactRelevance.solver_input, FactRelevance.constraint}:
             continue
-        symbol = _fact_symbol(fact)
+        binding = binding_by_fact_id.get(fact_id)
+        symbol = binding.symbol if binding is not None else None
         span = validated.evidence.fact_spans.get(fact.fact_id)
         if symbol is None or span is None:
             continue
+        if symbol in knowns:
+            raise ValueError(
+                f"canonical symbol collision survived validation: {symbol}"
+            )
         value, unit = normalize_labeled_value(_raw_number(fact.raw_value), fact.raw_unit or None)
         knowns[symbol] = Quantity(
             symbol=symbol,
@@ -100,6 +92,8 @@ def project_canonical(problem_text: str, validated: ValidatedParse) -> Canonical
                 "segment_id": fact.segment_id,
                 "event_id": fact.event_id,
                 "fact_id": fact.fact_id,
+                "temporal_role": binding.temporal_role,
+                "direction": binding.direction,
             },
             normalization_evidence={
                 "raw_value": fact.raw_value,

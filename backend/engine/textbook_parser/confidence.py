@@ -9,7 +9,7 @@ from engine.textbook_parser.errors import Severity, ValidationIssue
 from engine.textbook_parser.errors import ErrorCode
 
 
-DECISION_POLICY_VERSION = "textbook-decision-v1"
+DECISION_POLICY_VERSION = "textbook-decision-v2"
 TIE_MARGIN = 0.08
 
 
@@ -48,6 +48,10 @@ def score_candidate(
         ErrorCode.raw_value_mismatch,
         ErrorCode.raw_unit_mismatch,
         ErrorCode.contradictory_fact,
+        ErrorCode.candidate_binding_mismatch,
+        ErrorCode.canonical_symbol_collision,
+        ErrorCode.motion_model_mismatch,
+        ErrorCode.relation_binding_missing,
     }
     veto = sorted(
         {
@@ -79,7 +83,7 @@ def score_candidate(
         else 1.0
     )
     evidence_coverage = 1.0 if candidate.fact_ids else 0.0
-    binding_completeness = 1.0
+    binding_completeness = capability.binding.completeness
     query_match = 1.0 if candidate.query_ids else 0.0
     capability_completeness = 1.0 if capability.supported else 0.0
     rule_score = 0.5 if rule_agreement is None else (1.0 if rule_agreement else 0.0)

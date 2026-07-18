@@ -4,3 +4,10 @@ export function buildTextbookCorrectionPatch(
   original: any,
   edited: any,
 ): { operations: Array<{ collection: string; id: string; set: Record<string, any> }> };
+export function buildRevisionApprovalPatch(
+  fingerprint: string,
+  correction?: { operations: Array<{ collection: string; id: string; set: Record<string, any> }> } | null,
+): {
+  textbook_parse_approval: { fingerprint: string };
+  textbook_parse_correction?: { operations: Array<{ collection: string; id: string; set: Record<string, any> }> };
+};

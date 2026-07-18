@@ -16,6 +16,7 @@ import TokenSettings from './TokenSettings';
 import SymbolPad from './SymbolPad';
 import UnderstandingCard from './UnderstandingCard';
 import ProblemUnderstandingCard from './understanding/ProblemUnderstandingCard';
+import { buildRevisionApprovalPatch } from '../lib/textbookCorrections';
 
 type ExampleProblem = {
   id: string;
@@ -70,6 +71,7 @@ export default function HomeClient() {
   const [toast, setToast] = useState('');
   const [tokenModal, setTokenModal] = useState(false);
   const [wakeMessage, setWakeMessage] = useState('');
+  const [textbookCorrection, setTextbookCorrection] = useState<any>(null);
 
   // 401 응답은 어디서 나든 토큰 안내 모달로 이어진다.
   function handleError(e: any, fallbackMsg: string) {
@@ -108,6 +110,11 @@ export default function HomeClient() {
     const wakeTimer = window.setTimeout(() => {
       setWakeMessage('서버를 깨우는 중입니다. 무료 Render 서버라 첫 요청은 조금 걸릴 수 있습니다. 자동으로 다시 시도하고 있어요.');
     }, 2500);
+    if (canonicalPatch?.textbook_parse_correction) {
+      setTextbookCorrection(canonicalPatch.textbook_parse_correction);
+    } else if (!canonicalPatch?.textbook_parse_approval) {
+      setTextbookCorrection(null);
+    }
     try {
       const out = await solveProblem(problem, student, clarifyPatch ?? null, canonicalPatch ?? null);
       setText(problem);
@@ -309,8 +316,11 @@ export default function HomeClient() {
               <ProblemUnderstandingCard
                 parse={data.textbook_parse}
                 loading={loading}
-                onApprove={(fingerprint) => run(text, null, { textbook_parse_approval: { fingerprint } })}
-                onCorrect={(correction) => run(text, null, { textbook_parse_correction: correction })}
+                onApprove={(fingerprint) => run(text, null, buildRevisionApprovalPatch(fingerprint, textbookCorrection))}
+                onCorrect={(correction) => {
+                  setTextbookCorrection(correction);
+                  return run(text, null, { textbook_parse_correction: correction });
+                }}
               />
             )}
 
