@@ -15,6 +15,7 @@ import SupportedTypesCard from './SupportedTypesCard';
 import TokenSettings from './TokenSettings';
 import SymbolPad from './SymbolPad';
 import UnderstandingCard from './UnderstandingCard';
+import ProblemUnderstandingCard from './understanding/ProblemUnderstandingCard';
 
 type ExampleProblem = {
   id: string;
@@ -303,6 +304,14 @@ export default function HomeClient() {
             {wakeMessage && <p className="notice ok">{wakeMessage}</p>}
             {error && <p className="notice err">{error}</p>}
             {toast && <p className="notice ok">{toast}</p>}
+
+            {data && (
+              <ProblemUnderstandingCard
+                parse={data.textbook_parse}
+                loading={loading}
+                onApprove={(fingerprint) => run(text, null, { textbook_parse_approval: { fingerprint } })}
+              />
+            )}
 
             {data && (
               <UnderstandingCard
