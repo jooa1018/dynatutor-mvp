@@ -5,6 +5,8 @@ import os
 import threading
 from typing import Any
 
+from pydantic import ValidationError
+
 from engine.textbook_parser.config import TextbookParserConfig
 from engine.textbook_parser.contracts import TextbookProblemParseV1
 from engine.textbook_parser.errors import (
@@ -93,6 +95,11 @@ class OpenAITextbookParserClient:
                 tools=[],
                 max_output_tokens=self.config.max_output_tokens,
             )
+        except ValidationError:
+            # Structured Outputs can be syntactically valid JSON while failing
+            # the Pydantic graph contract. Preserve that typed signal so the
+            # orchestrator performs its one and only schema-repair attempt.
+            raise
         except Exception as exc:
             self._raise_mapped(exc)
             raise
