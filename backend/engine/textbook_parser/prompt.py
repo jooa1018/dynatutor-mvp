@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-PROMPT_VERSION = "textbook-parser-prompt-v1"
+PROMPT_VERSION = "textbook-parser-v1"
 PROMPT_PATH = Path(__file__).with_name("prompts") / "textbook_parser_v1.txt"
 
 
