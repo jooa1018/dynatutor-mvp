@@ -1,0 +1,40 @@
+name: Phase 55 textbook parser
+
+on:
+  pull_request:
+    paths:
+      - "backend/engine/textbook_parser/**"
+      - "backend/tests/test_phase55*"
+      - "backend/tests/fixtures/phase55/**"
+      - "backend/engine/solvers/kinematics.py"
+      - "backend/engine/services.py"
+      - "frontend/components/understanding/**"
+      - ".github/workflows/phase55-textbook-parser.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase55-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - run: python -m pip install -r requirements-lock.txt
+      - name: Compile Phase 55 modules
+        run: python -m compileall -q app engine tests/test_phase55_textbook_parser.py tests/test_phase55_textbook_benchmark.py
+      - name: Run recorded, adversarial, projection, mode, cache, and benchmark tests
+        run: python -m pytest -q -o addopts= tests/test_phase55_textbook_parser.py tests/test_phase55_textbook_benchmark.py
