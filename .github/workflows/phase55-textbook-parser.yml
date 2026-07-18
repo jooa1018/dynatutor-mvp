@@ -60,3 +60,28 @@ jobs:
         run: npm run typecheck
       - name: Run rendered-contract, keyboard, persistence, and approval round-trip tests
         run: npm test
+
+  live-openai-smoke:
+    if: ${{ github.event_name == 'pull_request' && vars.PHASE55_RUN_LIVE_SMOKE == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - run: python -m pip install -r requirements-lock.txt
+
+      - name: Run bounded live OpenAI 20-case smoke
+        run: python tools/run_phase55_live_smoke.py
