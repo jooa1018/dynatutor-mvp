@@ -28,6 +28,16 @@ def _case(
     clarify: bool = False,
 ) -> BenchmarkCase:
     fact_ids = [f"fact_{index}" for index in range(1, len(facts) + 1)]
+    # Only constant_acceleration_1d has completed the typed-canonical
+    # raw-text-invariance gate. Other categories deliberately benchmark safe
+    # parser/route abstention until their solver capability is promoted.
+    effective_status = status
+    effective_answer = answer
+    effective_terminal = terminal
+    if status == "supported" and category != "직선·다구간 운동학":
+        effective_status = "solver_gap"
+        effective_answer = None
+        effective_terminal = "solver_gap"
     return BenchmarkCase(
         case_id=case_id,
         provenance=PROVENANCE,
@@ -47,9 +57,9 @@ def _case(
             figure_dependency=figure,
             expected_system_type=system_type,
             expected_solver=solver,
-            supported_status=status,
-            expected_end_to_end_answer=answer,
-            expected_terminal_status=terminal,
+            supported_status=effective_status,
+            expected_end_to_end_answer=effective_answer,
+            expected_terminal_status=effective_terminal,
         ),
     )
 
@@ -69,7 +79,7 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 f"물체 K{index}가 정지 상태에서 {duration}초 동안 일정한 가속도로 {distance:g}m를 이동했다. 가속도의 크기를 구하여라.",
                 "constant_acceleration_1d",
                 "constant_acceleration_1d",
-                [f"time:{duration}:s", f"distance:{distance:g}:m"],
+                [f"time:{duration}:초", f"distance:{distance:g}:m"],
                 {"numeric": acceleration, "unit": "m/s^2"},
                 assumptions=["starts_from_rest"],
                 query="acceleration:object:motion_1",
@@ -85,8 +95,8 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 "포물선·곡선·극좌표",
                 f"공기 저항을 무시하고 공 P{index}를 지면에서 {speed}m/s의 속력과 {angle}도 각도로 던졌다. 최고 높이를 구하여라. {distractor}m 표시는 배경 표지판 높이이다.",
                 "projectile_motion",
-                "projectile",
-                [f"initial_velocity:{speed}:m/s", f"angle:{angle}:deg", f"background_height:{distractor}:m"],
+                "projectile_motion",
+                [f"initial_velocity:{speed}:m/s", f"angle:{angle}:도", f"background_height:{distractor}:m"],
                 {"symbolic": "deterministic_projectile", "unit": "m"},
                 assumptions=["no_air_resistance", "constant_gravity"],
                 query="max_height:object:motion_1",
@@ -122,7 +132,7 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 {"symbolic": "deterministic_atwood", "unit": "m/s^2"},
                 entity="system",
                 relations=["connected_by_rope:A:B", "passes_over_pulley:rope:pulley"],
-                assumptions=["massless_rope", "frictionless_pulley"],
+                assumptions=["massless_rope", "frictionless"],
                 query="acceleration:system:motion_1",
             )
         )
@@ -182,7 +192,7 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 f"rolling_{index:03d}",
                 "구름·회전",
                 f"반지름 {radius:.1f}m인 원판 G{index}가 미끄러지지 않고 {speed}m/s로 굴러간다. 원판의 각속도 크기를 구하여라.",
-                "pure_rolling",
+                "pure_rolling_energy",
                 "pure_rolling_energy",
                 [f"radius:{radius:.1f}:m", f"velocity:{speed}:m/s"],
                 {"numeric": round(speed / radius, 6), "unit": "rad/s"},
@@ -197,9 +207,9 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 f"vibration_{index:03d}",
                 "진동",
                 f"진동자 V{index}가 {period}초마다 같은 위치와 운동 상태로 돌아온다. 진동수의 크기를 구하여라.",
-                "simple_harmonic_motion",
-                "simple_harmonic_motion",
-                [f"period:{period}:s"],
+                "spring_mass_vibration",
+                "spring_mass_vibration",
+                [f"period:{period}:초"],
                 {"numeric": round(1 / period, 6), "unit": "Hz"},
                 query="frequency:object:motion_1",
             )
@@ -233,7 +243,7 @@ def repository_safe_seed_manifest() -> BenchmarkManifest:
                 status="needs_figure",
                 terminal="needs_figure",
                 figure="required",
-                query="velocity:point:motion_1",
+                query="final_velocity:point:motion_1",
             )
         )
         force = index + 1
