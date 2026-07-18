@@ -9,7 +9,7 @@ from engine.textbook_parser.errors import ErrorCode, Severity, ValidationIssue
 from engine.textbook_parser.ontology import canonical_symbol
 
 
-CAPABILITY_POLICY_VERSION = "textbook-capability-v1"
+CAPABILITY_POLICY_VERSION = "textbook-capability-v2"
 
 
 @dataclass(frozen=True)
@@ -39,21 +39,18 @@ def _accepted_assumption_symbols(
     evaluations: tuple[AssumptionEvaluation, ...],
     candidate_assumption_ids: set[str],
 ) -> set[str]:
-    accepted = {
-        item.assumption_id
-        for item in evaluations
-        if item.assumption_id in candidate_assumption_ids
-        and item.disposition in {
-            AssumptionDisposition.accepted_default,
-            AssumptionDisposition.accepted_visible,
-        }
-    }
     out: set[str] = set()
-    for proposal in parse.assumption_proposals:
-        if proposal.assumption_id in accepted:
-            symbol = canonical_symbol(proposal.proposed_semantic_key)
-            if symbol:
-                out.add(symbol)
+    for evaluation in evaluations:
+        if (
+            evaluation.assumption_id in candidate_assumption_ids
+            and evaluation.disposition
+            in {
+                AssumptionDisposition.accepted_default,
+                AssumptionDisposition.accepted_visible,
+            }
+            and evaluation.resolved_symbol is not None
+        ):
+            out.add(evaluation.resolved_symbol)
     return out
 
 
