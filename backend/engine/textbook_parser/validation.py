@@ -21,6 +21,18 @@ from engine.textbook_parser.validators.semantic import validate_semantics
 
 
 VALIDATOR_POLICY_VERSION = "textbook-validator-v1"
+SAFETY_VETO_CODES = frozenset(
+    {
+        ErrorCode.answer_authority_field.value,
+        ErrorCode.evidence_quote_missing.value,
+        ErrorCode.evidence_occurrence_missing.value,
+        ErrorCode.invented_explicit_number.value,
+        ErrorCode.raw_value_mismatch.value,
+        ErrorCode.raw_unit_mismatch.value,
+        ErrorCode.invalid_reference.value,
+        ErrorCode.contradictory_fact.value,
+    }
+)
 
 
 class ParseDecisionStatus(str, Enum):
@@ -158,11 +170,14 @@ def validate_parse(problem_text: str, parse: TextbookProblemParseV1) -> Validate
         ranked = sorted(evaluations, key=lambda item: (-item.score.total, item.candidate_id))
         best = ranked[0]
         selected = best.candidate_id
-        if best.score.veto_codes:
+        if set(best.score.veto_codes) & SAFETY_VETO_CODES:
             status = ParseDecisionStatus.needs_confirmation
             selected = None
         elif not best.capability.supported or not best.capability.textbook_parser_safe:
             status = ParseDecisionStatus.solver_gap
+            selected = None
+        elif best.score.veto_codes:
+            status = ParseDecisionStatus.needs_confirmation
             selected = None
         elif len(ranked) > 1 and ranked[1].score.total >= best.score.total - TIE_MARGIN:
             issues.append(
@@ -218,6 +233,7 @@ __all__ = [
     "VALIDATOR_POLICY_VERSION",
     "CandidateEvaluation",
     "ParseDecisionStatus",
+    "SAFETY_VETO_CODES",
     "ValidatedParse",
     "validate_parse",
 ]
