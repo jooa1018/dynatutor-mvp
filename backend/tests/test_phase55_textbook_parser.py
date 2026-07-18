@@ -231,6 +231,59 @@ def test_capability_uses_only_candidate_referenced_assumptions():
     assert validated.candidates[0].capability.missing_inputs
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("proposed_value", "999"),
+        ("proposed_unit", "s"),
+        ("proposed_semantic_key", "distance"),
+    ],
+)
+def test_server_policy_rejects_gpt_selected_assumption_quantities(field, value):
+    fixture = _fixture()
+    fixture["parse"]["assumption_proposals"][0][field] = value
+    validated = validate_parse(
+        fixture["problem_text"], TextbookProblemParseV1.model_validate(fixture["parse"])
+    )
+    assert validated.status == ParseDecisionStatus.needs_confirmation
+    evaluation = validated.assumptions[0]
+    assert evaluation.reason_code == "server_policy_quantity_mismatch"
+    assert evaluation.resolved_value is None
+    with pytest.raises(ValueError, match="cannot project non-accepted parse"):
+        project_canonical(fixture["problem_text"], validated)
+
+
+def test_correction_cannot_turn_gpt_assumption_value_into_solver_input():
+    fixture = _fixture()
+    parse = TextbookProblemParseV1.model_validate(fixture["parse"])
+    corrected = apply_parse_corrections(
+        parse,
+        {
+            "operations": [
+                {
+                    "collection": "assumption_proposals",
+                    "id": "starts_at_rest",
+                    "set": {"proposed_value": "999", "proposed_unit": "m/s"},
+                }
+            ]
+        },
+    )
+    validated = validate_parse(fixture["problem_text"], corrected)
+    assert validated.status == ParseDecisionStatus.needs_confirmation
+    assert validated.assumptions[0].resolved_symbol is None
+
+
+def test_projection_uses_server_resolved_assumption_value_only():
+    fixture = _fixture()
+    validated = validate_recorded_payload(fixture["problem_text"], fixture["parse"])
+    evaluation = validated.assumptions[0]
+    assert evaluation.resolved_symbol == "v0"
+    assert evaluation.resolved_value == "0"
+    canonical = project_canonical(fixture["problem_text"], validated)
+    assert canonical.knowns["v0"].value == 0.0
+    assert canonical.knowns["v0"].unit == "m/s"
+
+
 def test_structural_correction_is_whitelisted_and_schema_revalidated():
     fixture = _fixture()
     parse = TextbookProblemParseV1.model_validate(fixture["parse"])
