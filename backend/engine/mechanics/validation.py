@@ -1087,8 +1087,14 @@ def _canonical_unit(raw_unit: object) -> str | None:
         tokens = quantity_occurrences(probe)
     except Exception:
         return None
+    # Phase 55's numeric scanner can also surface digits that are lexically
+    # inside an already-whitelisted unit (for example the exponent in
+    # ``m*s^-1``).  The sentinel occurrence is nevertheless authoritative only
+    # when it begins at zero and its adjacent-unit span covers the entire probe.
+    # Ignore later scanner artifacts after preserving that exact whole-span
+    # check; malformed or suffixed units still fail closed.
     if (
-        len(tokens) != 1
+        not tokens
         or tokens[0].start != 0
         or tokens[0].end != len(probe)
         or tokens[0].raw_value != "0"
@@ -1204,15 +1210,21 @@ def _expected_numeric_pairs(
     component_texts = value_text.split(",")
     if len(component_texts) not in {2, 3}:
         return (), True
+    expected_unit = _canonical_unit(raw_unit)
+    if expected_unit is None:
+        return (), True
     expected: list[tuple[str, str]] = []
     for component_text in component_texts:
         component = component_text.strip(" \t")
         if not component:
             return (), True
-        canonical = _canonical_pair(component, raw_unit)
-        if canonical is None:
+        # Parse each component as a complete dimensionless scalar.  The shared
+        # vector unit is validated once above, rather than repeatedly asking the
+        # Phase-55 adjacent value/unit scanner to reinterpret a synthetic pair.
+        canonical_value = _canonical_pair(component, "")
+        if canonical_value is None:
             return (), True
-        expected.append(canonical)
+        expected.append((canonical_value[0], expected_unit))
     return tuple(expected), False
 
 
