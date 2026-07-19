@@ -815,10 +815,10 @@ def test_nonaccepted_terminals_never_expose_ir_or_fingerprint(draft, terminal) -
 
 
 def test_trusted_normalization_arguments_are_forwarded_by_identity() -> None:
-    approved = ("assumption1",)
+    approved: list[str] = []
     corrections: dict[str, object] = {}
     assumptions: dict[str, object] = {}
-    confirmed = {"figure1"}
+    confirmed: set[str] = set()
     captured: dict[str, object] = {}
 
     def spy(problem_text, draft, **kwargs):
@@ -1533,4 +1533,4 @@ def test_modeler_modules_have_no_legacy_parser_or_answer_driven_runtime(monkeypa
     assert "if metadata.system_type" not in source
     assert ".system_type.value" not in source
     assert "responses.parse" in source
-    assert "store=False" in source and "tools=[]" in source
+    assert '"store": False' in source and '"tools": []' in source
