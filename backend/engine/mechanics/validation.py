@@ -1189,28 +1189,30 @@ def _expected_numeric_pairs(
         maximum=_MAX_RAW_VALUE_LENGTH,
     ):
         return (), True
-    value_text = raw_value.strip()
-    components = _token_pairs(value_text, max_length=_MAX_RAW_VALUE_LENGTH)
-    if len(components) < 2:
-        return (), True
-    if (
-        components[0].start != 0
-        or components[-1].end != len(value_text)
-        or any(token.unit or token.end != token.number_end for token in components)
+    # ``quantity_occurrences`` deliberately accepts localized scalar number
+    # spellings, including some comma forms.  A vector needs a smaller,
+    # unambiguous grammar: two or three complete scalar components separated by
+    # literal commas, with only horizontal whitespace around each component.
+    # Canonicalize each scalar through the existing fail-closed scalar path so
+    # model text is never evaluated and a component cannot smuggle its own unit.
+    if any(
+        character.isspace() and character not in {" ", "\t"}
+        for character in raw_value
     ):
         return (), True
-    for previous, current in zip(components, components[1:]):
-        separator = value_text[previous.end : current.start]
-        if separator.strip() != "," or any(
-            character not in {" ", "\t", ","} for character in separator
-        ):
-            return (), True
-    expected_unit = _canonical_unit(raw_unit)
-    if expected_unit is None:
+    value_text = raw_value.strip(" \t")
+    component_texts = value_text.split(",")
+    if len(component_texts) not in {2, 3}:
         return (), True
     expected: list[tuple[str, str]] = []
-    for token in components:
-        expected.append((token.value, expected_unit))
+    for component_text in component_texts:
+        component = component_text.strip(" \t")
+        if not component:
+            return (), True
+        canonical = _canonical_pair(component, raw_unit)
+        if canonical is None:
+            return (), True
+        expected.append(canonical)
     return tuple(expected), False
 
 
@@ -1538,6 +1540,7 @@ def _validate_quantity_provenance(
         shape = _enum_value(getattr(quantity, "shape", None))
         evidence_refs = _references(quantity, "evidence_refs", path=path, issues=issues)
         validated_vector_expected: tuple[tuple[str, str], ...] = ()
+        vector_binding_trusted: bool | None = None
 
         if pair_complete and shape == "scalar" and _canonical_pair(raw_value, raw_unit) is None:
             pair_complete = False
@@ -1553,26 +1556,32 @@ def _validate_quantity_provenance(
                 raw_value,
                 raw_unit,
             )
-            if (
-                vector_is_unsafe
-                or not vector_expected
-                or not _vector_binding_is_trusted(
-                    quantity,
-                    symbols,
-                    component_count=len(vector_expected),
-                )
-            ):
+            if vector_is_unsafe or not vector_expected:
                 pair_complete = False
                 _add_issue(
                     issues,
                     MechanicsIssueCode.numeric_sequence_unconfirmed,
-                    "vector raw values require a complete comma-separated numeric sequence and an exact reciprocal symbol binding",
+                    "vector raw values require a complete two- or three-component comma-separated numeric sequence",
                     path,
                     severity=MechanicsIssueSeverity.warning,
                 )
                 needs_confirmation = True
             else:
                 validated_vector_expected = vector_expected
+                vector_binding_trusted = _vector_binding_is_trusted(
+                    quantity,
+                    symbols,
+                    component_count=len(vector_expected),
+                )
+                if not vector_binding_trusted:
+                    _add_issue(
+                        issues,
+                        MechanicsIssueCode.numeric_sequence_unconfirmed,
+                        "vector raw values require an exact reciprocal vector symbol, length, and dimension binding",
+                        path,
+                        severity=MechanicsIssueSeverity.warning,
+                    )
+                    needs_confirmation = True
         elif (
             pair_complete
             and shape == "tensor"
@@ -1632,21 +1641,6 @@ def _validate_quantity_provenance(
                 )
                 needs_confirmation = True
                 continue
-            if shape == "vector" and not _vector_binding_is_trusted(
-                quantity,
-                symbols,
-                component_count=len(expected),
-            ):
-                _add_issue(
-                    issues,
-                    MechanicsIssueCode.numeric_sequence_unconfirmed,
-                    "vector evidence requires an exact reciprocal vector symbol, length, and dimension binding",
-                    path,
-                    severity=MechanicsIssueSeverity.warning,
-                )
-                needs_confirmation = True
-                continue
-
             value_seen = False
             unit_seen = False
             ambiguous_binding = False

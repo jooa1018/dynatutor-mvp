@@ -1103,9 +1103,20 @@ def test_tensor_is_not_auto_accepted_and_vector_requires_exact_symbol_reciprocit
 
     wrong_length = deepcopy(payload)
     wrong_length["symbols"][0]["vector_length"] = 3  # type: ignore[index]
-    assert validate_draft(
+    wrong_length_result = validate_draft(
         "1 m, 2 m", _draft(wrong_length)
-    ).terminal is ValidationTerminal.needs_confirmation
+    )
+    assert wrong_length_result.terminal is ValidationTerminal.needs_confirmation
+    assert MechanicsIssueCode.numeric_sequence_unconfirmed in _codes(wrong_length_result)
+    assert MechanicsIssueCode.provenance_violation not in _codes(wrong_length_result)
+
+    invented_wrong_length = deepcopy(wrong_length)
+    invented_wrong_length["quantities"][0]["raw_value"] = "3, 4"  # type: ignore[index]
+    invented_result = validate_draft(
+        "1 m, 2 m", _draft(invented_wrong_length)
+    )
+    assert invented_result.terminal is ValidationTerminal.invalid
+    assert MechanicsIssueCode.invented_explicit_number in _codes(invented_result)
 
     tensor = deepcopy(payload)
     tensor["symbols"] = []
@@ -1309,7 +1320,16 @@ def test_trusted_vector_correction_and_default_accept_only_safe_sequence(
 @pytest.mark.parametrize("provenance", ["user_correction", "server_default"])
 @pytest.mark.parametrize(
     "raw_value",
-    ["banana", "1 2", "prefix 1, 2", "1, 2 suffix", "1, 2, 3"],
+    [
+        "banana",
+        "1 2",
+        "prefix 1, 2",
+        "1, 2 suffix",
+        "1, 2, 3",
+        "1,,2",
+        "1,\n2",
+        "1 m, 2",
+    ],
 )
 def test_vector_authority_rejects_unsafe_sequence_and_component_mismatch(
     provenance: str,

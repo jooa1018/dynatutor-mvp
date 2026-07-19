@@ -196,10 +196,24 @@ def test_server_default_uses_fresh_resolution_and_exact_authorization():
 def test_system_diagnostic_does_not_change_calculation_graph():
     first = adapt_validated_phase55(_TEXT, _validated())
     changed = deepcopy(_validated())
-    changed.candidates[0].effective_candidate.system_type = type(
-        changed.candidates[0].effective_candidate.system_type
-    ).single_particle_newton
-    changed.candidates[0].effective_candidate.subtype = "diagnostic_revision"
+    # A no-assumption Phase55 evaluation may alias its effective candidate to
+    # the candidate stored in ``parse``.  Replace it with an isolated diagnostic
+    # copy so this test changes only non-authoritative validated output rather
+    # than silently forging the parse that must be freshly revalidated.
+    diagnostic = changed.candidates[0].effective_candidate.model_copy(deep=True)
+    diagnostic.system_type = type(diagnostic.system_type).single_particle_newton
+    diagnostic.subtype = "diagnostic_revision"
+    changed = replace(
+        changed,
+        candidates=(
+            replace(changed.candidates[0], effective_candidate=diagnostic),
+            *changed.candidates[1:],
+        ),
+    )
+    assert (
+        changed.parse.interpretation_candidates[0].system_type.value
+        == "constant_acceleration_1d"
+    )
     second = adapt_validated_phase55(_TEXT, changed)
 
     assert first.draft is not None and second.draft is not None
@@ -251,6 +265,7 @@ def test_relation_closure_is_order_invariant_and_rope_is_only_topology():
 
 
 def test_adjacent_boundary_fact_closes_source_interval_event_and_actor():
+    boundary_text = _TEXT + " At the shared boundary its mass is 1 kg."
     payload = _parse_payload()
     payload["motion_segments"] = [
         {
@@ -268,19 +283,34 @@ def test_adjacent_boundary_fact_closes_source_interval_event_and_actor():
         "event_id": "boundary", "kind": "start", "subject_ids": ["body"],
         "segment_id": "seg",
     }]
-    fact = payload["explicit_facts"][0]
-    fact.update({
-        "semantic_key": "final_velocity", "segment_id": "prior",
+    payload["explicit_facts"].append({
+        "fact_id": "fact_boundary_mass", "kind": "scalar",
+        "semantic_key": "mass", "raw_value": "1", "raw_unit": "kg",
+        "subject_id": "body", "segment_id": "prior",
         "event_id": "boundary", "temporal_role": "final",
+        "direction": "not_applicable", "evidence_quote": "mass is 1 kg",
+        "relevance": "constraint", "occurrence_index": 0,
+        "quantity_occurrence_index": 0,
     })
-    payload["queries"][0]["output_key"] = "initial_velocity"
-    validated = validate_parse(_TEXT, TextbookProblemParseV1.model_validate(payload))
+    payload["interpretation_candidates"][0]["fact_ids"].append("fact_boundary_mass")
+    validated = validate_parse(
+        boundary_text, TextbookProblemParseV1.model_validate(payload)
+    )
     assert validated.accepted
-    result = adapt_validated_phase55(_TEXT, validated)
+    result = adapt_validated_phase55(boundary_text, validated)
     assert result.accepted and result.draft is not None
     assert len(result.draft.motion_intervals) == 2
     assert len(result.draft.events) == 1
     assert len(result.draft.entities) == 1
+    prior_interval = next(
+        item for item in result.draft.motion_intervals if item.order == 1
+    )
+    boundary_event = result.draft.events[0]
+    boundary_quantity = next(
+        item for item in result.draft.quantities if item.role.value == "mass"
+    )
+    assert boundary_quantity.interval_id == prior_interval.interval_id
+    assert boundary_quantity.event_id == boundary_event.event_id
 
 
 def test_constraint_like_relation_and_reused_quantity_are_nonaccepted():

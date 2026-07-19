@@ -415,6 +415,14 @@ def test_normalize_draft_accepts_vector_and_rawless_symbolic_quantity() -> None:
     vector_result = _run(vector)
     assert vector_result.accepted and vector_result.ir.quantities[0].si_value == (1.0, 2.0)
 
+    vector_3d = _draft(
+        raw_value="1, 2, 3", raw_unit="m*s^-1", role="velocity",
+        dimension=_dimension(length=1, time=-1), shape="vector",
+    )
+    vector_3d_result = _run(vector_3d)
+    assert vector_3d_result.accepted
+    assert vector_3d_result.ir.quantities[0].si_value == (1.0, 2.0, 3.0)
+
     symbolic = _draft(raw_value=None, raw_unit=None, provenance="inferred", correction_id=None)
     symbolic_result = _run(symbolic)
     assert symbolic_result.accepted
