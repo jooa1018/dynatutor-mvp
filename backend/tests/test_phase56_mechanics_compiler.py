@@ -559,6 +559,7 @@ def test_generated_query_symbol_is_dimension_and_shape_bound() -> None:
     payload["quantities"] = [item for item in payload["quantities"] if item["quantity_id"] in {"massA", "forceA"}]
     payload["interactions"] = [payload["interactions"][0]]
     payload["constraints"] = []
+    payload["assumptions"] = []
     payload["motion_intervals"][0]["subject_ids"] = ["bodyA"]
     payload["queries"][0]["target"]["target_quantity_id"] = None
     result = compile_mechanics_ir(_ir(payload))
@@ -681,11 +682,8 @@ def test_explicit_inequality_merges_point_topology_and_rejects_incompatible_scop
     })
     incompatible["constraints"][0]["subject_ids"] = ["bodyB"]
     rejected = compile_mechanics_ir(_ir(incompatible))
-    assert rejected.status is CompilerStatus.underdetermined and rejected.graph is not None
-    assert not rejected.graph.constraints
-    assert CompilerIssueCode.constraint_not_authoritative in {
-        item.code for item in rejected.issues
-    }
+    assert rejected.status is CompilerStatus.invalid and rejected.graph is None
+    assert rejected.issues[0].code is CompilerIssueCode.invalid_binding
 
 
 def _known_query_payload(provenance: str) -> dict[str, object]:

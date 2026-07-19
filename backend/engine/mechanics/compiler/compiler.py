@@ -2760,6 +2760,36 @@ def _finalize_emissions(
     )
 
 
+def _exact_known_dot(
+    expression: Dot,
+    known_values: Mapping[str, object],
+) -> Fraction | None:
+    """Evaluate only a dot product of two normalized, known vector symbols."""
+
+    if not (
+        isinstance(expression.left, SymbolRef)
+        and isinstance(expression.right, SymbolRef)
+    ):
+        return None
+    left = known_values.get(expression.left.symbol_id)
+    right = known_values.get(expression.right.symbol_id)
+    if not (
+        isinstance(left, tuple)
+        and isinstance(right, tuple)
+        and left
+        and len(left) == len(right)
+        and all(isinstance(item, float) for item in (*left, *right))
+    ):
+        return None
+    return sum(
+        (
+            Fraction(str(left_item)) * Fraction(str(right_item))
+            for left_item, right_item in zip(left, right, strict=True)
+        ),
+        Fraction(0),
+    )
+
+
 def _affine_expression(
     expression: MathExpression,
     unknown_ids: set[str],
@@ -2774,6 +2804,9 @@ def _affine_expression(
         return None
     if isinstance(expression, LiteralNode):
         return {}, Fraction(str(expression.value))
+    if isinstance(expression, Dot):
+        value = _exact_known_dot(expression, known_values)
+        return ({}, value) if value is not None else None
     if isinstance(expression, Negate):
         value = _affine_expression(expression.operand, unknown_ids, known_values)
         if value is None:
@@ -2878,6 +2911,8 @@ def _polynomial_degree(
         return 0 if isinstance(known_values.get(expression.symbol_id), float) else None
     if isinstance(expression, LiteralNode):
         return 0
+    if isinstance(expression, Dot):
+        return 0 if _exact_known_dot(expression, known_values) is not None else None
     if isinstance(expression, Negate):
         return _polynomial_degree(expression.operand, unknown_ids, known_values)
     if isinstance(expression, Add):
@@ -2918,6 +2953,8 @@ def _exact_scalar_value(
         return Fraction(str(value)) if isinstance(value, float) else None
     if isinstance(expression, LiteralNode):
         return Fraction(str(expression.value))
+    if isinstance(expression, Dot):
+        return _exact_known_dot(expression, known_values)
     if isinstance(expression, Negate):
         value = _exact_scalar_value(expression.operand, known_values)
         return -value if value is not None else None
@@ -3518,7 +3555,12 @@ class MechanicsCompiler:
             status = CompilerStatus.resource_limit if first.code == "resource_limit" else CompilerStatus.invalid
             return _failure(
                 status,
-                _issue(code, "source relation failed the safe AST and dimension gate", first.path, first.ref),
+                _issue(
+                    code,
+                    "source relation failed the safe AST and dimension gate",
+                    first.path,
+                    first.referenced_id,
+                ),
             )
         try:
             law_emissions = apply_core_laws(context)
@@ -3555,7 +3597,12 @@ class MechanicsCompiler:
             status = CompilerStatus.resource_limit if first.code == "resource_limit" else CompilerStatus.invalid
             return _failure(
                 status,
-                _issue(code, "generated equation failed the safe AST and dimension gate", first.path, first.ref),
+                _issue(
+                    code,
+                    "generated equation failed the safe AST and dimension gate",
+                    first.path,
+                    first.referenced_id,
+                ),
             )
         initial_condition_issue = _initial_condition_emission_issue(
             safe_ir, emissions, symbol_nodes
