@@ -1,6 +1,6 @@
 """Minimal pint stand-in for offline harness runs.
 
-Implements ONLY what engine/physics_core/units.py touches:
+Implements ONLY what the bounded physics_core/mechanics unit adapters touch:
   - UnitRegistry().Quantity(value, unit_str)
   - Quantity.to(unit_str), .magnitude, .dimensionality
   - DimensionalityError
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import math
 
-# base dimensions: M, L, T, A(angle)
+# Seven SI base dimensions; plane angle remains dimensionless like real Pint.
 _BASE = {
     "": (1.0, {}),
     "dimensionless": (1.0, {}),
@@ -33,6 +33,10 @@ _BASE = {
     "joule": (1.0, {"M": 1, "L": 2, "T": -2}),
     "radian": (1.0, {}),
     "degree": (math.pi / 180.0, {}),
+    "ampere": (1.0, {"I": 1}),
+    "kelvin": (1.0, {"Th": 1}),
+    "mole": (1.0, {"N": 1}),
+    "candela": (1.0, {"Jv": 1}),
     # 축약 토큰 (실제 pint가 아는 표기)
     "m": (1.0, {"L": 1}),
     "cm": (0.01, {"L": 1}),
@@ -49,6 +53,10 @@ _BASE = {
     "J": (1.0, {"M": 1, "L": 2, "T": -2}),
     "rad": (1.0, {}),
     "deg": (math.pi / 180.0, {}),
+    "A": (1.0, {"I": 1}),
+    "K": (1.0, {"Th": 1}),
+    "mol": (1.0, {"N": 1}),
+    "cd": (1.0, {"Jv": 1}),
 }
 
 
@@ -144,7 +152,11 @@ class _Dimensionality(dict):
     def __str__(self) -> str:
         if not self:
             return "dimensionless"
-        names = {"M": "[mass]", "L": "[length]", "T": "[time]"}
+        names = {
+            "M": "[mass]", "L": "[length]", "T": "[time]",
+            "I": "[current]", "Th": "[temperature]", "N": "[substance]",
+            "Jv": "[luminosity]",
+        }
         num = [f"{names[k]}{'' if v == 1 else f' ** {v}'}" for k, v in sorted(self.items()) if v > 0]
         den = [f"{names[k]}{'' if v == -1 else f' ** {-v}'}" for k, v in sorted(self.items()) if v < 0]
         s = " * ".join(num) if num else "1"
