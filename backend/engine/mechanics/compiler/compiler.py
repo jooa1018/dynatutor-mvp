@@ -1788,19 +1788,20 @@ def _build_law_context(
         query_symbol_id = query_quantity.symbol_id
     else:
         vector_length = None
-        if query_quantity is not None and isinstance(query_quantity.si_value, tuple):
-            vector_length = len(query_quantity.si_value)
-        if vector_length is None and query.target.direction is not None:
-            components = getattr(query.target.direction, "components", None)
-            if isinstance(components, tuple):
-                vector_length = len(components)
-        if vector_length is None and query.target.frame_id is not None:
-            frame = next(
-                (item for item in ir.reference_frames if item.frame_id == query.target.frame_id),
-                None,
-            )
-            if frame is not None:
-                vector_length = len(frame.axes)
+        if query.shape is QuantityShape.vector:
+            if query_quantity is not None and isinstance(query_quantity.si_value, tuple):
+                vector_length = len(query_quantity.si_value)
+            if vector_length is None and query.target.direction is not None:
+                components = getattr(query.target.direction, "components", None)
+                if isinstance(components, tuple):
+                    vector_length = len(components)
+            if vector_length is None and query.target.frame_id is not None:
+                frame = next(
+                    (item for item in ir.reference_frames if item.frame_id == query.target.frame_id),
+                    None,
+                )
+                if frame is not None:
+                    vector_length = len(frame.axes)
         try:
             query_symbol = _query_symbol_definition(
                 ir,

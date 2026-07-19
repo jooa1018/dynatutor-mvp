@@ -566,6 +566,8 @@ def test_generated_query_symbol_is_dimension_and_shape_bound() -> None:
     assert result.status is CompilerStatus.ready and result.graph is not None
     query_symbol = next(item for item in result.graph.symbols if item.symbol.symbol_id == result.graph.query_symbol_id)
     assert query_symbol.generated and query_symbol.symbol.dimension == ACCELERATION
+    assert query_symbol.symbol.shape.value == "scalar"
+    assert query_symbol.symbol.vector_length is None
     assert query_symbol.quantity_role == "acceleration"
     assert len(result.graph.selected_equation_ids) == 1
 
