@@ -12,6 +12,7 @@
 
 ```bash
 ./scripts/check_backend_fast.sh        # 기본 세트 (unit/regression/negative — pytest 기본 addopts)
+./scripts/check_backend_slow.sh        # -m "slow and not benchmark and not audit and not frontend"
 ./scripts/check_backend_benchmark.sh   # -m benchmark
 ./scripts/check_backend_audit.sh       # -m audit
 (cd backend && PYTHONPATH=. pytest -q -o addopts='' -m "frontend")
@@ -21,7 +22,7 @@
 Expected:
 
 ```text
-fast / benchmark / audit: 각 그룹 0 failed
+fast / slow-only / benchmark / audit / frontend: 각 그룹 0 failed
 routing 432/432 · numeric 127/127 · negative 60/60 · perturbation 0 breaks
 verification FP 0 · resid-cov 243/243 · clarify negatives→질문 60/60 · provenance 100%
 ```

@@ -50,10 +50,13 @@ jobs:
       - name: Compile backend modules
         run: python -m compileall -q app engine
 
-      # These marker groups cover the collected backend suite. Keep each group
-      # bounded and run it once; raw default/complete passes duplicate them.
+      # These five marker groups cover the collected backend suite. Keep each
+      # group bounded and run it once; raw default/complete passes duplicate them.
       - name: Run backend fast wrapper
         run: bash ../scripts/check_backend_fast.sh
+
+      - name: Run backend slow-only wrapper
+        run: bash ../scripts/check_backend_slow.sh
 
       - name: Run backend benchmark wrapper
         run: bash ../scripts/check_backend_benchmark.sh

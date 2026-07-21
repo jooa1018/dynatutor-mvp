@@ -863,6 +863,7 @@ def _same_fixture_evidence(
     )
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "source",
     (
@@ -1034,6 +1035,7 @@ def _forbid_legacy_call(
     monkeypatch.setattr(InclineWithFrictionSolver, "solve", forbidden)
 
 
+@pytest.mark.slow
 def test_incline_sticking_below_boundary_is_rejected_without_legacy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
