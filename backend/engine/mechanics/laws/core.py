@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+import json
+import math
 
 from engine.mechanics.contracts import (
+    AxisName,
     EntityPrimitive,
+    GeometryRelationKind,
     InteractionKind,
     PointRole,
     QuantityComponent,
@@ -70,8 +74,11 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("particle_normal_acceleration", "kinematics", (QuantityRole.speed, QuantityRole.radius, QuantityRole.acceleration), cost=3, hooks=("kinematic_residual",)),
     _rule("particle_newton_second", "newton_second_law", (QuantityRole.mass, QuantityRole.force, QuantityRole.acceleration), generated=(QuantityRole.acceleration,), cost=5, hooks=("force_balance",)),
     _rule("particle_weight", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.force), interactions=(InteractionKind.gravity.value,), cost=3, hooks=("force_dimension",)),
+    _rule("incline_gravity_tangent_projection", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.angle, QuantityRole.force), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), cost=3, hooks=("force_dimension", "direction_residual", "contact_validity")),
+    _rule("incline_gravity_normal_projection", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.angle, QuantityRole.force), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), cost=3, hooks=("force_dimension", "direction_residual", "contact_validity")),
     _rule("contact_friction_bound", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime",)),
     _rule("contact_normal_bound", "newton_second_law", (QuantityRole.force,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity",)),
+    _rule("fixed_contact_no_penetration", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity", "constraint_residual")),
     _rule("contact_sliding_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime", "direction_residual")),
     _rule("spring_force", "newton_second_law", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.force), interactions=(InteractionKind.spring.value,), cost=3, hooks=("constitutive_residual",)),
     _rule("damper_force", "vibration", (QuantityRole.damping, QuantityRole.velocity, QuantityRole.force), interactions=(InteractionKind.damping.value,), cost=3, hooks=("constitutive_residual",)),
@@ -538,6 +545,314 @@ def _interaction_quantities(context: LawContext, interaction_id: str) -> tuple[B
     return tuple(q for q in context.quantities if q.quantity_id in ids)
 
 
+def _one(values):
+    items = tuple(values)
+    return items[0] if len(items) == 1 else None
+
+
+def _axis_bound(
+    quantity: BoundQuantity,
+    frame_id: str,
+    component: QuantityComponent,
+    sign: int,
+) -> bool:
+    axis = (
+        AxisName.tangent.value
+        if component is QuantityComponent.tangential
+        else component.value
+    )
+    try:
+        direction = json.loads(quantity.direction_key or "")
+    except (TypeError, ValueError):
+        return False
+    return (
+        quantity.shape is QuantityShape.scalar
+        and quantity.frame_id == frame_id
+        and quantity.component is component
+        and quantity.direction_bound
+        and quantity.direction_sign == sign
+        and direction == {"axis": axis, "frame_id": frame_id, "kind": "axis"}
+    )
+
+
+def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]:
+    """Project gravity only for an exact source-backed fixed-contact contract."""
+
+    emitted: list[LawEmission] = []
+    kinds = {item.entity_id: item.primitive for item in context.entities}
+    quantities = {item.quantity_id: item for item in context.quantities if item.quantity_id}
+    frames = {item.frame_id: item for item in context.reference_frames}
+    for gravity_link in (
+        item for item in context.interactions if item.kind is InteractionKind.gravity
+    ):
+        body_id = _one(
+            item for item in gravity_link.participant_ids
+            if kinds.get(item) is EntityPrimitive.particle
+        )
+        environment_id = _one(
+            item for item in gravity_link.participant_ids
+            if kinds.get(item) is EntityPrimitive.environment
+        )
+        linked = tuple(quantities.get(item) for item in gravity_link.quantity_ids)
+        if (
+            body_id is None
+            or environment_id is None
+            or len(gravity_link.participant_ids) != 2
+            or len(linked) != 4
+            or any(item is None for item in linked)
+            or gravity_link.frame_id is None
+            or gravity_link.interval_id is None
+            or gravity_link.event_id is not None
+            or gravity_link.point_ids
+            or not gravity_link.evidence_refs
+        ):
+            continue
+        mass = _one(
+            item for item in linked
+            if item.role is QuantityRole.mass and item.subject_id == body_id
+        )
+        gravity = _one(
+            item for item in linked
+            if item.role is QuantityRole.gravity and item.subject_id == environment_id
+        )
+        gravity_tangent = _one(
+            item for item in linked
+            if item.role is QuantityRole.force
+            and item.subject_id == body_id
+            and item.point_id is None
+            and item.interval_id == gravity_link.interval_id
+            and _axis_bound(item, gravity_link.frame_id, QuantityComponent.tangential, 1)
+        )
+        gravity_normal = _one(
+            item for item in linked
+            if item.role is QuantityRole.force
+            and item.subject_id == body_id
+            and item.point_id is None
+            and item.interval_id == gravity_link.interval_id
+            and _axis_bound(item, gravity_link.frame_id, QuantityComponent.normal, -1)
+        )
+        relation = _one(
+            item for item in context.geometry
+            if item.kind is GeometryRelationKind.angle
+            and item.expression is None
+            and item.interval_id is None
+            and len(item.participant_ids) == 2
+            and environment_id in item.participant_ids
+            and len(item.quantity_ids) == 1
+            and item.evidence_refs
+        )
+        if any(item is None for item in (mass, gravity, gravity_tangent, gravity_normal, relation)):
+            continue
+        incline_id = _one(
+            item for item in relation.participant_ids
+            if kinds.get(item) is EntityPrimitive.incline
+        )
+        angle = quantities.get(relation.quantity_ids[0])
+        frame = frames.get(gravity_link.frame_id)
+        parent = frames.get(frame.parent_frame_id) if frame is not None else None
+        contact = _one(
+            item for item in context.interactions
+            if item.kind is InteractionKind.contact
+            and set(item.participant_ids) == {body_id, incline_id}
+            and len(item.participant_ids) == 2
+            and len(item.point_ids) == 1
+            and item.frame_id == gravity_link.frame_id
+            and item.interval_id == gravity_link.interval_id
+            and item.event_id is None
+            and len(item.quantity_ids) == 2
+            and item.evidence_refs
+        )
+        if incline_id is None or angle is None or frame is None or parent is None or contact is None:
+            continue
+        contact_quantities = tuple(quantities.get(item) for item in contact.quantity_ids)
+        normal_force = _one(
+            item for item in contact_quantities
+            if item is not None
+            and item.role is QuantityRole.force
+            and item.subject_id == body_id
+            and item.point_id == contact.point_ids[0]
+            and item.interval_id == contact.interval_id
+            and _axis_bound(item, contact.frame_id, QuantityComponent.normal, 1)
+        )
+        normal_acceleration = _one(
+            item for item in contact_quantities
+            if item is not None
+            and item.role is QuantityRole.acceleration
+            and item.subject_id == body_id
+            and item.point_id is None
+            and item.interval_id == contact.interval_id
+            and _axis_bound(item, contact.frame_id, QuantityComponent.normal, 1)
+        )
+        tangent_accelerations = tuple(
+            item for item in _by_role(context, QuantityRole.acceleration)
+            if item.subject_id == body_id
+            and item.point_id is None
+            and item.interval_id == contact.interval_id
+            and item.event_id is None
+            and item.symbol_id is not None
+            and item.known_si_value is None
+            and item.evidence_ids
+            and (
+                _axis_bound(item, contact.frame_id, QuantityComponent.tangential, 1)
+                or _axis_bound(item, contact.frame_id, QuantityComponent.tangential, -1)
+            )
+        )
+        states = tuple(
+            item for item in context.state_conditions
+            if item.interval_id == contact.interval_id
+            and item.event_id is None
+            and item.subject_id in {body_id, incline_id}
+            and item.kind in {StateKind.contact, StateKind.friction, StateKind.motion}
+        )
+        expected_states = {
+            (StateKind.contact, StateValue.touching, body_id,
+             frozenset({getattr(normal_force, "quantity_id", None),
+                        getattr(normal_acceleration, "quantity_id", None)})),
+            (StateKind.friction, StateValue.inactive, body_id, frozenset()),
+            (StateKind.motion, StateValue.at_rest, incline_id, frozenset()),
+        }
+        axis_signature = lambda value: {
+            (item.axis, item.direction.kind, getattr(item.direction, "frame_id", None),
+             getattr(item.direction, "axis", None), getattr(item.direction, "sign", None))
+            for item in value.axes
+        }
+        known = (
+            getattr(mass, "known_si_value", None),
+            getattr(gravity, "known_si_value", None),
+            getattr(angle, "known_si_value", None),
+        )
+        projected = (gravity_tangent, gravity_normal, normal_force, normal_acceleration)
+        if (
+            normal_force is None
+            or normal_acceleration is None
+            or len(tangent_accelerations) != 1
+            or len(states) != 3
+            or {
+                (item.kind, item.state, item.subject_id, frozenset(item.quantity_ids))
+                for item in states
+            } != expected_states
+            or any(item.expression is not None or not item.evidence_refs for item in states)
+            or frame.frame_type is not ReferenceFrameType.tangential_normal
+            or getattr(frame.origin, "entity_id", None) != incline_id
+            or frame.translating_with_entity_id is not None
+            or frame.rotating_about_point_id is not None
+            or not frame.evidence_refs
+            or axis_signature(frame) != {
+                (AxisName.tangent, "axis", frame.frame_id, AxisName.tangent, 1),
+                (AxisName.normal, "axis", frame.frame_id, AxisName.normal, 1),
+            }
+            or parent.frame_type is not ReferenceFrameType.cartesian_2d
+            or getattr(parent.origin, "kind", None) != "world"
+            or parent.parent_frame_id is not None
+            or parent.translating_with_entity_id is not None
+            or parent.rotating_about_point_id is not None
+            or axis_signature(parent) != {
+                (AxisName.x, "axis", parent.frame_id, AxisName.x, 1),
+                (AxisName.y, "axis", parent.frame_id, AxisName.y, 1),
+            }
+            or angle.role is not QuantityRole.angle
+            or angle.subject_id != incline_id
+            or any(
+                item.shape is not QuantityShape.scalar
+                for item in (mass, gravity, angle)
+            )
+            or any(
+                item.point_id is not None
+                or item.frame_id is not None
+                or item.interval_id is not None
+                or item.event_id is not None
+                for item in (mass, gravity, angle)
+            )
+            or mass.component not in {
+                QuantityComponent.magnitude,
+                QuantityComponent.unspecified,
+            }
+            or mass.direction_bound
+            or angle.component not in {
+                QuantityComponent.magnitude,
+                QuantityComponent.unspecified,
+            }
+            or angle.direction_bound
+            or gravity.component not in {
+                QuantityComponent.magnitude,
+                QuantityComponent.unspecified,
+            }
+            or gravity.direction_bound
+            or any(not item.evidence_ids for item in (mass, gravity, angle, *projected))
+            or any(
+                item.symbol_id is None
+                or item.known_si_value is not None
+                or item.event_id is not None
+                for item in projected
+            )
+            or any(not isinstance(value, float) or not math.isfinite(value) for value in known)
+            or mass.known_si_value <= 0.0
+            or gravity.known_si_value <= 0.0
+            or not 0.0 <= angle.known_si_value <= math.pi / 2.0
+            or any(angle.dimension.model_dump(mode="python").values())
+            or mass.dimension.plus(gravity.dimension) != gravity_tangent.dimension
+            or not (
+                gravity_tangent.dimension
+                == gravity_normal.dimension
+                == normal_force.dimension
+            )
+            or mass.dimension.plus(normal_acceleration.dimension) != normal_force.dimension
+            or mass.dimension.plus(tangent_accelerations[0].dimension)
+            != gravity_tangent.dimension
+        ):
+            continue
+        state_ids = tuple(item.state_condition_id for item in states)
+        for rule_id, force, trig_value in (
+            (
+                "incline_gravity_tangent_projection",
+                gravity_tangent,
+                math.sin(angle.known_si_value),
+            ),
+            (
+                "incline_gravity_normal_projection",
+                gravity_normal,
+                math.cos(angle.known_si_value),
+            ),
+        ):
+            projection = Multiply(
+                factors=(
+                    mass.expression,
+                    gravity.expression,
+                    LiteralNode(value=trig_value, dimension=angle.dimension),
+                ),
+                dimension=force.dimension,
+            )
+            emitted.append(_emit(
+                context, rule_id, Equality(left=force.expression, right=projection),
+                (force, mass, gravity, angle),
+                extra_entity_ids=tuple(gravity_link.participant_ids),
+            ))
+        emitted.append(_emit(
+            context,
+            "fixed_contact_no_penetration",
+            Equality(
+                left=normal_acceleration.expression,
+                right=LiteralNode(value=0.0, dimension=normal_acceleration.dimension),
+            ),
+            (normal_acceleration, normal_force),
+            constraint_ids=state_ids,
+            extra_entity_ids=tuple(contact.participant_ids),
+        ))
+        emitted.append(_emit(
+            context,
+            "contact_normal_bound",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=normal_force.expression,
+                right=LiteralNode(value=0.0, dimension=normal_force.dimension),
+            ),
+            (normal_force,),
+            constraint_ids=state_ids,
+            extra_entity_ids=tuple(contact.participant_ids),
+        ))
+    return emitted
+
+
 def _newton_emissions(context: LawContext) -> list[LawEmission]:
     emitted: list[LawEmission] = []
     entity_kinds = {entity.entity_id: entity.primitive for entity in context.entities}
@@ -619,6 +934,11 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
                     len(masses) == len(gravities) == 1
                     and masses[0].shape is QuantityShape.scalar
                     and force.shape is gravities[0].shape
+                    and force.component
+                    not in {
+                        QuantityComponent.tangential,
+                        QuantityComponent.normal,
+                    }
                 ):
                     product = Multiply(
                         factors=(masses[0].expression, gravities[0].expression),
@@ -2367,6 +2687,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_constant_velocity_emissions(context))
     emitted.extend(_constant_acceleration_emissions(context))
     emitted.extend(_chain_kinematics_emissions(context))
+    emitted.extend(_incline_gravity_contact_emissions(context))
     emitted.extend(_newton_emissions(context))
     emitted.extend(_primitive_interaction_emissions(context))
     emitted.extend(_work_energy_emissions(context))

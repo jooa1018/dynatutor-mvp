@@ -5,6 +5,7 @@ from fractions import Fraction
 import hashlib
 import itertools
 import json
+import math
 import re
 from typing import Collection, Iterable, Mapping
 
@@ -543,6 +544,111 @@ def _structural_specialization_issue(
     return None
 
 
+def _incline_projection_domain_issue(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    relevant: set[str],
+) -> CompilerIssue | None:
+    """Constrain only angles bound to the fixed-incline projection template."""
+
+    entities = {item.entity_id: item for item in ir.entities}
+    frame = next(
+        (
+            item
+            for item in ir.reference_frames
+            if item.frame_id == query.target.frame_id
+            and item.frame_id in relevant
+            and item.frame_type.value == "tangential_normal"
+        ),
+        None,
+    )
+    incline_id = getattr(getattr(frame, "origin", None), "entity_id", None)
+    if (
+        query.target.role is not QuantityRole.acceleration
+        or query.shape is not QuantityShape.scalar
+        or entities.get(query.target.subject_id) is None
+        or entities[query.target.subject_id].primitive.value != "particle"
+        or incline_id not in relevant
+        or entities.get(incline_id) is None
+        or entities[incline_id].primitive.value != "incline"
+    ):
+        return None
+    relations = tuple(
+        item
+        for item in ir.geometry
+        if item.relation_id in relevant
+        and item.kind.value == "angle"
+        and incline_id in item.participant_ids
+        and len(item.participant_ids) == 2
+        and len(item.quantity_ids) == 1
+        and item.interval_id is None
+        and item.evidence_refs
+    )
+    if len(relations) != 1:
+        return None
+    environment_ids = tuple(
+        item
+        for item in relations[0].participant_ids
+        if entities.get(item) is not None
+        and entities[item].primitive.value == "environment"
+    )
+    angle = next(
+        (
+            item
+            for item in ir.quantities
+            if item.quantity_id == relations[0].quantity_ids[0]
+            and item.role is QuantityRole.angle
+            and item.subject_id == incline_id
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id is None
+            and item.event_id is None
+            and item.direction is None
+            and item.shape is QuantityShape.scalar
+            and item.dimension == DimensionVector.dimensionless()
+            and isinstance(item.si_value, float)
+            and item.evidence_refs
+        ),
+        None,
+    )
+    if len(environment_ids) != 1 or angle is None:
+        return None
+    if not 0.0 <= angle.si_value <= math.pi / 2.0:
+        return _issue(
+            CompilerIssueCode.invalid_domain,
+            "incline projection angle must be in the inclusive domain [0, pi/2]",
+            f"quantities.{angle.quantity_id}.si_value",
+            angle.quantity_id,
+        )
+    gravity_interactions = tuple(
+        item
+        for item in ir.interactions
+        if item.interaction_id in relevant
+        and item.kind.value == "gravity"
+        and set(item.participant_ids)
+        == {query.target.subject_id, environment_ids[0]}
+        and item.frame_id == query.target.frame_id
+        and item.interval_id == query.target.interval_id
+    )
+    gravities = tuple(
+        quantity
+        for interaction in gravity_interactions
+        for quantity in ir.quantities
+        if quantity.quantity_id in interaction.quantity_ids
+        and quantity.role is QuantityRole.gravity
+        and quantity.subject_id == environment_ids[0]
+        and isinstance(quantity.si_value, float)
+    )
+    if len(gravity_interactions) == 1 and len(gravities) == 1 and gravities[0].si_value <= 0.0:
+        return _issue(
+            CompilerIssueCode.invalid_domain,
+            "incline projection requires a positive gravity magnitude",
+            f"quantities.{gravities[0].quantity_id}.si_value",
+            gravities[0].quantity_id,
+        )
+    return None
+
+
 def _structural_template_support_issue(
     ir: MechanicsProblemIRV1,
     relevant: set[str],
@@ -640,6 +746,66 @@ def _structural_template_support_issue(
         tangent = tuple(item for item in linked if item.role is QuantityRole.force and item.component.value == "tangential")
         normal = tuple(item for item in linked if item.role is QuantityRole.force and item.component.value == "normal")
         coefficients = tuple(item for item in linked if item.role is QuantityRole.coefficient_friction)
+        if state.state.value == "inactive":
+            normal_accelerations = tuple(
+                item
+                for item in linked
+                if item.role is QuantityRole.acceleration
+                and item.component.value == "normal"
+            )
+            incline_ids = tuple(
+                item
+                for item in (contacts[0].participant_ids if len(contacts) == 1 else ())
+                if primitive.get(item) == "incline"
+            )
+            touching = tuple(
+                item
+                for item in ir.state_conditions
+                if len(normal) == len(normal_accelerations) == 1
+                and item.state_condition_id in relevant
+                and item.kind.value == "contact"
+                and item.state.value == "touching"
+                and item.subject_id == state.subject_id
+                and item.interval_id == state.interval_id
+                and item.event_id == state.event_id
+                and set(item.quantity_ids)
+                == {normal[0].quantity_id, normal_accelerations[0].quantity_id}
+                and len(item.quantity_ids) == 2
+                and item.evidence_refs
+            )
+            fixed = tuple(
+                item
+                for item in ir.state_conditions
+                if len(incline_ids) == 1
+                and item.state_condition_id in relevant
+                and item.kind.value == "motion"
+                and item.state.value == "at_rest"
+                and item.subject_id == incline_ids[0]
+                and item.interval_id == state.interval_id
+                and item.event_id == state.event_id
+                and not item.quantity_ids
+                and item.evidence_refs
+            )
+            if (
+                len(contacts) != 1
+                or not contacts[0].evidence_refs
+                or len(incline_ids) != 1
+                or tangent
+                or coefficients
+                or len(normal) != 1
+                or len(normal_accelerations) != 1
+                or len(touching) != 1
+                or len(fixed) != 1
+                or state.quantity_ids
+                or not state.evidence_refs
+            ):
+                return _issue(
+                    CompilerIssueCode.requires_specialized_model,
+                    "frictionless incline contact needs evidenced inactive friction, touching normal contact, and a fixed surface",
+                    f"state_conditions.{state.state_condition_id}",
+                    state.state_condition_id,
+                )
+            continue
         if (
             state.state.value not in {"sticking", "sliding"}
             or len(contacts) != 1
@@ -3511,6 +3677,9 @@ class MechanicsCompiler:
         domain_issue = _known_role_domain_issue(safe_ir, relevant)
         if domain_issue is not None:
             return _failure(CompilerStatus.invalid, domain_issue)
+        incline_domain_issue = _incline_projection_domain_issue(safe_ir, query, relevant)
+        if incline_domain_issue is not None:
+            return _failure(CompilerStatus.invalid, incline_domain_issue)
         support_issue = _structural_template_support_issue(
             safe_ir, relevant, authority.approved_assumption_ids
         )
