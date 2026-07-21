@@ -79,6 +79,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("contact_friction_bound", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime",)),
     _rule("contact_normal_bound", "newton_second_law", (QuantityRole.force,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity",)),
     _rule("fixed_contact_no_penetration", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity", "constraint_residual")),
+    _rule("incline_sticking_static_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.force, QuantityRole.coefficient_friction), interactions=(InteractionKind.contact.value,), cost=2, hooks=("friction_regime", "constraint_residual")),
     _rule("contact_sliding_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime", "direction_residual")),
     _rule("spring_force", "newton_second_law", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.force), interactions=(InteractionKind.spring.value,), cost=3, hooks=("constitutive_residual",)),
     _rule("damper_force", "vibration", (QuantityRole.damping, QuantityRole.velocity, QuantityRole.force), interactions=(InteractionKind.damping.value,), cost=3, hooks=("constitutive_residual",)),
@@ -659,10 +660,66 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
             and item.frame_id == gravity_link.frame_id
             and item.interval_id == gravity_link.interval_id
             and item.event_id is None
-            and len(item.quantity_ids) == 2
+            and len(item.quantity_ids) in {2, 4}
             and item.evidence_refs
         )
         if incline_id is None or angle is None or frame is None or parent is None or contact is None:
+            continue
+        body_entity = _one(
+            item for item in context.entities if item.entity_id == body_id
+        )
+        incline_entity = _one(
+            item for item in context.entities if item.entity_id == incline_id
+        )
+        motion_interval = _one(
+            item for item in context.motion_intervals
+            if item.interval_id == gravity_link.interval_id
+        )
+        if (
+            body_entity is None
+            or body_entity.primitive is not EntityPrimitive.particle
+            or not body_entity.evidence_refs
+            or incline_entity is None
+            or incline_entity.primitive is not EntityPrimitive.incline
+            or not incline_entity.evidence_refs
+            or motion_interval is None
+            or not motion_interval.evidence_refs
+        ):
+            continue
+        interval_subject_ids = set(motion_interval.subject_ids)
+        endpoint_events = tuple(
+            _one(
+                item for item in context.events
+                if item.event_id == event_id
+            )
+            for event_id in (
+                motion_interval.start_event_id,
+                motion_interval.end_event_id,
+            )
+            if event_id is not None
+        )
+        if (
+            motion_interval.interval_id != contact.interval_id
+            or motion_interval.frame_id != gravity_link.frame_id
+            or motion_interval.frame_id != contact.frame_id
+            or len(motion_interval.subject_ids)
+            != len(interval_subject_ids)
+            or not (
+                set(gravity_link.participant_ids)
+                | set(contact.participant_ids)
+            ).issubset(interval_subject_ids)
+            or (
+                motion_interval.start_event_id is not None
+                and motion_interval.start_event_id
+                == motion_interval.end_event_id
+            )
+            or any(
+                event is None
+                or motion_interval.interval_id not in event.interval_ids
+                or not set(event.subject_ids).issubset(interval_subject_ids)
+                for event in endpoint_events
+            )
+        ):
             continue
         contact_quantities = tuple(quantities.get(item) for item in contact.quantity_ids)
         normal_force = _one(
@@ -682,6 +739,35 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
             and item.point_id is None
             and item.interval_id == contact.interval_id
             and _axis_bound(item, contact.frame_id, QuantityComponent.normal, 1)
+        )
+        friction_force = _one(
+            item for item in contact_quantities
+            if item is not None
+            and item.role is QuantityRole.force
+            and item.subject_id == body_id
+            and item.point_id == contact.point_ids[0]
+            and item.interval_id == contact.interval_id
+            and item.event_id is None
+            and (
+                _axis_bound(item, contact.frame_id, QuantityComponent.tangential, 1)
+                or _axis_bound(item, contact.frame_id, QuantityComponent.tangential, -1)
+            )
+        )
+        coefficient = _one(
+            item for item in contact_quantities
+            if item is not None
+            and item.role is QuantityRole.coefficient_friction
+            and item.subject_id == body_id
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id is None
+            and item.event_id is None
+            and item.shape is QuantityShape.scalar
+            and item.component in {
+                QuantityComponent.magnitude,
+                QuantityComponent.unspecified,
+            }
+            and not item.direction_bound
         )
         tangent_accelerations = tuple(
             item for item in _by_role(context, QuantityRole.acceleration)
@@ -704,13 +790,167 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
             and item.subject_id in {body_id, incline_id}
             and item.kind in {StateKind.contact, StateKind.friction, StateKind.motion}
         )
-        expected_states = {
+        frictionless_states = {
             (StateKind.contact, StateValue.touching, body_id,
              frozenset({getattr(normal_force, "quantity_id", None),
                         getattr(normal_acceleration, "quantity_id", None)})),
             (StateKind.friction, StateValue.inactive, body_id, frozenset()),
             (StateKind.motion, StateValue.at_rest, incline_id, frozenset()),
         }
+        state_signatures = {
+            (item.kind, item.state, item.subject_id, frozenset(item.quantity_ids))
+            for item in states
+        }
+        exact_state_quantity_cardinality = all(
+            len(item.quantity_ids) == len(set(item.quantity_ids))
+            for item in states
+        )
+        friction_state = _one(
+            item for item in states
+            if item.kind is StateKind.friction
+            and item.state in {StateValue.sticking, StateValue.sliding}
+            and item.subject_id == body_id
+        )
+        body_motion = _one(
+            item for item in states
+            if item.kind is StateKind.motion
+            and item.subject_id == body_id
+            and item.state in {StateValue.at_rest, StateValue.moving}
+        )
+        motion_carrier = (
+            quantities.get(body_motion.quantity_ids[0])
+            if body_motion is not None and len(body_motion.quantity_ids) == 1
+            else None
+        )
+        frictionless_profile = (
+            len(contact_quantities) == 2
+            and friction_force is None
+            and coefficient is None
+            and len(states) == 3
+            and exact_state_quantity_cardinality
+            and state_signatures == frictionless_states
+        )
+        frictional_contact = (
+            len(contact_quantities) == 4
+            and normal_force is not None
+            and normal_acceleration is not None
+            and friction_force is not None
+            and coefficient is not None
+            and {
+                item.quantity_id
+                for item in (normal_force, normal_acceleration, friction_force, coefficient)
+                if item is not None
+            }
+            == set(contact.quantity_ids)
+            and friction_force.shape is QuantityShape.scalar
+            and friction_force.symbol_id is not None
+            and friction_force.known_si_value is None
+            and bool(friction_force.evidence_ids)
+            and coefficient.symbol_id is not None
+            and isinstance(coefficient.known_si_value, float)
+            and math.isfinite(coefficient.known_si_value)
+            and coefficient.known_si_value >= 0.0
+            and bool(coefficient.evidence_ids)
+            and not any(coefficient.dimension.model_dump(mode="python").values())
+            and friction_force.dimension == normal_force.dimension
+        )
+        friction_quantity_ids = frozenset(
+            getattr(item, "quantity_id", None)
+            for item in (friction_force, normal_force, coefficient)
+        )
+        touching_signature = (
+            StateKind.contact,
+            StateValue.touching,
+            body_id,
+            frozenset({
+                getattr(normal_force, "quantity_id", None),
+                getattr(normal_acceleration, "quantity_id", None),
+            }),
+        )
+        fixed_signature = (
+            StateKind.motion,
+            StateValue.at_rest,
+            incline_id,
+            frozenset(),
+        )
+        sticking_profile = (
+            frictional_contact
+            and friction_state is not None
+            and friction_state.state is StateValue.sticking
+            and body_motion is not None
+            and body_motion.state is StateValue.at_rest
+            and not body_motion.quantity_ids
+            and _axis_bound(
+                friction_force,
+                contact.frame_id,
+                QuantityComponent.tangential,
+                -1,
+            )
+            and len(states) == 4
+            and exact_state_quantity_cardinality
+            and state_signatures == {
+                touching_signature,
+                (StateKind.friction, StateValue.sticking, body_id, friction_quantity_ids),
+                fixed_signature,
+                (StateKind.motion, StateValue.at_rest, body_id, frozenset()),
+            }
+        )
+        carrier_valid = (
+            motion_carrier is not None
+            and motion_carrier.role is QuantityRole.velocity
+            and motion_carrier.subject_id == body_id
+            and motion_carrier.point_id is None
+            and motion_carrier.frame_id == contact.frame_id
+            and motion_carrier.interval_id == contact.interval_id
+            and motion_carrier.event_id is None
+            and motion_carrier.shape is QuantityShape.scalar
+            and motion_carrier.symbol_id is not None
+            and isinstance(motion_carrier.known_si_value, float)
+            and math.isfinite(motion_carrier.known_si_value)
+            and motion_carrier.known_si_value > 0.0
+            and bool(motion_carrier.evidence_ids)
+            and (
+                _axis_bound(
+                    motion_carrier,
+                    contact.frame_id,
+                    QuantityComponent.tangential,
+                    1,
+                )
+                or _axis_bound(
+                    motion_carrier,
+                    contact.frame_id,
+                    QuantityComponent.tangential,
+                    -1,
+                )
+            )
+        )
+        sliding_profile = (
+            frictional_contact
+            and friction_state is not None
+            and friction_state.state is StateValue.sliding
+            and body_motion is not None
+            and body_motion.state is StateValue.moving
+            and carrier_valid
+            and _axis_bound(
+                friction_force,
+                contact.frame_id,
+                QuantityComponent.tangential,
+                -motion_carrier.direction_sign,
+            )
+            and len(states) == 4
+            and exact_state_quantity_cardinality
+            and state_signatures == {
+                touching_signature,
+                (StateKind.friction, StateValue.sliding, body_id, friction_quantity_ids),
+                fixed_signature,
+                (
+                    StateKind.motion,
+                    StateValue.moving,
+                    body_id,
+                    frozenset({motion_carrier.quantity_id}),
+                ),
+            }
+        )
         axis_signature = lambda value: {
             (item.axis, item.direction.kind, getattr(item.direction, "frame_id", None),
              getattr(item.direction, "axis", None), getattr(item.direction, "sign", None))
@@ -726,17 +966,14 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
             normal_force is None
             or normal_acceleration is None
             or len(tangent_accelerations) != 1
-            or len(states) != 3
-            or {
-                (item.kind, item.state, item.subject_id, frozenset(item.quantity_ids))
-                for item in states
-            } != expected_states
+            or not (frictionless_profile or sticking_profile or sliding_profile)
             or any(item.expression is not None or not item.evidence_refs for item in states)
             or frame.frame_type is not ReferenceFrameType.tangential_normal
             or getattr(frame.origin, "entity_id", None) != incline_id
             or frame.translating_with_entity_id is not None
             or frame.rotating_about_point_id is not None
             or not frame.evidence_refs
+            or len(frame.axes) != 2
             or axis_signature(frame) != {
                 (AxisName.tangent, "axis", frame.frame_id, AxisName.tangent, 1),
                 (AxisName.normal, "axis", frame.frame_id, AxisName.normal, 1),
@@ -746,6 +983,7 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
             or parent.parent_frame_id is not None
             or parent.translating_with_entity_id is not None
             or parent.rotating_about_point_id is not None
+            or len(parent.axes) != 2
             or axis_signature(parent) != {
                 (AxisName.x, "axis", parent.frame_id, AxisName.x, 1),
                 (AxisName.y, "axis", parent.frame_id, AxisName.y, 1),
@@ -838,18 +1076,39 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
             constraint_ids=state_ids,
             extra_entity_ids=tuple(contact.participant_ids),
         ))
-        emitted.append(_emit(
-            context,
-            "contact_normal_bound",
-            Inequality(
-                relation=InequalityRelation.ge,
-                left=normal_force.expression,
-                right=LiteralNode(value=0.0, dimension=normal_force.dimension),
-            ),
-            (normal_force,),
-            constraint_ids=state_ids,
-            extra_entity_ids=tuple(contact.participant_ids),
-        ))
+        if sticking_profile:
+            emitted.append(_emit(
+                context,
+                "incline_sticking_static_acceleration",
+                Equality(
+                    left=_signed(tangent_accelerations[0]),
+                    right=LiteralNode(
+                        value=0.0,
+                        dimension=tangent_accelerations[0].dimension,
+                    ),
+                ),
+                (
+                    tangent_accelerations[0],
+                    friction_force,
+                    normal_force,
+                    coefficient,
+                ),
+                constraint_ids=state_ids,
+                extra_entity_ids=tuple(contact.participant_ids),
+            ))
+        if frictionless_profile:
+            emitted.append(_emit(
+                context,
+                "contact_normal_bound",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=normal_force.expression,
+                    right=LiteralNode(value=0.0, dimension=normal_force.dimension),
+                ),
+                (normal_force,),
+                constraint_ids=state_ids,
+                extra_entity_ids=tuple(contact.participant_ids),
+            ))
     return emitted
 
 
@@ -923,6 +1182,7 @@ def _newton_emissions(context: LawContext) -> list[LawEmission]:
 
 def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
     emitted: list[LawEmission] = []
+    entity_kinds = {item.entity_id: item.primitive for item in context.entities}
     for interaction in sorted(context.interactions, key=lambda item: item.interaction_id):
         linked = _interaction_quantities(context, interaction.interaction_id)
         by_role = {role: tuple(q for q in linked if q.role is role) for role in QuantityRole}
@@ -1066,6 +1326,22 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
             coefficients = by_role[QuantityRole.coefficient_friction]
             normal = tuple(q for q in by_role[QuantityRole.force] if q.component is QuantityComponent.normal)
             tangent = tuple(q for q in by_role[QuantityRole.force] if q.component is QuantityComponent.tangential)
+            normal_accelerations = tuple(
+                q
+                for q in by_role[QuantityRole.acceleration]
+                if q.component is QuantityComponent.normal
+            )
+            incline_body_id = _one(
+                item
+                for item in interaction.participant_ids
+                if entity_kinds.get(item) is EntityPrimitive.particle
+            )
+            incline_id = _one(
+                item
+                for item in interaction.participant_ids
+                if entity_kinds.get(item) is EntityPrimitive.incline
+            )
+            incline_contact = incline_body_id is not None and incline_id is not None
             states = tuple(
                 state
                 for state in context.state_conditions
@@ -1091,6 +1367,220 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
             used_ids = {item.quantity_id for item in (coefficients[0], normal[0], tangent[0])}
             if scoped_ids and not used_ids.issubset(scoped_ids):
                 continue
+            state_ids = (state.state_condition_id,)
+            friction_quantities: tuple[BoundQuantity, ...] = (
+                tangent[0],
+                normal[0],
+                coefficients[0],
+            )
+            if incline_contact:
+                touching = tuple(
+                    item
+                    for item in context.state_conditions
+                    if item.kind is StateKind.contact
+                    and item.state is StateValue.touching
+                    and item.subject_id == incline_body_id
+                    and item.interval_id == interaction.interval_id
+                    and item.event_id == interaction.event_id
+                    and set(item.quantity_ids)
+                    == {normal[0].quantity_id, normal_accelerations[0].quantity_id}
+                    and len(item.quantity_ids) == 2
+                    and item.expression is None
+                    and item.evidence_refs
+                ) if len(normal_accelerations) == 1 else ()
+                fixed = tuple(
+                    item
+                    for item in context.state_conditions
+                    if item.kind is StateKind.motion
+                    and item.state is StateValue.at_rest
+                    and item.subject_id == incline_id
+                    and item.interval_id == interaction.interval_id
+                    and item.event_id == interaction.event_id
+                    and not item.quantity_ids
+                    and item.expression is None
+                    and item.evidence_refs
+                )
+                body_motion = tuple(
+                    item
+                    for item in context.state_conditions
+                    if item.kind is StateKind.motion
+                    and item.subject_id == incline_body_id
+                    and item.interval_id == interaction.interval_id
+                    and item.event_id == interaction.event_id
+                    and item.state
+                    in {
+                        StateValue.at_rest,
+                        StateValue.moving,
+                    }
+                    and item.expression is None
+                    and item.evidence_refs
+                )
+                incline_states = tuple(
+                    item
+                    for item in context.state_conditions
+                    if item.interval_id == interaction.interval_id
+                    and item.event_id == interaction.event_id
+                    and item.subject_id in {incline_body_id, incline_id}
+                    and item.kind
+                    in {
+                        StateKind.contact,
+                        StateKind.friction,
+                        StateKind.motion,
+                    }
+                )
+                coefficient = coefficients[0]
+                exact_contact = (
+                    len(interaction.point_ids) == 1
+                    and bool(interaction.evidence_refs)
+                    and len(interaction.quantity_ids) == 4
+                    and len(normal_accelerations) == 1
+                    and set(interaction.quantity_ids)
+                    == {
+                        tangent[0].quantity_id,
+                        normal[0].quantity_id,
+                        normal_accelerations[0].quantity_id,
+                        coefficient.quantity_id,
+                    }
+                    and len(touching) == len(fixed) == len(body_motion) == 1
+                    and len(incline_states) == 4
+                    and {
+                        item.state_condition_id for item in incline_states
+                    }
+                    == {
+                        state.state_condition_id,
+                        touching[0].state_condition_id,
+                        fixed[0].state_condition_id,
+                        body_motion[0].state_condition_id,
+                    }
+                    and scoped_ids == used_ids
+                    and len(state.quantity_ids) == len(used_ids) == 3
+                    and state.expression is None
+                    and state.subject_id == incline_body_id
+                    and normal[0].subject_id == tangent[0].subject_id == incline_body_id
+                    and normal[0].point_id == tangent[0].point_id == interaction.point_ids[0]
+                    and normal[0].symbol_id is not None
+                    and normal[0].known_si_value is None
+                    and bool(normal[0].evidence_ids)
+                    and _axis_bound(
+                        normal[0],
+                        interaction.frame_id,
+                        QuantityComponent.normal,
+                        1,
+                    )
+                    and normal_accelerations[0].subject_id == incline_body_id
+                    and normal_accelerations[0].point_id is None
+                    and normal_accelerations[0].interval_id == interaction.interval_id
+                    and normal_accelerations[0].event_id == interaction.event_id
+                    and normal_accelerations[0].symbol_id is not None
+                    and normal_accelerations[0].known_si_value is None
+                    and bool(normal_accelerations[0].evidence_ids)
+                    and _axis_bound(
+                        normal_accelerations[0],
+                        interaction.frame_id,
+                        QuantityComponent.normal,
+                        1,
+                    )
+                    and coefficient.subject_id == incline_body_id
+                    and coefficient.point_id is None
+                    and coefficient.frame_id is None
+                    and coefficient.interval_id is None
+                    and coefficient.event_id is None
+                    and coefficient.shape is QuantityShape.scalar
+                    and coefficient.component
+                    in {
+                        QuantityComponent.magnitude,
+                        QuantityComponent.unspecified,
+                    }
+                    and not coefficient.direction_bound
+                    and coefficient.symbol_id is not None
+                    and isinstance(coefficient.known_si_value, float)
+                    and math.isfinite(coefficient.known_si_value)
+                    and coefficient.known_si_value >= 0.0
+                    and bool(coefficient.evidence_ids)
+                    and not any(
+                        coefficient.dimension.model_dump(mode="python").values()
+                    )
+                    and tangent[0].symbol_id is not None
+                    and tangent[0].known_si_value is None
+                    and bool(tangent[0].evidence_ids)
+                    and tangent[0].dimension == normal[0].dimension
+                )
+                motion = body_motion[0] if len(body_motion) == 1 else None
+                if state.state is StateValue.sticking:
+                    regime_valid = (
+                        motion is not None
+                        and motion.state is StateValue.at_rest
+                        and not motion.quantity_ids
+                        and _axis_bound(
+                            tangent[0],
+                            interaction.frame_id,
+                            QuantityComponent.tangential,
+                            -1,
+                        )
+                    )
+                else:
+                    carrier = (
+                        next(
+                            (
+                                item
+                                for item in context.quantities
+                                if item.quantity_id == motion.quantity_ids[0]
+                            ),
+                            None,
+                        )
+                        if motion is not None and len(motion.quantity_ids) == 1
+                        else None
+                    )
+                    carrier_valid = (
+                        carrier is not None
+                        and carrier.role is QuantityRole.velocity
+                        and carrier.subject_id == incline_body_id
+                        and carrier.point_id is None
+                        and carrier.frame_id == interaction.frame_id
+                        and carrier.interval_id == interaction.interval_id
+                        and carrier.event_id == interaction.event_id
+                        and carrier.shape is QuantityShape.scalar
+                        and carrier.symbol_id is not None
+                        and isinstance(carrier.known_si_value, float)
+                        and math.isfinite(carrier.known_si_value)
+                        and carrier.known_si_value > 0.0
+                        and bool(carrier.evidence_ids)
+                        and (
+                            _axis_bound(
+                                carrier,
+                                interaction.frame_id,
+                                QuantityComponent.tangential,
+                                1,
+                            )
+                            or _axis_bound(
+                                carrier,
+                                interaction.frame_id,
+                                QuantityComponent.tangential,
+                                -1,
+                            )
+                        )
+                    )
+                    regime_valid = (
+                        motion is not None
+                        and motion.state is StateValue.moving
+                        and carrier_valid
+                        and _axis_bound(
+                            tangent[0],
+                            interaction.frame_id,
+                            QuantityComponent.tangential,
+                            -carrier.direction_sign,
+                        )
+                    )
+                    if carrier_valid:
+                        friction_quantities = (*friction_quantities, carrier)
+                if not exact_contact or not regime_valid:
+                    continue
+                state_ids = tuple(sorted({
+                    state.state_condition_id,
+                    touching[0].state_condition_id,
+                    fixed[0].state_condition_id,
+                    motion.state_condition_id,
+                }))
             bound = Multiply(
                 factors=(coefficients[0].expression, normal[0].expression),
                 dimension=tangent[0].dimension,
@@ -1105,7 +1595,7 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
                         right=LiteralNode(value=0.0, dimension=normal[0].dimension),
                     ),
                     (normal[0],),
-                    constraint_ids=(state.state_condition_id,),
+                    constraint_ids=state_ids,
                     extra_entity_ids=tuple(interaction.participant_ids),
                 )
             )
@@ -1123,8 +1613,8 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
                                 left=left,
                                 right=bound,
                             ),
-                            (tangent[0], normal[0], coefficients[0]),
-                            constraint_ids=(state.state_condition_id,),
+                            friction_quantities,
+                            constraint_ids=state_ids,
                             extra_entity_ids=tuple(interaction.participant_ids),
                         )
                     )
@@ -1134,8 +1624,8 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
                         context,
                         "contact_sliding_friction",
                         Equality(left=tangent[0].expression, right=bound),
-                        (tangent[0], normal[0], coefficients[0]),
-                        constraint_ids=(state.state_condition_id,),
+                        friction_quantities,
+                        constraint_ids=state_ids,
                         extra_entity_ids=tuple(interaction.participant_ids),
                     )
                 )

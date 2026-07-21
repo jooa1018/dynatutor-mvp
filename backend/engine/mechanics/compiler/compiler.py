@@ -649,6 +649,345 @@ def _incline_projection_domain_issue(
     return None
 
 
+def _exact_axis_direction(
+    value: object,
+    *,
+    frame_id: str,
+    axis: str,
+    sign: int,
+) -> bool:
+    direction = getattr(value, "direction", None)
+    return (
+        getattr(direction, "kind", None) == "axis"
+        and getattr(direction, "frame_id", None) == frame_id
+        and getattr(getattr(direction, "axis", None), "value", None) == axis
+        and getattr(direction, "sign", None) == sign
+    )
+
+
+def _incline_friction_contract_issue(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    relevant: set[str],
+) -> CompilerIssue | None:
+    """Require an exact source-backed active-friction incline contract.
+
+    This gate is deliberately local to a tangential acceleration query on an
+    incline.  The generic contact templates remain available for every other
+    topology, while this topology cannot use a model-authored friction force as
+    its own regime or direction authority.
+    """
+
+    frame = next(
+        (
+            item
+            for item in ir.reference_frames
+            if item.frame_id == query.target.frame_id
+            and item.frame_id in relevant
+            and item.frame_type.value == "tangential_normal"
+        ),
+        None,
+    )
+    incline_id = getattr(getattr(frame, "origin", None), "entity_id", None)
+    entities = {item.entity_id: item for item in ir.entities}
+    if (
+        query.target.role is not QuantityRole.acceleration
+        or query.shape is not QuantityShape.scalar
+        or query.target.component.value != "tangential"
+        or frame is None
+        or incline_id is None
+        or entities.get(incline_id) is None
+        or entities[incline_id].primitive.value != "incline"
+    ):
+        return None
+
+    body_id = query.target.subject_id
+    quantities = {item.quantity_id: item for item in ir.quantities}
+    related_contacts = tuple(
+        item
+        for item in ir.interactions
+        if item.interaction_id in relevant
+        and item.kind.value == "contact"
+        and ({body_id, incline_id} & set(item.participant_ids))
+    )
+    friction_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.state_condition_id in relevant
+        and item.kind.value == "friction"
+        and item.subject_id == body_id
+    )
+    carries_coefficient = any(
+        quantities.get(quantity_id) is not None
+        and quantities[quantity_id].role is QuantityRole.coefficient_friction
+        for contact in related_contacts
+        for quantity_id in contact.quantity_ids
+    )
+    carries_active_state = any(item.state.value != "inactive" for item in friction_states)
+    if not carries_coefficient and not carries_active_state:
+        return None
+
+    def failure(referenced_id: str | None = None) -> CompilerIssue:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            "active incline friction requires one exact evidenced contact, regime, and motion-direction contract",
+            f"queries.{query.query_id}",
+            referenced_id or query.query_id,
+        )
+
+    if (
+        entities.get(body_id) is None
+        or entities[body_id].primitive.value != "particle"
+        or not entities[body_id].evidence_refs
+        or not entities[incline_id].evidence_refs
+        or query.target.interval_id is None
+        or query.target.event_id is not None
+        or not frame.evidence_refs
+    ):
+        return failure(body_id)
+
+    axis_signature = {
+        (
+            item.axis.value,
+            getattr(item.direction, "kind", None),
+            getattr(item.direction, "frame_id", None),
+            getattr(getattr(item.direction, "axis", None), "value", None),
+            getattr(item.direction, "sign", None),
+        )
+        for item in frame.axes
+    }
+    if len(frame.axes) != 2 or axis_signature != {
+        ("tangent", "axis", frame.frame_id, "tangent", 1),
+        ("normal", "axis", frame.frame_id, "normal", 1),
+    }:
+        return failure(frame.frame_id)
+
+    query_intervals = tuple(
+        item
+        for item in ir.motion_intervals
+        if item.interval_id in relevant
+        and item.interval_id == query.target.interval_id
+    )
+    if len(query_intervals) != 1:
+        return failure(query.target.interval_id)
+    query_interval = query_intervals[0]
+    if (
+        query_interval.frame_id != frame.frame_id
+        or not {body_id, incline_id}.issubset(query_interval.subject_ids)
+        or not query_interval.evidence_refs
+        or (
+            query_interval.start_event_id is not None
+            and query_interval.start_event_id == query_interval.end_event_id
+        )
+    ):
+        return failure(query_interval.interval_id)
+    events = {item.event_id: item for item in ir.events}
+    for event_id in (
+        query_interval.start_event_id,
+        query_interval.end_event_id,
+    ):
+        if event_id is None:
+            continue
+        event = events.get(event_id)
+        if (
+            event is None
+            or query_interval.interval_id not in event.interval_ids
+            or not set(event.subject_ids).issubset(query_interval.subject_ids)
+        ):
+            return failure(event_id)
+
+    scoped_contacts = tuple(
+        item
+        for item in related_contacts
+        if item.frame_id == frame.frame_id
+        and item.interval_id == query.target.interval_id
+        and item.event_id == query.target.event_id
+    )
+    if len(scoped_contacts) != 1:
+        return failure(scoped_contacts[0].interaction_id if scoped_contacts else None)
+    contact = scoped_contacts[0]
+    if (
+        len(contact.participant_ids) != 2
+        or set(contact.participant_ids) != {body_id, incline_id}
+        or len(contact.point_ids) != 1
+        or not contact.evidence_refs
+        or len(contact.quantity_ids) != 4
+        or len(set(contact.quantity_ids)) != 4
+    ):
+        return failure(contact.interaction_id)
+
+    contact_point = next(
+        (item for item in ir.points if item.point_id == contact.point_ids[0]),
+        None,
+    )
+    if (
+        contact_point is None
+        or contact_point.role.value != "contact"
+        or contact_point.owner_entity_id != body_id
+        or contact_point.frame_id != frame.frame_id
+        or not contact_point.evidence_refs
+    ):
+        return failure(contact.point_ids[0])
+
+    linked = tuple(quantities.get(item) for item in contact.quantity_ids)
+    if any(item is None for item in linked):
+        return failure(contact.interaction_id)
+    normal_forces = tuple(
+        item
+        for item in linked
+        if item.role is QuantityRole.force and item.component.value == "normal"
+    )
+    normal_accelerations = tuple(
+        item
+        for item in linked
+        if item.role is QuantityRole.acceleration and item.component.value == "normal"
+    )
+    tangent_forces = tuple(
+        item
+        for item in linked
+        if item.role is QuantityRole.force and item.component.value == "tangential"
+    )
+    coefficients = tuple(
+        item for item in linked if item.role is QuantityRole.coefficient_friction
+    )
+    if not all(
+        len(items) == 1
+        for items in (normal_forces, normal_accelerations, tangent_forces, coefficients)
+    ):
+        return failure(contact.interaction_id)
+    normal, normal_acceleration, tangent, coefficient = (
+        normal_forces[0],
+        normal_accelerations[0],
+        tangent_forces[0],
+        coefficients[0],
+    )
+    if (
+        any(item.shape is not QuantityShape.scalar for item in linked)
+        or any(not item.evidence_refs for item in linked)
+        or any(item.subject_id != body_id for item in linked)
+        or normal.point_id != contact_point.point_id
+        or tangent.point_id != contact_point.point_id
+        or normal_acceleration.point_id is not None
+        or normal.frame_id != frame.frame_id
+        or normal_acceleration.frame_id != frame.frame_id
+        or tangent.frame_id != frame.frame_id
+        or normal.interval_id != query.target.interval_id
+        or normal_acceleration.interval_id != query.target.interval_id
+        or tangent.interval_id != query.target.interval_id
+        or normal.event_id != query.target.event_id
+        or normal_acceleration.event_id != query.target.event_id
+        or tangent.event_id != query.target.event_id
+        or not _exact_axis_direction(normal, frame_id=frame.frame_id, axis="normal", sign=1)
+        or not _exact_axis_direction(
+            normal_acceleration, frame_id=frame.frame_id, axis="normal", sign=1
+        )
+        or coefficient.dimension != DimensionVector.dimensionless()
+        or coefficient.component.value not in {"magnitude", "unspecified"}
+        or coefficient.direction is not None
+        or coefficient.point_id is not None
+        or coefficient.frame_id is not None
+        or coefficient.interval_id is not None
+        or coefficient.event_id is not None
+        or not isinstance(coefficient.si_value, float)
+        or not math.isfinite(coefficient.si_value)
+        or coefficient.si_value < 0.0
+    ):
+        return failure(contact.interaction_id)
+
+    def scoped_states(kind: str, subject_id: str) -> tuple[IRStateCondition, ...]:
+        return tuple(
+            item
+            for item in ir.state_conditions
+            if item.state_condition_id in relevant
+            and item.kind.value == kind
+            and item.subject_id == subject_id
+            and item.interval_id == query.target.interval_id
+            and item.event_id == query.target.event_id
+        )
+
+    contact_states = scoped_states("contact", body_id)
+    fixed_states = scoped_states("motion", incline_id)
+    exact_friction_states = scoped_states("friction", body_id)
+    body_motion_states = scoped_states("motion", body_id)
+    if (
+        len(contact_states) != 1
+        or contact_states[0].state.value != "touching"
+        or contact_states[0].expression is not None
+        or len(contact_states[0].quantity_ids) != 2
+        or set(contact_states[0].quantity_ids)
+        != {normal.quantity_id, normal_acceleration.quantity_id}
+        or not contact_states[0].evidence_refs
+        or len(fixed_states) != 1
+        or fixed_states[0].state.value != "at_rest"
+        or fixed_states[0].expression is not None
+        or fixed_states[0].quantity_ids
+        or not fixed_states[0].evidence_refs
+        or len(exact_friction_states) != 1
+        or exact_friction_states[0].state.value not in {"sticking", "sliding"}
+        or exact_friction_states[0].expression is not None
+        or len(exact_friction_states[0].quantity_ids) != 3
+        or set(exact_friction_states[0].quantity_ids)
+        != {tangent.quantity_id, normal.quantity_id, coefficient.quantity_id}
+        or not exact_friction_states[0].evidence_refs
+        or len(body_motion_states) != 1
+        or body_motion_states[0].expression is not None
+        or not body_motion_states[0].evidence_refs
+    ):
+        return failure(contact.interaction_id)
+
+    regime = exact_friction_states[0].state.value
+    body_motion = body_motion_states[0]
+    if regime == "sticking":
+        if (
+            body_motion.state.value != "at_rest"
+            or body_motion.quantity_ids
+            or not _exact_axis_direction(
+                tangent, frame_id=frame.frame_id, axis="tangent", sign=-1
+            )
+        ):
+            return failure(exact_friction_states[0].state_condition_id)
+        return None
+
+    if body_motion.state.value != "moving" or len(body_motion.quantity_ids) != 1:
+        return failure(body_motion.state_condition_id)
+    carrier = quantities.get(body_motion.quantity_ids[0])
+    if (
+        carrier is None
+        or carrier.role is not QuantityRole.velocity
+        or carrier.shape is not QuantityShape.scalar
+        or carrier.subject_id != body_id
+        or carrier.point_id is not None
+        or carrier.frame_id != frame.frame_id
+        or carrier.interval_id != query.target.interval_id
+        or carrier.event_id != query.target.event_id
+        or carrier.component.value != "tangential"
+        or carrier.provenance is not Provenance.explicit_source
+        or not carrier.evidence_refs
+        or not isinstance(carrier.si_value, float)
+        or not math.isfinite(carrier.si_value)
+        or carrier.si_value <= 0.0
+    ):
+        return failure(body_motion.state_condition_id)
+    carrier_sign = getattr(carrier.direction, "sign", None)
+    if (
+        carrier_sign not in {-1, 1}
+        or not _exact_axis_direction(
+            carrier,
+            frame_id=frame.frame_id,
+            axis="tangent",
+            sign=carrier_sign,
+        )
+        or not _exact_axis_direction(
+            tangent,
+            frame_id=frame.frame_id,
+            axis="tangent",
+            sign=-carrier_sign,
+        )
+    ):
+        return failure(carrier.quantity_id)
+    return None
+
+
 def _structural_template_support_issue(
     ir: MechanicsProblemIRV1,
     relevant: set[str],
@@ -3680,6 +4019,11 @@ class MechanicsCompiler:
         incline_domain_issue = _incline_projection_domain_issue(safe_ir, query, relevant)
         if incline_domain_issue is not None:
             return _failure(CompilerStatus.invalid, incline_domain_issue)
+        incline_friction_issue = _incline_friction_contract_issue(
+            safe_ir, query, relevant
+        )
+        if incline_friction_issue is not None:
+            return _failure(CompilerStatus.unsupported, incline_friction_issue)
         support_issue = _structural_template_support_issue(
             safe_ir, relevant, authority.approved_assumption_ids
         )
