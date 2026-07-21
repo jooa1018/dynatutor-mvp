@@ -7,8 +7,10 @@ from typing import Annotated, Iterable, Literal, Mapping, TypeAlias, Union
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
+    StrictInt,
     StringConstraints,
     TypeAdapter,
     model_validator,
@@ -34,8 +36,17 @@ Identifier = Annotated[
         pattern=r"^[A-Za-z][A-Za-z0-9_-]*$",
     ),
 ]
+
+
+def _reject_bool_as_finite_float(value: object) -> object:
+    if isinstance(value, bool):
+        raise ValueError("boolean is not a finite float")
+    return value
+
+
 FiniteFloat = Annotated[
     float,
+    BeforeValidator(_reject_bool_as_finite_float),
     Field(allow_inf_nan=False, ge=-1.0e300, le=1.0e300),
 ]
 
@@ -55,13 +66,13 @@ class DimensionVector(StrictMathModel):
     Plane angle is dimensionless in Pint and therefore has no separate slot.
     """
 
-    mass: int = Field(default=0, ge=-24, le=24)
-    length: int = Field(default=0, ge=-24, le=24)
-    time: int = Field(default=0, ge=-24, le=24)
-    current: int = Field(default=0, ge=-24, le=24)
-    temperature: int = Field(default=0, ge=-24, le=24)
-    amount: int = Field(default=0, ge=-24, le=24)
-    luminous_intensity: int = Field(default=0, ge=-24, le=24)
+    mass: StrictInt = Field(default=0, ge=-24, le=24)
+    length: StrictInt = Field(default=0, ge=-24, le=24)
+    time: StrictInt = Field(default=0, ge=-24, le=24)
+    current: StrictInt = Field(default=0, ge=-24, le=24)
+    temperature: StrictInt = Field(default=0, ge=-24, le=24)
+    amount: StrictInt = Field(default=0, ge=-24, le=24)
+    luminous_intensity: StrictInt = Field(default=0, ge=-24, le=24)
 
     @classmethod
     def dimensionless(cls) -> "DimensionVector":
@@ -111,7 +122,7 @@ class SymbolDefinition(StrictMathModel):
     quantity_id: Identifier | None = None
     dimension: DimensionVector
     shape: SymbolShape = SymbolShape.scalar
-    vector_length: int | None = Field(default=None, ge=2, le=MAX_VECTOR_LENGTH)
+    vector_length: StrictInt | None = Field(default=None, ge=2, le=MAX_VECTOR_LENGTH)
 
     @model_validator(mode="after")
     def validate_shape(self) -> "SymbolDefinition":
@@ -212,7 +223,7 @@ class Derivative(MathNode):
     op: Literal["derivative"] = "derivative"
     expression: "MathExpression"
     wrt_symbol_id: Identifier
-    order: int = Field(default=1, ge=1, le=MAX_CALCULUS_ORDER)
+    order: StrictInt = Field(default=1, ge=1, le=MAX_CALCULUS_ORDER)
 
 
 class Integral(MathNode):
@@ -221,7 +232,7 @@ class Integral(MathNode):
     wrt_symbol_id: Identifier
     lower: "MathExpression | None" = None
     upper: "MathExpression | None" = None
-    order: int = Field(default=1, ge=1, le=MAX_CALCULUS_ORDER)
+    order: StrictInt = Field(default=1, ge=1, le=MAX_CALCULUS_ORDER)
 
 
 class Norm(MathNode):

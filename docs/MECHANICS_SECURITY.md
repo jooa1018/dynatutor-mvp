@@ -14,14 +14,22 @@ and stale cached calculations.
 
 ## Implementation boundary
 
-The Stage 1 mechanics package currently implements the Draft/IR contracts,
-bounded math AST, validation, SI normalization, recursive accepted-IR
-immutability, calculation fingerprint, and the strict Phase 55 compatibility
-adapter.  The law compiler, equation graph, solver, independent verification,
-mechanics cache/orchestrator, rollout integration, and figure correction UI are
-required controls for later stages.  Sections that describe those components
-state their security contract; they are not claims that the components or
-their tests already exist.
+Stages 0-3 are implemented and accepted.  They provide the repository/security
+audit and ADR; frozen Draft/IR contracts and bounded math AST; validation, SI
+normalization, recursive accepted-IR immutability, calculation fingerprint,
+and the strict Phase 55 compatibility adapter; the bounded one-call modeler;
+and the deterministic law compiler and immutable `EquationGraph`.
+
+Stage 4 implements the mechanics-local planner, safe typed-AST translation,
+bounded symbolic and numeric candidate generation, spawned-process timeout and
+resource isolation, a separate plan-only completeness audit, independent
+all-candidate verification, terminal selection, and solved-only evidence
+adaptation.  The graph-only `solve_verified_equation_graph` pipeline connects
+those boundaries without accepting raw text, family labels, expected answers,
+legacy solver output, or caller-selected backends.  Event and initial-condition
+execution remains explicitly unsupported until its backend semantics are
+implemented.  Mechanics cache/orchestrator and rollout integration remain
+later-stage work.
 
 ## Trust boundaries
 
@@ -30,9 +38,12 @@ untrusted text/image
   -> one bounded Structured Outputs model response (untrusted DraftV1)
   -> server evidence, authority, graph, unit, and AST validation
   -> recursively immutable verified IRV1
-  -> [required downstream] deterministic laws and constraints
-  -> [required downstream] bounded equation graph and math backend
-  -> [required downstream] candidate verification
+  -> deterministic laws and constraints
+  -> immutable bounded EquationGraph + graph fingerprint
+  -> graph-bound plan + safe typed-AST translation
+  -> isolated bounded candidate generation + independent plan-only audit
+  -> independent verification of every retained candidate + terminal selection
+  -> solved-only evidence adapter
   -> [required downstream] student-visible result
 ```
 
@@ -90,30 +101,182 @@ contract-representable only through a separately trusted typed path; untrusted
 raw tensor syntax is rejected.  Only a finite alias table maps units into Pint
 or the internal shim; untrusted unit syntax never reaches either parser.
 
-Solvers require separate time, equation, unknown, branch, symbolic, and numeric
-resource limits.  Timeout, non-finite output, dimension disagreement, rank
-failure, or backend error is terminal and produces no partial answer.
+The frozen `SolverBudget` centrally bounds equation, unknown, candidate, AST,
+operation, symbolic/numeric/verification time, timeout-termination grace,
+numeric-start, iteration, and tolerance resources.  The termination grace is
+finite and positive, defaults to 0.5 seconds, is capped at 5 seconds, and is
+part of the canonical plan fingerprint.  Resource counts, indices, multiplicities, degrees, and
+ordinals use strict integers (booleans and numeric strings are rejected), and
+semantic flags use strict booleans.  Finite floating-point fields may accept a
+JSON integer but reject booleans, NaN, and infinities.  Typed AST literals and
+Equation Graph SI values apply the same Boolean rejection, and tensor rows are
+finite, bounded, and rectangular.  Hard timeouts cannot be achieved by elapsed-time checks
+in the same unrestricted process: backend and completeness-audit execution run
+in separate spawned processes that can be terminated, killed, and reaped.  `SolverTimeout`
+is diagnostic data recording the exact phase, backend, limit, and elapsed time;
+it never authorizes a partial answer.  Timeout, non-finite output, dimension
+disagreement, rank failure, or backend error is terminal and produces no
+selected candidate.
 
-## Deterministic compiler and solver boundary
+## Deterministic compiler, planner, solver, and verification boundary
 
-The required downstream law rules generate equations from generic entities, frames, quantities,
-interactions, constraints, and state.  A law records its scope, source facts,
-assumptions, constraints, and generated unknowns.  The compiler uses stable
-ordering and bounded search, and diagnoses underdetermined, conflicting, or
-unsupported graphs instead of selecting a family-specific escape route.
+Implemented law rules generate equations from generic entities, frames,
+quantities, interactions, constraints, and state.  A law records its scope,
+source facts, assumptions, constraints, and generated unknowns.  The compiler
+uses stable ordering and bounded search, and diagnoses underdetermined,
+conflicting, resource-limited, or unsupported graphs instead of selecting a
+family-specific escape route.
 
-The downstream solver must check all candidate roots independently for equation residuals, units,
-query binding, declared inequalities, event order, nonnegative time, positive
-physical parameters, and applicable friction/contact/rope regimes.  Automatic
-answering is permitted only when exactly one candidate remains physically
-valid.  Multiple valid candidates require confirmation or a multi-answer query
-contract; zero valid candidates stop.
+The immutable `EquationGraph` is embedded in every `SolvePlan` and is the only
+solve authority.  The public graph fingerprint is derived from that
+object.  Omitting it computes it; an explicitly supplied value is accepted
+only when it is the exact derived value, so normal Python and JSON dumps are
+valid constructor inputs while `null`, zero, stale, or competing values fail.
+Query, selected equality, inequality, constraint, initial-condition, event,
+source-evidence, known-symbol, unknown-symbol, and bounded structure fields
+must exactly equal deterministic graph-derived values.  Event authority is the
+sorted unique union of equation, constraint, initial-condition, and law-application
+scope events plus symbol event bindings; both the plan event IDs and
+`has_event_condition` reflect that complete union.  The canonical plan
+fingerprint includes the complete graph, exact graph fingerprint, policy,
+budget, backend, and all plan fields.  It follows the same omit-to-compute or
+explicit-exact-to-restore rule.  Replacing the graph therefore changes plan
+identity, and `model_dump`/`model_validate` and their JSON equivalents round
+trip without weakening fingerprint validation.
 
-Downstream verification must not simply repeat the same algebraic path.  Where applicable
+Backend selection is one closed deterministic function of graph structure:
+piecewise syntax has first priority, then derivatives select `ode_ivp`.
+Integral and vector-only syntax (`VectorNode`, `Dot`, `Cross`, or `Norm`) is
+never certified from an inner scalar degree and conservatively selects
+`nonlinear_symbolic`.  Otherwise, a certified polynomial degree at most one
+selects `linear_symbolic`, a higher certified degree selects
+`polynomial_symbolic`, and an uncertified/non-polynomial structure selects
+`nonlinear_symbolic`.  Only `nonlinear_symbolic` has the exact
+`numeric_root` fallback.  `event_root` and `constrained_optimization` are
+reserved until `EquationGraph` gains explicit corresponding structural
+features; an event ID alone does not authorize either backend.  A plan also
+requires explicit backend semantics before event or initial-condition authority
+can participate in solving; current event/initial-condition plans close as
+`unsupported` rather than claiming exhaustive algebraic coverage.  A plan also
+requires non-conflicting, non-underdetermined rank, sufficient structural rank,
+enough selected equalities, and selected-incidence coverage of every unknown.
+AI
+output, `system_type`, subtype, raw text, regex matches, corpus metadata,
+expected answers, model-chosen solver names, and untrusted callables or
+expressions have zero authority.  An unsupported graph/backend is an explicit
+`unsupported` terminal, never a silent family-specific or numeric fallback. A
+numeric fallback is graph-derived in the plan before execution and is limited
+by the same central budget; a caller cannot opt into one.
+
+Safe typed-AST-to-backend translation is the sole execution boundary.
+No backend may receive unrestricted strings, callables, SymPy objects, or
+opaque payloads, and production code must never use unrestricted `sympify`,
+`eval`, `lambdify`, or equivalent dynamic execution.  Numeric residuals use a
+finite real-only operator whitelist; complex intermediate values and domain
+violations close the candidate.  Worker and audit IPC uses bounded UTF-8 JSON
+bytes only, with bounded structural preflight and streaming encoding before the
+finite response cap.  Every generated root remains in the
+immutable `CandidateSet`; bounded-numeric or incomplete coverage cannot
+authorize automatic selection.
+
+Candidate retention is loss-detecting at the contract boundary.  Candidate IDs
+are `candidate_` plus a bounded prefix of the canonical SHA-256 over every
+authoritative candidate field except that self-derived ID.  The required
+immutable generation manifest binds every retained candidate's global index,
+canonical ID, backend, per-backend/per-branch root index, branch IDs, and full
+authoritative SHA-256.  Global indices are exactly `0..n-1`; root indices are
+exactly `0..group_n-1` in retained order for each `(backend, branch_ids)` group;
+manifest, count, order, candidates, and hashes must agree exactly.  Root
+multiplicity remains part of the hashed candidate authority.  Only
+generation-complete `exhaustive_symbolic`
+coverage containing exclusively exact symbolic candidates is auto-selectable.
+Approximate numeric-root, IVP, event-root, and constrained-optimization
+candidates use `bounded_numeric` coverage and can only produce a complete
+`needs_confirmation` result.  `incomplete` coverage is also never
+auto-selectable.  Every retained candidate is bound exactly to its plan's query
+symbol, unknown-symbol set, selected equality set, and authorized primary
+backend or predeclared numeric fallback.
+
+The manifest closes accidental deletion, renaming, reordering, slot gaps, and
+candidate/record drift at this data boundary.  A symbolic worker's self-reported
+completion is still insufficient: before exhaustive coverage is accepted, a
+second spawned audit receives only the immutable plan and independently checks
+linear rank, univariate real-root count and multiplicity, or a conservative
+multivariate signature.  Missing, timed-out, stale, mismatched, singular, or
+uncertifiable audits close without automatic selection.  Numeric searches remain
+bounded and non-auto-selectable regardless of their completion certificate.
+
+The verifier checks each retained candidate independently.  Every
+answer verdict requires unique check kinds for equation residual, unit
+consistency, and query binding, with exact unknown-symbol provenance for the
+unit check and the exact query symbol for query binding, plus source evidence
+when graph evidence exists.
+Graph inequalities, constraints, events, initial conditions, alternative closed
+sets, and an ODE backend respectively require inequality, constraint,
+event-order, initial/boundary-condition, independent-equation-set, and numerical
+integration-residual checks with exact graph-derived provenance.  Initial
+boundary checks name the exact condition IDs, boundary events, involved
+symbols, and evidence.  Time/duration symbols (including known facts) require a
+nonnegative-time check; mass/radius/length symbols require a positive-parameter
+check.  Contact, friction, rope, tension, slack, or rolling law/constraint
+tokens require an exact physical-regime check, and explicit momentum,
+work-energy, or conservation applications require a conserved-quantity check
+over their exact equations.  Optional check kinds are accepted only when they
+are applicable and carry the same exact graph-derived provenance.  Failed or
+inconclusive checks each have one or more canonical rejections, passing checks
+have none, and top-level rejections are the exact candidate-order aggregate.
+Rejection reasons are deterministically bound to check kind; every inconclusive
+check maps to `verification_inconclusive`.  Automatic answering is `solved`
+only for exactly one verified candidate under auto-selectable exact symbolic
+coverage; the same coverage with two or more verified candidates is
+`ambiguity`.  Non-auto coverage with at least one verified candidate is
+`needs_confirmation`, and zero verified candidates is
+`insufficient_conditions`.  Timeout, resource limit, unsupported structure,
+and backend failure select nothing, contain no verified candidate and no
+passing outcome, but may retain failed/inconclusive records for inspection.
+
+Verification must not simply repeat the same algebraic path.  Where applicable
 it uses an independent residual, conserved quantity, alternative closed
-equation set, or physical-domain check.  Verification results are additive to,
-not replacements for, the Phase 55 `VerificationReport` and
-`ExplanationTrace` contracts.
+equation set, or physical-domain check.  `EvidenceAdapterV2` is immutable data
+only and embeds the complete concrete `MechanicsSolveResult`.  It can be built
+only for a `solved` result with exactly one selected matching verified outcome.
+Its graph and plan fingerprints use the same round-trippable explicit-exact
+rule as `SolvePlan`.  Its candidate, query, substitutions, output, checks, used-equation union, and
+source-evidence union must exactly match that selection and its graph
+provenance.  The output SI unit is rendered deterministically from the query
+symbol's dimension in `kg,m,s,A,K,mol,cd` order (`1` for dimensionless, compact
+signed exponents otherwise); arbitrary unit text is rejected.  Ambiguity and confirmation results cannot produce selected-answer
+evidence.  The adapter constructs additive legacy `VerificationReport` and
+`SolverExplanationEvidence` projections only from canonical checks and exact
+equation/application/constraint provenance.  Vector results close legacy scalar
+projection atomically while retaining V2 evidence; the adapter embeds and
+executes neither legacy dataclasses nor solver objects.
+
+Diagnostic codes have fixed severities: backend selection is informational;
+numeric fallback and incomplete generation are warnings; candidate limits,
+timeouts, resource limits, unsupported backends, and backend failures are
+errors.  Every diagnostic, attempt, and timeout backend must be authorized by
+the plan.  Timeout details/code/terminal and failure code/terminal mappings are
+bidirectional, attempts are contiguous from zero, and contradictory or duplicate
+failure closure codes are rejected.  Solver and independent-audit attempts are
+recorded explicitly.  Diagnostic entries are ordered by fixed
+phase order, backend value, diagnostic-code order, then referenced ID.  Each
+non-timeout attempt must stay within the exact symbolic, numeric, or
+verification limit selected by its phase/backend, and numeric-family attempts
+cannot exceed the plan's numeric-start count.  A timeout has exactly one
+incomplete attempt matching `(phase, backend)`; it is the final attempt and has
+elapsed time exactly equal to the timeout record.  Every earlier attempt is
+complete, including any earlier retry with the same phase and backend.  Its
+limit is the exact phase/backend plan limit, while its elapsed time is bounded
+from that limit through the plan-fingerprinted termination grace; it also
+cannot exceed total diagnostic time.  Candidate-limit exhaustion closes as
+`resource_limit`.
+An incomplete marker may accompany a primary failure; a pre-verification
+failure cannot claim complete candidate generation, while a verification-phase
+failure may retain an already complete candidate set.  Without a primary
+failure, incomplete generation closes as `needs_confirmation` when at least one
+retained candidate verifies, and as `insufficient_conditions` when none does;
+neither state can be `solved`.
 
 ## Corrections, cache, and observability
 

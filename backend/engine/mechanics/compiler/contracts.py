@@ -3,7 +3,17 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, TypeAlias, Union
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    StringConstraints,
+    model_validator,
+)
 
 from engine.mechanics.contracts import IR_SCHEMA_NAME, IR_SCHEMA_VERSION
 from engine.mechanics.math_ast import (
@@ -29,7 +39,48 @@ Identifier = Annotated[
     ),
 ]
 ShortText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=256)]
-SIValue: TypeAlias = Union[float, tuple[float, ...], tuple[tuple[float, ...], ...]]
+
+
+def _reject_bool_as_finite_float(value: object) -> object:
+    if isinstance(value, bool):
+        raise ValueError("boolean is not a finite float")
+    return value
+
+
+def _require_strict_bool(value: object) -> object:
+    if not isinstance(value, bool):
+        raise ValueError("value must be a boolean")
+    return value
+
+
+FiniteFloat = Annotated[
+    float,
+    BeforeValidator(_reject_bool_as_finite_float),
+    Field(allow_inf_nan=False, ge=-1.0e300, le=1.0e300),
+]
+VectorSIValue: TypeAlias = Annotated[
+    tuple[FiniteFloat, ...], Field(min_length=1, max_length=3)
+]
+TensorSIValueRow: TypeAlias = Annotated[
+    tuple[FiniteFloat, ...], Field(min_length=1, max_length=3)
+]
+
+
+def _require_rectangular_tensor(
+    value: tuple[tuple[float, ...], ...],
+) -> tuple[tuple[float, ...], ...]:
+    if len({len(row) for row in value}) != 1:
+        raise ValueError("tensor SI value rows must be rectangular")
+    return value
+
+
+TensorSIValue: TypeAlias = Annotated[
+    tuple[TensorSIValueRow, ...],
+    Field(min_length=1, max_length=3),
+    AfterValidator(_require_rectangular_tensor),
+]
+SIValue: TypeAlias = Union[FiniteFloat, VectorSIValue, TensorSIValue]
+StrictFalse: TypeAlias = Annotated[Literal[False], BeforeValidator(_require_strict_bool)]
 
 
 class FrozenModel(BaseModel):
@@ -87,16 +138,16 @@ class CompilerIssue(FrozenModel):
 
 
 class CompilerLimits(FrozenModel):
-    max_relevant_records: int = Field(default=2048, ge=8, le=20_000)
-    max_symbols: int = Field(default=256, ge=1, le=512)
-    max_equations: int = Field(default=128, ge=1, le=512)
-    max_constraints: int = Field(default=128, ge=0, le=512)
-    max_initial_conditions: int = Field(default=32, ge=0, le=128)
-    max_applications: int = Field(default=128, ge=1, le=512)
-    max_unknowns: int = Field(default=64, ge=1, le=256)
-    max_branches: int = Field(default=512, ge=1, le=100_000)
-    max_alternative_sets: int = Field(default=4, ge=0, le=16)
-    max_fixed_point_rounds: int = Field(default=32, ge=1, le=128)
+    max_relevant_records: StrictInt = Field(default=2048, ge=8, le=20_000)
+    max_symbols: StrictInt = Field(default=256, ge=1, le=512)
+    max_equations: StrictInt = Field(default=128, ge=1, le=512)
+    max_constraints: StrictInt = Field(default=128, ge=0, le=512)
+    max_initial_conditions: StrictInt = Field(default=32, ge=0, le=128)
+    max_applications: StrictInt = Field(default=128, ge=1, le=512)
+    max_unknowns: StrictInt = Field(default=64, ge=1, le=256)
+    max_branches: StrictInt = Field(default=512, ge=1, le=100_000)
+    max_alternative_sets: StrictInt = Field(default=4, ge=0, le=16)
+    max_fixed_point_rounds: StrictInt = Field(default=32, ge=1, le=128)
 
 
 class ValidatedIRAuthorization(FrozenModel):
@@ -135,7 +186,7 @@ class SymbolNode(FrozenModel):
     interval_id: Identifier | None = None
     event_id: Identifier | None = None
     known_si_value: SIValue | None = None
-    generated: bool = False
+    generated: StrictBool = False
 
     @model_validator(mode="after")
     def reciprocal_quantity_binding(self) -> "SymbolNode":
@@ -159,7 +210,7 @@ class EquationNode(FrozenModel):
     constraint_ids: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=32)
     generated_unknown_symbol_ids: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=32)
     dimension: DimensionVector
-    complexity_cost: int = Field(ge=0, le=10_000)
+    complexity_cost: StrictInt = Field(ge=0, le=10_000)
 
     @model_validator(mode="after")
     def ordered_unique_provenance(self) -> "EquationNode":
@@ -188,7 +239,7 @@ class InitialConditionNode(FrozenModel):
     target_symbol_id: Identifier
     value_symbol_id: Identifier
     wrt_symbol_id: Identifier
-    derivative_order: Literal[0, 1]
+    derivative_order: StrictInt = Field(ge=0, le=1)
     scope: EquationScope
     source_quantity_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=8)
     source_evidence_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=64)
@@ -220,7 +271,7 @@ class LawApplication(FrozenModel):
     assumption_ids: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=32)
     constraint_ids: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=32)
     generated_unknown_symbol_ids: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=32)
-    complexity_cost: int = Field(ge=0, le=10_000)
+    complexity_cost: StrictInt = Field(ge=0, le=10_000)
 
 
 class IncidenceEdge(FrozenModel):
@@ -235,14 +286,14 @@ class RankMethod(str, Enum):
 
 class RankAnalysis(FrozenModel):
     method: RankMethod = RankMethod.structural_maximum_matching
-    equality_count: int = Field(ge=0, le=512)
-    inequality_count: int = Field(ge=0, le=512)
-    unknown_count: int = Field(ge=0, le=256)
-    structural_rank: int = Field(ge=0, le=256)
-    underdetermined: bool
-    overdetermined: bool
-    conflicting: bool
-    physical_consistency_claimed: Literal[False] = False
+    equality_count: StrictInt = Field(ge=0, le=512)
+    inequality_count: StrictInt = Field(ge=0, le=512)
+    unknown_count: StrictInt = Field(ge=0, le=256)
+    structural_rank: StrictInt = Field(ge=0, le=256)
+    underdetermined: StrictBool
+    overdetermined: StrictBool
+    conflicting: StrictBool
+    physical_consistency_claimed: StrictFalse = False
 
 
 class EquationGraph(FrozenModel):
