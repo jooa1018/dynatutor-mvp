@@ -235,10 +235,46 @@ rollback after generic-path failure.
    5-second symbolic and verification budgets are not claimed green locally. Fresh independent
    Checker: `PASS`, blocking findings `0`, nonblocking findings `0`.
 
-The remaining `27/29` entries have no accepted same-fixture parity claim. The
-next canonical registry entry is 3, `incline_with_friction`; its matrix gate is
-the typed static-hold/sliding regime with hold/slip boundary, `mu=0` reduction,
-direction-contradiction rejection, residual parity, and invariance evidence.
+3. `incline_with_friction` — **ACCEPTED (3/29)** at exact product/CI checkpoint
+   `c134664cd863d33b50c7e5ae794af2ad61ed6524` (tree
+   `987cb4ec8b7cbcc321d713313c179e8ca4bcd553`, CI-remediation child of product
+   code commit `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296`, product tree
+   `72301ea20e43e5310a269dac943fc7d56f01f689`, parent documentation handoff
+   `6c53e0fdbbf70854bfec3078d73fb48371fc9a12`, product commit
+   `feat(mechanics): migrate friction incline solver`; remediation commit
+   `ci: split slow mechanics parity checks`), GitHub Actions release run
+   `29832358480` (run #427, `SUCCESS`). The exact typed contract admits only
+   evidenced sticking or sliding regimes on a two-axis incline frame. Both emit
+   `incline_gravity_tangent_projection`, `incline_gravity_normal_projection`,
+   `fixed_contact_no_penetration`, `contact_normal_bound`, and two
+   `particle_newton_second` equations. Sticking additionally emits two-sided
+   `contact_friction_bound` constraints and
+   `incline_sticking_static_acceleration`; it requires an evidenced at-rest body,
+   sets tangential acceleration to zero, and includes the exact hold/slip
+   boundary. Sliding instead emits `contact_sliding_friction`, requires evidenced
+   positive tangential motion, and fixes friction opposite that carrier while
+   preserving independent query-direction projection. The physical domain is
+   exact: `m,g > 0`, `mu,N >= 0`, and `0 <= theta <= pi/2`. The package proves static
+   hold and exact boundary behavior, below-boundary rejection, sliding signs,
+   `mu=0` frictionless reduction, value/unit/terminal/candidate parity,
+   independent Newton/contact/regime residuals, and metadata invariance. Missing
+   or contradictory motion/contact/regime authority, duplicate incline axes,
+   empty body/incline/interval evidence, negative coefficients, and unresolved
+   blocking ambiguity fail closed before any legacy call. Focused evidence:
+   `21 passed`; entry-2 regression: `15 passed`; connected compiler plus entry-1
+   regression: `60 passed`. Fresh independent entry-3 Checker: `PASS`, blocking
+   findings `0`, nonblocking findings `0`; independent CI-remediation Checker:
+   `PASS`, blocking findings `0`, nonblocking findings `0`. The preceding run
+   `29829411846` (run #426) failed only when the unchanged 420-second fast
+   watchdog reached 82% progress, with no assertion failure; the bounded
+   240-second disjoint slow lane fixed the CI classification without changing
+   test semantics or the fast watchdog.
+
+The remaining `26/29` entries have no accepted same-fixture parity claim. The
+next canonical registry entry is 4, `pulley_atwood`; its matrix gate is evidenced
+two-particle, rope, fixed ideal-pulley, and gravity topology with particle Newton,
+`rope_massless_tension`, and `rope_fixed_pulley_motion` laws, plus equal-mass,
+tension-residual, mass-swap-sign, and invariance evidence.
 
 ## Risks retained
 
@@ -250,5 +286,5 @@ direction-contradiction rejection, residual parity, and invariance evidence.
   coverage risks.  They need typed IR, graph laws, and verification hooks;
   closed-form legacy output is not a substitute.
 * This document is an inventory, plan, and limited accepted-evidence ledger.
-  Only the two named entries above (`2/29`) have parity passes. No corpus/PDF
+  Only the three named entries above (`3/29`) have parity passes. No corpus/PDF
   inputs were opened or used for that evidence.

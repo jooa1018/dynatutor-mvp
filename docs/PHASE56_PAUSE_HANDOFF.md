@@ -1,7 +1,7 @@
 # Phase 56 Cross-Device Resume Handoff
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
-updated on `2026-07-21T20:00:22+09:00` (`Asia/Seoul`). It is a pause record, not
+updated on `2026-07-21T22:07:00+09:00` (`Asia/Seoul`). It is a pause record, not
 an `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
@@ -13,17 +13,24 @@ an `IMPLEMENTATION COMPLETE` claim.
 - Previous final full-CI product checkpoint: `0de62d95357de36c4a2d5a6aff01810bdf98d776`
 - Latest accepted targeted-test product checkpoint: `c19624181aaae4cd73dc3d2247b4988f5a540247`
 - Latest accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`
-- Previous documentation handoff checkpoint: `8711b8a328b7334b0545d62f8a2bba6c8317f0b6`
-- Latest accepted same-fixture migration checkpoint: `5e49f2f267c4c8d75aec6e99e3714fc36f700257`
-- Latest accepted migration tree: `9ffbd6cc9bd60e1153891c2b2b7053e2d801a35c`
-- Latest exact-head release-CI checkpoint: `5e49f2f267c4c8d75aec6e99e3714fc36f700257`
+- Previous documentation handoff checkpoint: `6c53e0fdbbf70854bfec3078d73fb48371fc9a12`
+- Latest accepted entry-3 product code commit:
+  `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296` (tree
+  `72301ea20e43e5310a269dac943fc7d56f01f689`, parent documentation handoff
+  `6c53e0fdbbf70854bfec3078d73fb48371fc9a12`).
+- Latest accepted same-fixture migration checkpoint:
+  `c134664cd863d33b50c7e5ae794af2ad61ed6524` (CI-remediation child of
+  `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296`, commit
+  `ci: split slow mechanics parity checks`).
+- Latest accepted migration tree: `987cb4ec8b7cbcc321d713313c179e8ca4bcd553`
+- Latest exact-head release-CI checkpoint: `c134664cd863d33b50c7e5ae794af2ad61ed6524`
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
 - `HANDOFF_COMMIT_SHA` is expected to be a documentation-only child of the
   release-CI checkpoint; no CI result is attributed to that later SHA.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
 - PR #17 head observed before this handoff-only commit:
-  `5e49f2f267c4c8d75aec6e99e3714fc36f700257`
+  `c134664cd863d33b50c7e5ae794af2ad61ed6524`
 - PR #17 authoritative head after a successful checkpoint push:
   `HANDOFF_COMMIT_SHA`
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
@@ -117,7 +124,7 @@ master instruction.
 ### Stage 5 — IN_PROGRESS
 
 - Accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
-- Exact-head release-CI checkpoint: `5e49f2f267c4c8d75aec6e99e3714fc36f700257`.
+- Exact-head release-CI checkpoint: `c134664cd863d33b50c7e5ae794af2ad61ed6524`.
 - Accepted implementation:
   - exact 29-solver migration matrix in
     `docs/MECHANICS_LEGACY_MIGRATION.md`;
@@ -145,6 +152,23 @@ master instruction.
     validate generically. The package proves 0/90-degree and interior signed
     cases, diagnostic-only legacy parity, residuals, authority negatives, and
     metadata invariance without family/case-ID routing.
+  - canonical registry entry 3, `incline_with_friction`, with product code commit
+    `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296` (tree
+    `72301ea20e43e5310a269dac943fc7d56f01f689`, parent documentation handoff
+    `6c53e0fdbbf70854bfec3078d73fb48371fc9a12`, commit
+    `feat(mechanics): migrate friction incline solver`) and exact successful
+    product/CI checkpoint `c134664cd863d33b50c7e5ae794af2ad61ed6524`
+    (tree `987cb4ec8b7cbcc321d713313c179e8ca4bcd553`, remediation commit
+    `ci: split slow mechanics parity checks`). The exact evidenced incline/contact
+    topology emits tangent/normal gravity projection, fixed-contact
+    no-penetration, the normal bound, and two particle-Newton equations. Typed
+    sticking adds a zero-tangential-acceleration law and two-sided static-friction
+    bounds with an inclusive hold/slip boundary; typed sliding instead binds
+    kinetic friction opposite an evidenced positive tangential motion carrier.
+    Query direction remains an independent signed projection, and `mu=0` reduces
+    naturally to the frictionless result. Missing or contradictory regime,
+    motion, contact, axis-cardinality, entity, or interval authority fails closed
+    before any legacy call.
 - Accepted Stage 5 decisions:
   - legacy parity is diagnostic only and can never verify, select, repair, or
     provide a generic fallback answer;
@@ -162,19 +186,20 @@ master instruction.
     variant is independently compiled and solved.
 - Still incomplete:
   - actual IR -> compile -> solve -> legacy diagnostic parity for every registered
-    solver: current count `2/29` same-fixture end-to-end cases; `27` remain;
+    solver: current count `3/29` same-fixture end-to-end cases; `26` remain;
   - Wave 1 native cases, Wave 2 coverage gates, Wave 3 typed laws for translating
     frame, Coriolis, polar, and slot-pin motion;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: none at the accepted 2/29 boundary. Exact-head release
-  CI and a fresh independent entry-2 Checker passed with zero blocking and zero
-  nonblocking findings.
-- Next gate: add the third same-fixture offline IR -> compile -> solve -> legacy
-  diagnostic parity package for canonical registry entry `incline_with_friction`.
-  Follow its matrix row: prove static hold/slip boundary, `mu=0` reduction,
-  direction-contradiction rejection, residual parity, and invariance from typed
-  friction regime and motion state without family/case-ID routing.
+- Current failure/blocker: none at the accepted 3/29 boundary. Exact-head release
+  CI, a fresh independent entry-3 Checker, and the independent CI-remediation
+  Checker passed with zero blocking and zero nonblocking findings.
+- Next gate: add the fourth same-fixture offline IR -> compile -> solve -> legacy
+  diagnostic parity package for canonical registry entry `pulley_atwood`. Follow
+  its matrix row: require evidenced two-particle, rope, fixed ideal-pulley, and
+  gravity topology; emit particle Newton, `rope_massless_tension`, and
+  `rope_fixed_pulley_motion`; and prove equal-mass, tension-residual,
+  mass-swap-sign, and invariance behavior without family/case-ID routing.
 
 ### Stage 6 — NOT_STARTED
 
@@ -218,8 +243,8 @@ master instruction.
 
 ## D. Exact work at the pause boundary
 
-- Work immediately before this update: accepted the `incline_no_friction`
-  same-fixture migration unit as entry 2/29 after the accepted entry-1 and
+- Work immediately before this update: accepted the `incline_with_friction`
+  same-fixture migration unit as entry 3/29 after the accepted entries 1-2 and
   `S5-W0-BASE` checkpoints.
 - W0 production compiler/harness code changed: **NO**. The smallest correction
   was fixture-only in
@@ -237,18 +262,31 @@ master instruction.
   - `backend/engine/mechanics/compiler/compiler.py`
   - `backend/engine/mechanics/laws/core.py`
   - `backend/tests/test_phase56_mechanics_incline_same_fixture_parity.py`
+- Entry-3 product/test files changed after the entry-2 documentation handoff:
+  - `backend/engine/mechanics/compiler/compiler.py`
+  - `backend/engine/mechanics/laws/core.py`
+  - `backend/tests/test_phase56_mechanics_incline_friction_same_fixture_parity.py`
+- Entry-3 CI remediation touched seven paths total: the entry-3 test path already
+  named above plus these six additional paths:
+  - `.github/workflows/backend-tests.yml`
+  - `docs/KNOWN_LIMITATIONS.md`
+  - `docs/RELEASE_CHECKLIST.md`
+  - `scripts/check_all.sh`
+  - `scripts/check_backend_slow.sh`
+  - `scripts/final_local_check.sh`
 - Safe last accepted migration unit:
-  `5e49f2f267c4c8d75aec6e99e3714fc36f700257`.
+  `c134664cd863d33b50c7e5ae794af2ad61ed6524`.
 - Safe last exact-head release-CI unit:
-  `5e49f2f267c4c8d75aec6e99e3714fc36f700257`, run `29823679522`, `SUCCESS`.
+  `c134664cd863d33b50c7e5ae794af2ad61ed6524`, run `29832358480`, `SUCCESS`.
 - Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
   test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
-- Immediate next task: create the third independent same-fixture parity package
-  for canonical registry entry `incline_with_friction`. Use its canonical matrix
-  requirements: typed contact/friction regime and motion state, static hold/slip
-  boundary, `mu=0` reduction, direction-contradiction rejection, residual parity,
-  and invariance. Raw text, `system_type`, corpus labels, expected answers, and
-  legacy output must not enter the generic calculation path.
+- Immediate next task: create the fourth independent same-fixture parity package
+  for canonical registry entry `pulley_atwood`. Use its canonical matrix
+  requirements: evidenced two-particle, rope, fixed ideal-pulley, and gravity
+  topology; particle Newton, `rope_massless_tension`, and
+  `rope_fixed_pulley_motion`; equal-mass, tension-residual, mass-swap-sign, and
+  invariance evidence. Raw text, `system_type`, corpus labels, expected answers,
+  and legacy output must not enter the generic calculation path.
 
 Read in this order on the laptop:
 
@@ -345,6 +383,26 @@ M docs/RELEASE_CHECKLIST.md
 M scripts/check_backend_fast.sh
 ```
 
+Entry 3 then changed these product/test paths:
+
+```text
+M backend/engine/mechanics/compiler/compiler.py
+M backend/engine/mechanics/laws/core.py
+A backend/tests/test_phase56_mechanics_incline_friction_same_fixture_parity.py
+```
+
+The entry-3 CI-remediation child changed seven paths total: the entry-3 test path
+already listed above plus these six additional paths:
+
+```text
+M .github/workflows/backend-tests.yml
+M docs/KNOWN_LIMITATIONS.md
+M docs/RELEASE_CHECKLIST.md
+M scripts/check_all.sh
+A scripts/check_backend_slow.sh
+M scripts/final_local_check.sh
+```
+
 Deleted: `NONE`.
 
 Document-only files in the current Stage 5 delta:
@@ -359,12 +417,13 @@ Test files in the current Stage 5 delta:
 - `backend/tests/test_phase56_mechanics_runtime.py`
 - `backend/tests/test_phase56_mechanics_runtime_contract.py`
 - `backend/tests/test_phase56_mechanics_runtime_static.py`
+- `backend/tests/test_phase56_mechanics_incline_friction_same_fixture_parity.py`
 - `backend/tests/test_phase56_mechanics_incline_same_fixture_parity.py`
 - `backend/tests/test_phase56_mechanics_same_fixture_parity.py`
 
 ### Complete Phase 56 branch file set relative to Phase 55
 
-At exact-head release-CI checkpoint `5e49f2f...` there are exactly `75` changed
+At exact-head release-CI checkpoint `c134664...` there are exactly `79` changed
 files:
 
 ```text
@@ -416,6 +475,7 @@ A backend/engine/mechanics/verification/verifier.py
 A backend/tests/test_phase56_mechanics_compiler.py
 A backend/tests/test_phase56_mechanics_contract.py
 A backend/tests/test_phase56_mechanics_evidence_adapters.py
+A backend/tests/test_phase56_mechanics_incline_friction_same_fixture_parity.py
 A backend/tests/test_phase56_mechanics_incline_same_fixture_parity.py
 A backend/tests/test_phase56_mechanics_legacy_parity.py
 A backend/tests/test_phase56_mechanics_migration_harness.py
@@ -442,7 +502,10 @@ A docs/MECHANICS_LEGACY_MIGRATION.md
 A docs/MECHANICS_SECURITY.md
 A docs/PHASE56_PAUSE_HANDOFF.md
 M docs/RELEASE_CHECKLIST.md
+M scripts/check_all.sh
 M scripts/check_backend_fast.sh
+A scripts/check_backend_slow.sh
+M scripts/final_local_check.sh
 ```
 
 ## F. Tests and CI evidence
@@ -509,6 +572,26 @@ Only actually executed evidence is listed.
   entry-1 regression: `60 passed`; additional Sol-connected entry-1, migration,
   and legacy runs: `3`, `23`, and `30 passed`. Fresh independent final Checker:
   `PASS`, blocking findings `0`, nonblocking findings `0`.
+- Same-fixture entry 3/29, `incline_with_friction`: product code commit
+  `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296`, tree
+  `72301ea20e43e5310a269dac943fc7d56f01f689`, parent documentation handoff
+  `6c53e0fdbbf70854bfec3078d73fb48371fc9a12`, commit
+  `feat(mechanics): migrate friction incline solver`; exact successful product/CI
+  checkpoint `c134664cd863d33b50c7e5ae794af2ad61ed6524`, tree
+  `987cb4ec8b7cbcc321d713313c179e8ca4bcd553`, remediation commit
+  `ci: split slow mechanics parity checks`. The common typed graph contains
+  tangent/normal gravity projections, fixed-contact no penetration, one normal
+  bound, and two particle-Newton equations. Sticking adds two-sided friction
+  bounds and zero tangential acceleration with an inclusive hold/slip boundary;
+  sliding adds kinetic friction exactly opposite an evidenced positive motion
+  carrier. The package proves static hold/boundary and below-boundary rejection,
+  sliding/query signs, `mu=0` reduction, exact generic-versus-diagnostic parity,
+  independent residuals, metadata invariance, and fail-closed authority,
+  structure, evidence, domain, and ambiguity negatives. Focused: `21 passed`;
+  entry-2 regression: `15 passed`; connected compiler plus entry-1 regression:
+  `60 passed`. Fresh independent entry-3 Checker: `PASS`, blocking findings `0`,
+  nonblocking findings `0`. Independent CI-remediation Checker: `PASS`, blocking
+  findings `0`, nonblocking findings `0`.
 - The local Windows full runs above used only the 20-second worker-startup shim.
   They do not establish that the unchanged default 5-second symbolic and
   verification budgets are green on Windows/Python 3.12; the authoritative
@@ -530,39 +613,51 @@ Only actually executed evidence is listed.
 
 ### Latest exact-head release CI
 
-- Exact SHA: `5e49f2f267c4c8d75aec6e99e3714fc36f700257`.
-- GitHub Actions release run: `29823679522` (run #424) — `SUCCESS`; its recorded
+- Exact SHA: `c134664cd863d33b50c7e5ae794af2ad61ed6524`.
+- GitHub Actions release run: `29832358480` (run #427) — `SUCCESS`; its recorded
   head SHA is the exact checkpoint above, and both backend and frontend jobs
   succeeded.
-- Fast wrapper: `2239 passed, 1 skipped, 267 deselected` in `389.86s` under the
+- Fast wrapper: `2254 passed, 1 skipped, 273 deselected` in `237.00s` under the
   bounded 420-second watchdog.
-- Benchmark wrapper: `147 passed, 2360 deselected` in `64.09s`.
-- Audit wrapper: `111 passed, 2396 deselected` in `40.89s`.
-- Backend frontend-marker group: `15 passed, 2492 deselected` in `3.33s`.
-- The four marker groups account for the complete `2507`-node backend collection;
-  the 15 added nodes are the accepted entry-2 same-fixture tests.
-- Frontend unit tests, typecheck, build, and repository metadata: `PASS`.
-- Warm latency: mean `13.847607 ms`, p95 `48.254558 ms`, max `60.948174 ms`;
+- Slow-only wrapper: `6 passed, 2522 deselected` in `35.77s` under its bounded
+  240-second watchdog; it is disjoint from the fast selection.
+- Benchmark wrapper: `147 passed, 2381 deselected` in `32.31s`.
+- Audit wrapper: `111 passed, 2417 deselected` in `22.15s`.
+- Backend frontend-marker group: `15 passed, 2513 deselected` in `1.89s`.
+- The five marker groups have an exact union over the complete `2528`-node
+  backend collection. The slow-only selection is disjoint from fast; arithmetic
+  addition of all reported selected counts is not a coverage proof because
+  pre-existing benchmark/audit/frontend markers overlap.
+- Frontend `44` unit tests, typecheck, build, and repository metadata: `PASS`.
+- Warm latency: mean `7.252728 ms`, p95 `29.05428 ms`, max `39.570724 ms`;
   limits remain 60/120 ms.
-- Cold import: `879.12509 ms`; max RSS: `92.754 MB`; limits remain
+- Cold import: `491.279975 ms`; max RSS: `90.863 MB`; limits remain
   5000 ms/512 MB.
-- Four-round pooled performance comparison: `PASS`, regressions `0`; the worst
-  reported positive p95 comparison was `+1.432%`, below the unchanged
+- Four-round pooled performance comparison: `PASS`, regressions `0`. Registry
+  construction reported `+24.678%` but only `+0.00044 ms` and was classified as
+  a non-regression; the meaningful positive comparisons were rigid-body
+  construction at `+5.731%` and solve at `+5.082%`, both below the unchanged
   `15%` limit.
-- Entry-2 fresh independent Checker: `PASS`, blocking findings `0`, nonblocking
-  findings `0`.
+- The immediately preceding product-code run `29829411846` (run #426) at
+  `d58e2c9...` failed only when the 420-second fast watchdog reached 82% progress;
+  it reported no assertion failure. The remediation split six marked slow tests
+  into the bounded 240-second slow lane without changing the 420-second fast
+  watchdog or test semantics.
+- Entry-3 fresh independent Checker: `PASS`, blocking findings `0`, nonblocking
+  findings `0`. CI-remediation Checker: `PASS`, blocking findings `0`,
+  nonblocking findings `0`.
 
 ### Still not run
 
-- Stage 5 same-fixture per-solver parity: `2/29` accepted; `27/29` remain.
+- Stage 5 same-fixture per-solver parity: `3/29` accepted; `26/29` remain.
 - Stage 6 figure/UI tests: `NOT RUN`.
 - Stage 7 corpus/compositional/synthetic tests: `NOT RUN`.
 - Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`STAGE5_ENTRY_2_ACCEPTED_AT_EXACT_HEAD`: the latest code/CI checkpoint contains
+`STAGE5_ENTRY_3_ACCEPTED_AT_EXACT_HEAD`: the latest code/CI checkpoint contains
 the accepted Stage 5 matrix/parity/runtime/W0 packages and accepted same-fixture
-entries 1-2. It is not a Phase 56 completion claim because `27/29` migrations and
+entries 1-3. It is not a Phase 56 completion claim because `26/29` migrations and
 Stages 6-9 remain incomplete.
 
 ## G. Architecture invariants
@@ -601,12 +696,12 @@ Stages 6-9 remain incomplete.
 
 ## I. Known risks and unresolved decisions
 
-- Per-solver migration evidence is `2/29`; compiler unit fixtures do not count as
-  same-fixture end-to-end parity for the remaining `27` entries.
-- Entry 3, `incline_with_friction`, is next in canonical registry order. Its
-  acceptance still requires same-fixture static hold/slip-boundary, `mu=0`,
-  direction-contradiction, residual, and invariance evidence from typed friction
-  regime and motion state; the accepted frictionless entry does not prove it.
+- Per-solver migration evidence is `3/29`; compiler unit fixtures do not count as
+  same-fixture end-to-end parity for the remaining `26` entries.
+- Entry 4, `pulley_atwood`, is next in canonical registry order. Its acceptance
+  requires evidenced two-particle, rope, fixed ideal-pulley, and gravity topology;
+  particle Newton, `rope_massless_tension`, and `rope_fixed_pulley_motion` laws;
+  and equal-mass, tension-residual, mass-swap-sign, and invariance evidence.
 - Advanced typed-law gaps remain for translating-frame acceleration, Coriolis,
   polar kinematics, and slot-pin relative motion; full rigid acceleration and
   event-root coverage remain partial.
@@ -618,8 +713,9 @@ Stages 6-9 remain incomplete.
   wired.
 - Generic vector-answer projection into the existing product response is not
   decided; it must never silently fall back to a legacy scalar answer.
-- Marker-union coverage is exact at `5e49f2f...`; a future slow-only test must
-  add a dedicated CI group, as documented in `docs/KNOWN_LIMITATIONS.md`.
+- Five-group marker-union coverage is exact at `c134664...`; the dedicated
+  bounded slow-only group is present and disjoint from the fast selection, as
+  documented in `docs/KNOWN_LIMITATIONS.md`.
 - Figure/UI, public-corpus evaluation, final CI, and bounded Live are untouched.
 - Local `gh` is not installed. The GitHub app published exact verified Git
   objects with a non-forced fast-forward; a public fetch confirmed the remote
@@ -634,13 +730,14 @@ Stages 6-9 remain incomplete.
 2. Check out `codex/phase56-generic-mechanics-engine` at the final handoff head.
 3. Read this handoff completely.
 4. Read the reattached Master Instruction v2 completely.
-5. Confirm exact-head release-CI checkpoint `5e49f2f...`, run `29823679522`,
-   remains successful; do not repeat its accepted entry-1/entry-2/CI investigation.
+5. Confirm exact-head release-CI checkpoint `c134664...`, run `29832358480`,
+   remains successful; do not repeat its accepted entries 1-3 or CI investigation.
 6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0/
    `single_particle_newton` reviews.
-7. Start canonical registry entry 3, `incline_with_friction`, from its matrix row:
-   typed regime/state, hold/slip boundary, `mu=0`, direction contradiction,
-   residual parity, and invariance.
+7. Start canonical registry entry 4, `pulley_atwood`, from its matrix row:
+   evidenced two-particle/rope/fixed-pulley/gravity topology, particle Newton,
+   massless-rope tension, fixed-pulley motion, equal-mass behavior, tension
+   residual, mass-swap sign, and invariance.
 8. Run only the focused fixture/harness and connected accepted regressions, then
    use a fresh independent Checker before accepting that migration unit.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
@@ -660,11 +757,13 @@ PR #17: Phase 56 stacked Draft on PR #16; keep Draft and unmerged
 Current handoff SHA: branch head containing docs/PHASE56_PAUSE_HANDOFF.md (verify exact remote SHA first)
 Latest accepted W0 product SHA: 7a401642bc3c8a1acfe9805af3ada8f4eeb6045a
 Latest accepted targeted-test product SHA: c19624181aaae4cd73dc3d2247b4988f5a540247
-Latest accepted same-fixture migration SHA: 5e49f2f267c4c8d75aec6e99e3714fc36f700257
-Latest accepted migration tree: 9ffbd6cc9bd60e1153891c2b2b7053e2d801a35c
-Latest exact-head release-CI SHA: 5e49f2f267c4c8d75aec6e99e3714fc36f700257
-Latest exact-head release run: 29823679522, SUCCESS
-Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE accepted, same-fixture parity 2/29
+Latest entry-3 product code SHA: d58e2c9bcd8c04c8fa380699e19df6a6c43e7296
+Latest entry-3 product tree: 72301ea20e43e5310a269dac943fc7d56f01f689
+Latest accepted same-fixture migration SHA: c134664cd863d33b50c7e5ae794af2ad61ed6524
+Latest accepted migration tree: 987cb4ec8b7cbcc321d713313c179e8ca4bcd553
+Latest exact-head release-CI SHA: c134664cd863d33b50c7e5ae794af2ad61ed6524
+Latest exact-head release run: 29832358480, SUCCESS
+Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE accepted, same-fixture parity 3/29
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -683,15 +782,15 @@ this handoff is authoritative. Follow Master Instruction v2 and the user's
 Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
 Stage 5 matrix/parity/runtime/W0 packages.
 
-Next exact task: implement the third same-fixture offline parity package for
-canonical registry entry `incline_with_friction`. Follow its canonical matrix
-row: use typed incline/contact/friction regime and motion state; prove the static
-hold/slip boundary, `mu=0` reduction, direction-contradiction rejection,
-independent residual parity, and metadata invariance. Raw text, `system_type`,
-corpus/family/case metadata, expected answers, and legacy output must not enter
-generic compilation, solving, verification, or selection. Run focused tests and
-connected regressions, then use a fresh independent Checker before accepting
-entry 3/29.
+Next exact task: implement the fourth same-fixture offline parity package for
+canonical registry entry `pulley_atwood`. Follow its canonical matrix row: use
+evidenced two-particle, rope, fixed ideal-pulley, and gravity topology; emit
+particle Newton, `rope_massless_tension`, and `rope_fixed_pulley_motion`; prove
+equal-mass behavior, tension residual, mass-swap sign, and metadata invariance.
+Raw text, `system_type`, corpus/family/case metadata, expected answers, and legacy
+output must not enter generic compilation, solving, verification, or selection.
+Run focused tests and connected regressions, then use a fresh independent Checker
+before accepting entry 4/29.
 
 Keep the public corpus sealed until Stage 7. The Beer PDF is reference-only for
 Dynamics Chapters 11-19 structure and permitted later figure/coverage work; it is
