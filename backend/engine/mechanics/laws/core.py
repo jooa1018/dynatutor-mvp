@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 import json
 import math
 
@@ -28,6 +29,7 @@ from engine.mechanics.laws.base import (
 from engine.mechanics.math_ast import (
     Add,
     Derivative,
+    DimensionVector,
     Divide,
     Dot,
     Equality,
@@ -80,6 +82,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("contact_normal_bound", "newton_second_law", (QuantityRole.force,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity",)),
     _rule("fixed_contact_no_penetration", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity", "constraint_residual")),
     _rule("incline_sticking_static_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.force, QuantityRole.coefficient_friction), interactions=(InteractionKind.contact.value,), cost=2, hooks=("friction_regime", "constraint_residual")),
+    _rule("contact_sticking_static_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.force, QuantityRole.coefficient_friction), interactions=(InteractionKind.contact.value,), cost=2, hooks=("friction_regime", "constraint_residual")),
     _rule("contact_sliding_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime", "direction_residual")),
     _rule("spring_force", "newton_second_law", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.force), interactions=(InteractionKind.spring.value,), cost=3, hooks=("constitutive_residual",)),
     _rule("damper_force", "vibration", (QuantityRole.damping, QuantityRole.velocity, QuantityRole.force), interactions=(InteractionKind.damping.value,), cost=3, hooks=("constitutive_residual",)),
@@ -576,6 +579,801 @@ def _axis_bound(
     )
 
 
+@dataclass(frozen=True)
+class _FixedPulleyHorizontalContactLawProfile:
+    rope_interaction_id: str
+    table_id: str
+    hanging_id: str
+    surface_id: str
+    rope_id: str
+    pulley_id: str
+    frame_id: str
+    interval_id: str
+    regime: str
+    normal: BoundQuantity
+    normal_acceleration: BoundQuantity
+    table_acceleration: BoundQuantity
+    hanging_acceleration: BoundQuantity
+    table_tension: BoundQuantity
+    hanging_tension: BoundQuantity
+    friction: BoundQuantity | None
+    coefficient: BoundQuantity | None
+    carrier: BoundQuantity | None
+    contact_state_ids: tuple[str, ...]
+
+    @property
+    def rope_tensions(self) -> tuple[BoundQuantity, BoundQuantity]:
+        return (self.table_tension, self.hanging_tension)
+
+    @property
+    def rope_accelerations(self) -> tuple[BoundQuantity, BoundQuantity]:
+        return (self.table_acceleration, self.hanging_acceleration)
+
+
+def _fixed_pulley_horizontal_contact_profile(
+    context: LawContext,
+    rope_interaction_id: str | None = None,
+    *,
+    require_rope_authority: bool = True,
+) -> _FixedPulleyHorizontalContactLawProfile | None:
+    """Recognize one exact surface-contact, cross-axis fixed-pulley graph."""
+
+    entities = {item.entity_id: item for item in context.entities}
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id
+            for item in context.entities
+            if item.primitive is primitive
+        )
+        for primitive in (
+            EntityPrimitive.particle,
+            EntityPrimitive.surface,
+            EntityPrimitive.rope,
+            EntityPrimitive.pulley,
+            EntityPrimitive.environment,
+        )
+    }
+    if (
+        len(context.entities) != 6
+        or {key: len(value) for key, value in primitive_ids.items()}
+        != {
+            EntityPrimitive.particle: 2,
+            EntityPrimitive.surface: 1,
+            EntityPrimitive.rope: 1,
+            EntityPrimitive.pulley: 1,
+            EntityPrimitive.environment: 1,
+        }
+        or any(
+            not item.evidence_refs or item.component_of_entity_id is not None
+            for item in context.entities
+        )
+    ):
+        return None
+    particle_ids = set(primitive_ids[EntityPrimitive.particle])
+    surface_id = primitive_ids[EntityPrimitive.surface][0]
+    rope_id = primitive_ids[EntityPrimitive.rope][0]
+    pulley_id = primitive_ids[EntityPrimitive.pulley][0]
+    environment_id = primitive_ids[EntityPrimitive.environment][0]
+
+    if len(context.reference_frames) != 1:
+        return None
+    frame = context.reference_frames[0]
+    axis_signature = {
+        (
+            item.axis,
+            getattr(item.direction, "kind", None),
+            getattr(item.direction, "frame_id", None),
+            getattr(item.direction, "axis", None),
+            getattr(item.direction, "sign", None),
+        )
+        for item in frame.axes
+    }
+    if (
+        frame.frame_type is not ReferenceFrameType.cartesian_2d
+        or getattr(frame.origin, "kind", None) != "world"
+        or frame.parent_frame_id is not None
+        or frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id is not None
+        or frame.generalized_coordinate_symbol_ids
+        or not frame.evidence_refs
+        or len(frame.axes) != 2
+        or axis_signature
+        != {
+            (AxisName.x, "axis", frame.frame_id, AxisName.x, 1),
+            (AxisName.y, "axis", frame.frame_id, AxisName.y, 1),
+        }
+    ):
+        return None
+
+    if len(context.motion_intervals) != 1 or context.events:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or set(interval.subject_ids) != set(entities)
+        or len(interval.subject_ids) != len(entities)
+        or not interval.evidence_refs
+    ):
+        return None
+
+    contacts = tuple(
+        item for item in context.interactions if item.kind is InteractionKind.contact
+    )
+    rope_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.rope_tension
+    )
+    gravity_interactions = tuple(
+        item for item in context.interactions if item.kind is InteractionKind.gravity
+    )
+    if (
+        len(context.interactions) != 4
+        or len(contacts) != 1
+        or len(rope_interactions) != 1
+        or len(gravity_interactions) != 2
+    ):
+        return None
+    rope_interaction = rope_interactions[0]
+    if (
+        rope_interaction_id is not None
+        and rope_interaction.interaction_id != rope_interaction_id
+    ):
+        return None
+    contact = contacts[0]
+    table_ids = set(contact.participant_ids) & particle_ids
+    if (
+        len(contact.participant_ids) != 2
+        or len(set(contact.participant_ids)) != 2
+        or surface_id not in contact.participant_ids
+        or len(table_ids) != 1
+        or len(contact.point_ids) != 1
+        or contact.frame_id != frame.frame_id
+        or contact.interval_id != interval.interval_id
+        or contact.event_id is not None
+        or not contact.evidence_refs
+    ):
+        return None
+    table_id = next(iter(table_ids))
+    hanging_id = next(iter(particle_ids - {table_id}))
+    if (
+        len(rope_interaction.participant_ids) != 4
+        or len(set(rope_interaction.participant_ids)) != 4
+        or set(rope_interaction.participant_ids)
+        != particle_ids | {rope_id, pulley_id}
+        or rope_interaction.point_ids
+        or rope_interaction.frame_id != frame.frame_id
+        or rope_interaction.interval_id != interval.interval_id
+        or rope_interaction.event_id is not None
+        or len(rope_interaction.quantity_ids) != 2
+        or len(set(rope_interaction.quantity_ids)) != 2
+        or not rope_interaction.evidence_refs
+        or {next(iter(set(item.participant_ids) & particle_ids), None) for item in gravity_interactions}
+        != particle_ids
+        or any(
+            len(item.participant_ids) != 2
+            or len(set(item.participant_ids)) != 2
+            or environment_id not in item.participant_ids
+            or item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.point_ids
+            or len(item.quantity_ids) != 3
+            or len(set(item.quantity_ids)) != 3
+            or not item.evidence_refs
+            for item in gravity_interactions
+        )
+    ):
+        return None
+
+    if len(context.points) != 1:
+        return None
+    point = context.points[0]
+    if (
+        point.point_id != contact.point_ids[0]
+        or point.role is not PointRole.contact
+        or point.owner_entity_id != table_id
+        or point.frame_id != frame.frame_id
+        or not point.evidence_refs
+    ):
+        return None
+
+    wraps = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.wraps
+    )
+    attached = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.attached
+    )
+    if (
+        len(context.geometry) != 3
+        or len(wraps) != 1
+        or len(attached) != 2
+        or any(
+            item.interval_id != interval.interval_id
+            or item.expression is not None
+            or item.quantity_ids
+            or not item.evidence_refs
+            or len(item.participant_ids) != len(set(item.participant_ids))
+            for item in context.geometry
+        )
+        or set(wraps[0].participant_ids) != {rope_id, pulley_id}
+        or len(wraps[0].participant_ids) != 2
+        or {frozenset(item.participant_ids) for item in attached}
+        != {frozenset((rope_id, item)) for item in particle_ids}
+    ):
+        return None
+
+    states = context.state_conditions
+    if any(
+        item.interval_id != interval.interval_id
+        or item.event_id is not None
+        or item.expression is not None
+        or not item.evidence_refs
+        for item in states
+    ):
+        return None
+    rope_states = tuple(
+        item for item in states
+        if item.subject_id == rope_id and item.kind is StateKind.rope
+    )
+    pulley_states = tuple(
+        item for item in states
+        if item.subject_id == pulley_id and item.kind is StateKind.motion
+    )
+    touching = tuple(
+        item for item in states
+        if item.subject_id == table_id and item.kind is StateKind.contact
+    )
+    surface_states = tuple(
+        item for item in states
+        if item.subject_id == surface_id and item.kind is StateKind.motion
+    )
+    friction_states = tuple(
+        item for item in states
+        if item.subject_id == table_id and item.kind is StateKind.friction
+    )
+    table_motion = tuple(
+        item for item in states
+        if item.subject_id == table_id and item.kind is StateKind.motion
+    )
+    if (
+        len(rope_states) != 1
+        or rope_states[0].state is not StateValue.taut
+        or rope_states[0].quantity_ids
+        or len(pulley_states) != 1
+        or pulley_states[0].state is not StateValue.at_rest
+        or pulley_states[0].quantity_ids
+        or len(touching) != 1
+        or touching[0].state is not StateValue.touching
+        or len(surface_states) != 1
+        or surface_states[0].state is not StateValue.at_rest
+        or surface_states[0].quantity_ids
+        or len(friction_states) != 1
+        or friction_states[0].state
+        not in {StateValue.inactive, StateValue.sticking, StateValue.sliding}
+    ):
+        return None
+    friction_state = friction_states[0]
+    regime = friction_state.state.value
+    if (
+        len(states) != (5 if regime == "inactive" else 6)
+        or (regime == "inactive" and table_motion)
+        or (regime != "inactive" and len(table_motion) != 1)
+    ):
+        return None
+
+    required_assumptions = {
+        ("massless_rope", rope_id),
+        ("inextensible_rope", rope_id),
+        ("ideal_massless_frictionless_pulley", pulley_id),
+        ("fixed_pulley", pulley_id),
+    }
+    approved_ids = {
+        assumption_id
+        for kind, subject_id in required_assumptions
+        for assumption_id in context.approved_assumptions(
+            kind, subject_id, interval.interval_id
+        )
+    }
+    if (
+        len(context.assumptions) != 4
+        or {(item.kind, item.subject_id) for item in context.assumptions}
+        != required_assumptions
+        or any(
+            item.interval_id != interval.interval_id
+            or item.proposed_role is not None
+            or item.proposed_value is not None
+            or item.proposed_unit is not None
+            or not item.evidence_refs
+            for item in context.assumptions
+        )
+        or (
+            require_rope_authority
+            and {item.assumption_id for item in context.assumptions} != approved_ids
+        )
+    ):
+        return None
+
+    quantities = {item.quantity_id: item for item in context.quantities}
+    if None in quantities:
+        return None
+    masses: dict[str, BoundQuantity] = {}
+    weights: dict[str, BoundQuantity] = {}
+    gravities: list[BoundQuantity] = []
+    for interaction in gravity_interactions:
+        body_id = next(iter(set(interaction.participant_ids) & particle_ids))
+        linked = tuple(quantities.get(item) for item in interaction.quantity_ids)
+        mass = tuple(
+            item for item in linked
+            if item is not None
+            and item.role is QuantityRole.mass
+            and item.subject_id == body_id
+        )
+        gravity = tuple(
+            item for item in linked
+            if item is not None
+            and item.role is QuantityRole.gravity
+            and item.subject_id == environment_id
+        )
+        weight = tuple(
+            item for item in linked
+            if item is not None
+            and item.role is QuantityRole.force
+            and item.subject_id == body_id
+        )
+        if not all(len(items) == 1 for items in (mass, gravity, weight)):
+            return None
+        masses[body_id] = mass[0]
+        gravities.append(gravity[0])
+        weights[body_id] = weight[0]
+    if len({item.quantity_id for item in gravities}) != 1:
+        return None
+    gravity = gravities[0]
+
+    def exact_known(item: BoundQuantity, *, positive: bool) -> bool:
+        value = item.known_si_value
+        return (
+            item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and bool(item.evidence_ids)
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id is None
+            and item.event_id is None
+            and item.component
+            in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            and not item.direction_bound
+            and type(value) is float
+            and math.isfinite(value)
+            and (value > 0.0 if positive else value >= 0.0)
+        )
+
+    if any(not exact_known(item, positive=True) for item in (*masses.values(), gravity)):
+        return None
+
+    def exact_unknown_axis(
+        item: BoundQuantity,
+        *,
+        subject_id: str,
+        point_id: str | None,
+        component: QuantityComponent,
+        sign: int | None,
+    ) -> bool:
+        observed_sign = item.direction_sign
+        return (
+            item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.known_si_value is None
+            and bool(item.evidence_ids)
+            and item.subject_id == subject_id
+            and item.point_id == point_id
+            and item.frame_id == frame.frame_id
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and item.component is component
+            and observed_sign in {-1, 1}
+            and (sign is None or observed_sign == sign)
+            and _axis_bound(
+                item,
+                frame.frame_id,
+                component,
+                observed_sign,
+            )
+        )
+
+    if any(
+        not exact_unknown_axis(
+            item,
+            subject_id=body_id,
+            point_id=None,
+            component=QuantityComponent.y,
+            sign=-1,
+        )
+        for body_id, item in weights.items()
+    ):
+        return None
+    tensions = tuple(quantities.get(item) for item in rope_interaction.quantity_ids)
+    if any(item is None for item in tensions):
+        return None
+    table_tensions = tuple(
+        item for item in tensions
+        if item.role is QuantityRole.force and item.subject_id == table_id
+    )
+    hanging_tensions = tuple(
+        item for item in tensions
+        if item.role is QuantityRole.force and item.subject_id == hanging_id
+    )
+    if len(table_tensions) != 1 or len(hanging_tensions) != 1:
+        return None
+    table_tension = table_tensions[0]
+    hanging_tension = hanging_tensions[0]
+    if (
+        not exact_unknown_axis(
+            table_tension,
+            subject_id=table_id,
+            point_id=None,
+            component=QuantityComponent.x,
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            hanging_tension,
+            subject_id=hanging_id,
+            point_id=None,
+            component=QuantityComponent.y,
+            sign=1,
+        )
+    ):
+        return None
+
+    linked_contact = tuple(quantities.get(item) for item in contact.quantity_ids)
+    if any(item is None for item in linked_contact):
+        return None
+    normal_values = tuple(
+        item for item in linked_contact
+        if item.role is QuantityRole.force
+        and item.subject_id == table_id
+        and item.component is QuantityComponent.y
+        and item.direction_sign == 1
+    )
+    normal_accelerations = tuple(
+        item for item in linked_contact
+        if item.role is QuantityRole.acceleration
+        and item.subject_id == table_id
+        and item.component is QuantityComponent.y
+    )
+    friction_values = tuple(
+        item for item in linked_contact
+        if item.role is QuantityRole.force
+        and item.subject_id == table_id
+        and item.component is QuantityComponent.x
+    )
+    coefficients = tuple(
+        item for item in linked_contact
+        if item.role is QuantityRole.coefficient_friction
+        and item.subject_id == table_id
+    )
+    accelerations = tuple(
+        item for item in context.quantities
+        if item.role is QuantityRole.acceleration
+        and item.subject_id in particle_ids
+    )
+    table_x = tuple(
+        item for item in accelerations
+        if item.subject_id == table_id and item.component is QuantityComponent.x
+    )
+    table_y = tuple(
+        item for item in accelerations
+        if item.subject_id == table_id and item.component is QuantityComponent.y
+    )
+    hanging_y = tuple(
+        item for item in accelerations
+        if item.subject_id == hanging_id and item.component is QuantityComponent.y
+    )
+    if (
+        len(normal_values) != 1
+        or len(normal_accelerations) != 1
+        or len(accelerations) != 3
+        or len(table_x) != 1
+        or len(table_y) != 1
+        or len(hanging_y) != 1
+    ):
+        return None
+    normal = normal_values[0]
+    normal_acceleration = normal_accelerations[0]
+    table_acceleration = table_x[0]
+    hanging_acceleration = hanging_y[0]
+    if (
+        not exact_unknown_axis(
+            normal,
+            subject_id=table_id,
+            point_id=point.point_id,
+            component=QuantityComponent.y,
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            normal_acceleration,
+            subject_id=table_id,
+            point_id=None,
+            component=QuantityComponent.y,
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            table_acceleration,
+            subject_id=table_id,
+            point_id=None,
+            component=QuantityComponent.x,
+            sign=None,
+        )
+        or not exact_unknown_axis(
+            hanging_acceleration,
+            subject_id=hanging_id,
+            point_id=None,
+            component=QuantityComponent.y,
+            sign=None,
+        )
+    ):
+        return None
+
+    friction = friction_values[0] if len(friction_values) == 1 else None
+    coefficient = coefficients[0] if len(coefficients) == 1 else None
+    carrier = None
+    if regime == "inactive":
+        if (
+            len(linked_contact) != 2
+            or friction is not None
+            or coefficient is not None
+            or friction_state.quantity_ids
+        ):
+            return None
+    else:
+        if (
+            len(linked_contact) != 4
+            or friction is None
+            or coefficient is None
+            or not exact_known(coefficient, positive=False)
+            or any(coefficient.dimension.model_dump(mode="python").values())
+            or set(friction_state.quantity_ids)
+            != {friction.quantity_id, normal.quantity_id, coefficient.quantity_id}
+            or len(friction_state.quantity_ids) != 3
+        ):
+            return None
+        motion_state = table_motion[0]
+        if regime == "sticking":
+            if (
+                motion_state.state is not StateValue.at_rest
+                or motion_state.quantity_ids
+                or not exact_unknown_axis(
+                    friction,
+                    subject_id=table_id,
+                    point_id=point.point_id,
+                    component=QuantityComponent.x,
+                    sign=-1,
+                )
+            ):
+                return None
+        else:
+            if motion_state.state is not StateValue.moving or len(motion_state.quantity_ids) != 1:
+                return None
+            carrier = quantities.get(motion_state.quantity_ids[0])
+            if (
+                carrier is None
+                or carrier.role is not QuantityRole.velocity
+                or carrier.shape is not QuantityShape.scalar
+                or carrier.dimension != DimensionVector(length=1, time=-1)
+                or carrier.symbol_id is None
+                or carrier.subject_id != table_id
+                or carrier.point_id is not None
+                or carrier.frame_id != frame.frame_id
+                or carrier.interval_id != interval.interval_id
+                or carrier.event_id is not None
+                or carrier.component is not QuantityComponent.x
+                or type(carrier.known_si_value) is not float
+                or not math.isfinite(carrier.known_si_value)
+                or carrier.known_si_value <= 0.0
+                or not carrier.evidence_ids
+                or not _axis_bound(
+                    carrier,
+                    frame.frame_id,
+                    QuantityComponent.x,
+                    1,
+                )
+                or not exact_unknown_axis(
+                    friction,
+                    subject_id=table_id,
+                    point_id=point.point_id,
+                    component=QuantityComponent.x,
+                    sign=-1,
+                )
+            ):
+                return None
+
+    if (
+        set(touching[0].quantity_ids)
+        != {normal.quantity_id, normal_acceleration.quantity_id}
+        or len(touching[0].quantity_ids) != 2
+        or any(
+            item.dimension != weights[table_id].dimension
+            for item in (*weights.values(), *tensions, normal)
+        )
+        or masses[table_id].dimension.plus(gravity.dimension)
+        != weights[table_id].dimension
+        or masses[hanging_id].dimension.plus(gravity.dimension)
+        != weights[hanging_id].dimension
+        or masses[table_id].dimension.plus(table_acceleration.dimension)
+        != weights[table_id].dimension
+        or masses[table_id].dimension.plus(normal_acceleration.dimension)
+        != weights[table_id].dimension
+        or masses[hanging_id].dimension.plus(hanging_acceleration.dimension)
+        != weights[hanging_id].dimension
+        or table_acceleration.dimension != gravity.dimension
+        or normal_acceleration.dimension != gravity.dimension
+        or hanging_acceleration.dimension != gravity.dimension
+        or (friction is not None and friction.dimension != normal.dimension)
+    ):
+        return None
+
+    expected_quantities = {
+        item.quantity_id
+        for item in (
+            *masses.values(),
+            gravity,
+            *weights.values(),
+            *tensions,
+            table_acceleration,
+            normal_acceleration,
+            hanging_acceleration,
+            normal,
+            *(() if friction is None else (friction,)),
+            *(() if coefficient is None else (coefficient,)),
+            *(() if carrier is None else (carrier,)),
+        )
+    }
+    if set(quantities) != expected_quantities:
+        return None
+
+    contact_state_ids = tuple(
+        sorted(
+            {
+                touching[0].state_condition_id,
+                surface_states[0].state_condition_id,
+                friction_state.state_condition_id,
+                *(
+                    ()
+                    if regime == "inactive"
+                    else (table_motion[0].state_condition_id,)
+                ),
+            }
+        )
+    )
+    return _FixedPulleyHorizontalContactLawProfile(
+        rope_interaction_id=rope_interaction.interaction_id,
+        table_id=table_id,
+        hanging_id=hanging_id,
+        surface_id=surface_id,
+        rope_id=rope_id,
+        pulley_id=pulley_id,
+        frame_id=frame.frame_id,
+        interval_id=interval.interval_id,
+        regime=regime,
+        normal=normal,
+        normal_acceleration=normal_acceleration,
+        table_acceleration=table_acceleration,
+        hanging_acceleration=hanging_acceleration,
+        table_tension=table_tension,
+        hanging_tension=hanging_tension,
+        friction=friction,
+        coefficient=coefficient,
+        carrier=carrier,
+        contact_state_ids=contact_state_ids,
+    )
+
+
+def _horizontal_fixed_contact_emissions(context: LawContext) -> list[LawEmission]:
+    profile = _fixed_pulley_horizontal_contact_profile(
+        context,
+        require_rope_authority=False,
+    )
+    if profile is None:
+        return []
+    emitted = [
+        _emit(
+            context,
+            "fixed_contact_no_penetration",
+            Equality(
+                left=profile.normal_acceleration.expression,
+                right=LiteralNode(
+                    value=0.0,
+                    dimension=profile.normal_acceleration.dimension,
+                ),
+            ),
+            (profile.normal_acceleration, profile.normal),
+            constraint_ids=profile.contact_state_ids,
+            extra_entity_ids=(profile.surface_id,),
+        ),
+        _emit(
+            context,
+            "contact_normal_bound",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=profile.normal.expression,
+                right=LiteralNode(value=0.0, dimension=profile.normal.dimension),
+            ),
+            (profile.normal,),
+            constraint_ids=profile.contact_state_ids,
+            extra_entity_ids=(profile.surface_id,),
+        ),
+    ]
+    if profile.regime == "inactive":
+        return emitted
+    friction = profile.friction
+    coefficient = profile.coefficient
+    if friction is None or coefficient is None:
+        return []
+    bound = Multiply(
+        factors=(coefficient.expression, profile.normal.expression),
+        dimension=friction.dimension,
+    )
+    friction_quantities = (friction, profile.normal, coefficient)
+    if profile.regime == "sticking":
+        for left in (
+            _signed(friction),
+            Negate(operand=_signed(friction), dimension=friction.dimension),
+        ):
+            emitted.append(
+                _emit(
+                    context,
+                    "contact_friction_bound",
+                    Inequality(
+                        relation=InequalityRelation.le,
+                        left=left,
+                        right=bound,
+                    ),
+                    friction_quantities,
+                    constraint_ids=profile.contact_state_ids,
+                    extra_entity_ids=(profile.surface_id,),
+                )
+            )
+        emitted.append(
+            _emit(
+                context,
+                "contact_sticking_static_acceleration",
+                Equality(
+                    left=_signed(profile.table_acceleration),
+                    right=LiteralNode(
+                        value=0.0,
+                        dimension=profile.table_acceleration.dimension,
+                    ),
+                ),
+                (
+                    profile.table_acceleration,
+                    friction,
+                    profile.normal,
+                    coefficient,
+                ),
+                constraint_ids=profile.contact_state_ids,
+                extra_entity_ids=(profile.surface_id,),
+            )
+        )
+    else:
+        friction_quantities = (
+            *friction_quantities,
+            *((profile.carrier,) if profile.carrier is not None else ()),
+        )
+        emitted.append(
+            _emit(
+                context,
+                "contact_sliding_friction",
+                Equality(left=friction.expression, right=bound),
+                friction_quantities,
+                constraint_ids=profile.contact_state_ids,
+                extra_entity_ids=(profile.surface_id,),
+            )
+        )
+    return emitted
+
+
 def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]:
     """Project gravity only for an exact source-backed fixed-contact contract."""
 
@@ -898,6 +1696,7 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
         carrier_valid = (
             motion_carrier is not None
             and motion_carrier.role is QuantityRole.velocity
+            and motion_carrier.dimension == DimensionVector(length=1, time=-1)
             and motion_carrier.subject_id == body_id
             and motion_carrier.point_id is None
             and motion_carrier.frame_id == contact.frame_id
@@ -1536,6 +2335,7 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
                     carrier_valid = (
                         carrier is not None
                         and carrier.role is QuantityRole.velocity
+                        and carrier.dimension == DimensionVector(length=1, time=-1)
                         and carrier.subject_id == incline_body_id
                         and carrier.point_id is None
                         and carrier.frame_id == interaction.frame_id
@@ -2803,15 +3603,26 @@ def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
                 )
                 and not inertial_pulley_ids
             )
+            horizontal_contact_profile = (
+                _fixed_pulley_horizontal_contact_profile(
+                    context,
+                    interaction.interaction_id,
+                )
+                if strict_fixed_particle_profile
+                else None
+            )
             fixed_ideal_topology = (
                 strict_fixed_particle_profile
-                and _fixed_ideal_pulley_topology(
-                    context,
-                    interaction,
-                    rope_id=rope_id,
-                    pulley_id=pulley_ids[0],
-                    moving_ids=moving_ids,
-                    forces=forces,
+                and (
+                    horizontal_contact_profile is not None
+                    or _fixed_ideal_pulley_topology(
+                        context,
+                        interaction,
+                        rope_id=rope_id,
+                        pulley_id=pulley_ids[0],
+                        moving_ids=moving_ids,
+                        forces=forces,
+                    )
                 )
             )
             tension_authority = tuple(sorted(set(massless) | set(ideal_pulley_authority)))
@@ -2826,7 +3637,18 @@ def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
             if equal_tension_allowed and len(forces) >= 2:
                 reference = forces[0]
                 for force in forces[1:]:
-                    if not _cross_subject_scope_compatible(reference, force):
+                    horizontal_tension_pair = (
+                        horizontal_contact_profile is not None
+                        and {reference.quantity_id, force.quantity_id}
+                        == {
+                            item.quantity_id
+                            for item in horizontal_contact_profile.rope_tensions
+                        }
+                    )
+                    if (
+                        not _cross_subject_scope_compatible(reference, force)
+                        and not horizontal_tension_pair
+                    ):
                         continue
                     emitted.append(
                         _emit(
@@ -2906,6 +3728,12 @@ def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
                             and q.interval_id == interaction.interval_id
                             and q.shape is QuantityShape.scalar
                         )
+                        horizontal_motion_pair = (
+                            horizontal_contact_profile is not None
+                            and role is QuantityRole.acceleration
+                        )
+                        if horizontal_motion_pair:
+                            body_motion = horizontal_contact_profile.rope_accelerations
                         pulley_motion = tuple(
                             q
                             for q in _by_role(context, role)
@@ -2922,7 +3750,10 @@ def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
                                 or fixed_ideal_topology
                             )
                         ):
-                            if not _component_compatible(body_motion[0], body_motion[1]):
+                            if (
+                                not _component_compatible(body_motion[0], body_motion[1])
+                                and not horizontal_motion_pair
+                            ):
                                 continue
                             zero = LiteralNode(value=0.0, dimension=body_motion[0].dimension)
                             emitted.append(
@@ -3421,6 +4252,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_constant_acceleration_emissions(context))
     emitted.extend(_chain_kinematics_emissions(context))
     emitted.extend(_incline_gravity_contact_emissions(context))
+    emitted.extend(_horizontal_fixed_contact_emissions(context))
     emitted.extend(_newton_emissions(context))
     emitted.extend(_primitive_interaction_emissions(context))
     emitted.extend(_work_energy_emissions(context))
