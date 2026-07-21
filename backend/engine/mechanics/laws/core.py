@@ -1208,7 +1208,9 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
                         _emit(
                             context,
                             "particle_weight",
-                            Equality(left=_signed(force), right=product),
+                            # The force symbol is a magnitude.  Its axis sign is
+                            # applied once, when Newton sums force components.
+                            Equality(left=force.expression, right=product),
                             (force, masses[0], gravities[0]),
                             extra_entity_ids=tuple(interaction.participant_ids),
                         )
@@ -2514,6 +2516,196 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
     return emitted
 
 
+def _fixed_ideal_pulley_topology(
+    context: LawContext,
+    interaction,
+    *,
+    rope_id: str,
+    pulley_id: str,
+    moving_ids: tuple[str, ...],
+    forces: tuple[BoundQuantity, ...],
+) -> bool:
+    """Validate only the evidenced topology needed by ideal fixed-pulley laws."""
+
+    if len(moving_ids) != 2 or len(set(moving_ids)) != 2:
+        return False
+    entities = {item.entity_id: item for item in context.entities}
+    topology_ids = {*moving_ids, rope_id, pulley_id}
+    if (
+        len(interaction.participant_ids) != 4
+        or set(interaction.participant_ids) != topology_ids
+        or len(set(interaction.participant_ids)) != 4
+        or interaction.frame_id is None
+        or interaction.interval_id is None
+        or interaction.event_id is not None
+        or interaction.point_ids
+        or not interaction.evidence_refs
+        or any(
+            entities.get(item) is None or not entities[item].evidence_refs
+            for item in topology_ids
+        )
+        or any(
+            entities[item].primitive is not EntityPrimitive.particle
+            for item in moving_ids
+        )
+        or entities[rope_id].primitive is not EntityPrimitive.rope
+        or entities[pulley_id].primitive is not EntityPrimitive.pulley
+    ):
+        return False
+
+    frame = next(
+        (
+            item
+            for item in context.reference_frames
+            if item.frame_id == interaction.frame_id
+        ),
+        None,
+    )
+    interval = next(
+        (
+            item
+            for item in context.motion_intervals
+            if item.interval_id == interaction.interval_id
+        ),
+        None,
+    )
+    axis = frame.axes[0] if frame is not None and len(frame.axes) == 1 else None
+    if (
+        frame is None
+        or frame.frame_type is not ReferenceFrameType.cartesian_1d
+        or getattr(frame.origin, "kind", None) != "world"
+        or not frame.evidence_refs
+        or axis is None
+        or getattr(axis.direction, "kind", None) != "axis"
+        or getattr(axis.direction, "frame_id", None) != frame.frame_id
+        or getattr(axis.direction, "axis", None) is not axis.axis
+        or getattr(axis.direction, "sign", None) != 1
+        or interval is None
+        or interval.frame_id != frame.frame_id
+        or not topology_ids.issubset(interval.subject_ids)
+        or len(interval.subject_ids) != len(set(interval.subject_ids))
+        or not interval.evidence_refs
+    ):
+        return False
+
+    if (
+        len(forces) != 2
+        or len(interaction.quantity_ids) != 2
+        or len(set(interaction.quantity_ids)) != 2
+        or {item.quantity_id for item in forces} != set(interaction.quantity_ids)
+        or {item.subject_id for item in forces} != set(moving_ids)
+        or any(
+            item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.shape is not QuantityShape.scalar
+            or not item.evidence_ids
+            for item in forces
+        )
+    ):
+        return False
+
+    related_geometry = tuple(
+        item
+        for item in context.geometry
+        if set(item.participant_ids) & topology_ids
+    )
+    wraps = tuple(
+        item for item in related_geometry if item.kind is GeometryRelationKind.wraps
+    )
+    attachments = tuple(
+        item
+        for item in related_geometry
+        if item.kind is GeometryRelationKind.attached
+    )
+    if (
+        len(related_geometry) != 3
+        or len(wraps) != 1
+        or len(attachments) != 2
+        or any(
+            item.interval_id != interval.interval_id
+            or item.expression is not None
+            or item.quantity_ids
+            or not item.evidence_refs
+            or len(item.participant_ids) != len(set(item.participant_ids))
+            for item in related_geometry
+        )
+        or set(wraps[0].participant_ids) != {rope_id, pulley_id}
+        or len(wraps[0].participant_ids) != 2
+        or {frozenset(item.participant_ids) for item in attachments}
+        != {frozenset((rope_id, item)) for item in moving_ids}
+    ):
+        return False
+
+    topology_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.subject_id in {rope_id, pulley_id}
+        and item.interval_id == interval.interval_id
+    )
+    if (
+        len(topology_states) != 2
+        or not any(
+            item.subject_id == rope_id
+            and item.kind is StateKind.rope
+            and item.state is StateValue.taut
+            for item in topology_states
+        )
+        or not any(
+            item.subject_id == pulley_id
+            and item.kind is StateKind.motion
+            and item.state is StateValue.at_rest
+            for item in topology_states
+        )
+        or any(
+            item.event_id is not None
+            or item.expression is not None
+            or item.quantity_ids
+            or not item.evidence_refs
+            for item in topology_states
+        )
+    ):
+        return False
+
+    required = (
+        ("massless_rope", rope_id),
+        ("inextensible_rope", rope_id),
+        ("ideal_massless_frictionless_pulley", pulley_id),
+        ("fixed_pulley", pulley_id),
+    )
+    approved_ids = {
+        assumption_id
+        for kind, subject_id in required
+        for assumption_id in context.approved_assumptions(
+            kind, subject_id, interval.interval_id
+        )
+    }
+    approved_records = tuple(
+        item for item in context.assumptions if item.assumption_id in approved_ids
+    )
+    return (
+        len(approved_ids) == len(required)
+        and len(approved_records) == len(required)
+        and {(item.kind, item.subject_id) for item in approved_records}
+        == set(required)
+        and all(
+            item.interval_id == interval.interval_id and item.evidence_refs
+            for item in approved_records
+        )
+        and not any(
+            item.subject_id == pulley_id
+            and item.role
+            in {
+                QuantityRole.moment_of_inertia,
+                QuantityRole.angular_position,
+                QuantityRole.angular_velocity,
+                QuantityRole.angular_acceleration,
+            }
+            for item in context.quantities
+        )
+    )
+
+
 def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
     emitted: list[LawEmission] = []
     primitive_by_id = {entity.entity_id: entity.primitive for entity in context.entities}
@@ -2580,12 +2772,55 @@ def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
                     }
                 )
             )
+            hanging_gravity_topology_signal = (
+                any(
+                    item.primitive is EntityPrimitive.environment
+                    for item in context.entities
+                )
+                or any(
+                    item.kind is InteractionKind.gravity
+                    for item in context.interactions
+                )
+                or any(
+                    item.kind is GeometryRelationKind.attached
+                    and rope_id in item.participant_ids
+                    for item in context.geometry
+                )
+                or any(
+                    item.subject_id == rope_id
+                    and item.kind is StateKind.rope
+                    and item.state is StateValue.taut
+                    for item in context.state_conditions
+                )
+            )
+            strict_fixed_particle_profile = (
+                hanging_gravity_topology_signal
+                and len(pulley_ids) == 1
+                and len(moving_ids) == 2
+                and all(
+                    primitive_by_id.get(item) is EntityPrimitive.particle
+                    for item in moving_ids
+                )
+                and not inertial_pulley_ids
+            )
+            fixed_ideal_topology = (
+                strict_fixed_particle_profile
+                and _fixed_ideal_pulley_topology(
+                    context,
+                    interaction,
+                    rope_id=rope_id,
+                    pulley_id=pulley_ids[0],
+                    moving_ids=moving_ids,
+                    forces=forces,
+                )
+            )
             tension_authority = tuple(sorted(set(massless) | set(ideal_pulley_authority)))
             equal_tension_allowed = bool(massless) and (
                 not pulley_ids
                 or (
                     not inertial_pulley_ids
                     and approved_ideal_pulley_ids == set(pulley_ids)
+                    and (not strict_fixed_particle_profile or fixed_ideal_topology)
                 )
             )
             if equal_tension_allowed and len(forces) >= 2:
@@ -2678,7 +2913,15 @@ def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
                             and q.interval_id == interaction.interval_id
                             and q.shape is QuantityShape.scalar
                         )
-                        if fixed and len(body_motion) == 2 and not pulley_motion:
+                        if (
+                            fixed
+                            and len(body_motion) == 2
+                            and not pulley_motion
+                            and (
+                                not strict_fixed_particle_profile
+                                or fixed_ideal_topology
+                            )
+                        ):
                             if not _component_compatible(body_motion[0], body_motion[1]):
                                 continue
                             zero = LiteralNode(value=0.0, dimension=body_motion[0].dimension)

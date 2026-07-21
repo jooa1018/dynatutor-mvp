@@ -7,9 +7,11 @@ retains the exact frozen results for diagnostic comparison.
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
+from itertools import islice
 import json
 import re
 
@@ -41,6 +43,7 @@ from engine.mechanics.migration.parity import (
 )
 from engine.mechanics.normalization import calculation_fingerprint
 from engine.mechanics.pipeline import solve_verified_equation_graph
+from engine.mechanics.validation import AssumptionAuthorization, CorrectionAuthorization
 from engine.mechanics.verification.contracts import (
     MechanicsSolveResult,
     MechanicsSolveTerminal,
@@ -50,6 +53,7 @@ from engine.mechanics.verification.contracts import (
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
 _MAX_VARIANTS = 64
+_MAX_AUTHORITY_ITEMS = 256
 _COMPILABLE_STATUSES = frozenset(
     {CompilerStatus.ready, CompilerStatus.overdetermined}
 )
@@ -547,6 +551,9 @@ def execute_mechanics_ir_probe(
     ir: MechanicsProblemIRV1,
     *,
     observation: LegacyObservation | None = None,
+    approved_assumption_ids: Collection[str] = (),
+    authorized_corrections: Mapping[str, CorrectionAuthorization] | None = None,
+    authorized_assumptions: Mapping[str, AssumptionAuthorization] | None = None,
 ) -> MechanicsMigrationProbeExecution:
     """Run one exact accepted IR through the offline generic probe."""
 
@@ -591,10 +598,16 @@ def execute_mechanics_ir_probe(
             fingerprint,
         )
     try:
-        compiler_result = compiler.compile(
-            exact_ir,
-            validated_ir_authorization=authorization,
-        )
+        compile_kwargs: dict[str, object] = {
+            "validated_ir_authorization": authorization,
+        }
+        if type(approved_assumption_ids) is not tuple or approved_assumption_ids:
+            compile_kwargs["approved_assumption_ids"] = approved_assumption_ids
+        if authorized_corrections is not None:
+            compile_kwargs["authorized_corrections"] = authorized_corrections
+        if authorized_assumptions is not None:
+            compile_kwargs["authorized_assumptions"] = authorized_assumptions
+        compiler_result = compiler.compile(exact_ir, **compile_kwargs)
     except Exception:
         return _failed_execution(
             MigrationProbeFailure.compiler_execution,
@@ -782,9 +795,89 @@ def _validate_comparison_record(
         raise ValueError("variant comparison does not match retained executions")
 
 
+def _snapshot_approved_assumption_ids(
+    value: Collection[str],
+) -> tuple[str, ...]:
+    if isinstance(value, (str, bytes, bytearray, Mapping)) or not isinstance(
+        value, Collection
+    ):
+        raise TypeError("approved assumption authority must be a bounded collection")
+    try:
+        expected_length = len(value)
+    except Exception:
+        raise TypeError(
+            "approved assumption authority must expose a stable length"
+        ) from None
+    if expected_length > _MAX_AUTHORITY_ITEMS:
+        raise ValueError("approved assumption authority exceeds 256 items")
+    try:
+        snapshot = tuple(islice(iter(value), _MAX_AUTHORITY_ITEMS + 1))
+        final_length = len(value)
+    except Exception:
+        raise ValueError(
+            "approved assumption authority changed while being snapshotted"
+        ) from None
+    if len(snapshot) > _MAX_AUTHORITY_ITEMS:
+        raise ValueError("approved assumption authority exceeds 256 items")
+    if final_length != expected_length or len(snapshot) != expected_length:
+        raise ValueError(
+            "approved assumption authority changed while being snapshotted"
+        )
+    if any(
+        type(item) is not str or _IDENTIFIER.fullmatch(item) is None
+        for item in snapshot
+    ):
+        raise ValueError("approved assumption authority contains an invalid ID")
+    return snapshot
+
+
+def _snapshot_authority_mapping(
+    value: Mapping[str, object] | None,
+    *,
+    record_type: type[CorrectionAuthorization] | type[AssumptionAuthorization],
+    id_field: str,
+    label: str,
+) -> dict[str, object] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise TypeError(f"{label} authority must be a bounded mapping")
+    try:
+        expected_length = len(value)
+    except Exception:
+        raise TypeError(f"{label} authority must expose a stable length") from None
+    if expected_length > _MAX_AUTHORITY_ITEMS:
+        raise ValueError(f"{label} authority exceeds 256 items")
+    try:
+        items = tuple(islice(iter(value.items()), _MAX_AUTHORITY_ITEMS + 1))
+        final_length = len(value)
+    except Exception:
+        raise ValueError(f"{label} authority changed while being snapshotted") from None
+    if len(items) > _MAX_AUTHORITY_ITEMS:
+        raise ValueError(f"{label} authority exceeds 256 items")
+    if final_length != expected_length or len(items) != expected_length:
+        raise ValueError(f"{label} authority changed while being snapshotted")
+    snapshot: dict[str, object] = {}
+    for key, record in items:
+        if (
+            type(key) is not str
+            or _IDENTIFIER.fullmatch(key) is None
+            or type(record) is not record_type
+            or getattr(record, id_field, None) != key
+            or key in snapshot
+        ):
+            raise ValueError(f"{label} authority contains an invalid record")
+        snapshot[key] = record
+    return snapshot
+
+
 def compare_mechanics_ir_invariance(
     baseline: MechanicsMigrationProbeExecution,
     variants: tuple[LabelledIRProbeVariant, ...],
+    *,
+    approved_assumption_ids: Collection[str] = (),
+    authorized_corrections: Mapping[str, CorrectionAuthorization] | None = None,
+    authorized_assumptions: Mapping[str, AssumptionAuthorization] | None = None,
 ) -> MechanicsMigrationInvarianceComparison:
     """Execute and compare bounded diagnostic-only IR variants."""
 
@@ -800,10 +893,30 @@ def compare_mechanics_ir_invariance(
     labels = tuple(item.label for item in variants)
     if len(set(labels)) != len(labels):
         raise ValueError("invariance variant labels must be unique")
+    approved_snapshot = _snapshot_approved_assumption_ids(
+        approved_assumption_ids
+    )
+    correction_snapshot = _snapshot_authority_mapping(
+        authorized_corrections,
+        record_type=CorrectionAuthorization,
+        id_field="correction_id",
+        label="correction",
+    )
+    assumption_snapshot = _snapshot_authority_mapping(
+        authorized_assumptions,
+        record_type=AssumptionAuthorization,
+        id_field="assumption_id",
+        label="assumption",
+    )
     records = tuple(
         _comparison_values(
             baseline,
-            execute_mechanics_ir_probe(item.ir),
+            execute_mechanics_ir_probe(
+                item.ir,
+                approved_assumption_ids=approved_snapshot,
+                authorized_corrections=correction_snapshot,
+                authorized_assumptions=assumption_snapshot,
+            ),
             label=item.label,
             kind=item.kind,
         )

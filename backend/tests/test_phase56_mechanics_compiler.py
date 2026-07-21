@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 import re
@@ -1514,12 +1515,20 @@ def test_evidenced_fixed_pulley_uses_server_topology_coefficients_and_incomplete
 
 def test_massive_pulley_suppresses_equal_tension_and_emits_signed_newton_euler() -> None:
     payload = _problem_payload()
-    payload["source_evidence"] = [{
-        "kind": "text", "evidence_id": "massiveWrapEvidence",
-        "quote": "The rope wraps a massive pulley.",
-        "source_span": {"start": 0, "end": 32}, "quantity_span": None,
-        "occurrence_index": 0,
-    }]
+    payload["source_evidence"] = [
+        {
+            "kind": "text", "evidence_id": "massiveWrapEvidence",
+            "quote": "The rope wraps a massive pulley.",
+            "source_span": {"start": 0, "end": 32}, "quantity_span": None,
+            "occurrence_index": 0,
+        },
+        {
+            "kind": "text", "evidence_id": "massiveTautEvidence",
+            "quote": "The rope is taut.",
+            "source_span": {"start": 33, "end": 50}, "quantity_span": None,
+            "occurrence_index": 0,
+        },
+    ]
     payload["entities"].append({
         "entity_id": "pulley1", "primitive": "pulley", "label": "pulley",
         "aliases": [], "component_of_entity_id": None,
@@ -1559,6 +1568,17 @@ def test_massive_pulley_suppresses_equal_tension_and_emits_signed_newton_euler()
         "reason": "Adversarial ideal label must not override positive inertia.",
         "evidence_refs": ["massiveWrapEvidence"],
     })
+    next(
+        item
+        for item in payload["assumptions"]
+        if item["assumption_id"] == "fixedLengthRope"
+    )["evidence_refs"] = ["massiveWrapEvidence", "massiveTautEvidence"]
+    payload["state_conditions"] = [{
+        "state_condition_id": "massiveRopeTaut", "kind": "rope", "state": "taut",
+        "subject_id": "rope1", "interval_id": "interval1", "event_id": None,
+        "expression": None, "quantity_ids": [],
+        "evidence_refs": ["massiveTautEvidence"],
+    }]
     payload["queries"][0]["target"].update({
         "role": "angular_acceleration", "subject_id": "pulley1", "frame_id": "frame1",
         "interval_id": "interval1", "component": "x", "target_quantity_id": "pulleyAlphaQ",
@@ -1575,6 +1595,37 @@ def test_massive_pulley_suppresses_equal_tension_and_emits_signed_newton_euler()
     assert any(isinstance(item, Negate) for item in tension_sum.terms)
     assert isinstance(equation.expression.right, Multiply)
     assert any(isinstance(item, Negate) for item in equation.expression.right.factors)
+
+    particle_query_payload = deepcopy(payload)
+    particle_query_payload["queries"] = deepcopy(_problem_payload()["queries"])
+    particle_query = compile_mechanics_ir(_ir(particle_query_payload))
+    assert particle_query.status is CompilerStatus.underdetermined
+    assert particle_query.graph is not None
+    particle_query_laws = Counter(
+        item.law_id for item in particle_query.graph.equations
+    )
+    assert particle_query_laws["pulley_newton_euler"] == 1
+    assert particle_query_laws["rope_fixed_pulley_motion"] == 1
+    assert particle_query_laws["particle_newton_second"] == 2
+    assert particle_query_laws["rope_massless_tension"] == 0
+    assert not any(
+        issue.code is CompilerIssueCode.requires_specialized_model
+        for issue in particle_query.issues
+    )
+
+    malformed_alpha_payload = deepcopy(particle_query_payload)
+    next(
+        item
+        for item in malformed_alpha_payload["quantities"]
+        if item["quantity_id"] == "pulleyAlphaQ"
+    )["direction"] = None
+    malformed_alpha = compile_mechanics_ir(_ir(malformed_alpha_payload))
+    assert malformed_alpha.status is CompilerStatus.unsupported
+    assert malformed_alpha.graph is None
+    assert any(
+        issue.code is CompilerIssueCode.requires_specialized_model
+        for issue in malformed_alpha.issues
+    )
 
 
 def test_equal_tension_requires_exact_approved_subject_coverage_for_every_pulley() -> None:
