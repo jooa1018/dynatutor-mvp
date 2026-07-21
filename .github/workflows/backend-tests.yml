@@ -50,12 +50,8 @@ jobs:
       - name: Compile backend modules
         run: python -m compileall -q app engine
 
-      - name: Run backend default tests
-        run: python -m pytest -q
-
-      - name: Run complete backend suite
-        run: python -m pytest -q -o addopts=
-
+      # These marker groups cover the collected backend suite. Keep each group
+      # bounded and run it once; raw default/complete passes duplicate them.
       - name: Run backend fast wrapper
         run: bash ../scripts/check_backend_fast.sh
 
@@ -65,8 +61,11 @@ jobs:
       - name: Run backend audit wrapper
         run: bash ../scripts/check_backend_audit.sh
 
-      - name: Run aggregate repository wrapper
-        run: bash ../scripts/check_all.sh
+      - name: Run backend frontend-marker tests
+        run: python -m pytest -q -o addopts= -m "frontend"
+
+      - name: Check frontend repository metadata
+        run: bash ../scripts/check_frontend_metadata.sh
 
       - name: Enforce warm solve latency budget
         run: >-

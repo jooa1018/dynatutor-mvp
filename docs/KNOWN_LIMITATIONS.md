@@ -5,9 +5,11 @@ routing and physics-audit follow-ups.
 
 ## CI and runtime budgets
 
-GitHub Actions now runs the default and complete backend suites, frontend
-typecheck/build, a warm 43-case solve-latency budget, and cold import/RSS
-budgets on every relevant pull request.
+GitHub Actions runs each bounded backend marker group once: fast, benchmark,
+audit, and frontend. Together they currently cover every collected backend
+test. CI also runs frontend tests/typecheck/build, a warm 43-case solve-latency
+budget, and cold import/RSS budgets on every relevant pull request. A new
+slow-only test requires a dedicated CI group.
 
 Production/Render enables a process-local rate limit (60 CPU-heavy requests per
 minute per client) and a 64 KiB request-body limit by default. These can be

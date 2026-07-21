@@ -14,7 +14,8 @@
 ./scripts/check_backend_fast.sh        # 기본 세트 (unit/regression/negative — pytest 기본 addopts)
 ./scripts/check_backend_benchmark.sh   # -m benchmark
 ./scripts/check_backend_audit.sh       # -m audit
-cd backend && PYTHONPATH=. python tools/routing_confusion_report.py
+(cd backend && PYTHONPATH=. pytest -q -o addopts='' -m "frontend")
+(cd backend && PYTHONPATH=. python tools/routing_confusion_report.py)
 ```
 
 Expected:
