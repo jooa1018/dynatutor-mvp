@@ -342,12 +342,45 @@ rollback after generic-path failure.
    until entries 6 and 7 are accepted.  The latest exact release evidence remains
    entry 4 at `dedb4c7...`, run `29841110152` (run #429, `SUCCESS`).
 
+6. `pulley_incline_hanging` — **ACCEPTED (registry entry 6; in-scope 6/25)** at
+   product checkpoint `f3e747b4480f98223c113170181698c8b4822e84` (tree
+   `f1854d5753249427c00ce51bac3d1b636e297556`, parent typed-scope checkpoint
+   `a63647163c291c60eb3ccf9e39d8b6db633766e0`, commit
+   `feat(mechanics): migrate incline-hanging pulley solver`).  The exact typed
+   contract binds a parent Cartesian world frame to an incline-local
+   tangential/normal frame, with one unframed rope-tension magnitude and one
+   unframed rope-acceleration coordinate transferred through two evidenced
+   attachments.  It derives the incline gravity projections, hanging weight,
+   three particle balances, fixed-contact normal behavior, and exact rope
+   tension/acceleration transfer equations without raw text, metadata, registry,
+   fixture IDs, or legacy results as calculation authority.  Frictionless,
+   sticking, and sliding regimes cover signed body-acceleration and tension
+   queries, zero angle, `mu=0`, static interior and exact-boundary cases, both
+   zero-drive friction axes, and reversed motion/query signs.  Sliding friction
+   follows only the explicit velocity carrier; acceleration-direction
+   consistency is emitted only from the separately evidenced, externally
+   approved `acceleration_not_opposite_motion` assumption.  Missing or
+   unapproved authority, invalid domains, internal-coordinate/query bypasses,
+   infeasible static or direction candidates, and partial topology fail closed
+   without a legacy call.  A Checker-discovered combined deletion of the rope
+   interaction and wrap initially exposed a gravity-only fall-through; the
+   accepted checkpoint activates the specialized gate from the distinctive
+   primitive signature and proves that deletion returns
+   `requires_specialized_model` with no graph.  Source quote/span/media content
+   is calculation-identity neutral while exact provenance IDs and graph
+   topology remain retained and validated.  Final focused evidence is fast
+   `39 passed, 16 deselected`; the complete Entry-6 slow matrix is `16 passed`;
+   compiler regression is `57 passed`; connected Entry-2-through-5 regression
+   is `111 passed, 21 deselected`.  The fresh independent Checker reported
+   final blocking findings `0`.  This is a local product checkpoint, not a new
+   release-CI claim; Wave A family Checker/release CI remains pending Entry 7.
+
 Current authoritative roll-up: the registry inventory is `29/29` classified;
-the in-scope set is `25`, with `5/25` accepted and `20/25` pending; the deferred
+the in-scope set is `25`, with `6/25` accepted and `19/25` pending; the deferred
 set is exactly `4/4` classified.  Deferred classification is not accepted parity,
 so this is neither `9/29` nor a `29/29 generic migrated` claim.  The next exact
-task is Wave A entry 6, `pulley_incline_hanging`, followed by entry 7,
-`massive_pulley_atwood`, then the Wave A family Checker and release CI.
+task is Wave A entry 7, `massive_pulley_atwood`, followed by the Wave A family
+Checker and release CI.
 
 The separate typed scope/runtime amendment passed its final independent
 read-only Checker with blocking findings `0` and new nonblocking findings `0`.
@@ -372,7 +405,7 @@ worker-startup timeout rather than a scope/contract assertion.
   Coriolis, and slot-pin entries remain structured unsupported without generic
   answer authority.
 * This document is an inventory, plan, and limited accepted-evidence ledger.
-  Exactly five in-scope entries (`5/25`) have accepted parity evidence; `20/25`
+  Exactly six in-scope entries (`6/25`) have accepted parity evidence; `19/25`
   in-scope entries remain.  The four deferred entries are not parity passes. No
   corpus/PDF inputs were opened or used for that evidence, and the public corpus
   remains sealed.
