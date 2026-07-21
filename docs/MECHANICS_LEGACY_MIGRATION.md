@@ -122,13 +122,13 @@ is against names rather than class spellings.
 Each **source** citation identifies the registered class/symbol that supports
 the stated capability and dependency.  `Reuse / discard` calls out the only
 kernel worth preserving; all other legacy logic is explicitly non-reusable.
-All listed fallback entries are **off-mode rollback pending independent
-parity**, never generic-path answer authority.
+All listed fallback entries remain **off-mode rollback**, never generic-path
+answer authority; the ledger below records which independent parity gates pass.
 
 | solver_id | current math capability; source | legacy dependencies (raw; type/subtype) | required IR primitive | required law / constraint | native generic compiler migration | kernel adapter | legacy fallback | parity test |
 |---|---|---|---|---|---|---|---|---|
 | `single_particle_newton` | `F=ma`, solve `a/F/m`; `solvers/newton/single_particle.py:SingleParticleNewtonSolver.solve` | D (force/query word heuristics); D/I | particle, force vector, acceleration query | `particle_newton_second`; force directions/balance | Native now; typed force vectors replace text net-force choice | none; formula is trivial | rollback | `m,F -> a`; multi-force signed balance; reject ambiguous directions; invariance |
-| `incline_no_friction` | `a=g sin(theta)`; `solvers/incline.py:InclineNoFrictionSolver.solve` | I; D/D | particle, incline geometry/frame, gravity/contact | `particle_weight`, `particle_newton_second`, normal constraint | Gate/partial: add typed angle-based gravity projection, frictionless contact/no-penetration behavior, and an incline-specific physical angle domain before promotion | none; existing generated Newton result is not reused | rollback | 0/90-degree limits, interior and signed slope force, out-of-domain/contact rejection, invariance |
+| `incline_no_friction` | `a=g sin(theta)`; `solvers/incline.py:InclineNoFrictionSolver.solve` | I; D/D | particle, incline geometry/frame, gravity/contact | `incline_gravity_tangent_projection`, `incline_gravity_normal_projection`, `fixed_contact_no_penetration`, `contact_normal_bound`, `particle_newton_second` | Native now; typed angle-based gravity projection, evidenced frictionless touching contact/no penetration, and the inclusive `0 <= theta <= pi/2` domain are accepted | none; existing generated Newton result is not reused | rollback | 0/90-degree limits, interior and signed slope force, out-of-domain/contact rejection, invariance |
 | `incline_with_friction` | static hold or `a=g(sinθ-μcosθ)`; `solvers/incline.py:InclineWithFrictionSolver.solve` | I; D/D | particle, incline, contact, friction regime, motion state | `contact_normal_bound`, `contact_friction_bound` or `contact_sliding_friction`, Newton | Native now; model static inequality as graph constraint | static-friction inequality residual only; discard direction prose | rollback | hold/slip boundary, μ=0 reduction, direction contradiction; invariance |
 | `pulley_atwood` | two masses, tension and acceleration; `solvers/pulley/atwood.py:AtwoodPulleySolver.solve` | I; D/I | two particles, rope, fixed ideal pulley, gravity | particle Newton, `rope_massless_tension`, `rope_fixed_pulley_motion` | Native now with evidenced rope topology | none | rollback | m1=m2, tension residual, mass swap sign; invariance |
 | `pulley_table_hanging` | table/hanging pair, static/kinetic/no-friction branches; `solvers/pulley/table_hanging.py:TableHangingPulleySolver.solve` | I; D/D | two particles, horizontal contact, rope/pulley, friction regime | Newton, rope laws, contact friction laws | Native now for fully typed topology/regime | none; discard subtype/flag branch | rollback | static threshold, μ=0, rope/tension residual; invariance |
@@ -214,10 +214,31 @@ rollback after generic-path failure.
    has generic calculation or selection authority. Fresh independent Checker:
    `PASS`, blocking findings `0`.
 
-The remaining `28/29` entries have no accepted same-fixture parity claim. In
-particular, `incline_no_friction` must close its typed projection, frictionless
-contact, and angle-domain gaps before entry 2 can be accepted; source/test-side
-precomputation of `mg sin(theta)` is not a substitute for a generic law.
+2. `incline_no_friction` — **ACCEPTED (2/29)** at exact product/CI checkpoint
+   `5e49f2f267c4c8d75aec6e99e3714fc36f700257` (tree
+   `9ffbd6cc9bd60e1153891c2b2b7053e2d801a35c`, parent documentation handoff
+   `8711b8a328b7334b0545d62f8a2bba6c8317f0b6`, commit
+   `feat(mechanics): migrate frictionless incline solver`), GitHub Actions
+   release run `29823679522` (run #424, `SUCCESS`). The generic path derives
+   tangent/normal gravity components from the evidenced typed incline angle,
+   enforces evidenced frictionless touching contact and fixed-surface
+   no-penetration behavior, and accepts only the inclusive physical angle domain
+   `0 <= theta <= pi/2`. Its same-fixture package proves 0/90-degree limits,
+   interior down-/up-slope signs, full value/unit/terminal/candidate parity with
+   the direct diagnostics-only legacy observation, independent projection,
+   Newton/contact residuals, angle-domain and gravity-authority negatives,
+   manual typed-payload negatives, and diagnostic metadata invariance. Focused
+   evidence: `15 passed`; connected
+   compiler plus entry-1 regression: `60 passed`; additional Sol-connected
+   entry-1/migration/legacy runs: `3`, `23`, and `30 passed`. Local Windows full
+   runs used only the 20-second worker-startup shim; the unchanged default
+   5-second symbolic and verification budgets are not claimed green locally. Fresh independent
+   Checker: `PASS`, blocking findings `0`, nonblocking findings `0`.
+
+The remaining `27/29` entries have no accepted same-fixture parity claim. The
+next canonical registry entry is 3, `incline_with_friction`; its matrix gate is
+the typed static-hold/sliding regime with hold/slip boundary, `mu=0` reduction,
+direction-contradiction rejection, residual parity, and invariance evidence.
 
 ## Risks retained
 
@@ -229,5 +250,5 @@ precomputation of `mg sin(theta)` is not a substitute for a generic law.
   coverage risks.  They need typed IR, graph laws, and verification hooks;
   closed-form legacy output is not a substitute.
 * This document is an inventory, plan, and limited accepted-evidence ledger.
-  Only the named 1/29 entry above has a parity pass. No corpus/PDF inputs were
-  opened or used for that evidence.
+  Only the two named entries above (`2/29`) have parity passes. No corpus/PDF
+  inputs were opened or used for that evidence.
