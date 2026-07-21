@@ -2,9 +2,10 @@
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
 updated on `2026-07-22` (`Asia/Seoul`) after exact-head acceptance of the Wave A
-release gate and local acceptance of Wave B Entries 8-9. Wave A release run
-`29865756663` (run #433) passed at `8f18c710...`; the latest Entry-9 product
-checkpoint `2a870ec...` has local evidence only. It is a pause record, not an
+release gate and local acceptance of Wave B Entries 8-10. Wave A release run
+`29865756663` (run #433) passed at `8f18c710...`; the latest Entry-10 product
+checkpoint `dba0016e...` has local evidence only. Wave B is locally complete, but
+its wave Checker and release CI have not run. This is a pause record, not an
 `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
@@ -46,21 +47,26 @@ checkpoint `2a870ec...` has local evidence only. It is a pause record, not an
   `2a870ec4808b6301e39bb99f446b457abc5458a5` (tree
   `9430a179e8e79322b1d49d2b53ed3b68a57f4a64`, parent Entry-8 documentation
   checkpoint `dbad228948c82809e854b0f9cf0f97bef9b998ea`).
+- Latest accepted Entry-10 product/same-fixture migration checkpoint:
+  `dba0016ec9878d40e1ed6edf60106491848b3956` (tree
+  `7d02c784030e32e9d4fc08b22f76ecd8e93fbc1f`, parent Entry-9 documentation
+  checkpoint `97545c02b53eea82e2951a8f1c81ebe2f3518cf8`, commit
+  `feat(mechanics): migrate vertical circle solver`).
 - Current branch head: the branch head containing this file after the
-  Entry-9 documentation update; verify its exact SHA from the branch.
+  Entry-10 documentation update; verify its exact SHA from the branch.
 - Latest release-validated migration tree:
   `5770597d55158d9634d90101451977ebc226d83c`.
 - Latest exact-head release-CI checkpoint:
   `8f18c710fc6d5d730fcceccfb30e3175c2613902`.
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
 - The Wave-A release result covers accepted Entries 1-7 at `8f18c710...`. No
-  release-CI result is attributed to Entry 8 at `af4b83ff...` or Entry 9 at
-  `2a870ec...`.
+  release-CI result is attributed to Entry 8 at `af4b83ff...`, Entry 9 at
+  `2a870ec...`, or Entry 10 at `dba0016e...`.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
 - PR #17 exact release-validated remote head:
   `8f18c710fc6d5d730fcceccfb30e3175c2613902`; re-query before relying on any
-  later remote state. Entries 8-9 are not release-validated remote-head claims.
+  later remote state. Entries 8-10 are not release-validated remote-head claims.
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
 
 Remote state was read through the GitHub app immediately before checkpointing:
@@ -275,6 +281,24 @@ master instruction.
     with blocking findings `0` and nonblocking findings `0`; `py_compile` and
     `git diff --check` passed, and the Entry-8 fingerprint remained unchanged.
     No release CI is attributed to this Entry-9 product checkpoint.
+  - canonical registry entry 10, `vertical_circle`, at accepted product
+    checkpoint `dba0016ec9878d40e1ed6edf60106491848b3956` (tree
+    `7d02c784030e32e9d4fc08b22f76ecd8e93fbc1f`, parent Entry-9 documentation
+    checkpoint `97545c02b53eea82e2951a8f1c81ebe2f3518cf8`, commit
+    `feat(mechanics): migrate vertical circle solver`). Its narrow typed contract
+    recognizes the exact particle/circular-path/radial-frame topology
+    independently of the query, with an evidenced top or bottom state and either
+    a rope or touching contact. It emits top/bottom rope tension or contact normal
+    `C=m(v^2/R∓g)` and the top minimum-speed result `v_min=sqrt(gR)`. Contact
+    loss fails closed, the exact zero boundary uses a relative epsilon, and
+    derived overflow, underflow, and subnormal values are fenced. It introduces
+    no hidden gravity default or clamp. The direct legacy call is diagnostic only;
+    contact parity is numeric-only. The focused file collects `79` tests (`67`
+    fast, `12` slow). Root's final connected fast selection reports `361 passed,
+    34 deselected`; the final slow matrix reports `12 passed` in `105.20s`. Two
+    independent Entry-10 Checkers returned `PASS`, each with blocking findings
+    `0` and nonblocking findings `0`; `py_compile`, diff, and whitespace checks
+    passed. No release CI is attributed to this Entry-10 product checkpoint.
 - Accepted Stage 5 decisions:
   - legacy parity is diagnostic only and can never verify, select, repair, or
     provide a generic fallback answer;
@@ -294,19 +318,18 @@ master instruction.
     variant is independently compiled and solved.
 - Still incomplete:
   - the exact inventory is `29/29` classified: `25` in scope and four deferred;
-    accepted in-scope evidence is `9/25`, with `16/25` pending;
+    accepted in-scope evidence is `10/25`, with `15/25` pending;
   - Waves A-F remain active under the superseding typed scope plan; Wave A is
-    release-accepted and Wave B is in progress with Entries 8-9 locally accepted
-    and Entry 10 pending;
+    release-accepted and Wave B Entries 8-10 are locally accepted and locally
+    complete, while the Wave-B wave Checker and release CI remain pending;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: none at the accepted `9/25` in-scope boundary. Wave A
+- Current failure/blocker: none at the accepted `10/25` in-scope boundary. Wave A
   passed exact-head release CI at `8f18c710...`, run `29865756663` (run #433,
-  `SUCCESS`); the two independent Entry-9 Checkers each passed with blocking and
+  `SUCCESS`); both independent Entry-10 Checkers passed with blocking and
   nonblocking findings both `0`.
-- Next gate: implement and locally accept Entry 10, `vertical_circle`; run the
-  fresh independent Wave-B Checker and release CI only at the complete-wave
-  boundary.
+- Next gate: run a fresh independent Wave-B Checker, then exact-head release CI
+  for the complete local Wave-B product. Do not start Entry 11 before that gate.
 
 #### Superseding Stage 5 typed scope and exact waves
 
@@ -334,8 +357,9 @@ classification is `25` in scope and four deferred, exactly entries 19
 
 Run focused parity evidence and connected targeted tests for each entry. Run one
 fresh independent read-only Checker and release CI only at the end of a complete
-wave. Wave A passed that gate at `8f18c710...`, run #433. Wave B is in progress:
-Entries 8-9 are locally accepted, and Entry 10 precedes its wave-end gate.
+wave. Wave A passed that gate at `8f18c710...`, run #433. Wave B Entries 8-10
+are locally accepted and locally complete; its fresh wave Checker and exact-head
+release CI are the next gate and have not run.
 
 For each deferred entry, generic behavior is precise structured unsupported;
 generic answer authority is **none** and legacy answer authority is **off-mode
@@ -388,8 +412,9 @@ generic-migration total.
 
 - Work immediately before this update: accepted the Wave-A release gate at
   `8f18c710...`, run `29865756663` (run #433), then locally accepted Wave-B
-  Entries 8-9 at products `af4b83ff...` and `2a870ec...`. Entries 1-9 are
-  accepted in-scope evidence (`9/25`); Entries 8-9 are not release-CI claims.
+  Entries 8-10 at products `af4b83ff...`, `2a870ec...`, and `dba0016e...`.
+  Entries 1-10 are accepted in-scope evidence (`10/25`); Entries 8-10 are not
+  release-CI claims.
 - The typed scope/runtime amendment changes these product paths:
   - `backend/engine/mechanics/__init__.py`
   - `backend/engine/mechanics/compiler/__init__.py`
@@ -465,15 +490,21 @@ generic-migration total.
   - `backend/engine/mechanics/compiler/compiler.py`
   - `backend/engine/mechanics/laws/core.py`
   - `backend/tests/test_phase56_mechanics_rolling_general_same_fixture_parity.py`
+- Entry-10 product/test work changed exactly these three paths:
+  - `backend/engine/mechanics/compiler/compiler.py`
+  - `backend/engine/mechanics/laws/core.py`
+  - `backend/tests/test_phase56_mechanics_vertical_circle_same_fixture_parity.py`
 - Safe latest accepted product migration unit:
-  `2a870ec4808b6301e39bb99f446b457abc5458a5` (Entry 9 targeted evidence).
+  `dba0016ec9878d40e1ed6edf60106491848b3956` (Entry 10 targeted evidence).
 - Safe last exact-head release-CI unit:
   `8f18c710fc6d5d730fcceccfb30e3175c2613902`, run `29865756663` (run #433),
-  `SUCCESS`; no release result is attributed to `af4b83ff...` or `2a870ec...`.
+  `SUCCESS`; no release result is attributed to `af4b83ff...`, `2a870ec...`, or
+  `dba0016e...`.
 - Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
   test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
-- Immediate next task: implement Entry 10, `vertical_circle`, before the Wave-B
-  independent Checker/release gate. Raw text,
+- Immediate next task: run a fresh independent Wave-B Checker, then exact-head
+  release CI for the locally complete Entries 8-10 product. Do not begin Entry 11
+  before that gate. Raw text,
   `system_type`, corpus labels, expected answers, and legacy output must not
   enter the generic calculation path.
 
@@ -626,6 +657,7 @@ Test files in the current Stage 5 delta:
 - `backend/tests/test_phase56_mechanics_massive_pulley_same_fixture_parity.py`
 - `backend/tests/test_phase56_mechanics_pure_rolling_same_fixture_parity.py`
 - `backend/tests/test_phase56_mechanics_rolling_general_same_fixture_parity.py`
+- `backend/tests/test_phase56_mechanics_vertical_circle_same_fixture_parity.py`
 
 ### Complete Phase 56 branch file set relative to Phase 55
 
@@ -871,6 +903,18 @@ Only actually executed evidence is listed.
   mass, and source-inertia queries all fail closed; the Entry-8 fingerprint is
   unchanged. `py_compile` and `git diff --check` passed. This is local Entry-9
   evidence, not a release-CI result.
+- Same-fixture registry entry 10, `vertical_circle`: accepted product checkpoint
+  `dba0016ec9878d40e1ed6edf60106491848b3956`, tree
+  `7d02c784030e32e9d4fc08b22f76ecd8e93fbc1f`, parent `97545c02...`. The
+  focused file collects `79` tests (`67` fast, `12` slow). Root's final connected
+  fast selection reported `361 passed, 34 deselected`; the final Entry-10 slow
+  matrix reported `12 passed` in `105.20s`. Two independent Entry-10 Checkers
+  returned `PASS`, each with blocking findings `0` and nonblocking findings `0`.
+  Query-independent exact topology, contact-loss fail-closed behavior, the
+  relative-epsilon exact-zero boundary, derived numeric fences, no hidden gravity
+  default/clamp, diagnostic-only direct legacy use, and numeric-only contact
+  parity were verified. `py_compile`, `git diff --check`, and whitespace checks
+  passed. This is local Entry-10 evidence, not a release-CI result.
 - The local Windows full runs above used only the 20-second worker-startup shim.
   They do not establish that the unchanged default 5-second symbolic and
   verification budgets are green on Windows/Python 3.12; the authoritative
@@ -906,8 +950,8 @@ Only actually executed evidence is listed.
 - Frontend unit tests, typecheck, and build: `PASS`.
 - Four-round pooled performance comparison: `PASS`, regressions `0`.
 - Independent Wave-A Checker: `PASS`, blocking findings `0`.
-- Entries 8-9 at `af4b83ff...` and `2a870ec...` are newer local product evidence
-  and are deliberately not attributed to this release run.
+- Entries 8-10 at `af4b83ff...`, `2a870ec...`, and `dba0016e...` are newer local
+  product evidence and are deliberately not attributed to this release run.
 
 ### Previous accepted entry-3 release CI
 
@@ -947,19 +991,20 @@ Only actually executed evidence is listed.
 
 ### Still not run
 
-- Stage 5 in-scope same-fixture parity: `9/25` accepted; `16/25` pending.
+- Stage 5 in-scope same-fixture parity: `10/25` accepted; `15/25` pending.
   Deferred scope is exactly `4/4` classified and does not count as parity.
 - Stage 6 figure/UI tests: `NOT RUN`.
 - Stage 7 corpus/compositional/synthetic tests: `NOT RUN`.
 - Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`STAGE5_WAVE_B_ENTRY9_LOCALLY_ACCEPTED`: product `2a870ec...` contains accepted
-same-fixture entries 1-9. This is `9/25` accepted in-scope evidence, with `16/25`
-pending and four explicitly deferred. Wave A is release-accepted at
-`8f18c710...`, run #433; Entries 8-9 have no release-CI attribution. This is not a
-`29/29` generic-migrated claim or a Phase 56 completion claim. Stages 6-9 and
-Stage 5 product integration remain incomplete.
+`STAGE5_WAVE_B_LOCAL_COMPLETE_RELEASE_PENDING`: product `dba0016e...` contains
+accepted same-fixture entries 1-10. This is `10/25` accepted in-scope evidence,
+with `15/25` pending and four explicitly deferred. Wave A is release-accepted at
+`8f18c710...`, run #433; Entries 8-10 have no release-CI attribution. The Wave-B
+wave Checker and release CI have not run. This is not a `29/29` generic-migrated
+claim or a Phase 56 completion claim. Stages 6-9 and Stage 5 product integration
+remain incomplete.
 
 ## G. Architecture invariants
 
@@ -999,13 +1044,13 @@ Stage 5 product integration remain incomplete.
 
 ## I. Known risks and unresolved decisions
 
-- Per-solver accepted evidence is `9/25` in scope; compiler unit fixtures do not
-  count as same-fixture end-to-end parity for the pending `16/25`. The four
+- Per-solver accepted evidence is `10/25` in scope; compiler unit fixtures do not
+  count as same-fixture end-to-end parity for the pending `15/25`. The four
   deferred entries are classified, not accepted.
 - Wave A entries 5-7 and their exact-head release gate are accepted at
-  `8f18c710...`, run #433. Wave B Entries 8-9 are locally accepted at
-  `af4b83ff...` and `2a870ec...`; Entry 10 is next, followed by the Wave-B
-  wave-end gate.
+  `8f18c710...`, run #433. Wave B Entries 8-10 are locally accepted at
+  `af4b83ff...`, `2a870ec...`, and `dba0016e...`; the fresh independent Wave-B
+  Checker and exact-head release CI are next. Entry 11 has not started.
 - The deferred set is exactly `spring_mass_vibration`,
   `relative_acceleration_translation`, `coriolis_relative_motion`, and
   `slot_pin_relative_motion`. Their current generic result must remain precise
@@ -1040,17 +1085,17 @@ Stage 5 product integration remain incomplete.
 3. Read this handoff completely.
 4. Read the reattached Master Instruction v2 completely.
 5. Confirm exact-head Wave-A release-CI checkpoint `8f18c710...`, run
-   `29865756663` (run #433), remains successful. Separately confirm the Entry-8
-   and Entry-9 products `af4b83ff...` and `2a870ec...`; do not attribute that
-   release run to either entry.
+   `29865756663` (run #433), remains successful. Separately confirm the Entry-8,
+   Entry-9, and Entry-10 products `af4b83ff...`, `2a870ec...`, and `dba0016e...`;
+   do not attribute that release run to any of those entries.
 6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0/
-   accepted entries 1-9 reviews.
+   accepted entries 1-10 reviews.
 7. Confirm the remediated Wave A Checker verdict is `PASS`, blocking findings
    `0`, the integrated Entry-8 Checker verdict is `PASS`, and both independent
-   Entry-9 Checker verdicts are `PASS`, all with no blocking or nonblocking
-   findings.
-8. Implement Entry 10, `vertical_circle`. Run the fresh independent Wave-B
-   Checker and exact-head release CI only at the wave end.
+   Entry-9 and both independent Entry-10 Checker verdicts are `PASS`, all with no
+   blocking or nonblocking findings.
+8. Run the fresh independent Wave-B Checker, then exact-head release CI for the
+   locally complete Wave B. Do not begin Entry 11 before that gate.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
    permitted coverage/figure use.
 10. Continue without intermediate user confirmation unless a hard blocker,
@@ -1082,11 +1127,13 @@ Latest Entry-8 product/same-fixture SHA: af4b83ff6bde1d577b76ece3191e5b0e5b60d8a
 Latest Entry-8 product tree: c60ab8ab918dc1078e3faed2ca5d44212e5b85bb
 Latest Entry-9 product/same-fixture SHA: 2a870ec4808b6301e39bb99f446b457abc5458a5
 Latest Entry-9 product tree: 9430a179e8e79322b1d49d2b53ed3b68a57f4a64
-Current branch head: branch head containing this Entry-9 handoff update (verify exact SHA)
+Latest Entry-10 product/same-fixture SHA: dba0016ec9878d40e1ed6edf60106491848b3956
+Latest Entry-10 product tree: 7d02c784030e32e9d4fc08b22f76ecd8e93fbc1f
+Current branch head: branch head containing this Entry-10 handoff update (verify exact SHA)
 Latest release-validated migration tree: 5770597d55158d9634d90101451977ebc226d83c
 Latest exact-head release-CI SHA: 8f18c710fc6d5d730fcceccfb30e3175c2613902
 Latest exact-head release run: 29865756663 (run #433), SUCCESS
-Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 9/25 accepted and 16/25 pending, deferred 4/4 explicit
+Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 10/25 accepted and 15/25 pending, deferred 4/4 explicit; Wave B locally complete with wave Checker/release CI pending
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -1109,15 +1156,17 @@ First read, in order:
 The old laptop-local work ledger may be absent. Do not treat that as a blocker;
 this handoff is authoritative. Follow Master Instruction v2 and the user's
 Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
-Stage 5 matrix/parity/runtime/W0/Entries 1-9 packages.
+Stage 5 matrix/parity/runtime/W0/Entries 1-10 packages.
 
 Wave A entries 5-7 and their release gate are accepted at `8f18c710...`, run
-`29865756663` (run #433), `SUCCESS`. Wave B Entries 8-9 are locally accepted at
-`af4b83ff...` and `2a870ec...`; their focused evidence and independent Checkers
-passed, but no release-CI result is attributed to either product checkpoint.
+`29865756663` (run #433), `SUCCESS`. Wave B Entries 8-10 are locally accepted at
+`af4b83ff...`, `2a870ec...`, and `dba0016e...`; their focused evidence and
+independent Entry Checkers passed, but no release-CI result is attributed to any
+of those product checkpoints.
 
-Next exact task: implement Entry 10, `vertical_circle`; then run the independent
-Wave-B Checker and pull-request release workflow at the complete-wave boundary.
+Next exact task: run the fresh independent Wave-B Checker, then the pull-request
+exact-head release workflow at the complete-wave boundary. Do not start Entry 11
+before that gate.
 Raw text, `system_type`, corpus/family/case metadata, expected answers, and legacy
 output must not enter generic compilation, solving, verification, or selection.
 

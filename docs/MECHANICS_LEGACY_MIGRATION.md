@@ -126,11 +126,11 @@ same-fixture evidence are separate axes:
 * **deferred: `4/29`**, exactly registry entries 19
   (`spring_mass_vibration`), 23 (`relative_acceleration_translation`), 24
   (`coriolis_relative_motion`), and 28 (`slot_pin_relative_motion`);
-* **accepted in-scope evidence: `9/25`**; **pending in-scope evidence:
-  `16/25`**.
+* **accepted in-scope evidence: `10/25`**; **pending in-scope evidence:
+  `15/25`**.
 
-Entry 26, `polar_kinematics`, is explicitly **in scope**.  Entries 1-9 are the
-nine accepted in-scope entries; deferred entries are not parity passes and are
+Entry 26, `polar_kinematics`, is explicitly **in scope**.  Entries 1-10 are the
+ten accepted in-scope entries; deferred entries are not parity passes and are
 not generic migrations.  Deferred counts cannot be added to accepted evidence,
 and `29/29 generic migrated` is not a valid roll-up.  This classification
 supersedes the older Wave 1/2/3 prose
@@ -156,7 +156,7 @@ answer authority; the ledger below records which independent parity gates pass.
 | `massive_pulley_atwood` | unequal tensions, `a=(m2-m1)g/(m1+m2+I/R²)`; `solvers/pulley/massive_pulley.py:MassivePulleyAtwoodSolver.solve` | I; D/I | two particles, inertial pulley, rope, radius/inertia | Newton, `pulley_newton_euler`, rope motion | Native now with inertial-pulley IR topology | none; legacy Newton generator/routing discarded | rollback | I→0 reduction, m1=m2, torque/tension residual; invariance |
 | `pure_rolling_energy` | shape-derived `I=βmR²`, rolling energy speed; `solvers/rolling/rolling_energy.py:PureRollingEnergySolver.solve` | I; D/I | rigid body, gravity height change, shape/inertia, rolling constraint | kinetic/gravity/rigid kinetic terms, `rolling_no_slip`, energy conservation constraint | Native now; an exact approved/evidenced six-shape assumption derives `I=beta*m*R^2`, while typed initial/final rolling states, height, no-slip, and no-energy-loss authority determine final center-of-mass speed; source inertia and internal queries fail closed | none; direct legacy output is diagnostics only | rollback | all six shapes, nonzero initial speed, h=0, mixed units, mass/radius/gh invariance, residuals, authority/query negatives |
 | `rolling_energy_general` | `vf=sqrt(v0²+2mgh/(m+I/R²))`; `solvers/rolling/rolling_general_I.py:RollingEnergyGeneralSolver.solve` | I; D/I | rigid body, explicit positive finite center-of-mass I/R, height change, rolling states | rigid/translation energy, `rolling_no_slip`, energy conservation | Native now; typed initial/final rolling states, source inertia, height, no-slip, and no-energy-loss authority determine final center-of-mass speed; shape authority, internal queries, malformed topology, and invalid domains fail closed | none; direct legacy output is diagnostics only | rollback | arbitrary I, nonzero v0, I=βmR² agreement, h=0, mixed units, scaling/invariance, near-zero positive I, monotonicity, residuals, authority/query negatives |
-| `vertical_circle` | top/bottom tension and `v_min=sqrt(gR)`; `solvers/vertical_circle.py:VerticalCircleSolver.solve` | I; D/D | particle, circular geometry, radial frame, contact/string state | `particle_normal_acceleration`, Newton radial balance, top/bottom state constraint | Gate/partial: require typed radial-state/contact-loss query relation before promotion | normal-force/minimum-speed residual only | rollback | top/bottom signs, N=0 minimum-speed, non-top min request terminal; invariance |
+| `vertical_circle` | top/bottom rope tension or contact normal `C=m(v^2/R∓g)` and top `v_min=sqrt(gR)`; `solvers/vertical_circle.py:VerticalCircleSolver.solve` | I; D/D | particle, exact circular geometry/radial frame, top/bottom state, rope or touching contact | `particle_normal_acceleration`, Newton radial balance, exact top/bottom state constraint | Native now for the narrow exact typed topology; query-independent recognition, contact-loss rejection, relative-epsilon exact-zero boundary handling, and derived numeric fences fail closed | none; direct legacy output is diagnostics only, with contact parity numeric-only | rollback | top/bottom rope/contact signs, exact contact-loss boundary, top minimum speed, derived overflow/underflow/subnormal fences, malformed/query negatives, invariance |
 | `collision_1d` | perfectly inelastic momentum or elastic momentum+restitution; `solvers/collision.py:Collision1DSolver.solve` | I; D/I | two particles, line frame, collision start/end event | `system_momentum_conservation`, `direct_restitution` | Native now for paired collision IR (compiler validates collision structure) | none | rollback | e=0/e=1, equal masses, momentum/restitution residual; invariance |
 | `constant_acceleration_1d` | four constant-acceleration equations; `solvers/kinematics.py:ConstantAcceleration1DSolver.solve` | D (unstructured query/initial-state helpers); D/N | particle, 1-D frame, interval, initial/final states | `particle_constant_acceleration_velocity`, `particle_constant_acceleration_position` | Native now with explicit interval/initial conditions | none; discard text query inference | rollback | each unknown, zero a, redundant-equation residual; invariance |
 | `projectile_motion` | horizontal/vertical/angled time, range, height; `solvers/projectile.py:ProjectileMotionSolver.solve` | D; D/I | particle, 2-D frame, launch state, gravity, event/query | constant-acceleration x/y equations plus landing/max-height event constraint | Gate/partial: compiler needs verified event-root/query selection for range/landing variants | graph-derived event root residual only; no text classifier | rollback | horizontal, vertical, angled, nonzero launch height, root selection; invariance |
@@ -207,9 +207,10 @@ Each entry requires its focused parity evidence and connected targeted tests.
 The independent read-only Checker and release CI run once at the end of each
 complete wave, not after every entry.  Wave A is accepted at exact release
 checkpoint `8f18c710fc6d5d730fcceccfb30e3175c2613902`, GitHub Actions run
-`29865756663` (run #433, `SUCCESS`).  Wave B is in progress: Entries 8-9 are
-locally accepted, Entry 10 remains pending, and the next independent wave Checker
-and release CI run only after Entry 10.
+`29865756663` (run #433, `SUCCESS`).  Wave B Entries 8-10 are locally accepted
+and the wave is locally complete, but its independent wave Checker and release CI
+have not run.  The next exact task is the fresh Wave-B Checker followed by
+exact-head release CI; Entry 11 does not start before that gate.
 
 For all four deferred entries, current generic behavior is a precise structured
 unsupported result.  Generic answer authority is **none**; legacy answer
@@ -465,13 +466,37 @@ rollback after generic-path failure.
    release-CI checkpoint; the latest release-validated head remains the Wave-A
    checkpoint `8f18c710...`, run #433.
 
+10. `vertical_circle` — **ACCEPTED (registry entry 10; in-scope 10/25)** at
+   product checkpoint `dba0016ec9878d40e1ed6edf60106491848b3956` (tree
+   `7d02c784030e32e9d4fc08b22f76ecd8e93fbc1f`, parent Entry-9 documentation
+   checkpoint `97545c02b53eea82e2951a8f1c81ebe2f3518cf8`, commit
+   `feat(mechanics): migrate vertical circle solver`).  The narrow typed contract
+   admits an exact query-independent particle/circular-path/radial-frame topology
+   with an evidenced top or bottom state and either a rope or touching contact.
+   It emits top/bottom rope tension or contact normal as
+   `C=m(v^2/R∓g)` (minus at the top, plus at the bottom), and admits the top
+   minimum-speed result `v_min=sqrt(gR)`.  Contact loss fails closed; the exact
+   zero boundary is decided with a relative epsilon, and derived overflow,
+   underflow, and subnormal results are fenced.  There is no hidden gravity
+   default and no clamp.  Raw text, `system_type`, metadata, and legacy output
+   have no generic calculation or selection authority.  The direct legacy call
+   is diagnostics only, and contact parity is numeric-only.  The focused file
+   collects `79` tests: `67` fast and `12` slow.  Root's final connected fast
+   selection reports `361 passed, 34 deselected`; the final slow matrix reports
+   `12 passed` in `105.20s`.  Two independent Entry-10 Checkers reported `PASS`,
+   each with blocking findings `0` and nonblocking findings `0`; `py_compile`,
+   `git diff --check`, and whitespace checks passed.  This is a local product
+   checkpoint, not a release-CI checkpoint; the latest release-validated head
+   remains the Wave-A checkpoint `8f18c710...`, run #433.
+
 Current authoritative roll-up: the registry inventory is `29/29` classified;
-the in-scope set is `25`, with `9/25` accepted and `16/25` pending; the deferred
+the in-scope set is `25`, with `10/25` accepted and `15/25` pending; the deferred
 set is exactly `4/4` classified.  Deferred classification is not accepted parity,
 so accepted and deferred counts must not be added together, and this is not a
-`29/29 generic migrated` claim.  Wave B is in progress; the next exact task is
-Entry 10, `vertical_circle`, followed by the wave-end independent Checker/release
-CI.
+`29/29 generic migrated` claim.  Wave B Entries 8-10 are locally accepted and
+locally complete, but the Wave-B independent Checker and release CI have not run.
+The next exact task is that fresh wave Checker followed by exact-head release CI,
+not Entry 11.
 
 The separate typed scope/runtime amendment passed its final independent
 read-only Checker with blocking findings `0` and new nonblocking findings `0`.
@@ -497,7 +522,7 @@ worker-startup timeout rather than a scope/contract assertion.
   Coriolis, and slot-pin entries remain structured unsupported without generic
   answer authority.
 * This document is an inventory, plan, and limited accepted-evidence ledger.
-  Exactly nine in-scope entries (`9/25`) have accepted parity evidence; `16/25`
+  Exactly ten in-scope entries (`10/25`) have accepted parity evidence; `15/25`
   in-scope entries remain.  The four deferred entries are not parity passes. No
   corpus/PDF inputs were opened or used for that evidence, and the public corpus
   remains sealed.
