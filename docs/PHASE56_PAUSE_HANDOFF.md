@@ -1,7 +1,7 @@
 # Phase 56 Cross-Device Resume Handoff
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
-updated on `2026-07-21T22:07:00+09:00` (`Asia/Seoul`). It is a pause record, not
+updated on `2026-07-22T00:05:00+09:00` (`Asia/Seoul`). It is a pause record, not
 an `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
@@ -13,24 +13,25 @@ an `IMPLEMENTATION COMPLETE` claim.
 - Previous final full-CI product checkpoint: `0de62d95357de36c4a2d5a6aff01810bdf98d776`
 - Latest accepted targeted-test product checkpoint: `c19624181aaae4cd73dc3d2247b4988f5a540247`
 - Latest accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`
-- Previous documentation handoff checkpoint: `6c53e0fdbbf70854bfec3078d73fb48371fc9a12`
+- Previous documentation handoff checkpoint: `bd5afe32958ba1ca4efdc5ecc4c22a0ba22fefdd`
 - Latest accepted entry-3 product code commit:
   `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296` (tree
   `72301ea20e43e5310a269dac943fc7d56f01f689`, parent documentation handoff
   `6c53e0fdbbf70854bfec3078d73fb48371fc9a12`).
-- Latest accepted same-fixture migration checkpoint:
-  `c134664cd863d33b50c7e5ae794af2ad61ed6524` (CI-remediation child of
-  `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296`, commit
-  `ci: split slow mechanics parity checks`).
-- Latest accepted migration tree: `987cb4ec8b7cbcc321d713313c179e8ca4bcd553`
-- Latest exact-head release-CI checkpoint: `c134664cd863d33b50c7e5ae794af2ad61ed6524`
+- Latest accepted entry-4 product/same-fixture migration checkpoint:
+  `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9` (tree
+  `dc0e90d954b16a342c16073f2c3021f65da875bf`, parent documentation handoff
+  `bd5afe32958ba1ca4efdc5ecc4c22a0ba22fefdd`, commit
+  `feat(mechanics): migrate Atwood pulley solver`).
+- Latest accepted migration tree: `dc0e90d954b16a342c16073f2c3021f65da875bf`
+- Latest exact-head release-CI checkpoint: `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
 - `HANDOFF_COMMIT_SHA` is expected to be a documentation-only child of the
   release-CI checkpoint; no CI result is attributed to that later SHA.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
 - PR #17 head observed before this handoff-only commit:
-  `c134664cd863d33b50c7e5ae794af2ad61ed6524`
+  `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`
 - PR #17 authoritative head after a successful checkpoint push:
   `HANDOFF_COMMIT_SHA`
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
@@ -124,7 +125,7 @@ master instruction.
 ### Stage 5 — IN_PROGRESS
 
 - Accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
-- Exact-head release-CI checkpoint: `c134664cd863d33b50c7e5ae794af2ad61ed6524`.
+- Exact-head release-CI checkpoint: `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`.
 - Accepted implementation:
   - exact 29-solver migration matrix in
     `docs/MECHANICS_LEGACY_MIGRATION.md`;
@@ -169,6 +170,25 @@ master instruction.
     naturally to the frictionless result. Missing or contradictory regime,
     motion, contact, axis-cardinality, entity, or interval authority fails closed
     before any legacy call.
+  - canonical registry entry 4, `pulley_atwood`, at exact product/CI checkpoint
+    `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9` (tree
+    `dc0e90d954b16a342c16073f2c3021f65da875bf`, parent documentation handoff
+    `bd5afe32958ba1ca4efdc5ecc4c22a0ba22fefdd`, commit
+    `feat(mechanics): migrate Atwood pulley solver`). The compiler admits only
+    the exact evidenced two-particle/one-rope/one-fixed-ideal-pulley/gravity
+    topology, including wrap and two body attachments, taut/fixed state, and
+    approved evidenced massless, inextensible, fixed, and ideal assumptions.
+    The resulting graph contains exactly two weight, two particle-Newton, one
+    massless-rope tension, and one fixed-pulley motion equation. Baseline and
+    B-up acceleration signs, a direct tension query, equal-mass zero
+    acceleration, mass-swap sign reversal with invariant tension, independent
+    residuals, exhaustive candidates, and metadata invariance all pass. The
+    generic result is frozen before direct legacy diagnostics. Invalid
+    structure, scope, evidence, assumptions, ambiguity, mass, or gravity fails
+    closed without a legacy call. Authority inputs are bounded and snapshotted
+    once per invariance comparison before any variant runs; massive-pulley
+    Newton-Euler/unequal-tension graphs and rigid-body fixed-pulley rope laws are
+    preserved by connected regressions.
 - Accepted Stage 5 decisions:
   - legacy parity is diagnostic only and can never verify, select, repair, or
     provide a generic fallback answer;
@@ -186,20 +206,19 @@ master instruction.
     variant is independently compiled and solved.
 - Still incomplete:
   - actual IR -> compile -> solve -> legacy diagnostic parity for every registered
-    solver: current count `3/29` same-fixture end-to-end cases; `26` remain;
+    solver: current count `4/29` same-fixture end-to-end cases; `25` remain;
   - Wave 1 native cases, Wave 2 coverage gates, Wave 3 typed laws for translating
     frame, Coriolis, polar, and slot-pin motion;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: none at the accepted 3/29 boundary. Exact-head release
-  CI, a fresh independent entry-3 Checker, and the independent CI-remediation
-  Checker passed with zero blocking and zero nonblocking findings.
-- Next gate: add the fourth same-fixture offline IR -> compile -> solve -> legacy
-  diagnostic parity package for canonical registry entry `pulley_atwood`. Follow
-  its matrix row: require evidenced two-particle, rope, fixed ideal-pulley, and
-  gravity topology; emit particle Newton, `rope_massless_tension`, and
-  `rope_fixed_pulley_motion`; and prove equal-mass, tension-residual,
-  mass-swap-sign, and invariance behavior without family/case-ID routing.
+- Current failure/blocker: none at the accepted 4/29 boundary. Exact-head release
+  CI and a fresh independent entry-4 Checker passed with zero blocking findings.
+- Next gate: add the fifth same-fixture offline IR -> compile -> solve -> legacy
+  diagnostic parity package for canonical registry entry
+  `pulley_table_hanging`. Follow its matrix row: require a typed table/hanging
+  pair, horizontal contact, rope/pulley topology, and explicit friction regime;
+  prove the static threshold, `mu=0` reduction, rope/tension residual, and
+  metadata invariance without family/case-ID routing.
 
 ### Stage 6 — NOT_STARTED
 
@@ -243,8 +262,8 @@ master instruction.
 
 ## D. Exact work at the pause boundary
 
-- Work immediately before this update: accepted the `incline_with_friction`
-  same-fixture migration unit as entry 3/29 after the accepted entries 1-2 and
+- Work immediately before this update: accepted the `pulley_atwood`
+  same-fixture migration unit as entry 4/29 after the accepted entries 1-3 and
   `S5-W0-BASE` checkpoints.
 - W0 production compiler/harness code changed: **NO**. The smallest correction
   was fixture-only in
@@ -274,19 +293,27 @@ master instruction.
   - `scripts/check_all.sh`
   - `scripts/check_backend_slow.sh`
   - `scripts/final_local_check.sh`
+- Entry-4 product/test work changed exactly these six paths:
+  - `backend/engine/mechanics/compiler/compiler.py`
+  - `backend/engine/mechanics/laws/core.py`
+  - `backend/engine/mechanics/migration/harness.py`
+  - `backend/tests/test_phase56_mechanics_atwood_same_fixture_parity.py`
+  - `backend/tests/test_phase56_mechanics_compiler.py`
+  - `backend/tests/test_phase56_mechanics_migration_harness.py`
 - Safe last accepted migration unit:
-  `c134664cd863d33b50c7e5ae794af2ad61ed6524`.
+  `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`.
 - Safe last exact-head release-CI unit:
-  `c134664cd863d33b50c7e5ae794af2ad61ed6524`, run `29832358480`, `SUCCESS`.
+  `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`, run `29841110152` (run #429),
+  `SUCCESS`.
 - Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
   test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
-- Immediate next task: create the fourth independent same-fixture parity package
-  for canonical registry entry `pulley_atwood`. Use its canonical matrix
-  requirements: evidenced two-particle, rope, fixed ideal-pulley, and gravity
-  topology; particle Newton, `rope_massless_tension`, and
-  `rope_fixed_pulley_motion`; equal-mass, tension-residual, mass-swap-sign, and
-  invariance evidence. Raw text, `system_type`, corpus labels, expected answers,
-  and legacy output must not enter the generic calculation path.
+- Immediate next task: create the fifth independent same-fixture parity package
+  for canonical registry entry `pulley_table_hanging`. Use its canonical matrix
+  requirements: typed table/hanging particles, horizontal contact, rope/pulley,
+  and explicit friction regime; prove static threshold, `mu=0`, rope/tension
+  residual, and invariance behavior. Raw text, `system_type`, corpus labels,
+  expected answers, and legacy output must not enter the generic calculation
+  path.
 
 Read in this order on the laptop:
 
@@ -403,6 +430,17 @@ A scripts/check_backend_slow.sh
 M scripts/final_local_check.sh
 ```
 
+Entry 4 then changed exactly these product/test paths:
+
+```text
+M backend/engine/mechanics/compiler/compiler.py
+M backend/engine/mechanics/laws/core.py
+M backend/engine/mechanics/migration/harness.py
+A backend/tests/test_phase56_mechanics_atwood_same_fixture_parity.py
+M backend/tests/test_phase56_mechanics_compiler.py
+M backend/tests/test_phase56_mechanics_migration_harness.py
+```
+
 Deleted: `NONE`.
 
 Document-only files in the current Stage 5 delta:
@@ -412,6 +450,7 @@ Document-only files in the current Stage 5 delta:
 
 Test files in the current Stage 5 delta:
 
+- `backend/tests/test_phase56_mechanics_atwood_same_fixture_parity.py`
 - `backend/tests/test_phase56_mechanics_legacy_parity.py`
 - `backend/tests/test_phase56_mechanics_migration_harness.py`
 - `backend/tests/test_phase56_mechanics_runtime.py`
@@ -423,7 +462,7 @@ Test files in the current Stage 5 delta:
 
 ### Complete Phase 56 branch file set relative to Phase 55
 
-At exact-head release-CI checkpoint `c134664...` there are exactly `79` changed
+At exact-head release-CI checkpoint `dedb4c7...` there are exactly `80` changed
 files:
 
 ```text
@@ -475,6 +514,7 @@ A backend/engine/mechanics/verification/verifier.py
 A backend/tests/test_phase56_mechanics_compiler.py
 A backend/tests/test_phase56_mechanics_contract.py
 A backend/tests/test_phase56_mechanics_evidence_adapters.py
+A backend/tests/test_phase56_mechanics_atwood_same_fixture_parity.py
 A backend/tests/test_phase56_mechanics_incline_friction_same_fixture_parity.py
 A backend/tests/test_phase56_mechanics_incline_same_fixture_parity.py
 A backend/tests/test_phase56_mechanics_legacy_parity.py
@@ -592,6 +632,29 @@ Only actually executed evidence is listed.
   `60 passed`. Fresh independent entry-3 Checker: `PASS`, blocking findings `0`,
   nonblocking findings `0`. Independent CI-remediation Checker: `PASS`, blocking
   findings `0`, nonblocking findings `0`.
+- Same-fixture entry 4/29, `pulley_atwood`: exact product/CI checkpoint
+  `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`, tree
+  `dc0e90d954b16a342c16073f2c3021f65da875bf`, parent documentation handoff
+  `bd5afe32958ba1ca4efdc5ecc4c22a0ba22fefdd`, commit
+  `feat(mechanics): migrate Atwood pulley solver`. The exact evidenced topology
+  contains two particles, one rope, one fixed ideal pulley and one gravity
+  environment, with two gravity interactions, one wrap, two body attachments,
+  taut/fixed state and approved evidenced massless/inextensible/fixed/ideal
+  assumptions. The graph law multiset is exactly two `particle_weight`, two
+  `particle_newton_second`, one `rope_massless_tension`, and one
+  `rope_fixed_pulley_motion`. The package proves baseline B-down and independent
+  B-up acceleration signs, direct tension-query parity, equal-mass zero
+  acceleration, mass-swap sign reversal with unchanged tension, independent
+  Newton/rope residuals, exhaustive symbolic candidates, and diagnostic
+  metadata invariance; it freezes the generic result before direct legacy
+  diagnostics. Authority inputs are snapshotted once, bounded, and reused for
+  all variants; oversized/unstable inputs fail before execution. Structural,
+  scope, evidence, assumption, ambiguity, and mass/gravity-domain negatives
+  fail closed without a legacy call. Direct core-law tests prove that missing
+  ideal authority suppresses fixed-pulley emission. Connected compiler tests
+  preserve massive-pulley Newton-Euler/unequal-tension behavior and rigid-body
+  fixed-pulley rope laws. Fresh independent final Checker: `PASS`, blocking
+  findings `0`.
 - The local Windows full runs above used only the 20-second worker-startup shim.
   They do not establish that the unchanged default 5-second symbolic and
   verification budgets are green on Windows/Python 3.12; the authoritative
@@ -612,6 +675,31 @@ Only actually executed evidence is listed.
   non-authority, and no corpus/PDF/family special case.
 
 ### Latest exact-head release CI
+
+- Exact SHA: `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`.
+- GitHub Actions release run: `29841110152` (run #429) — `SUCCESS`; its recorded
+  head SHA is the exact product checkpoint above, and both backend and frontend
+  jobs succeeded.
+- Fast wrapper: `2293 passed, 1 skipped, 279 deselected` in `401.95s` under the
+  bounded 420-second watchdog.
+- Slow-only wrapper: `12 passed, 2561 deselected` in `89.92s` under its bounded
+  240-second watchdog; it is disjoint from the fast selection.
+- Benchmark wrapper: `147 passed, 2426 deselected` in `63.09s`.
+- Audit wrapper: `111 passed, 2462 deselected` in `40.82s`.
+- Backend frontend-marker group: `15 passed, 2558 deselected` in `3.46s`.
+- The five marker groups have an exact union over the complete `2573`-node
+  backend collection. The slow-only selection is disjoint from fast; arithmetic
+  addition of all selected counts is not a coverage proof because the existing
+  benchmark/audit/frontend markers overlap.
+- Frontend unit tests, typecheck, build, and repository metadata: `PASS`.
+- Warm latency: mean `13.519858 ms`, p95 `45.878835 ms`, max `60.672493 ms`;
+  limits remain 60/120 ms.
+- Cold import: `877.46519 ms`; max RSS: `92.656 MB`; limits remain
+  5000 ms/512 MB.
+- Four-round pooled performance comparison: `PASS`, regressions `0`.
+- Entry-4 fresh independent Checker: `PASS`, blocking findings `0`.
+
+### Previous accepted entry-3 release CI
 
 - Exact SHA: `c134664cd863d33b50c7e5ae794af2ad61ed6524`.
 - GitHub Actions release run: `29832358480` (run #427) — `SUCCESS`; its recorded
@@ -649,15 +737,15 @@ Only actually executed evidence is listed.
 
 ### Still not run
 
-- Stage 5 same-fixture per-solver parity: `3/29` accepted; `26/29` remain.
+- Stage 5 same-fixture per-solver parity: `4/29` accepted; `25/29` remain.
 - Stage 6 figure/UI tests: `NOT RUN`.
 - Stage 7 corpus/compositional/synthetic tests: `NOT RUN`.
 - Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`STAGE5_ENTRY_3_ACCEPTED_AT_EXACT_HEAD`: the latest code/CI checkpoint contains
+`STAGE5_ENTRY_4_ACCEPTED_AT_EXACT_HEAD`: the latest code/CI checkpoint contains
 the accepted Stage 5 matrix/parity/runtime/W0 packages and accepted same-fixture
-entries 1-3. It is not a Phase 56 completion claim because `26/29` migrations and
+entries 1-4. It is not a Phase 56 completion claim because `25/29` migrations and
 Stages 6-9 remain incomplete.
 
 ## G. Architecture invariants
@@ -696,12 +784,13 @@ Stages 6-9 remain incomplete.
 
 ## I. Known risks and unresolved decisions
 
-- Per-solver migration evidence is `3/29`; compiler unit fixtures do not count as
-  same-fixture end-to-end parity for the remaining `26` entries.
-- Entry 4, `pulley_atwood`, is next in canonical registry order. Its acceptance
-  requires evidenced two-particle, rope, fixed ideal-pulley, and gravity topology;
-  particle Newton, `rope_massless_tension`, and `rope_fixed_pulley_motion` laws;
-  and equal-mass, tension-residual, mass-swap-sign, and invariance evidence.
+- Per-solver migration evidence is `4/29`; compiler unit fixtures do not count as
+  same-fixture end-to-end parity for the remaining `25` entries.
+- Entry 5, `pulley_table_hanging`, is next in canonical registry order. Its
+  acceptance requires a typed table/hanging pair, horizontal contact,
+  rope/pulley topology, and explicit friction regime; Newton, rope, and contact
+  friction laws; and static-threshold, `mu=0`, rope/tension-residual, and
+  invariance evidence.
 - Advanced typed-law gaps remain for translating-frame acceleration, Coriolis,
   polar kinematics, and slot-pin relative motion; full rigid acceleration and
   event-root coverage remain partial.
@@ -713,7 +802,7 @@ Stages 6-9 remain incomplete.
   wired.
 - Generic vector-answer projection into the existing product response is not
   decided; it must never silently fall back to a legacy scalar answer.
-- Five-group marker-union coverage is exact at `c134664...`; the dedicated
+- Five-group marker-union coverage is exact at `dedb4c7...`; the dedicated
   bounded slow-only group is present and disjoint from the fast selection, as
   documented in `docs/KNOWN_LIMITATIONS.md`.
 - Figure/UI, public-corpus evaluation, final CI, and bounded Live are untouched.
@@ -730,14 +819,15 @@ Stages 6-9 remain incomplete.
 2. Check out `codex/phase56-generic-mechanics-engine` at the final handoff head.
 3. Read this handoff completely.
 4. Read the reattached Master Instruction v2 completely.
-5. Confirm exact-head release-CI checkpoint `c134664...`, run `29832358480`,
-   remains successful; do not repeat its accepted entries 1-3 or CI investigation.
+5. Confirm exact-head release-CI checkpoint `dedb4c7...`, run `29841110152`
+   (run #429), remains successful; do not repeat its accepted entries 1-4 or CI
+   investigation.
 6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0/
    `single_particle_newton` reviews.
-7. Start canonical registry entry 4, `pulley_atwood`, from its matrix row:
-   evidenced two-particle/rope/fixed-pulley/gravity topology, particle Newton,
-   massless-rope tension, fixed-pulley motion, equal-mass behavior, tension
-   residual, mass-swap sign, and invariance.
+7. Start canonical registry entry 5, `pulley_table_hanging`, from its matrix row:
+   typed table/hanging particles, horizontal contact, rope/pulley topology,
+   explicit friction regime, Newton/rope/contact-friction laws, static threshold,
+   `mu=0`, rope/tension residual, and invariance.
 8. Run only the focused fixture/harness and connected accepted regressions, then
    use a fresh independent Checker before accepting that migration unit.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
@@ -759,11 +849,13 @@ Latest accepted W0 product SHA: 7a401642bc3c8a1acfe9805af3ada8f4eeb6045a
 Latest accepted targeted-test product SHA: c19624181aaae4cd73dc3d2247b4988f5a540247
 Latest entry-3 product code SHA: d58e2c9bcd8c04c8fa380699e19df6a6c43e7296
 Latest entry-3 product tree: 72301ea20e43e5310a269dac943fc7d56f01f689
-Latest accepted same-fixture migration SHA: c134664cd863d33b50c7e5ae794af2ad61ed6524
-Latest accepted migration tree: 987cb4ec8b7cbcc321d713313c179e8ca4bcd553
-Latest exact-head release-CI SHA: c134664cd863d33b50c7e5ae794af2ad61ed6524
-Latest exact-head release run: 29832358480, SUCCESS
-Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE accepted, same-fixture parity 3/29
+Latest entry-4 product SHA: dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9
+Latest entry-4 product tree: dc0e90d954b16a342c16073f2c3021f65da875bf
+Latest accepted same-fixture migration SHA: dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9
+Latest accepted migration tree: dc0e90d954b16a342c16073f2c3021f65da875bf
+Latest exact-head release-CI SHA: dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9
+Latest exact-head release run: 29841110152 (run #429), SUCCESS
+Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE accepted, same-fixture parity 4/29
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -782,15 +874,16 @@ this handoff is authoritative. Follow Master Instruction v2 and the user's
 Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
 Stage 5 matrix/parity/runtime/W0 packages.
 
-Next exact task: implement the fourth same-fixture offline parity package for
-canonical registry entry `pulley_atwood`. Follow its canonical matrix row: use
-evidenced two-particle, rope, fixed ideal-pulley, and gravity topology; emit
-particle Newton, `rope_massless_tension`, and `rope_fixed_pulley_motion`; prove
-equal-mass behavior, tension residual, mass-swap sign, and metadata invariance.
+Next exact task: implement the fifth same-fixture offline parity package for
+canonical registry entry `pulley_table_hanging`. Follow its canonical matrix
+row: use typed table/hanging particles, horizontal contact, rope/pulley topology,
+and an explicit static, kinetic, or no-friction regime; emit the appropriate
+Newton, rope, and contact-friction laws; prove static-threshold behavior, `mu=0`
+reduction, rope/tension residual, and metadata invariance.
 Raw text, `system_type`, corpus/family/case metadata, expected answers, and legacy
 output must not enter generic compilation, solving, verification, or selection.
 Run focused tests and connected regressions, then use a fresh independent Checker
-before accepting entry 4/29.
+before accepting entry 5/29.
 
 Keep the public corpus sealed until Stage 7. The Beer PDF is reference-only for
 Dynamics Chapters 11-19 structure and permitted later figure/coverage work; it is

@@ -270,11 +270,41 @@ rollback after generic-path failure.
    240-second disjoint slow lane fixed the CI classification without changing
    test semantics or the fast watchdog.
 
-The remaining `26/29` entries have no accepted same-fixture parity claim. The
-next canonical registry entry is 4, `pulley_atwood`; its matrix gate is evidenced
-two-particle, rope, fixed ideal-pulley, and gravity topology with particle Newton,
-`rope_massless_tension`, and `rope_fixed_pulley_motion` laws, plus equal-mass,
-tension-residual, mass-swap-sign, and invariance evidence.
+4. `pulley_atwood` — **ACCEPTED (4/29)** at exact product/CI checkpoint
+   `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9` (tree
+   `dc0e90d954b16a342c16073f2c3021f65da875bf`, parent documentation handoff
+   `bd5afe32958ba1ca4efdc5ecc4c22a0ba22fefdd`, commit
+   `feat(mechanics): migrate Atwood pulley solver`), GitHub Actions release run
+   `29841110152` (run #429, `SUCCESS`). The typed contract requires exactly two
+   particles, one rope, one fixed ideal pulley, one gravity environment, two
+   evidenced gravity interactions, one evidenced wrap, two rope/body
+   attachments, taut/fixed state, and approved evidenced massless,
+   inextensible, fixed-pulley, and ideal-pulley assumptions. Its exact equation
+   multiset is two `particle_weight`, two `particle_newton_second`, one
+   `rope_massless_tension`, and one `rope_fixed_pulley_motion` equation. The
+   same-fixture package proves baseline acceleration and tension, equal-mass
+   zero acceleration, mass-swap sign reversal with unchanged tension, an
+   independently signed B-up query, direct tension-query parity, exhaustive
+   symbolic-candidate coverage, independent Newton/rope residuals, and
+   diagnostic metadata invariance. Generic results are frozen before the
+   direct diagnostics-only legacy call. Structural, scope, evidence,
+   assumption, ambiguity, and positive mass/gravity domain violations fail
+   closed without a legacy call; missing ideal authority also suppresses the
+   fixed-pulley law at the core-law layer. Invariance authority collections and
+   mappings are bounded and snapshotted once before variant execution, with the
+   same snapshotted comparison inputs reused for every variant; oversized or
+   unstable authority is rejected first. Connected regressions preserve the
+   massive-pulley graph (`pulley_newton_euler` and unequal tensions, without
+   false Atwood rejection) and the pre-existing rigid-body fixed-pulley rope
+   laws. Exact release evidence: fast `2293 passed, 1 skipped, 279 deselected`
+   in `401.95s`; slow `12 passed, 2561 deselected` in `89.92s`; complete
+   collection `2573`; fresh independent Checker `PASS`, blocking findings `0`.
+
+The remaining `25/29` entries have no accepted same-fixture parity claim. The
+next canonical registry entry is 5, `pulley_table_hanging`; its matrix gate is
+the typed table/hanging pair, horizontal contact, rope/pulley and friction
+regime, with static-threshold, `mu=0`, rope/tension-residual, and invariance
+evidence.
 
 ## Risks retained
 
@@ -286,5 +316,5 @@ tension-residual, mass-swap-sign, and invariance evidence.
   coverage risks.  They need typed IR, graph laws, and verification hooks;
   closed-form legacy output is not a substitute.
 * This document is an inventory, plan, and limited accepted-evidence ledger.
-  Only the three named entries above (`3/29`) have parity passes. No corpus/PDF
+  Only the four named entries above (`4/29`) have parity passes. No corpus/PDF
   inputs were opened or used for that evidence.
