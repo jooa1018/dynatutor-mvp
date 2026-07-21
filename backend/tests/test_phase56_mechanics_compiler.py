@@ -2146,11 +2146,14 @@ def test_vibration_initial_conditions_are_typed_and_quantity_provenance_is_recip
             EquationGraph.model_validate(graph_payload)
 
 
-def test_initial_condition_evidence_changes_identity_but_pure_id_rename_does_not() -> None:
+def test_initial_condition_evidence_diagnostics_do_not_change_calculation_identity() -> None:
     baseline = compile_mechanics_ir(_ir(_vibration_payload()))
     assert baseline.graph is not None
-    baseline_condition_ids = tuple(
-        item.condition_id for item in baseline.graph.initial_conditions
+    baseline_conditions = baseline.graph.initial_conditions
+    baseline_condition_ids = tuple(item.condition_id for item in baseline_conditions)
+    assert all(
+        item.source_evidence_ids == ("initialEvidence",)
+        for item in baseline_conditions
     )
     baseline_equation = next(
         item for item in baseline.graph.equations if item.law_id == "linear_vibration"
@@ -2158,6 +2161,8 @@ def test_initial_condition_evidence_changes_identity_but_pure_id_rename_does_not
     baseline_application = next(
         item for item in baseline.graph.applications if item.law_id == "linear_vibration"
     )
+    assert "initialEvidence" in baseline_equation.source_evidence_ids
+    assert "initialEvidence" in baseline_application.source_evidence_ids
 
     renamed_payload = _rename(
         _vibration_payload(), {"initialEvidence": "renamedInitialEvidence"}
@@ -2165,13 +2170,22 @@ def test_initial_condition_evidence_changes_identity_but_pure_id_rename_does_not
     renamed = compile_mechanics_ir(_ir(renamed_payload))
     assert renamed.graph is not None
     assert renamed.graph.fingerprint == baseline.graph.fingerprint
-    assert tuple(item.condition_id for item in renamed.graph.initial_conditions) == baseline_condition_ids
-    assert next(
+    renamed_conditions = renamed.graph.initial_conditions
+    assert tuple(item.condition_id for item in renamed_conditions) == baseline_condition_ids
+    assert all(
+        item.source_evidence_ids == ("renamedInitialEvidence",)
+        for item in renamed_conditions
+    )
+    renamed_equation = next(
         item for item in renamed.graph.equations if item.law_id == "linear_vibration"
-    ).equation_id == baseline_equation.equation_id
-    assert next(
+    )
+    renamed_application = next(
         item for item in renamed.graph.applications if item.law_id == "linear_vibration"
-    ).application_id == baseline_application.application_id
+    )
+    assert renamed_equation.equation_id == baseline_equation.equation_id
+    assert renamed_application.application_id == baseline_application.application_id
+    assert "renamedInitialEvidence" in renamed_equation.source_evidence_ids
+    assert "renamedInitialEvidence" in renamed_application.source_evidence_ids
     assert tuple(item.application_id for item in renamed.graph.applications) == tuple(
         item.application_id for item in baseline.graph.applications
     )
@@ -2186,16 +2200,23 @@ def test_initial_condition_evidence_changes_identity_but_pure_id_rename_does_not
     )
     changed = compile_mechanics_ir(_ir(changed_payload))
     assert changed.graph is not None
-    assert changed.graph.fingerprint != baseline.graph.fingerprint
-    assert tuple(item.condition_id for item in changed.graph.initial_conditions) != baseline_condition_ids
+    assert changed.graph.fingerprint == baseline.graph.fingerprint
+    changed_conditions = changed.graph.initial_conditions
+    assert tuple(item.condition_id for item in changed_conditions) == baseline_condition_ids
+    assert all(
+        item.source_evidence_ids == ("initialEvidence",)
+        for item in changed_conditions
+    )
     changed_equation = next(
         item for item in changed.graph.equations if item.law_id == "linear_vibration"
     )
     changed_application = next(
         item for item in changed.graph.applications if item.law_id == "linear_vibration"
     )
-    assert changed_equation.equation_id != baseline_equation.equation_id
-    assert changed_application.application_id != baseline_application.application_id
+    assert changed_equation.equation_id == baseline_equation.equation_id
+    assert changed_application.application_id == baseline_application.application_id
+    assert "initialEvidence" in changed_equation.source_evidence_ids
+    assert "initialEvidence" in changed_application.source_evidence_ids
 
 
 def test_affine_redundancy_and_inconsistency_are_distinguished() -> None:

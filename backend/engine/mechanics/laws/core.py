@@ -99,9 +99,12 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("system_momentum_conservation", "impulse_momentum", (QuantityRole.mass, QuantityRole.velocity), assumptions=("external_impulse_negligible",), cost=6, hooks=("momentum_residual",)),
     _rule("direct_restitution", "impulse_momentum", (QuantityRole.velocity, QuantityRole.coefficient_restitution), interactions=(InteractionKind.collision.value,), cost=5, hooks=("impact_residual",)),
     _rule("rope_massless_tension", "constraint", (QuantityRole.force,), interactions=(InteractionKind.rope_tension.value,), assumptions=("massless_rope",), cost=2, hooks=("constraint_residual",)),
+    _rule("rope_attachment_tension_transfer", "constraint", (QuantityRole.force,), interactions=(InteractionKind.rope_tension.value,), assumptions=("massless_rope", "ideal_massless_frictionless_pulley"), cost=3, hooks=("constraint_residual", "topology_residual")),
+    _rule("rope_attachment_acceleration_transfer", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope", "fixed_pulley"), cost=3, hooks=("constraint_residual", "topology_residual")),
     _rule("rope_inextensible_motion", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope",), cost=2, hooks=("constraint_residual",)),
     _rule("rope_fixed_pulley_motion", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope", "fixed_pulley"), cost=3, hooks=("topology_residual",)),
     _rule("rope_moving_pulley_motion", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope",), cost=4, hooks=("topology_residual",)),
+    _rule("incline_hanging_sliding_direction_consistency", "constraint", (QuantityRole.acceleration, QuantityRole.velocity), interactions=(InteractionKind.contact.value,), assumptions=("acceleration_not_opposite_motion",), cost=2, hooks=("direction_residual", "friction_regime")),
     _rule("pulley_newton_euler", "newton_second_law", (QuantityRole.force, QuantityRole.radius, QuantityRole.moment_of_inertia, QuantityRole.angular_acceleration), interactions=(InteractionKind.rope_tension.value,), cost=5, hooks=("moment_balance",)),
     _rule("rolling_no_slip", "constraint", (QuantityRole.velocity, QuantityRole.angular_velocity, QuantityRole.radius), cost=3, hooks=("constraint_residual",)),
     _rule("gear_pitch_velocity", "constraint", (QuantityRole.angular_velocity, QuantityRole.radius), interactions=(InteractionKind.gear_contact.value,), cost=3, hooks=("constraint_residual",)),
@@ -1374,10 +1377,1055 @@ def _horizontal_fixed_contact_emissions(context: LawContext) -> list[LawEmission
     return emitted
 
 
+@dataclass(frozen=True)
+class _FixedPulleyInclineContactLawProfile:
+    incline_body_id: str
+    hanging_body_id: str
+    incline_id: str
+    rope_id: str
+    pulley_id: str
+    interval_id: str
+    wrap_id: str
+    incline_attachment_id: str
+    hanging_attachment_id: str
+    rope_taut_state_id: str
+    pulley_fixed_state_id: str
+    friction_state_id: str
+    body_motion_state_id: str | None
+    motion_direction_assumption_id: str | None
+    tension_incline: BoundQuantity
+    tension_hanging: BoundQuantity
+    rope_tension: BoundQuantity
+    acceleration_incline: BoundQuantity
+    acceleration_hanging: BoundQuantity
+    rope_acceleration: BoundQuantity
+    motion_carrier: BoundQuantity | None
+
+
+def _fixed_pulley_incline_contact_profile(
+    context: LawContext,
+    interaction_id: str | None = None,
+) -> _FixedPulleyInclineContactLawProfile | None:
+    """Recognize only the closed two-frame incline/hanging rope contract."""
+
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id
+            for item in context.entities
+            if item.primitive is primitive
+        )
+        for primitive in (
+            EntityPrimitive.particle,
+            EntityPrimitive.incline,
+            EntityPrimitive.rope,
+            EntityPrimitive.pulley,
+            EntityPrimitive.environment,
+        )
+    }
+    if (
+        {key: len(value) for key, value in primitive_ids.items()}
+        != {
+            EntityPrimitive.particle: 2,
+            EntityPrimitive.incline: 1,
+            EntityPrimitive.rope: 1,
+            EntityPrimitive.pulley: 1,
+            EntityPrimitive.environment: 1,
+        }
+        or len(context.entities) != 6
+        or any(
+            not item.evidence_refs or item.component_of_entity_id is not None
+            for item in context.entities
+        )
+    ):
+        return None
+    particle_ids = set(primitive_ids[EntityPrimitive.particle])
+    incline_id = primitive_ids[EntityPrimitive.incline][0]
+    rope_id = primitive_ids[EntityPrimitive.rope][0]
+    pulley_id = primitive_ids[EntityPrimitive.pulley][0]
+    environment_id = primitive_ids[EntityPrimitive.environment][0]
+
+    world_frames = tuple(
+        item
+        for item in context.reference_frames
+        if item.frame_type is ReferenceFrameType.cartesian_2d
+    )
+    incline_frames = tuple(
+        item
+        for item in context.reference_frames
+        if item.frame_type is ReferenceFrameType.tangential_normal
+    )
+    if (
+        len(context.reference_frames) != 2
+        or len(world_frames) != 1
+        or len(incline_frames) != 1
+    ):
+        return None
+    world_frame = world_frames[0]
+    incline_frame = incline_frames[0]
+
+    def axis_signature(frame: object) -> set[tuple[object, ...]]:
+        return {
+            (
+                item.axis.value,
+                item.direction.kind,
+                getattr(item.direction, "frame_id", None),
+                getattr(getattr(item.direction, "axis", None), "value", None),
+                getattr(item.direction, "sign", None),
+            )
+            for item in getattr(frame, "axes", ())
+        }
+
+    if (
+        getattr(world_frame.origin, "kind", None) != "world"
+        or world_frame.parent_frame_id is not None
+        or world_frame.translating_with_entity_id is not None
+        or world_frame.rotating_about_point_id is not None
+        or world_frame.generalized_coordinate_symbol_ids
+        or not world_frame.evidence_refs
+        or len(world_frame.axes) != 2
+        or axis_signature(world_frame)
+        != {
+            ("x", "axis", world_frame.frame_id, "x", 1),
+            ("y", "axis", world_frame.frame_id, "y", 1),
+        }
+        or getattr(incline_frame.origin, "kind", None) != "entity"
+        or getattr(incline_frame.origin, "entity_id", None) != incline_id
+        or incline_frame.parent_frame_id != world_frame.frame_id
+        or incline_frame.translating_with_entity_id is not None
+        or incline_frame.rotating_about_point_id is not None
+        or incline_frame.generalized_coordinate_symbol_ids
+        or not incline_frame.evidence_refs
+        or len(incline_frame.axes) != 2
+        or axis_signature(incline_frame)
+        != {
+            ("tangent", "axis", incline_frame.frame_id, "tangent", 1),
+            ("normal", "axis", incline_frame.frame_id, "normal", 1),
+        }
+    ):
+        return None
+
+    if len(context.motion_intervals) != 1 or context.events:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        interval.frame_id is not None
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or len(interval.subject_ids) != len(context.entities)
+        or set(interval.subject_ids)
+        != {item.entity_id for item in context.entities}
+        or not interval.evidence_refs
+    ):
+        return None
+
+    contacts = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.contact
+    )
+    rope_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.rope_tension
+        and (interaction_id is None or item.interaction_id == interaction_id)
+    )
+    gravity_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.gravity
+    )
+    if (
+        len(context.interactions) != 4
+        or len(contacts) != 1
+        or len(rope_interactions) != 1
+        or len(gravity_interactions) != 2
+    ):
+        return None
+    contact = contacts[0]
+    rope_interaction = rope_interactions[0]
+    incline_body_ids = set(contact.participant_ids) & particle_ids
+    if (
+        len(incline_body_ids) != 1
+        or len(contact.participant_ids) != 2
+        or set(contact.participant_ids)
+        != {next(iter(incline_body_ids), ""), incline_id}
+        or len(contact.point_ids) != 1
+        or contact.frame_id != incline_frame.frame_id
+        or contact.interval_id != interval.interval_id
+        or contact.event_id is not None
+        or not contact.evidence_refs
+    ):
+        return None
+    incline_body_id = next(iter(incline_body_ids))
+    hanging_body_id = next(iter(particle_ids - {incline_body_id}))
+    if len(context.points) != 1:
+        return None
+    point = context.points[0]
+    if (
+        point.point_id != contact.point_ids[0]
+        or point.role is not PointRole.contact
+        or point.owner_entity_id != incline_body_id
+        or point.frame_id != incline_frame.frame_id
+        or not point.evidence_refs
+    ):
+        return None
+
+    incline_gravity = tuple(
+        item
+        for item in gravity_interactions
+        if set(item.participant_ids) == {incline_body_id, environment_id}
+    )
+    hanging_gravity = tuple(
+        item
+        for item in gravity_interactions
+        if set(item.participant_ids) == {hanging_body_id, environment_id}
+    )
+    if (
+        len(incline_gravity) != 1
+        or len(hanging_gravity) != 1
+        or incline_gravity[0].frame_id != incline_frame.frame_id
+        or len(incline_gravity[0].quantity_ids) != 4
+        or hanging_gravity[0].frame_id != world_frame.frame_id
+        or len(hanging_gravity[0].quantity_ids) != 3
+        or any(
+            len(item.participant_ids) != 2
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.point_ids
+            or len(item.quantity_ids) != len(set(item.quantity_ids))
+            or not item.evidence_refs
+            for item in gravity_interactions
+        )
+        or len(rope_interaction.participant_ids) != 4
+        or set(rope_interaction.participant_ids)
+        != particle_ids | {rope_id, pulley_id}
+        or rope_interaction.point_ids
+        or rope_interaction.frame_id is not None
+        or rope_interaction.interval_id != interval.interval_id
+        or rope_interaction.event_id is not None
+        or len(rope_interaction.quantity_ids) != 6
+        or len(set(rope_interaction.quantity_ids)) != 6
+        or not rope_interaction.evidence_refs
+    ):
+        return None
+
+    angles = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.angle
+    )
+    wraps = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.wraps
+    )
+    attached = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.attached
+    )
+    if (
+        len(context.geometry) != 4
+        or len(angles) != 1
+        or len(wraps) != 1
+        or len(attached) != 2
+        or any(
+            item.expression is not None
+            or not item.evidence_refs
+            or len(item.participant_ids) != len(set(item.participant_ids))
+            for item in context.geometry
+        )
+        or set(angles[0].participant_ids) != {incline_id, environment_id}
+        or len(angles[0].quantity_ids) != 1
+        or angles[0].interval_id is not None
+        or set(wraps[0].participant_ids) != {rope_id, pulley_id}
+        or len(wraps[0].quantity_ids) != 2
+        or wraps[0].interval_id != interval.interval_id
+        or {frozenset(item.participant_ids) for item in attached}
+        != {
+            frozenset((rope_id, incline_body_id)),
+            frozenset((rope_id, hanging_body_id)),
+        }
+        or any(
+            len(item.quantity_ids) != 4
+            or item.interval_id != interval.interval_id
+            for item in attached
+        )
+    ):
+        return None
+
+    quantities = {
+        item.quantity_id: item
+        for item in context.quantities
+        if item.quantity_id is not None
+    }
+    if len(quantities) != len(context.quantities):
+        return None
+
+    def linked(interaction: object) -> tuple[BoundQuantity, ...]:
+        return tuple(quantities.get(item) for item in interaction.quantity_ids)
+
+    incline_linked = linked(incline_gravity[0])
+    hanging_linked = linked(hanging_gravity[0])
+    contact_linked = linked(contact)
+    rope_linked = linked(rope_interaction)
+    if any(
+        item is None
+        for item in (*incline_linked, *hanging_linked, *contact_linked, *rope_linked)
+    ):
+        return None
+
+    def one_quantity(
+        values: tuple[BoundQuantity, ...],
+        *,
+        role: QuantityRole,
+        subject_id: str,
+        component: QuantityComponent | None = None,
+    ) -> BoundQuantity | None:
+        matches = tuple(
+            item
+            for item in values
+            if item.role is role
+            and item.subject_id == subject_id
+            and (component is None or item.component is component)
+        )
+        return matches[0] if len(matches) == 1 else None
+
+    mass_incline = one_quantity(
+        incline_linked, role=QuantityRole.mass, subject_id=incline_body_id
+    )
+    mass_hanging = one_quantity(
+        hanging_linked, role=QuantityRole.mass, subject_id=hanging_body_id
+    )
+    gravity_a = one_quantity(
+        incline_linked, role=QuantityRole.gravity, subject_id=environment_id
+    )
+    gravity_b = one_quantity(
+        hanging_linked, role=QuantityRole.gravity, subject_id=environment_id
+    )
+    angle = quantities.get(angles[0].quantity_ids[0])
+    gravity_tangent = one_quantity(
+        incline_linked,
+        role=QuantityRole.force,
+        subject_id=incline_body_id,
+        component=QuantityComponent.tangential,
+    )
+    gravity_normal = one_quantity(
+        incline_linked,
+        role=QuantityRole.force,
+        subject_id=incline_body_id,
+        component=QuantityComponent.normal,
+    )
+    hanging_weight = one_quantity(
+        hanging_linked,
+        role=QuantityRole.force,
+        subject_id=hanging_body_id,
+        component=QuantityComponent.y,
+    )
+    tension_incline = one_quantity(
+        rope_linked,
+        role=QuantityRole.force,
+        subject_id=incline_body_id,
+        component=QuantityComponent.tangential,
+    )
+    tension_hanging = one_quantity(
+        rope_linked,
+        role=QuantityRole.force,
+        subject_id=hanging_body_id,
+        component=QuantityComponent.y,
+    )
+    rope_tension = one_quantity(
+        rope_linked, role=QuantityRole.force, subject_id=rope_id
+    )
+    acceleration_incline = one_quantity(
+        rope_linked,
+        role=QuantityRole.acceleration,
+        subject_id=incline_body_id,
+        component=QuantityComponent.tangential,
+    )
+    acceleration_hanging = one_quantity(
+        rope_linked,
+        role=QuantityRole.acceleration,
+        subject_id=hanging_body_id,
+        component=QuantityComponent.y,
+    )
+    rope_acceleration = one_quantity(
+        rope_linked, role=QuantityRole.acceleration, subject_id=rope_id
+    )
+    normal = one_quantity(
+        contact_linked,
+        role=QuantityRole.force,
+        subject_id=incline_body_id,
+        component=QuantityComponent.normal,
+    )
+    normal_acceleration = one_quantity(
+        contact_linked,
+        role=QuantityRole.acceleration,
+        subject_id=incline_body_id,
+        component=QuantityComponent.normal,
+    )
+    required = (
+        mass_incline,
+        mass_hanging,
+        gravity_a,
+        gravity_b,
+        angle,
+        gravity_tangent,
+        gravity_normal,
+        hanging_weight,
+        tension_incline,
+        tension_hanging,
+        rope_tension,
+        acceleration_incline,
+        acceleration_hanging,
+        rope_acceleration,
+        normal,
+        normal_acceleration,
+    )
+    if any(item is None for item in required) or gravity_b is not gravity_a:
+        return None
+
+    def exact_known(item: BoundQuantity, *, positive: bool) -> bool:
+        value = item.known_si_value
+        return (
+            item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.evidence_ids
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id is None
+            and item.event_id is None
+            and not item.direction_bound
+            and item.component
+            in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            and type(value) is float
+            and math.isfinite(value)
+            and (value > 0.0 if positive else value >= 0.0)
+        )
+
+    if (
+        not exact_known(mass_incline, positive=True)
+        or not exact_known(mass_hanging, positive=True)
+        or not exact_known(gravity_a, positive=True)
+        or angle.role is not QuantityRole.angle
+        or angle.subject_id != incline_id
+        or not exact_known(angle, positive=False)
+        or angle.dimension != DimensionVector.dimensionless()
+        or not 0.0 <= angle.known_si_value < math.pi / 2.0
+    ):
+        return None
+
+    def exact_unknown_axis(
+        item: BoundQuantity,
+        *,
+        role: QuantityRole,
+        subject_id: str,
+        point_id: str | None,
+        frame_id: str,
+        component: QuantityComponent,
+        sign: int | None,
+    ) -> bool:
+        observed_sign = item.direction_sign
+        return (
+            item.role is role
+            and item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.known_si_value is None
+            and item.evidence_ids
+            and item.subject_id == subject_id
+            and item.point_id == point_id
+            and item.frame_id == frame_id
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and item.component is component
+            and item.direction_bound
+            and observed_sign in {-1, 1}
+            and (sign is None or observed_sign == sign)
+            and _axis_bound(item, frame_id, component, observed_sign)
+        )
+
+    if (
+        not exact_unknown_axis(
+            gravity_tangent,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component=QuantityComponent.tangential,
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            gravity_normal,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component=QuantityComponent.normal,
+            sign=-1,
+        )
+        or not exact_unknown_axis(
+            hanging_weight,
+            role=QuantityRole.force,
+            subject_id=hanging_body_id,
+            point_id=None,
+            frame_id=world_frame.frame_id,
+            component=QuantityComponent.y,
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            tension_incline,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component=QuantityComponent.tangential,
+            sign=-1,
+        )
+        or not exact_unknown_axis(
+            tension_hanging,
+            role=QuantityRole.force,
+            subject_id=hanging_body_id,
+            point_id=None,
+            frame_id=world_frame.frame_id,
+            component=QuantityComponent.y,
+            sign=-1,
+        )
+        or not exact_unknown_axis(
+            normal,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=point.point_id,
+            frame_id=incline_frame.frame_id,
+            component=QuantityComponent.normal,
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            normal_acceleration,
+            role=QuantityRole.acceleration,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component=QuantityComponent.normal,
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            acceleration_incline,
+            role=QuantityRole.acceleration,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component=QuantityComponent.tangential,
+            sign=None,
+        )
+        or not exact_unknown_axis(
+            acceleration_hanging,
+            role=QuantityRole.acceleration,
+            subject_id=hanging_body_id,
+            point_id=None,
+            frame_id=world_frame.frame_id,
+            component=QuantityComponent.y,
+            sign=None,
+        )
+        or acceleration_incline.direction_sign
+        != -acceleration_hanging.direction_sign
+    ):
+        return None
+
+    def exact_rope_coordinate(
+        item: BoundQuantity,
+        role: QuantityRole,
+        dimension: DimensionVector,
+    ) -> bool:
+        return (
+            item.role is role
+            and item.subject_id == rope_id
+            and item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.known_si_value is None
+            and item.evidence_ids
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and item.component
+            in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            and not item.direction_bound
+            and item.dimension == dimension
+        )
+
+    if (
+        not exact_rope_coordinate(
+            rope_tension, QuantityRole.force, tension_incline.dimension
+        )
+        or not exact_rope_coordinate(
+            rope_acceleration,
+            QuantityRole.acceleration,
+            acceleration_incline.dimension,
+        )
+        or set(rope_interaction.quantity_ids)
+        != {
+            tension_incline.quantity_id,
+            tension_hanging.quantity_id,
+            rope_tension.quantity_id,
+            acceleration_incline.quantity_id,
+            acceleration_hanging.quantity_id,
+            rope_acceleration.quantity_id,
+        }
+        or set(wraps[0].quantity_ids)
+        != {rope_tension.quantity_id, rope_acceleration.quantity_id}
+    ):
+        return None
+    incline_attachment = _one(
+        item for item in attached if incline_body_id in item.participant_ids
+    )
+    hanging_attachment = _one(
+        item for item in attached if hanging_body_id in item.participant_ids
+    )
+    if (
+        incline_attachment is None
+        or hanging_attachment is None
+        or set(incline_attachment.quantity_ids)
+        != {
+            tension_incline.quantity_id,
+            acceleration_incline.quantity_id,
+            rope_tension.quantity_id,
+            rope_acceleration.quantity_id,
+        }
+        or set(hanging_attachment.quantity_ids)
+        != {
+            tension_hanging.quantity_id,
+            acceleration_hanging.quantity_id,
+            rope_tension.quantity_id,
+            rope_acceleration.quantity_id,
+        }
+    ):
+        return None
+
+    states = tuple(context.state_conditions)
+    if any(
+        item.interval_id != interval.interval_id
+        or item.event_id is not None
+        or item.expression is not None
+        or not item.evidence_refs
+        or len(item.quantity_ids) != len(set(item.quantity_ids))
+        for item in states
+    ):
+        return None
+    rope_state = _one(
+        item for item in states
+        if item.subject_id == rope_id
+        and item.kind is StateKind.rope
+        and item.state is StateValue.taut
+        and not item.quantity_ids
+    )
+    pulley_state = _one(
+        item for item in states
+        if item.subject_id == pulley_id
+        and item.kind is StateKind.motion
+        and item.state is StateValue.at_rest
+        and not item.quantity_ids
+    )
+    contact_state = _one(
+        item for item in states
+        if item.subject_id == incline_body_id
+        and item.kind is StateKind.contact
+        and item.state is StateValue.touching
+    )
+    incline_state = _one(
+        item for item in states
+        if item.subject_id == incline_id
+        and item.kind is StateKind.motion
+        and item.state is StateValue.at_rest
+        and not item.quantity_ids
+    )
+    friction_state = _one(
+        item for item in states
+        if item.subject_id == incline_body_id
+        and item.kind is StateKind.friction
+        and item.state
+        in {StateValue.inactive, StateValue.sticking, StateValue.sliding}
+    )
+    if any(
+        item is None
+        for item in (
+            rope_state,
+            pulley_state,
+            contact_state,
+            incline_state,
+            friction_state,
+        )
+    ):
+        return None
+    if (
+        set(contact_state.quantity_ids)
+        != {normal.quantity_id, normal_acceleration.quantity_id}
+        or len(contact_state.quantity_ids) != 2
+    ):
+        return None
+
+    friction_values = tuple(
+        item
+        for item in contact_linked
+        if item.role is QuantityRole.force
+        and item.component is QuantityComponent.tangential
+    )
+    coefficient_values = tuple(
+        item
+        for item in contact_linked
+        if item.role is QuantityRole.coefficient_friction
+    )
+    friction = friction_values[0] if len(friction_values) == 1 else None
+    coefficient = coefficient_values[0] if len(coefficient_values) == 1 else None
+    body_motion = _one(
+        item for item in states
+        if item.subject_id == incline_body_id
+        and item.kind is StateKind.motion
+    )
+    carrier = None
+    if friction_state.state is StateValue.inactive:
+        if (
+            len(states) != 5
+            or len(contact_linked) != 2
+            or friction is not None
+            or coefficient is not None
+            or friction_state.quantity_ids
+            or body_motion is not None
+        ):
+            return None
+    else:
+        if (
+            len(states) != 6
+            or len(contact_linked) != 4
+            or friction is None
+            or coefficient is None
+            or body_motion is None
+            or not exact_unknown_axis(
+                friction,
+                role=QuantityRole.force,
+                subject_id=incline_body_id,
+                point_id=point.point_id,
+                frame_id=incline_frame.frame_id,
+                component=QuantityComponent.tangential,
+                sign=None,
+            )
+            or coefficient.role is not QuantityRole.coefficient_friction
+            or coefficient.subject_id != incline_body_id
+            or coefficient.dimension != DimensionVector.dimensionless()
+            or not exact_known(coefficient, positive=False)
+            or set(friction_state.quantity_ids)
+            != {friction.quantity_id, normal.quantity_id, coefficient.quantity_id}
+        ):
+            return None
+        if friction_state.state is StateValue.sticking:
+            hanging_drive = mass_hanging.known_si_value * gravity_a.known_si_value
+            incline_drive = (
+                mass_incline.known_si_value
+                * gravity_a.known_si_value
+                * math.sin(angle.known_si_value)
+            )
+            static_drive = hanging_drive - incline_drive
+            static_drive_is_zero = math.isclose(
+                static_drive,
+                0.0,
+                rel_tol=1.0e-12,
+                abs_tol=1.0e-12 * max(1.0, abs(hanging_drive), abs(incline_drive)),
+            )
+            expected_sign = (
+                None
+                if static_drive_is_zero
+                else 1 if static_drive > 0.0 else -1
+            )
+            if (
+                body_motion.state is not StateValue.at_rest
+                or body_motion.quantity_ids
+                or (
+                    expected_sign is not None
+                    and friction.direction_sign != expected_sign
+                )
+            ):
+                return None
+        else:
+            if body_motion.state is not StateValue.moving or len(body_motion.quantity_ids) != 1:
+                return None
+            carrier = quantities.get(body_motion.quantity_ids[0])
+            if (
+                carrier is None
+                or carrier.role is not QuantityRole.velocity
+                or carrier.subject_id != incline_body_id
+                or carrier.shape is not QuantityShape.scalar
+                or carrier.symbol_id is None
+                or carrier.dimension != DimensionVector(length=1, time=-1)
+                or carrier.point_id is not None
+                or carrier.frame_id != incline_frame.frame_id
+                or carrier.interval_id != interval.interval_id
+                or carrier.event_id is not None
+                or carrier.component is not QuantityComponent.tangential
+                or type(carrier.known_si_value) is not float
+                or not math.isfinite(carrier.known_si_value)
+                or carrier.known_si_value <= 0.0
+                or not carrier.evidence_ids
+                or not carrier.direction_bound
+                or carrier.direction_sign not in {-1, 1}
+                or not _axis_bound(
+                    carrier,
+                    incline_frame.frame_id,
+                    QuantityComponent.tangential,
+                    carrier.direction_sign,
+                )
+                or friction.direction_sign != -carrier.direction_sign
+            ):
+                return None
+
+    required_assumptions = {
+        ("massless_rope", rope_id),
+        ("inextensible_rope", rope_id),
+        ("ideal_massless_frictionless_pulley", pulley_id),
+        ("fixed_pulley", pulley_id),
+        *((
+            ("acceleration_not_opposite_motion", incline_body_id),
+        ) if friction_state.state is StateValue.sliding else ()),
+    }
+    approved_ids = frozenset(
+        assumption_id
+        for kind, subject_id in required_assumptions
+        for assumption_id in context.approved_assumptions(
+            kind, subject_id, interval.interval_id
+        )
+    )
+    approved_records = tuple(
+        item for item in context.assumptions if item.assumption_id in approved_ids
+    )
+    if (
+        len(context.assumptions) != len(required_assumptions)
+        or len(approved_records) != len(required_assumptions)
+        or approved_ids != frozenset(item.assumption_id for item in context.assumptions)
+        or {(item.kind, item.subject_id) for item in approved_records}
+        != required_assumptions
+        or any(
+            item.interval_id != interval.interval_id or not item.evidence_refs
+            for item in approved_records
+        )
+    ):
+        return None
+    motion_direction_assumption = _one(
+        item
+        for item in approved_records
+        if item.kind == "acceleration_not_opposite_motion"
+        and item.subject_id == incline_body_id
+    )
+    if (motion_direction_assumption is not None) != (
+        friction_state.state is StateValue.sliding
+    ):
+        return None
+
+    expected_quantities = {
+        item.quantity_id
+        for item in (
+            mass_incline,
+            mass_hanging,
+            gravity_a,
+            angle,
+            gravity_tangent,
+            gravity_normal,
+            hanging_weight,
+            tension_incline,
+            tension_hanging,
+            rope_tension,
+            acceleration_incline,
+            acceleration_hanging,
+            rope_acceleration,
+            normal,
+            normal_acceleration,
+            *(() if friction is None else (friction,)),
+            *(() if coefficient is None else (coefficient,)),
+            *(() if carrier is None else (carrier,)),
+        )
+    }
+    if (
+        set(quantities) != expected_quantities
+        or mass_incline.dimension.plus(gravity_a.dimension)
+        != gravity_tangent.dimension
+        or gravity_tangent.dimension
+        != gravity_normal.dimension
+        or gravity_tangent.dimension
+        != hanging_weight.dimension
+        or gravity_tangent.dimension
+        != tension_incline.dimension
+        or gravity_tangent.dimension
+        != tension_hanging.dimension
+        or gravity_tangent.dimension != rope_tension.dimension
+        or gravity_tangent.dimension != normal.dimension
+        or mass_incline.dimension.plus(acceleration_incline.dimension)
+        != gravity_tangent.dimension
+        or mass_incline.dimension.plus(normal_acceleration.dimension)
+        != normal.dimension
+        or mass_hanging.dimension.plus(acceleration_hanging.dimension)
+        != hanging_weight.dimension
+        or acceleration_incline.dimension != acceleration_hanging.dimension
+        or acceleration_incline.dimension != rope_acceleration.dimension
+        or acceleration_incline.dimension != gravity_a.dimension
+        or normal_acceleration.dimension != gravity_a.dimension
+        or (friction is not None and friction.dimension != normal.dimension)
+    ):
+        return None
+
+    return _FixedPulleyInclineContactLawProfile(
+        incline_body_id=incline_body_id,
+        hanging_body_id=hanging_body_id,
+        incline_id=incline_id,
+        rope_id=rope_id,
+        pulley_id=pulley_id,
+        interval_id=interval.interval_id,
+        wrap_id=wraps[0].relation_id,
+        incline_attachment_id=incline_attachment.relation_id,
+        hanging_attachment_id=hanging_attachment.relation_id,
+        rope_taut_state_id=rope_state.state_condition_id,
+        pulley_fixed_state_id=pulley_state.state_condition_id,
+        friction_state_id=friction_state.state_condition_id,
+        body_motion_state_id=(
+            None if body_motion is None else body_motion.state_condition_id
+        ),
+        motion_direction_assumption_id=(
+            None
+            if motion_direction_assumption is None
+            else motion_direction_assumption.assumption_id
+        ),
+        tension_incline=tension_incline,
+        tension_hanging=tension_hanging,
+        rope_tension=rope_tension,
+        acceleration_incline=acceleration_incline,
+        acceleration_hanging=acceleration_hanging,
+        rope_acceleration=rope_acceleration,
+        motion_carrier=carrier,
+    )
+
+
+def _incline_hanging_rope_emissions(context: LawContext) -> list[LawEmission]:
+    profile = _fixed_pulley_incline_contact_profile(context)
+    if profile is None:
+        return []
+    massless = context.approved_assumptions(
+        "massless_rope", profile.rope_id, profile.interval_id
+    )
+    ideal = context.approved_assumptions(
+        "ideal_massless_frictionless_pulley",
+        profile.pulley_id,
+        profile.interval_id,
+    )
+    inextensible = context.approved_assumptions(
+        "inextensible_rope", profile.rope_id, profile.interval_id
+    )
+    fixed = context.approved_assumptions(
+        "fixed_pulley", profile.pulley_id, profile.interval_id
+    )
+    emitted: list[LawEmission] = []
+    for local, attachment_id in (
+        (profile.tension_incline, profile.incline_attachment_id),
+        (profile.tension_hanging, profile.hanging_attachment_id),
+    ):
+        emitted.append(
+            _emit(
+                context,
+                "rope_attachment_tension_transfer",
+                Equality(
+                    left=local.expression,
+                    right=profile.rope_tension.expression,
+                ),
+                (local, profile.rope_tension),
+                assumption_ids=tuple(sorted(set(massless) | set(ideal))),
+                constraint_ids=tuple(
+                    sorted(
+                        {
+                            attachment_id,
+                            profile.wrap_id,
+                            profile.rope_taut_state_id,
+                        }
+                    )
+                ),
+                extra_entity_ids=(profile.rope_id, profile.pulley_id),
+            )
+        )
+    acceleration_transfers = (
+        (
+            profile.acceleration_incline,
+            profile.rope_acceleration.expression,
+            profile.incline_attachment_id,
+        ),
+        (
+            profile.acceleration_hanging,
+            Negate(
+                operand=profile.rope_acceleration.expression,
+                dimension=profile.rope_acceleration.dimension,
+            ),
+            profile.hanging_attachment_id,
+        ),
+    )
+    for local, rope_side, attachment_id in acceleration_transfers:
+        emitted.append(
+            _emit(
+                context,
+                "rope_attachment_acceleration_transfer",
+                Equality(left=_signed(local), right=rope_side),
+                (local, profile.rope_acceleration),
+                assumption_ids=tuple(sorted(set(inextensible) | set(fixed))),
+                constraint_ids=tuple(
+                    sorted(
+                        {
+                            attachment_id,
+                            profile.wrap_id,
+                            profile.rope_taut_state_id,
+                            profile.pulley_fixed_state_id,
+                        }
+                    )
+                ),
+                extra_entity_ids=(profile.rope_id, profile.pulley_id),
+            )
+        )
+    if profile.motion_carrier is not None:
+        if profile.motion_direction_assumption_id is None:
+            return []
+        physical_acceleration = _signed(profile.acceleration_incline)
+        motion_projection = (
+            physical_acceleration
+            if profile.motion_carrier.direction_sign > 0
+            else Negate(
+                operand=physical_acceleration,
+                dimension=profile.acceleration_incline.dimension,
+            )
+        )
+        emitted.append(
+            _emit(
+                context,
+                "incline_hanging_sliding_direction_consistency",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=motion_projection,
+                    right=LiteralNode(
+                        value=0.0,
+                        dimension=profile.acceleration_incline.dimension,
+                    ),
+                ),
+                (profile.acceleration_incline, profile.motion_carrier),
+                assumption_ids=(profile.motion_direction_assumption_id,),
+                constraint_ids=tuple(
+                    item
+                    for item in (
+                        profile.friction_state_id,
+                        profile.body_motion_state_id,
+                    )
+                    if item is not None
+                ),
+                extra_entity_ids=(profile.incline_id,),
+            )
+        )
+    return emitted
+
+
 def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]:
     """Project gravity only for an exact source-backed fixed-contact contract."""
 
     emitted: list[LawEmission] = []
+    incline_hanging_profile = _fixed_pulley_incline_contact_profile(context)
     kinds = {item.entity_id: item.primitive for item in context.entities}
     quantities = {item.quantity_id: item for item in context.quantities if item.quantity_id}
     frames = {item.frame_id: item for item in context.reference_frames}
@@ -1498,8 +2546,22 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
         )
         if (
             motion_interval.interval_id != contact.interval_id
-            or motion_interval.frame_id != gravity_link.frame_id
-            or motion_interval.frame_id != contact.frame_id
+            or (
+                motion_interval.frame_id != gravity_link.frame_id
+                and not (
+                    motion_interval.frame_id is None
+                    and incline_hanging_profile is not None
+                    and incline_hanging_profile.incline_body_id == body_id
+                )
+            )
+            or (
+                motion_interval.frame_id != contact.frame_id
+                and not (
+                    motion_interval.frame_id is None
+                    and incline_hanging_profile is not None
+                    and incline_hanging_profile.incline_body_id == body_id
+                )
+            )
             or len(motion_interval.subject_ids)
             != len(interval_subject_ids)
             or not (
@@ -1678,11 +2740,24 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
             and body_motion is not None
             and body_motion.state is StateValue.at_rest
             and not body_motion.quantity_ids
-            and _axis_bound(
-                friction_force,
-                contact.frame_id,
-                QuantityComponent.tangential,
-                -1,
+            and (
+                _axis_bound(
+                    friction_force,
+                    contact.frame_id,
+                    QuantityComponent.tangential,
+                    -1,
+                )
+                or (
+                    incline_hanging_profile is not None
+                    and incline_hanging_profile.incline_body_id == body_id
+                    and friction_force.direction_sign in {-1, 1}
+                    and _axis_bound(
+                        friction_force,
+                        contact.frame_id,
+                        QuantityComponent.tangential,
+                        friction_force.direction_sign,
+                    )
+                )
             )
             and len(states) == 4
             and exact_state_quantity_cardinality
@@ -1981,6 +3056,7 @@ def _newton_emissions(context: LawContext) -> list[LawEmission]:
 
 def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
     emitted: list[LawEmission] = []
+    incline_hanging_profile = _fixed_pulley_incline_contact_profile(context)
     entity_kinds = {item.entity_id: item.primitive for item in context.entities}
     for interaction in sorted(context.interactions, key=lambda item: item.interaction_id):
         linked = _interaction_quantities(context, interaction.interaction_id)
@@ -2312,11 +3388,25 @@ def _primitive_interaction_emissions(context: LawContext) -> list[LawEmission]:
                         motion is not None
                         and motion.state is StateValue.at_rest
                         and not motion.quantity_ids
-                        and _axis_bound(
-                            tangent[0],
-                            interaction.frame_id,
-                            QuantityComponent.tangential,
-                            -1,
+                        and (
+                            _axis_bound(
+                                tangent[0],
+                                interaction.frame_id,
+                                QuantityComponent.tangential,
+                                -1,
+                            )
+                            or (
+                                incline_hanging_profile is not None
+                                and incline_hanging_profile.incline_body_id
+                                == incline_body_id
+                                and tangent[0].direction_sign in {-1, 1}
+                                and _axis_bound(
+                                    tangent[0],
+                                    interaction.frame_id,
+                                    QuantityComponent.tangential,
+                                    tangent[0].direction_sign,
+                                )
+                            )
                         )
                     )
                 else:
@@ -4253,6 +5343,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_chain_kinematics_emissions(context))
     emitted.extend(_incline_gravity_contact_emissions(context))
     emitted.extend(_horizontal_fixed_contact_emissions(context))
+    emitted.extend(_incline_hanging_rope_emissions(context))
     emitted.extend(_newton_emissions(context))
     emitted.extend(_primitive_interaction_emissions(context))
     emitted.extend(_work_energy_emissions(context))

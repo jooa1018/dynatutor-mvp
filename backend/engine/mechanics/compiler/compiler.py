@@ -41,12 +41,15 @@ from engine.mechanics.contracts import (
     GeometryRelationKind,
     IRConstraint,
     IREntityOrigin,
+    IRFigureEvidence,
     IRFrameOrigin,
     IRGeometryRelation,
     IRPointOrigin,
     IRQuery,
     IRQuantity,
+    IRSourceAsset,
     IRStateCondition,
+    IRTextEvidence,
     IRWorldOrigin,
     InteractionKind,
     MechanicsProblemIRV1,
@@ -305,6 +308,15 @@ def _graph_edges(
 
 
 def _local_projection(value: object) -> object:
+    if isinstance(value, IRSourceAsset):
+        # Source records retain their exact IDs on emitted provenance, but raw
+        # text/image locators and content are not calculation authority.  Their
+        # canonical aliases are therefore derived from explicit provenance
+        # graph edges only, matching calculation_fingerprint's exclusion of
+        # source-record content while preserving provenance topology.
+        return {"node": "source_asset"}
+    if isinstance(value, (IRTextEvidence, IRFigureEvidence)):
+        return {"node": "source_evidence"}
     if isinstance(value, BaseModel):
         projected: dict[str, object] = {"node": type(value).__name__}
         for field_name in type(value).model_fields:
@@ -2359,6 +2371,982 @@ def _fixed_pulley_horizontal_contact_contract(
         return None, failure("contains extra quantities, client equations, or an inexact query binding")
 
     return _FixedPulleyHorizontalContactProfile(
+        friction_state_id=friction_state.state_condition_id
+    ), None
+
+
+@dataclass(frozen=True)
+class _FixedPulleyInclineContactProfile:
+    friction_state_id: str
+
+
+def _fixed_pulley_incline_contact_contract(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    relevant: set[str],
+    approved_assumption_ids: frozenset[str],
+) -> tuple[_FixedPulleyInclineContactProfile | None, CompilerIssue | None]:
+    """Close the exact two-frame incline/hanging fixed-pulley template."""
+
+    entities = tuple(item for item in ir.entities if item.entity_id in relevant)
+    entity_by_id = {item.entity_id: item for item in entities}
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id
+            for item in entities
+            if item.primitive.value == primitive
+        )
+        for primitive in (
+            "particle",
+            "incline",
+            "rope",
+            "pulley",
+            "environment",
+        )
+    }
+    interactions = tuple(
+        item for item in ir.interactions if item.interaction_id in relevant
+    )
+    contacts = tuple(
+        item for item in interactions if item.kind.value == "contact"
+    )
+    rope_interactions = tuple(
+        item for item in interactions if item.kind.value == "rope_tension"
+    )
+    wraps = tuple(
+        item
+        for item in ir.geometry
+        if item.relation_id in relevant and item.kind.value == "wraps"
+    )
+    angles = tuple(
+        item
+        for item in ir.geometry
+        if item.relation_id in relevant and item.kind.value == "angle"
+    )
+    rope_force_query = (
+        query.target.role is QuantityRole.force
+        and query.target.target_quantity_id is not None
+        and any(
+            query.target.target_quantity_id in item.quantity_ids
+            for item in rope_interactions
+        )
+    )
+    # Activate from the distinctive primitive signature before consulting any
+    # relation that the exact contract must require.  Otherwise deleting two
+    # complementary topology records can erase the recognizer's own signal and
+    # let the remaining gravity/contact fragment fall through to generic laws.
+    candidate = all(
+        primitive_ids[primitive]
+        for primitive in (
+            "particle",
+            "incline",
+            "rope",
+            "pulley",
+            "environment",
+        )
+    )
+    if not candidate:
+        return None, None
+
+    def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            f"fixed-pulley incline/hanging topology {detail}",
+            f"queries.{query.query_id}",
+            referenced_id or query.query_id,
+        )
+
+    query_entity = entity_by_id.get(query.target.subject_id)
+    if query_entity is None:
+        return None, None
+    if query.shape is not QuantityShape.scalar:
+        return None, failure(
+            "allows only scalar local-body acceleration or rope-tension queries",
+            query.query_id,
+        )
+    if query_entity.primitive.value != "particle":
+        return None, failure(
+            "keeps every non-particle topology quantity non-queryable",
+            query.target.target_quantity_id or query.query_id,
+        )
+    if query.target.role not in {QuantityRole.acceleration, QuantityRole.force}:
+        return None, failure(
+            "allows only local-body acceleration or rope-tension queries",
+            query.target.target_quantity_id or query.query_id,
+        )
+    if query.target.role is QuantityRole.force and not rope_force_query:
+        return None, failure(
+            "keeps internal contact and projection forces non-queryable",
+            query.target.target_quantity_id or query.query_id,
+        )
+
+    expected_counts = {
+        "particle": 2,
+        "incline": 1,
+        "rope": 1,
+        "pulley": 1,
+        "environment": 1,
+    }
+    if (
+        {key: len(value) for key, value in primitive_ids.items()}
+        != expected_counts
+        or len(entities) != 6
+        or any(
+            not item.evidence_refs or item.component_of_entity_id is not None
+            for item in entities
+        )
+    ):
+        return None, failure(
+            "requires exactly two particles, one incline, one rope, one pulley, and one environment"
+        )
+    particle_ids = set(primitive_ids["particle"])
+    incline_id = primitive_ids["incline"][0]
+    rope_id = primitive_ids["rope"][0]
+    pulley_id = primitive_ids["pulley"][0]
+    environment_id = primitive_ids["environment"][0]
+
+    frames = tuple(
+        item for item in ir.reference_frames if item.frame_id in relevant
+    )
+    if len(frames) != 2:
+        return None, failure("requires exact parent-world and incline frames")
+    world_frames = tuple(
+        item for item in frames if item.frame_type.value == "cartesian_2d"
+    )
+    incline_frames = tuple(
+        item for item in frames if item.frame_type.value == "tangential_normal"
+    )
+    if len(world_frames) != 1 or len(incline_frames) != 1:
+        return None, failure("requires one Cartesian parent and one tangential/normal frame")
+    world_frame = world_frames[0]
+    incline_frame = incline_frames[0]
+
+    def axis_signature(frame: object) -> set[tuple[object, ...]]:
+        return {
+            (
+                item.axis.value,
+                getattr(item.direction, "kind", None),
+                getattr(item.direction, "frame_id", None),
+                getattr(getattr(item.direction, "axis", None), "value", None),
+                getattr(item.direction, "sign", None),
+            )
+            for item in getattr(frame, "axes", ())
+        }
+
+    if (
+        getattr(world_frame.origin, "kind", None) != "world"
+        or world_frame.parent_frame_id is not None
+        or world_frame.translating_with_entity_id is not None
+        or world_frame.rotating_about_point_id is not None
+        or world_frame.generalized_coordinate_symbol_ids
+        or not world_frame.evidence_refs
+        or len(world_frame.axes) != 2
+        or axis_signature(world_frame)
+        != {
+            ("x", "axis", world_frame.frame_id, "x", 1),
+            ("y", "axis", world_frame.frame_id, "y", 1),
+        }
+        or getattr(incline_frame.origin, "kind", None) != "entity"
+        or getattr(incline_frame.origin, "entity_id", None) != incline_id
+        or incline_frame.parent_frame_id != world_frame.frame_id
+        or incline_frame.translating_with_entity_id is not None
+        or incline_frame.rotating_about_point_id is not None
+        or incline_frame.generalized_coordinate_symbol_ids
+        or not incline_frame.evidence_refs
+        or len(incline_frame.axes) != 2
+        or axis_signature(incline_frame)
+        != {
+            ("tangent", "axis", incline_frame.frame_id, "tangent", 1),
+            ("normal", "axis", incline_frame.frame_id, "normal", 1),
+        }
+    ):
+        return None, failure("requires exact evidenced +x/+y and +tangent/+normal axes")
+
+    intervals = tuple(
+        item for item in ir.motion_intervals if item.interval_id in relevant
+    )
+    if len(intervals) != 1:
+        return None, failure("requires one evidenced motion interval")
+    interval = intervals[0]
+    if (
+        interval.frame_id is not None
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or len(interval.subject_ids) != len(entity_by_id)
+        or set(interval.subject_ids) != set(entity_by_id)
+        or not interval.evidence_refs
+        or any(item.event_id in relevant for item in ir.events)
+    ):
+        return None, failure(
+            "requires one exact event-free unframed interval containing the complete topology",
+            interval.interval_id,
+        )
+
+    if len(contacts) != 1:
+        return None, failure("requires one incline contact")
+    contact = contacts[0]
+    incline_body_ids = set(contact.participant_ids) & particle_ids
+    if (
+        len(contact.participant_ids) != 2
+        or len(set(contact.participant_ids)) != 2
+        or incline_id not in contact.participant_ids
+        or len(incline_body_ids) != 1
+        or len(contact.point_ids) != 1
+        or contact.frame_id != incline_frame.frame_id
+        or contact.interval_id != interval.interval_id
+        or contact.event_id is not None
+        or not contact.evidence_refs
+    ):
+        return None, failure("requires one exact evidenced particle/incline contact", contact.interaction_id)
+    incline_body_id = next(iter(incline_body_ids))
+    hanging_body_id = next(iter(particle_ids - {incline_body_id}))
+    points = tuple(item for item in ir.points if item.point_id in relevant)
+    if len(points) != 1:
+        return None, failure("requires one evidenced contact point")
+    contact_point = points[0]
+    if (
+        contact_point.point_id != contact.point_ids[0]
+        or contact_point.role.value != "contact"
+        or contact_point.owner_entity_id != incline_body_id
+        or contact_point.frame_id != incline_frame.frame_id
+        or not contact_point.evidence_refs
+    ):
+        return None, failure("has an invalid contact-point binding", contact_point.point_id)
+
+    geometry = tuple(item for item in ir.geometry if item.relation_id in relevant)
+    attached = tuple(item for item in geometry if item.kind.value == "attached")
+    if (
+        len(geometry) != 4
+        or len(wraps) != 1
+        or len(angles) != 1
+        or len(attached) != 2
+        or any(
+            item.expression is not None
+            or not item.evidence_refs
+            or len(item.participant_ids) != len(set(item.participant_ids))
+            for item in geometry
+        )
+        or len(wraps[0].participant_ids) != 2
+        or set(wraps[0].participant_ids) != {rope_id, pulley_id}
+        or len(wraps[0].quantity_ids) != 2
+        or len(set(wraps[0].quantity_ids)) != 2
+        or wraps[0].interval_id != interval.interval_id
+        or {frozenset(item.participant_ids) for item in attached}
+        != {frozenset((rope_id, item)) for item in particle_ids}
+        or any(
+            len(item.quantity_ids) != 4
+            or len(set(item.quantity_ids)) != 4
+            or item.interval_id != interval.interval_id
+            for item in attached
+        )
+        or len(angles[0].participant_ids) != 2
+        or set(angles[0].participant_ids) != {incline_id, environment_id}
+        or len(angles[0].quantity_ids) != 1
+        or angles[0].interval_id is not None
+    ):
+        return None, failure(
+            "requires one angle, one wrap, and two exact evidenced rope attachments",
+            rope_id,
+        )
+
+    states = tuple(
+        item for item in ir.state_conditions if item.state_condition_id in relevant
+    )
+    if any(
+        item.interval_id != interval.interval_id
+        or item.event_id is not None
+        or item.expression is not None
+        or not item.evidence_refs
+        or len(item.quantity_ids) != len(set(item.quantity_ids))
+        for item in states
+    ):
+        return None, failure("contains an invalid topology or contact state")
+    rope_states = tuple(
+        item for item in states
+        if item.subject_id == rope_id and item.kind.value == "rope"
+    )
+    pulley_states = tuple(
+        item for item in states
+        if item.subject_id == pulley_id and item.kind.value == "motion"
+    )
+    contact_states = tuple(
+        item for item in states
+        if item.subject_id == incline_body_id and item.kind.value == "contact"
+    )
+    incline_states = tuple(
+        item for item in states
+        if item.subject_id == incline_id and item.kind.value == "motion"
+    )
+    friction_states = tuple(
+        item for item in states
+        if item.subject_id == incline_body_id and item.kind.value == "friction"
+    )
+    body_motion_states = tuple(
+        item for item in states
+        if item.subject_id == incline_body_id and item.kind.value == "motion"
+    )
+    if (
+        len(rope_states) != 1
+        or rope_states[0].state.value != "taut"
+        or rope_states[0].quantity_ids
+        or len(pulley_states) != 1
+        or pulley_states[0].state.value != "at_rest"
+        or pulley_states[0].quantity_ids
+        or len(contact_states) != 1
+        or contact_states[0].state.value != "touching"
+        or len(incline_states) != 1
+        or incline_states[0].state.value != "at_rest"
+        or incline_states[0].quantity_ids
+        or len(friction_states) != 1
+        or friction_states[0].state.value not in {"inactive", "sticking", "sliding"}
+    ):
+        return None, failure("requires exact evidenced rope, pulley, contact, and friction states")
+    friction_state = friction_states[0]
+    regime = friction_state.state.value
+    if (
+        len(states) != (5 if regime == "inactive" else 6)
+        or (regime == "inactive" and body_motion_states)
+        or (regime != "inactive" and len(body_motion_states) != 1)
+    ):
+        return None, failure("contains extra or missing regime state", friction_state.state_condition_id)
+
+    scoped_assumptions = tuple(
+        item for item in ir.assumptions if item.assumption_id in relevant
+    )
+    expected_assumptions = {
+        ("massless_rope", rope_id),
+        ("inextensible_rope", rope_id),
+        ("ideal_massless_frictionless_pulley", pulley_id),
+        ("fixed_pulley", pulley_id),
+        *((
+            ("acceleration_not_opposite_motion", incline_body_id),
+        ) if regime == "sliding" else ()),
+    }
+    if (
+        len(scoped_assumptions) != len(expected_assumptions)
+        or {(item.kind, item.subject_id) for item in scoped_assumptions}
+        != expected_assumptions
+        or any(
+            item.disposition is not AssumptionDisposition.approved
+            or item.assumption_id not in approved_assumption_ids
+            or item.interval_id != interval.interval_id
+            or item.proposed_role is not None
+            or item.proposed_value is not None
+            or item.proposed_unit is not None
+            or not item.evidence_refs
+            for item in scoped_assumptions
+        )
+    ):
+        return None, failure(
+            "requires exact externally approved evidenced rope, pulley, and motion assumptions",
+            rope_id,
+        )
+
+    if len(interactions) != 4 or len(rope_interactions) != 1:
+        return None, failure("requires two gravity, one contact, and one rope interaction")
+    gravity_interactions = tuple(
+        item for item in interactions if item.kind.value == "gravity"
+    )
+    rope_interaction = rope_interactions[0]
+    incline_gravity = tuple(
+        item
+        for item in gravity_interactions
+        if set(item.participant_ids) == {incline_body_id, environment_id}
+    )
+    hanging_gravity = tuple(
+        item
+        for item in gravity_interactions
+        if set(item.participant_ids) == {hanging_body_id, environment_id}
+    )
+    if (
+        len(gravity_interactions) != 2
+        or len(incline_gravity) != 1
+        or len(hanging_gravity) != 1
+        or incline_gravity[0].frame_id != incline_frame.frame_id
+        or len(incline_gravity[0].quantity_ids) != 4
+        or hanging_gravity[0].frame_id != world_frame.frame_id
+        or len(hanging_gravity[0].quantity_ids) != 3
+        or any(
+            len(item.participant_ids) != 2
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.point_ids
+            or len(item.quantity_ids) != len(set(item.quantity_ids))
+            or not item.evidence_refs
+            for item in gravity_interactions
+        )
+        or len(rope_interaction.participant_ids) != 4
+        or set(rope_interaction.participant_ids)
+        != particle_ids | {rope_id, pulley_id}
+        or rope_interaction.point_ids
+        or rope_interaction.frame_id is not None
+        or rope_interaction.interval_id != interval.interval_id
+        or rope_interaction.event_id is not None
+        or len(rope_interaction.quantity_ids) != 6
+        or len(set(rope_interaction.quantity_ids)) != 6
+        or not rope_interaction.evidence_refs
+    ):
+        return None, failure("has incomplete or ambiguous interaction cardinality")
+
+    quantities = {
+        item.quantity_id: item
+        for item in ir.quantities
+        if item.quantity_id in relevant
+    }
+
+    def one_linked(interaction: object, role: QuantityRole, subject_id: str):
+        linked_ids = set(getattr(interaction, "quantity_ids", ()))
+        values = tuple(
+            item
+            for item in quantities.values()
+            if item.quantity_id in linked_ids
+            and item.role is role
+            and item.subject_id == subject_id
+        )
+        return values[0] if len(values) == 1 else None
+
+    mass_incline = one_linked(incline_gravity[0], QuantityRole.mass, incline_body_id)
+    mass_hanging = one_linked(hanging_gravity[0], QuantityRole.mass, hanging_body_id)
+    gravity_a = one_linked(incline_gravity[0], QuantityRole.gravity, environment_id)
+    gravity_b = one_linked(hanging_gravity[0], QuantityRole.gravity, environment_id)
+    angle = quantities.get(angles[0].quantity_ids[0])
+
+    def exact_known(item: object, *, positive: bool) -> bool:
+        value = getattr(item, "si_value", None)
+        return (
+            item is not None
+            and item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.provenance is Provenance.explicit_source
+            and bool(item.evidence_refs)
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id is None
+            and item.event_id is None
+            and item.direction is None
+            and item.component.value in {"magnitude", "unspecified"}
+            and type(value) is float
+            and math.isfinite(value)
+            and (value > 0.0 if positive else value >= 0.0)
+        )
+
+    known_positive = (mass_incline, mass_hanging, gravity_a)
+    bad_positive = next(
+        (
+            item for item in known_positive
+            if item is not None
+            and type(getattr(item, "si_value", None)) is float
+            and getattr(item, "si_value") <= 0.0
+        ),
+        None,
+    )
+    if bad_positive is not None:
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "incline/hanging masses and gravity must be positive",
+            f"quantities.{bad_positive.quantity_id}.si_value",
+            bad_positive.quantity_id,
+        )
+    if (
+        any(item is None or not exact_known(item, positive=True) for item in known_positive)
+        or gravity_b is not gravity_a
+        or mass_incline.role is not QuantityRole.mass
+        or mass_hanging.role is not QuantityRole.mass
+        or gravity_a.role is not QuantityRole.gravity
+    ):
+        return None, failure("requires exact source-backed masses and one shared gravity magnitude")
+    if (
+        angle is None
+        or angle.role is not QuantityRole.angle
+        or angle.subject_id != incline_id
+        or angle.shape is not QuantityShape.scalar
+        or angle.symbol_id is None
+        or angle.provenance is not Provenance.explicit_source
+        or not angle.evidence_refs
+        or angle.point_id is not None
+        or angle.frame_id is not None
+        or angle.interval_id is not None
+        or angle.event_id is not None
+        or angle.direction is not None
+        or angle.component.value not in {"magnitude", "unspecified"}
+        or type(angle.si_value) is not float
+        or not math.isfinite(angle.si_value)
+        or angle.dimension != DimensionVector.dimensionless()
+    ):
+        return None, failure("requires one exact source-backed incline angle", incline_id)
+    if not 0.0 <= angle.si_value < math.pi / 2.0:
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "incline/hanging projection angle must be in [0, pi/2)",
+            f"quantities.{angle.quantity_id}.si_value",
+            angle.quantity_id,
+        )
+
+    def exact_unknown_axis(
+        item: object,
+        *,
+        role: QuantityRole,
+        subject_id: str,
+        point_id: str | None,
+        frame_id: str,
+        component: str,
+        sign: int | None,
+    ) -> bool:
+        observed_sign = getattr(getattr(item, "direction", None), "sign", None)
+        return (
+            item is not None
+            and item.role is role
+            and item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.si_value is None
+            and item.provenance in {Provenance.inferred, Provenance.unknown}
+            and bool(item.evidence_refs)
+            and item.subject_id == subject_id
+            and item.point_id == point_id
+            and item.frame_id == frame_id
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and item.component.value == component
+            and observed_sign in {-1, 1}
+            and (sign is None or observed_sign == sign)
+            and _exact_axis_direction(
+                item,
+                frame_id=frame_id,
+                axis=("tangent" if component == "tangential" else component),
+                sign=observed_sign,
+            )
+        )
+
+    incline_linked = tuple(quantities.get(item) for item in incline_gravity[0].quantity_ids)
+    hanging_linked = tuple(quantities.get(item) for item in hanging_gravity[0].quantity_ids)
+    gravity_tangent = next(
+        (
+            item for item in incline_linked
+            if item is not None
+            and item.role is QuantityRole.force
+            and item.component.value == "tangential"
+        ),
+        None,
+    )
+    gravity_normal = next(
+        (
+            item for item in incline_linked
+            if item is not None
+            and item.role is QuantityRole.force
+            and item.component.value == "normal"
+        ),
+        None,
+    )
+    hanging_weight = next(
+        (
+            item for item in hanging_linked
+            if item is not None and item.role is QuantityRole.force
+        ),
+        None,
+    )
+    rope_values = tuple(quantities.get(item) for item in rope_interaction.quantity_ids)
+    incline_tensions = tuple(
+        item for item in rope_values
+        if item is not None and item.role is QuantityRole.force and item.subject_id == incline_body_id
+    )
+    hanging_tensions = tuple(
+        item for item in rope_values
+        if item is not None and item.role is QuantityRole.force and item.subject_id == hanging_body_id
+    )
+    rope_tension_magnitudes = tuple(
+        item for item in rope_values
+        if item is not None
+        and item.role is QuantityRole.force
+        and item.subject_id == rope_id
+    )
+    rope_acceleration_coordinates = tuple(
+        item for item in rope_values
+        if item is not None
+        and item.role is QuantityRole.acceleration
+        and item.subject_id == rope_id
+    )
+    contact_values = tuple(quantities.get(item) for item in contact.quantity_ids)
+    normal_values = tuple(
+        item for item in contact_values
+        if item is not None and item.role is QuantityRole.force and item.component.value == "normal"
+    )
+    normal_accelerations = tuple(
+        item for item in contact_values
+        if item is not None and item.role is QuantityRole.acceleration and item.component.value == "normal"
+    )
+    friction_values = tuple(
+        item for item in contact_values
+        if item is not None and item.role is QuantityRole.force and item.component.value == "tangential"
+    )
+    coefficients = tuple(
+        item for item in contact_values
+        if item is not None and item.role is QuantityRole.coefficient_friction
+    )
+    accelerations = tuple(
+        item for item in quantities.values()
+        if item.role is QuantityRole.acceleration and item.subject_id in particle_ids
+    )
+    incline_tangent_accelerations = tuple(
+        item for item in accelerations
+        if item.subject_id == incline_body_id and item.component.value == "tangential"
+    )
+    incline_normal_accelerations = tuple(
+        item for item in accelerations
+        if item.subject_id == incline_body_id and item.component.value == "normal"
+    )
+    hanging_accelerations = tuple(
+        item for item in accelerations
+        if item.subject_id == hanging_body_id and item.component.value == "y"
+    )
+    if (
+        any(item is None for item in (*incline_linked, *hanging_linked, *rope_values, *contact_values))
+        or len(incline_tensions) != 1
+        or len(hanging_tensions) != 1
+        or len(rope_tension_magnitudes) != 1
+        or len(rope_acceleration_coordinates) != 1
+        or len(normal_values) != 1
+        or len(normal_accelerations) != 1
+        or len(accelerations) != 3
+        or len(incline_tangent_accelerations) != 1
+        or len(incline_normal_accelerations) != 1
+        or len(hanging_accelerations) != 1
+        or incline_normal_accelerations[0] is not normal_accelerations[0]
+    ):
+        return None, failure("requires exact incline/hanging force and acceleration components")
+    tension_incline = incline_tensions[0]
+    tension_hanging = hanging_tensions[0]
+    rope_tension = rope_tension_magnitudes[0]
+    rope_acceleration = rope_acceleration_coordinates[0]
+    normal = normal_values[0]
+    normal_acceleration = normal_accelerations[0]
+    acceleration_incline = incline_tangent_accelerations[0]
+    acceleration_hanging = hanging_accelerations[0]
+    if (
+        not exact_unknown_axis(
+            gravity_tangent,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component="tangential",
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            gravity_normal,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component="normal",
+            sign=-1,
+        )
+        or not exact_unknown_axis(
+            hanging_weight,
+            role=QuantityRole.force,
+            subject_id=hanging_body_id,
+            point_id=None,
+            frame_id=world_frame.frame_id,
+            component="y",
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            tension_incline,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component="tangential",
+            sign=-1,
+        )
+        or not exact_unknown_axis(
+            tension_hanging,
+            role=QuantityRole.force,
+            subject_id=hanging_body_id,
+            point_id=None,
+            frame_id=world_frame.frame_id,
+            component="y",
+            sign=-1,
+        )
+        or not exact_unknown_axis(
+            normal,
+            role=QuantityRole.force,
+            subject_id=incline_body_id,
+            point_id=contact_point.point_id,
+            frame_id=incline_frame.frame_id,
+            component="normal",
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            normal_acceleration,
+            role=QuantityRole.acceleration,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component="normal",
+            sign=1,
+        )
+        or not exact_unknown_axis(
+            acceleration_incline,
+            role=QuantityRole.acceleration,
+            subject_id=incline_body_id,
+            point_id=None,
+            frame_id=incline_frame.frame_id,
+            component="tangential",
+            sign=None,
+        )
+        or not exact_unknown_axis(
+            acceleration_hanging,
+            role=QuantityRole.acceleration,
+            subject_id=hanging_body_id,
+            point_id=None,
+            frame_id=world_frame.frame_id,
+            component="y",
+            sign=None,
+        )
+        or acceleration_incline.direction.sign != -acceleration_hanging.direction.sign
+    ):
+        return None, failure("requires exact opposed branch-coordinate directions", rope_id)
+
+    def exact_unknown_rope_coordinate(
+        item: object,
+        *,
+        role: QuantityRole,
+        dimension: DimensionVector,
+    ) -> bool:
+        return (
+            item is not None
+            and item.role is role
+            and item.subject_id == rope_id
+            and item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.si_value is None
+            and item.provenance in {Provenance.inferred, Provenance.unknown}
+            and bool(item.evidence_refs)
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and item.component.value in {"magnitude", "unspecified"}
+            and item.direction is None
+            and item.dimension == dimension
+        )
+
+    if (
+        not exact_unknown_rope_coordinate(
+            rope_tension,
+            role=QuantityRole.force,
+            dimension=tension_incline.dimension,
+        )
+        or not exact_unknown_rope_coordinate(
+            rope_acceleration,
+            role=QuantityRole.acceleration,
+            dimension=acceleration_incline.dimension,
+        )
+        or set(rope_interaction.quantity_ids)
+        != {
+            tension_incline.quantity_id,
+            tension_hanging.quantity_id,
+            rope_tension.quantity_id,
+            acceleration_incline.quantity_id,
+            acceleration_hanging.quantity_id,
+            rope_acceleration.quantity_id,
+        }
+        or set(wraps[0].quantity_ids)
+        != {rope_tension.quantity_id, rope_acceleration.quantity_id}
+        or {
+            frozenset(item.quantity_ids)
+            for item in attached
+        }
+        != {
+            frozenset(
+                (
+                    tension_incline.quantity_id,
+                    acceleration_incline.quantity_id,
+                    rope_tension.quantity_id,
+                    rope_acceleration.quantity_id,
+                )
+            ),
+            frozenset(
+                (
+                    tension_hanging.quantity_id,
+                    acceleration_hanging.quantity_id,
+                    rope_tension.quantity_id,
+                    rope_acceleration.quantity_id,
+                )
+            ),
+        }
+    ):
+        return None, failure("requires exact unframed rope coordinates and attachment transforms", rope_id)
+
+    friction = friction_values[0] if len(friction_values) == 1 else None
+    coefficient = coefficients[0] if len(coefficients) == 1 else None
+    carrier = None
+    if regime == "inactive":
+        if (
+            len(contact_values) != 2
+            or friction is not None
+            or coefficient is not None
+            or friction_state.quantity_ids
+        ):
+            return None, failure("has an invalid frictionless contact profile")
+    else:
+        if (
+            len(contact_values) != 4
+            or friction is None
+            or coefficient is None
+            or not exact_known(coefficient, positive=False)
+            or coefficient.role is not QuantityRole.coefficient_friction
+            or coefficient.subject_id != incline_body_id
+            or coefficient.dimension != DimensionVector.dimensionless()
+            or set(friction_state.quantity_ids)
+            != {friction.quantity_id, normal.quantity_id, coefficient.quantity_id}
+            or len(friction_state.quantity_ids) != 3
+            or not exact_unknown_axis(
+                friction,
+                role=QuantityRole.force,
+                subject_id=incline_body_id,
+                point_id=contact_point.point_id,
+                frame_id=incline_frame.frame_id,
+                component="tangential",
+                sign=None,
+            )
+        ):
+            return None, failure("has an invalid active-friction contact profile")
+        motion_state = body_motion_states[0]
+        if regime == "sticking":
+            hanging_drive = mass_hanging.si_value * gravity_a.si_value
+            incline_drive = (
+                mass_incline.si_value
+                * gravity_a.si_value
+                * math.sin(angle.si_value)
+            )
+            static_drive = hanging_drive - incline_drive
+            static_drive_is_zero = math.isclose(
+                static_drive,
+                0.0,
+                rel_tol=1.0e-12,
+                abs_tol=1.0e-12 * max(1.0, abs(hanging_drive), abs(incline_drive)),
+            )
+            expected_friction_sign = (
+                None
+                if static_drive_is_zero
+                else 1 if static_drive > 0.0 else -1
+            )
+            if (
+                motion_state.state.value != "at_rest"
+                or motion_state.quantity_ids
+                or (
+                    expected_friction_sign is not None
+                    and friction.direction.sign != expected_friction_sign
+                )
+            ):
+                return None, failure("requires an exact evidenced sticking state")
+        else:
+            if motion_state.state.value != "moving" or len(motion_state.quantity_ids) != 1:
+                return None, failure("requires an exact evidenced sliding state")
+            carrier = quantities.get(motion_state.quantity_ids[0])
+            carrier_sign = getattr(getattr(carrier, "direction", None), "sign", None)
+            if (
+                carrier is None
+                or carrier.role is not QuantityRole.velocity
+                or carrier.shape is not QuantityShape.scalar
+                or carrier.dimension != DimensionVector(length=1, time=-1)
+                or carrier.symbol_id is None
+                or carrier.subject_id != incline_body_id
+                or carrier.point_id is not None
+                or carrier.frame_id != incline_frame.frame_id
+                or carrier.interval_id != interval.interval_id
+                or carrier.event_id is not None
+                or carrier.component.value != "tangential"
+                or carrier.provenance is not Provenance.explicit_source
+                or type(carrier.si_value) is not float
+                or not math.isfinite(carrier.si_value)
+                or carrier.si_value <= 0.0
+                or not carrier.evidence_refs
+                or carrier_sign not in {-1, 1}
+                or not _exact_axis_direction(
+                    carrier,
+                    frame_id=incline_frame.frame_id,
+                    axis="tangent",
+                    sign=carrier_sign,
+                )
+                or friction.direction.sign != -carrier_sign
+            ):
+                return None, failure("requires friction opposite one positive typed velocity carrier")
+
+    if (
+        set(contact_states[0].quantity_ids)
+        != {normal.quantity_id, normal_acceleration.quantity_id}
+        or len(contact_states[0].quantity_ids) != 2
+        or mass_incline.dimension.plus(gravity_a.dimension) != gravity_tangent.dimension
+        or gravity_tangent.dimension != gravity_normal.dimension
+        or gravity_tangent.dimension != hanging_weight.dimension
+        or gravity_tangent.dimension != tension_incline.dimension
+        or gravity_tangent.dimension != tension_hanging.dimension
+        or gravity_tangent.dimension != normal.dimension
+        or mass_incline.dimension.plus(acceleration_incline.dimension)
+        != gravity_tangent.dimension
+        or mass_incline.dimension.plus(normal_acceleration.dimension)
+        != normal.dimension
+        or mass_hanging.dimension.plus(acceleration_hanging.dimension)
+        != hanging_weight.dimension
+        or acceleration_incline.dimension != gravity_a.dimension
+        or acceleration_hanging.dimension != gravity_a.dimension
+        or normal_acceleration.dimension != gravity_a.dimension
+        or (friction is not None and friction.dimension != normal.dimension)
+    ):
+        return None, failure("contains a dimensionally inconsistent force balance")
+
+    expected_quantities = {
+        item.quantity_id
+        for item in (
+            mass_incline,
+            mass_hanging,
+            gravity_a,
+            angle,
+            gravity_tangent,
+            gravity_normal,
+            hanging_weight,
+            tension_incline,
+            tension_hanging,
+            normal,
+            normal_acceleration,
+            acceleration_incline,
+            acceleration_hanging,
+            rope_tension,
+            rope_acceleration,
+            *(() if friction is None else (friction,)),
+            *(() if coefficient is None else (coefficient,)),
+            *(() if carrier is None else (carrier,)),
+        )
+    }
+    query_quantity = quantities.get(query.target.target_quantity_id or "")
+    allowed_query_quantities = (
+        tension_incline,
+        tension_hanging,
+        acceleration_incline,
+        acceleration_hanging,
+    )
+    if (
+        set(quantities) != expected_quantities
+        or query_quantity not in allowed_query_quantities
+        or query.target.role is not query_quantity.role
+        or query.target.subject_id != query_quantity.subject_id
+        or query.target.point_id != query_quantity.point_id
+        or query.target.frame_id != query_quantity.frame_id
+        or query.target.interval_id != interval.interval_id
+        or query.target.event_id is not None
+        or query.target.component is not query_quantity.component
+        or query.target.direction != query_quantity.direction
+        or not query.evidence_refs
+        or any(item.constraint_id in relevant for item in ir.constraints)
+        or any(
+            item.subject_id == pulley_id and item.quantity_id in relevant
+            for item in ir.quantities
+        )
+    ):
+        return None, failure("contains extra client equations, quantities, or an inexact query binding")
+    return _FixedPulleyInclineContactProfile(
         friction_state_id=friction_state.state_condition_id
     ), None
 
@@ -6034,11 +7022,27 @@ class MechanicsCompiler:
         incline_domain_issue = _incline_projection_domain_issue(safe_ir, query, relevant)
         if incline_domain_issue is not None:
             return _failure(CompilerStatus.invalid, incline_domain_issue)
-        incline_friction_issue = _incline_friction_contract_issue(
-            safe_ir, query, relevant
+        incline_pulley_profile, incline_pulley_issue = (
+            _fixed_pulley_incline_contact_contract(
+                safe_ir,
+                query,
+                relevant,
+                authority.approved_assumption_ids,
+            )
         )
-        if incline_friction_issue is not None:
-            return _failure(CompilerStatus.unsupported, incline_friction_issue)
+        if incline_pulley_issue is not None:
+            status = (
+                CompilerStatus.invalid
+                if incline_pulley_issue.code is CompilerIssueCode.invalid_domain
+                else CompilerStatus.unsupported
+            )
+            return _failure(status, incline_pulley_issue)
+        if incline_pulley_profile is None:
+            incline_friction_issue = _incline_friction_contract_issue(
+                safe_ir, query, relevant
+            )
+            if incline_friction_issue is not None:
+                return _failure(CompilerStatus.unsupported, incline_friction_issue)
         horizontal_profile, horizontal_issue = (
             _fixed_pulley_horizontal_contact_contract(
                 safe_ir,
@@ -6054,7 +7058,7 @@ class MechanicsCompiler:
                 else CompilerStatus.unsupported
             )
             return _failure(status, horizontal_issue)
-        if horizontal_profile is None:
+        if horizontal_profile is None and incline_pulley_profile is None:
             fixed_pulley_issue = _fixed_pulley_particle_contract_issue(
                 safe_ir,
                 query,
@@ -6073,9 +7077,11 @@ class MechanicsCompiler:
             relevant,
             authority.approved_assumption_ids,
             accepted_friction_state_ids=(
-                frozenset()
-                if horizontal_profile is None
-                else frozenset({horizontal_profile.friction_state_id})
+                frozenset(
+                    item.friction_state_id
+                    for item in (horizontal_profile, incline_pulley_profile)
+                    if item is not None
+                )
             ),
         )
         if support_issue is not None:
