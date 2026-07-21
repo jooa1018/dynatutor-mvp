@@ -23,6 +23,13 @@ an equation, root-selection, verification, grading, or final-answer authority.
 are diagnostics or search-order hints.  Removing or changing them must not
 change compiler applicability or a solved result.
 
+Raw-text invariance means that different surrounding source text can produce
+an accepted Mechanics IR with identical calculation-authoritative structure
+and validated evidence.  Changed non-calculation source-identity metadata such
+as `source_text_sha256` must not affect calculation, but mutating an accepted
+evidence quote, span, occurrence, or figure region is a provenance change and
+is not a raw-text-only invariance case.
+
 The contract constants are defined in
 `backend/engine/mechanics/contracts.py`:
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
+import hashlib
 import inspect
 from pathlib import Path
 
@@ -88,16 +89,18 @@ def _diagnostic_variant(
     ir: MechanicsProblemIRV1,
     *,
     system_type: str | None,
-    paraphrase: str,
+    source_text: str,
 ) -> MechanicsProblemIRV1:
     payload = ir.model_dump(mode="python", warnings="none")
     payload["metadata"]["system_type"] = system_type
     payload["metadata"]["subtype"] = None
-    evidence = [dict(item) for item in payload["source_evidence"]]
-    for item in evidence:
-        item["quote"] = paraphrase
-        item["source_span"] = {"start": 0, "end": len(paraphrase)}
-    payload["source_evidence"] = evidence
+    # Raw source text is outside the accepted calculation IR.  Its diagnostic
+    # digest can change while already validated evidence remains exact; changing
+    # the evidence itself would be a provenance mutation, not a paraphrase-only
+    # invariance case.
+    payload["metadata"]["source_text_sha256"] = hashlib.sha256(
+        source_text.encode("utf-8")
+    ).hexdigest()
     return MechanicsProblemIRV1.model_validate(payload)
 
 
@@ -217,14 +220,25 @@ def test_diagnostic_variants_are_fully_invariant_and_physics_change_is_not(
     changed = _diagnostic_variant(
         ir,
         system_type="incorrectDiagnosticLabel",
-        paraphrase="This wording describes the same supplied physical quantity.",
+        source_text=(
+            "A stated physical quantity is supplied here. "
+            "The surrounding explanation uses one diagnostic label."
+        ),
     )
     removed = _diagnostic_variant(
         ir,
         system_type=None,
-        paraphrase="Equivalent wording preserves every physical datum in the input.",
+        source_text=(
+            "A stated physical quantity is supplied here. "
+            "Equivalent surrounding wording omits the diagnostic label."
+        ),
     )
     physical = _single_particle_ir(force=12.0)
+    assert changed.source_evidence == ir.source_evidence
+    assert removed.source_evidence == ir.source_evidence
+    assert changed.metadata.source_text_sha256 != ir.metadata.source_text_sha256
+    assert removed.metadata.source_text_sha256 != ir.metadata.source_text_sha256
+    assert changed.metadata.source_text_sha256 != removed.metadata.source_text_sha256
     result = compare_mechanics_ir_invariance(
         solved_execution,
         (
