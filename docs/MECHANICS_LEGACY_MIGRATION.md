@@ -126,12 +126,12 @@ same-fixture evidence are separate axes:
 * **deferred: `4/29`**, exactly registry entries 19
   (`spring_mass_vibration`), 23 (`relative_acceleration_translation`), 24
   (`coriolis_relative_motion`), and 28 (`slot_pin_relative_motion`);
-* **accepted in-scope evidence: `5/25`**; **pending in-scope evidence:
-  `20/25`**.
+* **accepted in-scope evidence: `7/25`**; **pending in-scope evidence:
+  `18/25`**.
 
-Entry 26, `polar_kinematics`, is explicitly **in scope**.  Entries 1-5 are the
-five accepted in-scope entries; deferred entries are not parity passes and are
-not generic migrations.  Therefore neither `9/29` nor `29/29 generic migrated`
+Entry 26, `polar_kinematics`, is explicitly **in scope**.  Entries 1-7 are the
+seven accepted in-scope entries; deferred entries are not parity passes and are
+not generic migrations.  Therefore neither `11/29` nor `29/29 generic migrated`
 is a valid roll-up.  This classification supersedes the older Wave 1/2/3 prose
 that grouped `polar_kinematics` with the deferred law gaps or kept
 `spring_mass_vibration` active.
@@ -205,8 +205,9 @@ a wave:
 Each entry requires its focused parity evidence and connected targeted tests.
 The independent read-only Checker and release CI run once at the end of each
 complete wave, not after every entry.  Entry 5 retains its historical accepted
-Checker evidence.  Entries 6 and 7 are now locally accepted, so the independent
-Wave A family Checker and release CI are the next pending gates.
+Checker evidence.  Entries 6 and 7 are now locally accepted, and the independent
+Wave A family Checker passed after its documentation remediation with blocking
+findings `0`.  The exact-head release CI is the next pending gate.
 
 For all four deferred entries, current generic behavior is a precise structured
 unsupported result.  Generic answer authority is **none**; legacy answer
@@ -403,15 +404,18 @@ rollback after generic-path failure.
    fast `68 passed, 9 deselected`; the complete Entry-7 slow matrix is `9 passed`;
    compiler regression is `57 passed`; connected Entry-4-through-6 regression is
    `120 passed, 31 deselected`.  The independent Entry-7 Checker reported final
-   blocking findings `0` and nonblocking findings `0`.  This is a local product
-   checkpoint, not a new release-CI claim; the Wave A family Checker and release
-   CI are now pending.
+   blocking findings `0` and nonblocking findings `0`.  The independent Wave A
+   Checker initially found one documentation-consistency blocker; after the
+   ledger/handoff remediation its final verdict was `PASS`, blocking findings
+   `0`, with one nonblocking local slow-sampling coverage note.  This remains a
+   local product checkpoint, not a new release-CI claim; the exact-head Wave A
+   release CI is pending.
 
 Current authoritative roll-up: the registry inventory is `29/29` classified;
 the in-scope set is `25`, with `7/25` accepted and `18/25` pending; the deferred
 set is exactly `4/4` classified.  Deferred classification is not accepted parity,
 so this is neither `11/29` nor a `29/29 generic migrated` claim.  The next exact
-task is the Wave A family Checker and release CI, followed by Wave B entry 8,
+task is the exact-head Wave A release CI, followed by Wave B entry 8,
 `pure_rolling_energy`.
 
 The separate typed scope/runtime amendment passed its final independent

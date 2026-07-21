@@ -1,9 +1,10 @@
 # Phase 56 Cross-Device Resume Handoff
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
-updated on `2026-07-22` (`Asia/Seoul`) after Entry 5 acceptance and the separate
-authoritative typed scope/runtime amendment child. It is a pause record, not an
-`IMPLEMENTATION COMPLETE` claim.
+updated on `2026-07-22` (`Asia/Seoul`) after local acceptance of Wave A entries
+5-7 and the documentation remediation requested by the Wave A Checker. The
+Checker rerun passed with blocking findings `0`; Wave A release CI remains
+pending. It is a pause record, not an `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
 
@@ -26,20 +27,27 @@ authoritative typed scope/runtime amendment child. It is a pause record, not an
   `feat(mechanics): migrate Atwood pulley solver`).
 - Latest Entry-5 product/same-fixture migration checkpoint:
   `7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e`.
-- Current branch head: the separate typed scope/runtime amendment child of
-  Entry-5 product `7fff1b83...`; verify its exact SHA from the branch.
+- Latest Entry-6 product/same-fixture migration checkpoint:
+  `f3e747b4480f98223c113170181698c8b4822e84`.
+- Latest Entry-7 product/same-fixture migration checkpoint:
+  `26434fc5edc25d617724c8352d1643a40b555f13`.
+- Latest locally accepted Entry-7 documentation checkpoint before this handoff
+  remediation: `bb890ea82a9271ceae23491472ea55a9c8ba2fdf`.
+- Current branch head: the branch head containing this file after the
+  documentation remediation; verify its exact SHA from the branch.
 - Latest release-validated migration tree (Entry 4):
   `dc0e90d954b16a342c16073f2c3021f65da875bf`.
 - Latest exact-head release-CI checkpoint: `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
-- `HANDOFF_COMMIT_SHA` is the typed scope/runtime amendment child of Entry-5
-  product `7fff1b83...`; no release-CI result is attributed to either later SHA.
+- No release-CI result is attributed to the scope/runtime amendment or Entries
+  5-7. The latest accepted release evidence remains Entry 4 until the Wave A PR
+  synchronize run succeeds at its exact head.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
-- PR #17 product head before the typed scope/runtime amendment child:
-  `7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e`
-- PR #17 authoritative head after a successful checkpoint push:
-  `HANDOFF_COMMIT_SHA`
+- PR #17 remote head before the pending Wave A push:
+  `a63647163c291c60eb3ccf9e39d8b6db633766e0`.
+- PR #17 authoritative head after a successful Wave A checkpoint push:
+  `HANDOFF_COMMIT_SHA`; re-query rather than assuming the push occurred.
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
 
 Remote state was read through the GitHub app immediately before checkpointing:
@@ -204,7 +212,23 @@ master instruction.
     invariance, and fail-closed authority/structure/evidence negatives. Targeted
     evidence is fast `45 passed, 9 deselected`, slow `9 passed, 45 deselected`,
     compiler regression `57 passed`, and a fresh Entry-5 Checker `PASS` with
-    blocking findings `0`. Wave A release CI is pending until entries 6 and 7.
+    blocking findings `0`. This remains the historical Entry-5 checkpoint; no
+    Wave A release-CI result is attributed to it.
+  - canonical registry entry 6, `pulley_incline_hanging`, at accepted product
+    checkpoint `f3e747b4480f98223c113170181698c8b4822e84`. Its exact typed
+    incline/contact/rope topology covers frictionless, sticking, sliding,
+    direction, static-boundary, acceleration, and tension cases without using
+    metadata, raw text, or legacy output as authority. Focused evidence is fast
+    `39 passed, 16 deselected`, complete slow `16 passed`, compiler `57 passed`,
+    and an independent Checker with blocking findings `0`.
+  - canonical registry entry 7, `massive_pulley_atwood`, at accepted product
+    checkpoint `26434fc5edc25d617724c8352d1643a40b555f13`. Its global exact
+    typed inventory emits ten equations with unequal segment tensions,
+    no-slip acceleration, and Newton-Euler rotation; ideal equal-tension and
+    generic fixed-pulley emissions are suppressed. Focused evidence is fast
+    `68 passed, 9 deselected`, complete slow `9 passed`, compiler `57 passed`,
+    and an independent Entry-7 Checker with blocking and nonblocking findings
+    both `0`.
 - Accepted Stage 5 decisions:
   - legacy parity is diagnostic only and can never verify, select, repair, or
     provide a generic fallback answer;
@@ -224,17 +248,20 @@ master instruction.
     variant is independently compiled and solved.
 - Still incomplete:
   - the exact inventory is `29/29` classified: `25` in scope and four deferred;
-    accepted in-scope evidence is `5/25`, with `20/25` pending;
-  - Waves A-F remain active under the superseding typed scope plan; Wave A entry
-    5 is accepted, entries 6-7 and the Wave A family Checker/release CI remain;
+    accepted in-scope evidence is `7/25`, with `18/25` pending;
+  - Waves A-F remain active under the superseding typed scope plan; Wave A
+    entries 5-7 are locally accepted and the remediated Wave A family Checker
+    passed, while only exact-head release CI remains;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: none at the accepted `5/25` in-scope boundary. Entry
-  5 targeted evidence and its fresh Checker passed; the latest exact release CI
-  remains Entry 4 at `dedb4c7...`, run `29841110152` (run #429, `SUCCESS`).
-- Next gate: canonical registry entry 6, `pulley_incline_hanging`, followed by
-  entry 7, `massive_pulley_atwood`; then run the Wave A family Checker and
-  release CI once for the complete 5-7 family.
+- Current failure/blocker: no product or Checker blocker at the accepted `7/25`
+  in-scope boundary. The first Wave A Checker found one documentation-consistency
+  blocker; after this handoff/ledger remediation its final verdict was `PASS`
+  with blocking findings `0` and one nonblocking local slow-sampling coverage
+  note. The latest exact release CI remains Entry 4 at `dedb4c7...`, run
+  `29841110152` (run #429, `SUCCESS`).
+- Next gate: push once and require the exact-head PR release CI to pass. Wave B
+  entry 8, `pure_rolling_energy`, follows only after that wave gate.
 
 #### Superseding Stage 5 typed scope and exact waves
 
@@ -262,14 +289,14 @@ classification is `25` in scope and four deferred, exactly entries 19
 
 Run focused parity evidence and connected targeted tests for each entry. Run one
 fresh independent read-only Checker and release CI only at the end of a complete
-wave. Entry 5 retains its historical accepted Checker evidence, but it is not a
-Wave A release-CI checkpoint; entries 6 and 7 come next.
+wave. Entries 5-7 are locally accepted and the Wave A Checker passed; release CI
+is the current gate, not additional entry implementation.
 
 For each deferred entry, generic behavior is precise structured unsupported;
 generic answer authority is **none** and legacy answer authority is **off-mode
 rollback only**. No silent fallback is allowed. Future typed extension remains
 preserved without counting any deferred entry as a parity pass or generic
-migration. Thus `5/25 accepted + 4 deferred` must never be reported as `9/29`.
+migration. Thus `7/25 accepted + 4 deferred` must never be reported as `11/29`.
 
 ### Stage 6 — NOT_STARTED
 
@@ -313,10 +340,10 @@ migration. Thus `5/25 accepted + 4 deferred` must never be reported as `9/29`.
 
 ## D. Exact work at the pause boundary
 
-- Work immediately before this update: accepted `pulley_table_hanging` as
-  canonical registry entry 5 at product `7fff1b83...`, then recorded the
-  separate authoritative typed scope/runtime amendment child. Entries 1-5 are
-  accepted in-scope evidence (`5/25`); this is not a full-wave release claim.
+- Work immediately before this update: locally accepted Wave A entries 5-7 at
+  products `7fff1b83...`, `f3e747b...`, and `26434fc...`, then recorded Entry 7
+  at documentation checkpoint `bb890ea...`. Entries 1-7 are accepted in-scope
+  evidence (`7/25`); this is not yet a Wave A release-CI claim.
 - The typed scope/runtime amendment changes these product paths:
   - `backend/engine/mechanics/__init__.py`
   - `backend/engine/mechanics/compiler/__init__.py`
@@ -380,18 +407,16 @@ migration. Thus `5/25 accepted + 4 deferred` must never be reported as `9/29`.
   - `backend/tests/test_phase56_mechanics_compiler.py`
   - `backend/tests/test_phase56_mechanics_migration_harness.py`
 - Safe latest accepted product migration unit:
-  `7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e` (Entry 5 targeted evidence).
+  `26434fc5edc25d617724c8352d1643a40b555f13` (Entry 7 targeted evidence).
 - Safe last exact-head release-CI unit:
   `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9`, run `29841110152` (run #429),
   `SUCCESS`.
 - Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
   test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
-- Immediate next task: create the independent same-fixture parity package for
-  canonical registry entry 6, `pulley_incline_hanging`, then entry 7,
-  `massive_pulley_atwood`. After both are accepted, run the Wave A family
-  Checker and release CI for entries 5-7. Raw text, `system_type`, corpus labels,
-  expected answers, and legacy output must not enter the generic calculation
-  path.
+- Immediate next task: fast-forward push once and require the pull-request
+  release workflow to pass at the exact head. Raw text,
+  `system_type`, corpus labels, expected answers, and legacy output must not
+  enter the generic calculation path.
 
 Read in this order on the laptop:
 
@@ -751,7 +776,8 @@ Only actually executed evidence is listed.
   fast selection: `45 passed, 9 deselected`; targeted slow selection: `9 passed,
   45 deselected`; compiler regression: `57 passed`. Fresh Entry-5 Checker:
   `PASS`, blocking findings `0`. No release-CI result is attributed to
-  `7fff1b83...`; Wave A family release CI waits for entries 6 and 7.
+  `7fff1b83...`; this is historical Entry-5 evidence, while Entries 6-7 are now
+  locally accepted and the combined Wave A gate remains pending.
 - The local Windows full runs above used only the 20-second worker-startup shim.
   They do not establish that the unchanged default 5-second symbolic and
   verification budgets are green on Windows/Python 3.12; the authoritative
@@ -834,20 +860,20 @@ Only actually executed evidence is listed.
 
 ### Still not run
 
-- Stage 5 in-scope same-fixture parity: `5/25` accepted; `20/25` pending.
+- Stage 5 in-scope same-fixture parity: `7/25` accepted; `18/25` pending.
   Deferred scope is exactly `4/4` classified and does not count as parity.
 - Stage 6 figure/UI tests: `NOT RUN`.
 - Stage 7 corpus/compositional/synthetic tests: `NOT RUN`.
 - Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`STAGE5_ENTRY_5_TARGETED_ACCEPTED_SCOPE_AMENDED`: product `7fff1b83...`
-contains accepted same-fixture entries 1-5, and the branch head adds the separate
-typed scope/runtime amendment child. This is `5/25` accepted in-scope evidence,
-with `20/25` pending and four explicitly deferred. It is not `9/29`, not a
-`29/29` generic-migrated claim, not a Wave A family release-CI checkpoint, and
-not a Phase 56 completion claim. Stages 6-9 and Stage 5 product integration
-remain incomplete.
+`STAGE5_WAVE_A_LOCALLY_ACCEPTED_RELEASE_PENDING`: product `26434fc...`
+contains accepted same-fixture entries 1-7, and the branch head adds the Entry-7
+ledger plus this Checker documentation remediation. This is `7/25` accepted
+in-scope evidence, with `18/25` pending and four explicitly deferred. It is not
+`11/29`, not a `29/29` generic-migrated claim, not yet a Wave A release-CI
+checkpoint, and not a Phase 56 completion claim. Stages 6-9 and Stage 5 product
+integration remain incomplete.
 
 ## G. Architecture invariants
 
@@ -887,11 +913,11 @@ remain incomplete.
 
 ## I. Known risks and unresolved decisions
 
-- Per-solver accepted evidence is `5/25` in scope; compiler unit fixtures do not
-  count as same-fixture end-to-end parity for the pending `20/25`. The four
+- Per-solver accepted evidence is `7/25` in scope; compiler unit fixtures do not
+  count as same-fixture end-to-end parity for the pending `18/25`. The four
   deferred entries are classified, not accepted.
-- Entry 6, `pulley_incline_hanging`, is next, followed by Entry 7,
-  `massive_pulley_atwood`; Wave A family Checker/release CI runs only after both.
+- Wave A entries 5-7 are locally accepted and the independent Checker passed.
+  Exact-head PR release CI is next; Wave B entry 8 follows only after it passes.
 - The deferred set is exactly `spring_mass_vibration`,
   `relative_acceleration_translation`, `coriolis_relative_motion`, and
   `slot_pin_relative_motion`. Their current generic result must remain precise
@@ -925,17 +951,15 @@ remain incomplete.
 3. Read this handoff completely.
 4. Read the reattached Master Instruction v2 completely.
 5. Confirm exact-head release-CI checkpoint `dedb4c7...`, run `29841110152`
-   (run #429), remains successful. Separately confirm Entry-5 product
-   `7fff1b83...` and the later typed scope/runtime amendment child; do not attribute release CI
-   to either later SHA.
+   (run #429), remains successful. Separately confirm Entry-5/6/7 products
+   `7fff1b83...`, `f3e747b...`, and `26434fc...`; do not attribute release CI to
+   those later SHAs before the Wave A PR run succeeds.
 6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0/
-   accepted entries 1-5 reviews.
-7. Start canonical registry entry 6, `pulley_incline_hanging`, then Entry 7,
-   `massive_pulley_atwood`, following their matrix rows and typed authority
-   boundaries.
-8. Run only focused fixture/harness and connected accepted regressions for each
-   entry, then run one fresh independent read-only Wave A Checker and release CI
-   once entries 5-7 are complete.
+   accepted entries 1-7 reviews.
+7. Confirm the remediated Wave A Checker verdict is `PASS`, blocking findings
+   `0`.
+8. Fast-forward push once and require the exact-head PR release CI; then begin
+   Wave B entry 8, `pure_rolling_energy`.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
    permitted coverage/figure use.
 10. Continue without intermediate user confirmation unless a hard blocker,
@@ -958,11 +982,14 @@ Latest entry-3 product tree: 72301ea20e43e5310a269dac943fc7d56f01f689
 Latest entry-4 product SHA: dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9
 Latest entry-4 product tree: dc0e90d954b16a342c16073f2c3021f65da875bf
 Latest entry-5 product/same-fixture SHA: 7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e
-Current branch head: separate typed scope/runtime amendment child of 7fff1b83... (verify exact SHA)
+Latest entry-6 product/same-fixture SHA: f3e747b4480f98223c113170181698c8b4822e84
+Latest entry-7 product/same-fixture SHA: 26434fc5edc25d617724c8352d1643a40b555f13
+Latest Entry-7 documentation checkpoint before Checker remediation: bb890ea82a9271ceae23491472ea55a9c8ba2fdf
+Current branch head: branch head containing this handoff remediation (verify exact SHA)
 Latest release-validated migration tree: dc0e90d954b16a342c16073f2c3021f65da875bf
 Latest exact-head release-CI SHA: dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9
 Latest exact-head release run: 29841110152 (run #429), SUCCESS
-Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 5/25 accepted and 20/25 pending, deferred 4/4 explicit
+Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 7/25 accepted and 18/25 pending, deferred 4/4 explicit
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -985,17 +1012,14 @@ First read, in order:
 The old laptop-local work ledger may be absent. Do not treat that as a blocker;
 this handoff is authoritative. Follow Master Instruction v2 and the user's
 Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
-Stage 5 matrix/parity/runtime/W0 packages.
+Stage 5 matrix/parity/runtime/W0/Entries 1-7 packages.
 
-Entry 5 `pulley_table_hanging` is accepted at product `7fff1b83...` with targeted
-fast `45 passed / 9 deselected`, slow `9 passed / 45 deselected`, compiler
-evidence `57 passed`, and Checker blocking findings `0`. It has no new release-CI
-claim.
+Wave A entries 5-7 are locally accepted at products `7fff1b83...`, `f3e747b...`,
+and `26434fc...`. Their focused fast/slow parity and independent entry-level
+Checker evidence passed. No Wave A release-CI result is yet attributed to them.
 
-Next exact task: implement canonical registry entry 6
-`pulley_incline_hanging`, then Entry 7 `massive_pulley_atwood`. Run their focused
-parity evidence and connected targeted tests, then one fresh independent
-read-only Wave A Checker and release CI once entries 5-7 are complete.
+Next exact task: fast-forward push once and require the pull-request release
+workflow to pass at the exact head. Wave B entry 8 follows.
 Raw text, `system_type`, corpus/family/case metadata, expected answers, and legacy
 output must not enter generic compilation, solving, verification, or selection.
 
@@ -1004,7 +1028,7 @@ Authoritative scope: 25 in scope; deferred exact entries 19
 `coriolis_relative_motion`, and 28 `slot_pin_relative_motion`; Entry 26
 `polar_kinematics` is in scope. Deferred means structured unsupported, no generic
 answer authority, off-mode rollback only, and no silent fallback. Never report
-the state as 9/29 or 29/29 generic migrated.
+the state as 11/29 or 29/29 generic migrated.
 
 Keep the public corpus sealed until Stage 7. The Beer PDF is reference-only for
 Dynamics Chapters 11-19 structure and permitted later figure/coverage work; it is
