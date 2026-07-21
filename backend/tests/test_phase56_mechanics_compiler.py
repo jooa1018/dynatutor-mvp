@@ -945,7 +945,7 @@ def test_forged_or_evidence_less_known_value_fails_closed(provenance: str) -> No
     assert result.issues[0].code is CompilerIssueCode.invalid_binding
 
 
-def test_supported_quadratic_is_deferred_but_unknown_denominator_is_rejected() -> None:
+def test_natural_frequency_readout_is_deferred_and_unknown_denominator_is_rejected() -> None:
     quadratic = _single_unknown_payload([])
     quadratic["symbols"] = [
         _symbol("omega", "frequencyQ", FREQUENCY),
@@ -968,9 +968,12 @@ def test_supported_quadratic_is_deferred_but_unknown_denominator_is_rejected() -
     )
     quadratic["queries"][0]["output_unit"] = "1/s"
     quadratic["queries"][0]["output_dimension"] = FREQUENCY.model_dump(mode="json")
-    supported = compile_mechanics_ir(_ir(quadratic))
-    assert supported.status is CompilerStatus.ready and supported.graph is not None
-    assert CompilerIssueCode.nonlinear_verification_deferred in {item.code for item in supported.issues}
+    deferred = compile_mechanics_ir(_ir(quadratic))
+    assert deferred.status is CompilerStatus.unsupported
+    assert deferred.graph is None
+    assert tuple(item.code for item in deferred.issues) == (
+        CompilerIssueCode.free_linear_vibration_readout_deferred,
+    )
 
     rational = _single_unknown_payload([])
     rational["symbols"] = [

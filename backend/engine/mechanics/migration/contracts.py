@@ -34,6 +34,7 @@ from engine.mechanics.verification.contracts import MechanicsSolveTerminal
 MIGRATION_CONTRACT_VERSION = "mechanics-migration-contract-v1"
 MIGRATION_PARITY_POLICY_VERSION = "mechanics-migration-parity-policy-v1"
 MIGRATION_INVARIANCE_POLICY_VERSION = "mechanics-migration-invariance-policy-v1"
+MIGRATION_SCOPE_POLICY_VERSION = "mechanics-migration-scope-policy-v1"
 PARITY_ABSOLUTE_TOLERANCE = 1.0e-9
 PARITY_RELATIVE_TOLERANCE = 1.0e-9
 
@@ -75,6 +76,10 @@ CanonicalSIUnit = Annotated[
             r"(?:\*(?:kg|m|s|A|K|mol|cd)(?:\^-?[0-9]+)?)*)$"
         ),
     ),
+]
+MigrationCheckpointHash = Annotated[
+    str,
+    StringConstraints(pattern=r"^[0-9a-f]{40}$"),
 ]
 
 
@@ -612,6 +617,237 @@ class InvarianceComparison(FrozenModel):
         return self
 
 
+class LegacySolverId(str, Enum):
+    """Closed legacy registry inventory in canonical constructor order."""
+
+    single_particle_newton = "single_particle_newton"
+    incline_no_friction = "incline_no_friction"
+    incline_with_friction = "incline_with_friction"
+    pulley_atwood = "pulley_atwood"
+    pulley_table_hanging = "pulley_table_hanging"
+    pulley_incline_hanging = "pulley_incline_hanging"
+    massive_pulley_atwood = "massive_pulley_atwood"
+    pure_rolling_energy = "pure_rolling_energy"
+    rolling_energy_general = "rolling_energy_general"
+    vertical_circle = "vertical_circle"
+    collision_1d = "collision_1d"
+    constant_acceleration_1d = "constant_acceleration_1d"
+    projectile_motion = "projectile_motion"
+    constant_force_work = "constant_force_work"
+    fixed_axis_rotation = "fixed_axis_rotation"
+    horizontal_friction_force = "horizontal_friction_force"
+    impulse_momentum = "impulse_momentum"
+    work_energy_speed = "work_energy_speed"
+    spring_mass_vibration = "spring_mass_vibration"
+    spring_energy_speed = "spring_energy_speed"
+    flat_curve_friction = "flat_curve_friction"
+    banked_curve_no_friction = "banked_curve_no_friction"
+    relative_acceleration_translation = "relative_acceleration_translation"
+    coriolis_relative_motion = "coriolis_relative_motion"
+    plane_rigid_body_acceleration = "plane_rigid_body_acceleration"
+    polar_kinematics = "polar_kinematics"
+    instant_center_velocity = "instant_center_velocity"
+    slot_pin_relative_motion = "slot_pin_relative_motion"
+    plane_rigid_body_velocity = "plane_rigid_body_velocity"
+
+
+LEGACY_SOLVER_INVENTORY: tuple[LegacySolverId, ...] = tuple(LegacySolverId)
+DEFERRED_LEGACY_SOLVER_IDS: frozenset[LegacySolverId] = frozenset(
+    {
+        LegacySolverId.spring_mass_vibration,
+        LegacySolverId.relative_acceleration_translation,
+        LegacySolverId.coriolis_relative_motion,
+        LegacySolverId.slot_pin_relative_motion,
+    }
+)
+IN_SCOPE_LEGACY_SOLVER_IDS: tuple[LegacySolverId, ...] = tuple(
+    solver_id
+    for solver_id in LEGACY_SOLVER_INVENTORY
+    if solver_id not in DEFERRED_LEGACY_SOLVER_IDS
+)
+LEGACY_SOLVER_INVENTORY_COUNT = 29
+LEGACY_SOLVER_IN_SCOPE_COUNT = 25
+LEGACY_SOLVER_DEFERRED_COUNT = 4
+
+
+class LegacySolverInventoryState(str, Enum):
+    PRESENT = "PRESENT"
+
+
+class LegacySolverScopeState(str, Enum):
+    IN_CURRENT_COURSE_SCOPE = "IN_CURRENT_COURSE_SCOPE"
+    DEFERRED_OUT_OF_CURRENT_COURSE_SCOPE = (
+        "DEFERRED_OUT_OF_CURRENT_COURSE_SCOPE"
+    )
+
+
+class LegacySolverMigrationState(str, Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    DEFERRED = "DEFERRED"
+
+
+class LegacySolverSameFixtureState(str, Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    NOT_PLANNED_IN_PHASE56 = "NOT_PLANNED_IN_PHASE56"
+
+
+class LegacySolverProductGenericAuthority(str, Enum):
+    NONE = "NONE"
+    VERIFIED_GENERIC_ONLY = "VERIFIED_GENERIC_ONLY"
+
+
+class LegacySolverRuntimeBehavior(str, Enum):
+    NOT_YET_AUTHORIZED = "NOT_YET_AUTHORIZED"
+    VERIFIED_GENERIC_ONLY = "VERIFIED_GENERIC_ONLY"
+    PRECISE_VERIFIED_UNSUPPORTED = "PRECISE_VERIFIED_UNSUPPORTED"
+
+
+class LegacySolverLegacyAuthority(str, Enum):
+    OFF_MODE_ROLLBACK_ONLY = "OFF_MODE_ROLLBACK_ONLY"
+
+
+class LegacySolverSilentFallback(str, Enum):
+    FORBIDDEN = "FORBIDDEN"
+
+
+class LegacySolverFutureExtension(str, Enum):
+    PRESERVED = "PRESERVED"
+
+
+class LegacySolverMigrationRecord(FrozenModel):
+    """One inventory row; it carries planning state but no answer authority."""
+
+    solver_id: LegacySolverId
+    registry_index: StrictInt = Field(ge=1, le=LEGACY_SOLVER_INVENTORY_COUNT)
+    inventory_state: LegacySolverInventoryState
+    scope_state: LegacySolverScopeState
+    migration_state: LegacySolverMigrationState
+    same_fixture_state: LegacySolverSameFixtureState
+    product_generic_authority: LegacySolverProductGenericAuthority
+    runtime_behavior: LegacySolverRuntimeBehavior
+    legacy_authority: LegacySolverLegacyAuthority
+    silent_fallback: LegacySolverSilentFallback
+    future_extension: LegacySolverFutureExtension
+    accepted_checkpoint_hash: MigrationCheckpointHash | None = None
+
+    @model_validator(mode="after")
+    def bind_scope_and_migration_semantics(self) -> "LegacySolverMigrationRecord":
+        deferred = self.solver_id in DEFERRED_LEGACY_SOLVER_IDS
+        expected_scope = (
+            LegacySolverScopeState.DEFERRED_OUT_OF_CURRENT_COURSE_SCOPE
+            if deferred
+            else LegacySolverScopeState.IN_CURRENT_COURSE_SCOPE
+        )
+        if self.scope_state is not expected_scope:
+            raise ValueError("solver scope must exactly follow the fixed scope policy")
+        accepted = self.migration_state is LegacySolverMigrationState.ACCEPTED
+        if accepted != (self.accepted_checkpoint_hash is not None):
+            raise ValueError(
+                "accepted checkpoint hash must exist exactly for accepted migration"
+            )
+        if deferred:
+            expected = (
+                LegacySolverMigrationState.DEFERRED,
+                LegacySolverSameFixtureState.NOT_PLANNED_IN_PHASE56,
+                LegacySolverProductGenericAuthority.NONE,
+                LegacySolverRuntimeBehavior.PRECISE_VERIFIED_UNSUPPORTED,
+            )
+        elif accepted:
+            expected = (
+                LegacySolverMigrationState.ACCEPTED,
+                LegacySolverSameFixtureState.ACCEPTED,
+                LegacySolverProductGenericAuthority.VERIFIED_GENERIC_ONLY,
+                LegacySolverRuntimeBehavior.VERIFIED_GENERIC_ONLY,
+            )
+        else:
+            expected = (
+                LegacySolverMigrationState.PENDING,
+                LegacySolverSameFixtureState.PENDING,
+                LegacySolverProductGenericAuthority.NONE,
+                LegacySolverRuntimeBehavior.NOT_YET_AUTHORIZED,
+            )
+        actual = (
+            self.migration_state,
+            self.same_fixture_state,
+            self.product_generic_authority,
+            self.runtime_behavior,
+        )
+        if actual != expected:
+            raise ValueError(
+                "migration, same-fixture, product-authority, and runtime states "
+                "must form one exact policy profile"
+            )
+        return self
+
+
+class LegacyMigrationProgress(FrozenModel):
+    """Exact 29-row accounting whose completion denominator is 25 in-scope rows."""
+
+    contract_version: Literal[MIGRATION_CONTRACT_VERSION] = MIGRATION_CONTRACT_VERSION
+    scope_policy_version: Literal[MIGRATION_SCOPE_POLICY_VERSION] = (
+        MIGRATION_SCOPE_POLICY_VERSION
+    )
+    records: tuple[LegacySolverMigrationRecord, ...] = Field(
+        min_length=LEGACY_SOLVER_INVENTORY_COUNT,
+        max_length=LEGACY_SOLVER_INVENTORY_COUNT,
+    )
+    inventory_count: Literal[29] = LEGACY_SOLVER_INVENTORY_COUNT
+    in_scope_count: Literal[25] = LEGACY_SOLVER_IN_SCOPE_COUNT
+    deferred_count: Literal[4] = LEGACY_SOLVER_DEFERRED_COUNT
+    accepted_in_scope_count: StrictInt = Field(ge=0, le=LEGACY_SOLVER_IN_SCOPE_COUNT)
+    pending_in_scope_count: StrictInt = Field(ge=0, le=LEGACY_SOLVER_IN_SCOPE_COUNT)
+    in_scope_complete: StrictBool
+
+    @model_validator(mode="after")
+    def bind_exact_progress(self) -> "LegacyMigrationProgress":
+        if tuple(item.solver_id for item in self.records) != LEGACY_SOLVER_INVENTORY:
+            raise ValueError(
+                "migration progress requires the exact canonical 29-solver inventory"
+            )
+        if tuple(item.registry_index for item in self.records) != tuple(
+            range(1, LEGACY_SOLVER_INVENTORY_COUNT + 1)
+        ):
+            raise ValueError("migration progress indices must be contiguous from one")
+        in_scope = tuple(
+            item
+            for item in self.records
+            if item.scope_state is LegacySolverScopeState.IN_CURRENT_COURSE_SCOPE
+        )
+        deferred = tuple(
+            item
+            for item in self.records
+            if item.scope_state
+            is LegacySolverScopeState.DEFERRED_OUT_OF_CURRENT_COURSE_SCOPE
+        )
+        if (
+            len(in_scope) != LEGACY_SOLVER_IN_SCOPE_COUNT
+            or len(deferred) != LEGACY_SOLVER_DEFERRED_COUNT
+        ):
+            raise ValueError("migration progress must preserve the exact 25/4 scope split")
+        accepted = tuple(
+            item
+            for item in in_scope
+            if item.migration_state is LegacySolverMigrationState.ACCEPTED
+        )
+        pending = tuple(
+            item
+            for item in in_scope
+            if item.migration_state is LegacySolverMigrationState.PENDING
+        )
+        if len(accepted) + len(pending) != LEGACY_SOLVER_IN_SCOPE_COUNT:
+            raise ValueError("only accepted or pending records count toward in-scope progress")
+        if self.accepted_in_scope_count != len(accepted):
+            raise ValueError("accepted count must be derived only from in-scope records")
+        if self.pending_in_scope_count != len(pending):
+            raise ValueError("pending count must be derived only from in-scope records")
+        complete = len(accepted) == LEGACY_SOLVER_IN_SCOPE_COUNT
+        if self.in_scope_complete != complete:
+            raise ValueError("completion requires all 25 in-scope migrations accepted")
+        return self
+
+
 def _canonical_model_hash(model: FrozenModel, *, exclude_signature: bool = False) -> str:
     excluded = {"signature_sha256"} if exclude_signature else None
     canonical = json.dumps(
@@ -628,9 +864,16 @@ LegacyDifferentialReport.model_rebuild()
 
 
 __all__ = [
+    "DEFERRED_LEGACY_SOLVER_IDS",
+    "IN_SCOPE_LEGACY_SOLVER_IDS",
+    "LEGACY_SOLVER_DEFERRED_COUNT",
+    "LEGACY_SOLVER_IN_SCOPE_COUNT",
+    "LEGACY_SOLVER_INVENTORY",
+    "LEGACY_SOLVER_INVENTORY_COUNT",
     "MIGRATION_CONTRACT_VERSION",
     "MIGRATION_INVARIANCE_POLICY_VERSION",
     "MIGRATION_PARITY_POLICY_VERSION",
+    "MIGRATION_SCOPE_POLICY_VERSION",
     "PARITY_ABSOLUTE_TOLERANCE",
     "PARITY_RELATIVE_TOLERANCE",
     "CandidateInvarianceRecord",
@@ -648,8 +891,21 @@ __all__ = [
     "LabelledInvarianceVariant",
     "LegacyCandidateScalar",
     "LegacyDifferentialReport",
+    "LegacyMigrationProgress",
     "LegacyObservation",
+    "LegacySolverFutureExtension",
+    "LegacySolverId",
+    "LegacySolverInventoryState",
+    "LegacySolverLegacyAuthority",
+    "LegacySolverMigrationRecord",
+    "LegacySolverMigrationState",
+    "LegacySolverProductGenericAuthority",
+    "LegacySolverRuntimeBehavior",
+    "LegacySolverSameFixtureState",
+    "LegacySolverScopeState",
+    "LegacySolverSilentFallback",
     "LegacyTerminal",
+    "MigrationCheckpointHash",
     "MigrationFiniteFloat",
     "MigrationSIValue",
     "VerificationOutcomeInvarianceRecord",

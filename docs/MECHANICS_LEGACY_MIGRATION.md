@@ -117,6 +117,25 @@ capability IDs.  The command resolves each constructor class through its
 registry import source and reads its `.name`, so the successful sequence check
 is against names rather than class spellings.
 
+### Authoritative typed scope classification
+
+The exact registered inventory is `29/29` classified.  Scope and accepted
+same-fixture evidence are separate axes:
+
+* **in scope: `25/29`**;
+* **deferred: `4/29`**, exactly registry entries 19
+  (`spring_mass_vibration`), 23 (`relative_acceleration_translation`), 24
+  (`coriolis_relative_motion`), and 28 (`slot_pin_relative_motion`);
+* **accepted in-scope evidence: `5/25`**; **pending in-scope evidence:
+  `20/25`**.
+
+Entry 26, `polar_kinematics`, is explicitly **in scope**.  Entries 1-5 are the
+five accepted in-scope entries; deferred entries are not parity passes and are
+not generic migrations.  Therefore neither `9/29` nor `29/29 generic migrated`
+is a valid roll-up.  This classification supersedes the older Wave 1/2/3 prose
+that grouped `polar_kinematics` with the deferred law gaps or kept
+`spring_mass_vibration` active.
+
 ## Migration matrix
 
 Each **source** citation identifies the registered class/symbol that supports
@@ -145,16 +164,16 @@ answer authority; the ledger below records which independent parity gates pass.
 | `horizontal_friction_force` | static bound or `f_k=μ_kmg`; `solvers/energy_vibration.py:HorizontalFrictionForceSolver.solve` | D (static/kinetic/motion phrasing); D/I | particle, horizontal contact, gravity, friction regime | contact normal/friction laws | Gate/partial: promote only with IR friction regime/direction; otherwise terminal ambiguity | static/kinetic residual only | rollback | static bound, kinetic μ, μ=0, missing-regime terminal; invariance |
 | `impulse_momentum` | `J=F_parallel Δt=m(vf-vi)`; `solvers/work_rotation_impulse.py:ImpulseMomentumSolver.solve` | I; D/I | particle, line/vector frame, force-time interval, states | `linear_impulse`, `linear_impulse_momentum` | Native now | none | rollback | solve J/vf, signed force, zero duration, residual; invariance |
 | `work_energy_speed` | `vf=sqrt(vi²+2W/m)`; `solvers/energy_vibration.py:WorkEnergySpeedSolver.solve` | D (rest phrase); D/N | particle, mass, work, initial/final velocity states | `particle_work_energy` and kinetic-energy relation | Native now with explicit rest/state condition | none; discard phrase default | rollback | vi=0, positive/negative work domain, energy residual; invariance |
-| `spring_mass_vibration` | free SHM `T,f,ωn`; `solvers/energy_vibration.py:SpringMassVibrationSolver.solve` | I; D/I | mass, spring, displacement, time, free/undamped assumption | `spring_force`, `linear_vibration`, `vibration_natural_frequency` | Gate/partial: native ODE exists; add verified period/frequency output relation before promotion | frequency/ODE residual only | rollback | T/f/ω identities, m/k scaling, initial-condition residual; invariance |
+| `spring_mass_vibration` | free SHM `T,f,ωn`; `solvers/energy_vibration.py:SpringMassVibrationSolver.solve` | I; D/I | mass, spring, displacement, time, free/undamped assumption | `spring_force`, `linear_vibration`, `vibration_natural_frequency` | **Deferred by the authoritative scope classification**; preserve the native ODE and future verified period/frequency extension, but do not claim migration | none with answer authority | off-mode rollback only | current generic behavior is precise structured unsupported; no generic answer and no silent legacy fallback |
 | `spring_energy_speed` | `E=½kx²`, `\|v\|=\|x\|sqrt(k/m)`; `solvers/energy_vibration.py:SpringEnergySpeedSolver.solve` | D (energy phrase fallback); D/I | mass, spring, displacement/state, energy query | `spring_potential`, kinetic energy, energy conservation constraint | Native now from typed energy/state constraint; IR query replaces phrase fallback | none; discard text fallback | rollback | energy and speed queries, x=0, dimension/residual; invariance |
 | `flat_curve_friction` | `vmax=sqrt(μgR)`; `solvers/curves.py:FlatCurveFrictionSolver.solve` | I; D/I | particle, circular path/radial frame, horizontal contact | `particle_normal_acceleration`, contact friction, radial Newton balance | Gate/partial: require limiting static-friction regime and radial frame in IR | centripetal/friction residual only | rollback | μ=0, threshold equality, centripetal/friction residual; invariance |
 | `banked_curve_no_friction` | `v=sqrt(gR tanθ)`; `solvers/curves.py:BankedCurveNoFrictionSolver.solve` | I; D/I | particle, bank geometry, circular path, normal contact | normal/radial Newton balances plus geometry projection | Gate/partial: bank-angle force-projection relation must be explicit graph geometry | algebraic balance residual only | rollback | θ→0 terminal/domain, force-balance residual, sign/frame; invariance |
-| `relative_acceleration_translation` | `aB=aA+aB/A`; `solvers/rigid_body_2d/relative_motion.py:RelativeAccelerationTranslationSolver.solve` | D (component wording); D/I | two points, vector acceleration components, translating frame | translating-frame relative-acceleration law | Unsupported typed-law gap: no dedicated translating-frame emission in `CORE_LAW_CATALOG` | no reuse until law exists | rollback only | typed scalar/vector cases after law; current terminal unsupported; invariance |
-| `coriolis_relative_motion` | `aC=2ωvrel`, polar relative acceleration; `solvers/advanced_dynamics.py:CoriolisRelativeMotionSolver.solve` | D; D/I | rotating frame, relative coordinate/speed, angular state | precise Coriolis/rotating-frame law | Unsupported law gap: compiler explicitly reports rotating-frame relative motion as specialized (`compiler.py:_structural_reference_issue`) | no reuse until a graph law exists | rollback only | typed rotating-frame cases after law exists; current expected terminal unsupported; invariance |
+| `relative_acceleration_translation` | `aB=aA+aB/A`; `solvers/rigid_body_2d/relative_motion.py:RelativeAccelerationTranslationSolver.solve` | D (component wording); D/I | two points, vector acceleration components, translating frame | translating-frame relative-acceleration law | **Deferred by the authoritative scope classification**; future typed-law extension remains permitted | no reuse until law exists | off-mode rollback only | precise structured unsupported; no generic answer and no silent fallback |
+| `coriolis_relative_motion` | `aC=2ωvrel`, polar relative acceleration; `solvers/advanced_dynamics.py:CoriolisRelativeMotionSolver.solve` | D; D/I | rotating frame, relative coordinate/speed, angular state | precise Coriolis/rotating-frame law | **Deferred by the authoritative scope classification**; future typed-law extension remains permitted | no reuse until a graph law exists | off-mode rollback only | precise structured unsupported; no generic answer and no silent fallback |
 | `plane_rigid_body_acceleration` | `aB=aA+α×r+ω×(ω×r)` and components; `solvers/rigid_body_2d/acceleration.py:PlaneRigidBodyAccelerationSolver.solve` | D (fixed/point text); D/I | rigid body, A/B points, rBA vector, angular state | `rigid_point_tangential_acceleration`, `rigid_point_normal_acceleration` | Gate/partial: complete verified vector composition/point binding before promotion | graph-derived vector residual only | rollback | fixed A, nonzero aA, tangential/normal vector residual; invariance |
-| `polar_kinematics` | polar `v` and `a` components; `solvers/advanced_motion.py:PolarKinematicsSolver.solve` | D (`_constant_radius_is_explicit` and `_constant_angular_speed_is_explicit` read `c.raw_text`); D/I | polar frame, r/θ derivatives and query | polar-coordinate kinematics law | Unsupported law gap: core catalog has no polar-coordinate emission | no reuse until law exists | rollback only | typed v/a component cases after law; current terminal unsupported; invariance |
+| `polar_kinematics` | polar `v` and `a` components; `solvers/advanced_motion.py:PolarKinematicsSolver.solve` | D (`_constant_radius_is_explicit` and `_constant_angular_speed_is_explicit` read `c.raw_text`); D/I | polar frame, r/θ derivatives and query | polar-coordinate kinematics law | **In scope, Wave F**; implement typed polar-coordinate emission without importing raw-text defaults | no reuse until the typed graph law exists | rollback during the pending in-scope migration only | typed v/a component cases, structured unsupported before implementation, then invariance and residual evidence |
 | `instant_center_velocity` | `ω=v/r` or `v=ωr`; `solvers/advanced_motion.py:InstantCenterVelocitySolver.solve` | I; D/I | rigid body, instantaneous center/point radius, speed/ω | `fixed_axis_speed` or `rigid_point_velocity` | Native now if instantaneous-center relation is typed geometry | none | rollback | solve either variable, zero-radius domain, residual; invariance |
-| `slot_pin_relative_motion` | radial/tangential slot-pin speed/acceleration components; `solvers/advanced_motion.py:SlotPinRelativeMotionSolver.solve` | I; D/I | slot/pin geometry, polar coordinate derivatives | polar relative-motion law | Unsupported law gap: no slot/pin or polar-coordinate emission | no reuse until law exists | rollback only | radial-only/tangential-only/general cases after law; current terminal unsupported; invariance |
+| `slot_pin_relative_motion` | radial/tangential slot-pin speed/acceleration components; `solvers/advanced_motion.py:SlotPinRelativeMotionSolver.solve` | I; D/I | slot/pin geometry, polar coordinate derivatives | polar relative-motion law | **Deferred by the authoritative scope classification**; future typed-law extension remains permitted | no reuse until law exists | off-mode rollback only | precise structured unsupported; no generic answer and no silent fallback |
 | `plane_rigid_body_velocity` | `vB=vA+ω×rBA`, fixed-point `ωr`; `solvers/rigid_body_2d/velocity.py:PlaneRigidBodyVelocitySolver.solve` | D (fixed-point/component text); D/I | rigid body, A/B points, rBA vector, angular velocity | `rigid_point_velocity` | Native now for IR-backed points/vectors | none; discard phrase parser | rollback | fixed A and moving A, vector magnitude/direction residual; invariance |
 
 ## Waves, parity policy, and release gates
@@ -164,28 +183,36 @@ IR-built fixtures for every matrix parity case; compile, fingerprint, plan,
 solve, and independently compare graph residuals to an off-mode legacy oracle.
 No label or raw-text selection enters this harness.
 
-**Wave 1 — native laws already catalogued.**  Migrate `single_particle_newton`,
-both incline solvers, all three ideal/inertial pulley variants, `collision_1d`,
-`constant_acceleration_1d`, `constant_force_work`, `fixed_axis_rotation`,
-`impulse_momentum`, `work_energy_speed`, `spring_energy_speed`,
-`instant_center_velocity`, and `plane_rigid_body_velocity`.  Keep their
-legacy solvers off-mode until their individual parity evidence is independently
-accepted.
+The obsolete Wave 1/2/3 execution plan is superseded by these exact in-scope
+families.  Entries 1-4 are already accepted prerequisites and are not rerun as
+a wave:
 
-**Wave 2 — coverage gates and graph-pattern kernels, not legacy routing.**
-Close the typed shape-inertia, radial-state, event-root, friction-regime,
-vibration-output, force-projection, and full-vector gates for
-`pure_rolling_energy`, `rolling_energy_general`, `vertical_circle`,
-`projectile_motion`, `horizontal_friction_force`, `spring_mass_vibration`,
-both curve solvers, and `plane_rigid_body_acceleration`; then run the listed
-graph-pattern numerical residuals as differential oracles.  Promote only
-after the generic result itself passes verification.
+* **Wave A — entries 5-7:** `pulley_table_hanging`,
+  `pulley_incline_hanging`, `massive_pulley_atwood`.
+* **Wave B — entries 8-10:** `pure_rolling_energy`,
+  `rolling_energy_general`, `vertical_circle`.
+* **Wave C — entries 11-13:** `collision_1d`,
+  `constant_acceleration_1d`, `projectile_motion`.
+* **Wave D — entries 14-18:** `constant_force_work`, `fixed_axis_rotation`,
+  `horizontal_friction_force`, `impulse_momentum`, `work_energy_speed`.
+* **Wave E — entries 20-22:** `spring_energy_speed`, `flat_curve_friction`,
+  `banked_curve_no_friction`; deferred entry 19 is deliberately skipped.
+* **Wave F — entries 25, 26, 27, and 29:**
+  `plane_rigid_body_acceleration`, `polar_kinematics`,
+  `instant_center_velocity`, `plane_rigid_body_velocity`; deferred entries 23,
+  24, and 28 are deliberately skipped.
 
-**Wave 3 — named law gaps.**  Implement and validate typed laws for
-`relative_acceleration_translation`, `coriolis_relative_motion`,
-`polar_kinematics`, and `slot_pin_relative_motion`; until then their generic
-disposition is a precise, verified unsupported terminal, with legacy rollback
-off-mode only.
+Each entry requires its focused parity evidence and connected targeted tests.
+The independent read-only Checker and release CI run once at the end of each
+complete wave, not after every entry.  Entry 5 retains its historical accepted
+Checker evidence, while the next independent Checker and Wave A release CI
+remain pending until entries 6 and 7 are accepted.
+
+For all four deferred entries, current generic behavior is a precise structured
+unsupported result.  Generic answer authority is **none**; legacy answer
+authority is **off-mode rollback only**.  There is no silent fallback.  The
+classification preserves a future typed-law/typed-output extension without
+claiming that extension exists now.
 
 For every solver and each case named in the matrix, the parity harness must
 also prove this metamorphic invariant: **the same `MechanicsProblemIRV1` with
@@ -202,7 +229,7 @@ rollback after generic-path failure.
 
 ## Accepted same-fixture parity ledger
 
-1. `single_particle_newton` — **ACCEPTED (1/29)** at exact checkpoint
+1. `single_particle_newton` — **ACCEPTED (registry entry 1; in-scope 1/25)** at exact checkpoint
    `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`, GitHub Actions release run
    `29818526780` (run #422, `SUCCESS`). The accepted Draft -> normalization ->
    IR fixture package proves baseline `m,F -> a`, signed multi-force balance,
@@ -214,7 +241,7 @@ rollback after generic-path failure.
    has generic calculation or selection authority. Fresh independent Checker:
    `PASS`, blocking findings `0`.
 
-2. `incline_no_friction` — **ACCEPTED (2/29)** at exact product/CI checkpoint
+2. `incline_no_friction` — **ACCEPTED (registry entry 2; in-scope 2/25)** at exact product/CI checkpoint
    `5e49f2f267c4c8d75aec6e99e3714fc36f700257` (tree
    `9ffbd6cc9bd60e1153891c2b2b7053e2d801a35c`, parent documentation handoff
    `8711b8a328b7334b0545d62f8a2bba6c8317f0b6`, commit
@@ -235,7 +262,7 @@ rollback after generic-path failure.
    5-second symbolic and verification budgets are not claimed green locally. Fresh independent
    Checker: `PASS`, blocking findings `0`, nonblocking findings `0`.
 
-3. `incline_with_friction` — **ACCEPTED (3/29)** at exact product/CI checkpoint
+3. `incline_with_friction` — **ACCEPTED (registry entry 3; in-scope 3/25)** at exact product/CI checkpoint
    `c134664cd863d33b50c7e5ae794af2ad61ed6524` (tree
    `987cb4ec8b7cbcc321d713313c179e8ca4bcd553`, CI-remediation child of product
    code commit `d58e2c9bcd8c04c8fa380699e19df6a6c43e7296`, product tree
@@ -270,7 +297,7 @@ rollback after generic-path failure.
    240-second disjoint slow lane fixed the CI classification without changing
    test semantics or the fast watchdog.
 
-4. `pulley_atwood` — **ACCEPTED (4/29)** at exact product/CI checkpoint
+4. `pulley_atwood` — **ACCEPTED (registry entry 4; in-scope 4/25)** at exact product/CI checkpoint
    `dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9` (tree
    `dc0e90d954b16a342c16073f2c3021f65da875bf`, parent documentation handoff
    `bd5afe32958ba1ca4efdc5ecc4c22a0ba22fefdd`, commit
@@ -300,11 +327,38 @@ rollback after generic-path failure.
    in `401.95s`; slow `12 passed, 2561 deselected` in `89.92s`; complete
    collection `2573`; fresh independent Checker `PASS`, blocking findings `0`.
 
-The remaining `25/29` entries have no accepted same-fixture parity claim. The
-next canonical registry entry is 5, `pulley_table_hanging`; its matrix gate is
-the typed table/hanging pair, horizontal contact, rope/pulley and friction
-regime, with static-threshold, `mu=0`, rope/tension-residual, and invariance
-evidence.
+5. `pulley_table_hanging` — **ACCEPTED (registry entry 5; in-scope 5/25)** at
+   product checkpoint `7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e`.
+   The accepted package binds the typed table/hanging pair, horizontal contact,
+   rope and fixed-pulley topology, and explicit no-friction, sliding, or sticking
+   regime.  It covers the static threshold, `mu=0` reduction, signed acceleration
+   and tension queries, independent Newton/contact/rope residuals, diagnostic
+   metadata invariance, and fail-closed structural/evidence/authority negatives.
+   Targeted fast evidence is `45 passed, 9 deselected`; targeted slow evidence
+   is `9 passed, 45 deselected`; compiler regression is `57 passed`; the fresh
+   independent Entry-5 Checker reported `PASS` with blocking findings `0`.  This
+   is not a new exact-head release-CI claim: Wave A family Checker/release CI
+   remains pending
+   until entries 6 and 7 are accepted.  The latest exact release evidence remains
+   entry 4 at `dedb4c7...`, run `29841110152` (run #429, `SUCCESS`).
+
+Current authoritative roll-up: the registry inventory is `29/29` classified;
+the in-scope set is `25`, with `5/25` accepted and `20/25` pending; the deferred
+set is exactly `4/4` classified.  Deferred classification is not accepted parity,
+so this is neither `9/29` nor a `29/29 generic migrated` claim.  The next exact
+task is Wave A entry 6, `pulley_incline_hanging`, followed by entry 7,
+`massive_pulley_atwood`, then the Wave A family Checker and release CI.
+
+The separate typed scope/runtime amendment passed its final independent
+read-only Checker with blocking findings `0` and new nonblocking findings `0`.
+The Checker ran the focused compiler, scope, deferred-runtime, runtime-contract,
+and runtime-static set (`236 passed`) plus the migration harness (`26 passed`),
+and confirmed unchanged existing contract fields/version constants, clean
+`py_compile`, and clean `git diff --check`.  This is focused amendment evidence,
+not Wave A release CI; the latest release-validated migration head remains Entry
+4 at `dedb4c7...`.  The ordinary runtime suite separately reported `87 passed,
+2 failed`; both failures were the documented Windows default five-second
+worker-startup timeout rather than a scope/contract assertion.
 
 ## Risks retained
 
@@ -312,9 +366,13 @@ evidence.
   checks (`backend/engine/solvers/registry.py:SolverRegistry._variant_specs`,
   `_has_symbol`, and `route`); these are diagnostics to remove from the
   generic authority path, not a migration target for the matrix.
-* Conservation/event roots and polar/rotating-frame kinematics are the stated
+* Conservation/event roots and the in-scope `polar_kinematics` migration remain
   coverage risks.  They need typed IR, graph laws, and verification hooks;
-  closed-form legacy output is not a substitute.
+  closed-form legacy output is not a substitute.  Deferred translating-frame,
+  Coriolis, and slot-pin entries remain structured unsupported without generic
+  answer authority.
 * This document is an inventory, plan, and limited accepted-evidence ledger.
-  Only the four named entries above (`4/29`) have parity passes. No corpus/PDF
-  inputs were opened or used for that evidence.
+  Exactly five in-scope entries (`5/25`) have accepted parity evidence; `20/25`
+  in-scope entries remain.  The four deferred entries are not parity passes. No
+  corpus/PDF inputs were opened or used for that evidence, and the public corpus
+  remains sealed.

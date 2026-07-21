@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from engine.mechanics.compiler import (
+    COURSE_SCOPE_DEFERRED_ISSUE_CODES,
     MechanicsCompiler,
     authorize_validated_mechanics_ir,
+    has_course_scope_deferred_issue,
 )
-from engine.mechanics.compiler.contracts import ValidatedIRAuthorization
+from engine.mechanics.compiler.contracts import (
+    CompilerIssue,
+    CompilerIssueCode,
+    CompilerResult,
+    ValidatedIRAuthorization,
+)
 from engine.mechanics.modeler import MechanicsModeler, MechanicsModelerOutcome, ModelerTerminal
 from engine.mechanics.modeler_config import MechanicsIRMode, MechanicsModelerConfig
 from engine.mechanics.pipeline import solve_verified_equation_graph
@@ -24,12 +31,43 @@ from engine.mechanics.runtime.contracts import (
 )
 
 
-def _active_delivery(mode: MechanicsIRMode, *, solved: bool = False) -> RuntimeDelivery:
+def _active_delivery(
+    mode: MechanicsIRMode,
+    *,
+    solved: bool = False,
+    compiler_result: CompilerResult | None = None,
+    force_no_delivery: bool = False,
+) -> RuntimeDelivery:
+    if force_no_delivery:
+        return RuntimeDelivery.none
+    if (
+        compiler_result is not None
+        and has_course_scope_deferred_issue(
+            issue.code for issue in compiler_result.issues
+        )
+    ):
+        return RuntimeDelivery.none
     if mode is MechanicsIRMode.shadow:
         return RuntimeDelivery.legacy
     if solved:
         return RuntimeDelivery.generic
     return RuntimeDelivery.none
+
+
+def _untrusted_result_has_exact_deferred_scope(value: object) -> bool:
+    """Extract only the closed deferred signal without retaining an invalid result."""
+
+    try:
+        if type(value) is not CompilerResult or type(value.issues) is not tuple:
+            return False
+        return any(
+            type(issue) is CompilerIssue
+            and type(issue.code) is CompilerIssueCode
+            and issue.code in COURSE_SCOPE_DEFERRED_ISSUE_CODES
+            for issue in value.issues
+        )
+    except Exception:
+        return False
 
 
 def _authorization_is_coherent(value: object) -> bool:
@@ -179,12 +217,18 @@ class MechanicsRuntimeOrchestrator:
             return self._failure(
                 RuntimeFailure.compiler_contract,
                 modeler_outcome=exact_outcome,
+                force_no_delivery=_untrusted_result_has_exact_deferred_scope(
+                    compiler_result
+                ),
             )
         if not compiler_result.compilable or compiler_result.graph is None:
             return MechanicsRuntimeExecution(
                 mode=mode,
                 terminal=RuntimeTerminal.compiler_rejected,
-                delivery=delivery,
+                delivery=_active_delivery(
+                    mode,
+                    compiler_result=compiler_result,
+                ),
                 modeler_outcome=exact_outcome,
                 compiler_result=compiler_result,
             )
@@ -213,7 +257,10 @@ class MechanicsRuntimeOrchestrator:
             return MechanicsRuntimeExecution(
                 mode=mode,
                 terminal=RuntimeTerminal.solve_rejected,
-                delivery=delivery,
+                delivery=_active_delivery(
+                    mode,
+                    compiler_result=compiler_result,
+                ),
                 modeler_outcome=exact_outcome,
                 compiler_result=compiler_result,
                 solve_result=solve_result,
@@ -221,7 +268,11 @@ class MechanicsRuntimeOrchestrator:
         return MechanicsRuntimeExecution(
             mode=mode,
             terminal=RuntimeTerminal.solved,
-            delivery=_active_delivery(mode, solved=True),
+            delivery=_active_delivery(
+                mode,
+                solved=True,
+                compiler_result=compiler_result,
+            ),
             modeler_outcome=exact_outcome,
             compiler_result=compiler_result,
             solve_result=solve_result,
@@ -233,11 +284,16 @@ class MechanicsRuntimeOrchestrator:
         *,
         modeler_outcome: MechanicsModelerOutcome | None = None,
         compiler_result=None,
+        force_no_delivery: bool = False,
     ) -> MechanicsRuntimeExecution:
         return MechanicsRuntimeExecution(
             mode=self._config.mode,
             terminal=RuntimeTerminal.failed,
-            delivery=_active_delivery(self._config.mode),
+            delivery=_active_delivery(
+                self._config.mode,
+                compiler_result=compiler_result,
+                force_no_delivery=force_no_delivery,
+            ),
             failure=failure,
             modeler_outcome=modeler_outcome,
             compiler_result=compiler_result,

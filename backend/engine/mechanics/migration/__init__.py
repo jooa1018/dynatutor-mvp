@@ -7,8 +7,12 @@ kernel and never selects, repairs, verifies, or replaces a generic answer.
 from engine.mechanics.migration.contracts import *
 from engine.mechanics.migration.contracts import __all__ as _contract_exports
 from engine.mechanics.migration.parity import (
+    CURRENT_LEGACY_MIGRATION_PROGRESS,
+    CURRENT_LEGACY_SOLVER_MIGRATION_RECORDS,
+    assert_legacy_migration_coverage_complete,
     build_generic_result_invariance_signature,
     build_legacy_differential_report,
+    build_legacy_migration_progress,
     compare_generic_result_invariance,
 )
 from engine.mechanics.migration.harness import (
@@ -26,8 +30,12 @@ from engine.mechanics.migration.harness import (
 
 __all__ = [
     *_contract_exports,
+    "CURRENT_LEGACY_MIGRATION_PROGRESS",
+    "CURRENT_LEGACY_SOLVER_MIGRATION_RECORDS",
+    "assert_legacy_migration_coverage_complete",
     "build_generic_result_invariance_signature",
     "build_legacy_differential_report",
+    "build_legacy_migration_progress",
     "compare_generic_result_invariance",
     "LabelledIRProbeVariant",
     "MechanicsMigrationInvarianceComparison",

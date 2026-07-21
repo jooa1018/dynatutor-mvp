@@ -37,14 +37,24 @@ from engine.mechanics.contracts import (
     IR_SCHEMA_VERSION,
     AssumptionDisposition,
     ConstraintKind,
+    EntityPrimitive,
+    GeometryRelationKind,
     IRConstraint,
+    IREntityOrigin,
+    IRFrameOrigin,
     IRGeometryRelation,
+    IRPointOrigin,
     IRQuery,
+    IRQuantity,
     IRStateCondition,
+    IRWorldOrigin,
+    InteractionKind,
     MechanicsProblemIRV1,
     Provenance,
+    QuantityComponent,
     QuantityRole,
     QuantityShape,
+    ReferenceFrameType,
 )
 from engine.mechanics.laws import (
     BoundQuantity,
@@ -542,6 +552,669 @@ def _structural_specialization_issue(
             frame.frame_id,
         )
     return None
+
+
+def _resolved_kinematic_component(quantity: IRQuantity) -> bool:
+    if quantity.shape is QuantityShape.vector:
+        return quantity.component is QuantityComponent.unspecified
+    return quantity.shape is QuantityShape.scalar and quantity.component not in {
+        QuantityComponent.magnitude,
+        QuantityComponent.unspecified,
+    }
+
+
+def _scope_matches_query(
+    quantity: IRQuantity,
+    query_quantity: IRQuantity,
+    *,
+    subject_id: str,
+    frame_id: str | None,
+) -> bool:
+    return (
+        quantity.subject_id == subject_id
+        and quantity.frame_id == frame_id
+        and quantity.interval_id == query_quantity.interval_id
+        and quantity.event_id == query_quantity.event_id
+    )
+
+
+def _free_linear_vibration_readout_issue(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    query_quantity: IRQuantity,
+    relevant: set[str],
+) -> CompilerIssue | None:
+    expected_dimension = {
+        QuantityRole.period: DimensionVector(time=1),
+        QuantityRole.frequency: DimensionVector(time=-1),
+    }.get(query_quantity.role)
+    if (
+        expected_dimension is None
+        or query_quantity.quantity_id not in relevant
+        or query_quantity.shape is not QuantityShape.scalar
+        or query_quantity.dimension != expected_dimension
+        or query_quantity.symbol_id is None
+        or query_quantity.si_value is not None
+        or query_quantity.event_id is not None
+    ):
+        return None
+
+    subject_id = query_quantity.subject_id
+    interval_id = query_quantity.interval_id
+    approved = tuple(
+        item
+        for item in ir.assumptions
+        if item.assumption_id in relevant
+        and item.disposition is AssumptionDisposition.approved
+        and item.subject_id == subject_id
+        and item.interval_id in {None, interval_id}
+    )
+    masses = tuple(
+        item
+        for item in ir.quantities
+        if item.quantity_id in relevant
+        and item.role is QuantityRole.mass
+        and item.subject_id == subject_id
+        and item.frame_id in {None, query_quantity.frame_id}
+        and item.interval_id in {None, interval_id}
+        and item.event_id is None
+        and item.shape is QuantityShape.scalar
+        and item.dimension == DimensionVector(mass=1)
+        and item.symbol_id is not None
+        and isinstance(item.si_value, float)
+        and math.isfinite(item.si_value)
+        and item.si_value > 0.0
+    )
+    stiffnesses = tuple(
+        item
+        for item in ir.quantities
+        if item.quantity_id in relevant
+        and item.role is QuantityRole.stiffness
+        and item.subject_id == subject_id
+        and item.frame_id in {None, query_quantity.frame_id}
+        and item.interval_id in {None, interval_id}
+        and item.event_id is None
+        and item.shape is QuantityShape.scalar
+        and item.dimension == DimensionVector(mass=1, time=-2)
+        and item.symbol_id is not None
+        and isinstance(item.si_value, float)
+        and math.isfinite(item.si_value)
+        and item.si_value > 0.0
+    )
+    natural_frequency_authority = tuple(
+        item for item in approved if item.kind == "angular_natural_frequency"
+    )
+    exact_minimal_readout = (
+        query_quantity.role in {QuantityRole.frequency, QuantityRole.period}
+        and len(natural_frequency_authority) == 1
+        and len(masses) == 1
+        and len(stiffnesses) == 1
+    )
+    if exact_minimal_readout:
+        return _issue(
+            CompilerIssueCode.free_linear_vibration_readout_deferred,
+            "free linear undamped spring period/frequency readout is deferred",
+            f"queries.{query.query_id}.target.role",
+            query_quantity.quantity_id,
+        )
+
+    frame = next(
+        (
+            item
+            for item in ir.reference_frames
+            if item.frame_id == query_quantity.frame_id
+            and item.frame_id in relevant
+        ),
+        None,
+    )
+    if frame is None or frame.frame_type is not ReferenceFrameType.cartesian_1d:
+        return None
+
+    regimes = {
+        kind: tuple(item for item in approved if item.kind == kind)
+        for kind in (
+            "linear_vibration",
+            "free_vibration",
+            "undamped",
+            "forced_vibration",
+            "damped",
+        )
+    }
+    if (
+        len(regimes["linear_vibration"]) != 1
+        or len(regimes["free_vibration"]) != 1
+        or len(regimes["undamped"]) != 1
+        or regimes["forced_vibration"]
+        or regimes["damped"]
+    ):
+        return None
+
+    displacements = tuple(
+        item
+        for item in ir.quantities
+        if item.quantity_id in relevant
+        and item.role is QuantityRole.displacement
+        and item.subject_id == subject_id
+        and item.frame_id == frame.frame_id
+        and item.interval_id == interval_id
+        and item.event_id is None
+        and item.shape is QuantityShape.scalar
+        and item.dimension == DimensionVector(length=1)
+        and item.symbol_id is not None
+    )
+    if len(displacements) != 1 or len(masses) != 1 or len(stiffnesses) != 1:
+        return None
+
+    springs = tuple(
+        item
+        for item in ir.interactions
+        if item.interaction_id in relevant
+        and item.kind is InteractionKind.spring
+        and subject_id in item.participant_ids
+        and item.frame_id in {None, frame.frame_id}
+        and item.interval_id in {None, interval_id}
+        and item.event_id is None
+        and {displacements[0].quantity_id, stiffnesses[0].quantity_id}.issubset(
+            item.quantity_ids
+        )
+    )
+    external_terms = tuple(
+        item
+        for item in ir.interactions
+        if item.interaction_id in relevant
+        and item.kind in {InteractionKind.damping, InteractionKind.applied_force}
+        and subject_id in item.participant_ids
+        and item.interval_id in {None, interval_id}
+        and item.event_id is None
+    )
+    if len(springs) != 1 or external_terms:
+        return None
+    return _issue(
+        CompilerIssueCode.free_linear_vibration_readout_deferred,
+        "free linear undamped spring period/frequency readout is deferred",
+        f"queries.{query.query_id}.target.role",
+        query_quantity.quantity_id,
+    )
+
+
+def _translating_frame_relative_acceleration_issue(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    query_quantity: IRQuantity,
+    relevant: set[str],
+) -> CompilerIssue | None:
+    scalar_unspecified_output = (
+        query_quantity.shape is QuantityShape.scalar
+        and query_quantity.component is QuantityComponent.unspecified
+    )
+    if (
+        query_quantity.quantity_id not in relevant
+        or query_quantity.role is not QuantityRole.acceleration
+        or query_quantity.dimension != DimensionVector(length=1, time=-2)
+        or query_quantity.symbol_id is None
+        or query_quantity.si_value is not None
+        or not (
+            _resolved_kinematic_component(query_quantity)
+            or scalar_unspecified_output
+        )
+    ):
+        return None
+    frames = {item.frame_id: item for item in ir.reference_frames}
+    def exact_translating_frame(frame: object) -> bool:
+        return (
+            frame is not None
+            and frame.frame_id in relevant
+            and frame.frame_type is ReferenceFrameType.translating
+            and frame.parent_frame_id is not None
+            and frame.parent_frame_id in relevant
+            and frame.parent_frame_id in frames
+            and frame.translating_with_entity_id is not None
+            and frame.translating_with_entity_id in relevant
+            and frame.rotating_about_point_id is None
+        )
+
+    frame = frames.get(query_quantity.frame_id or "")
+    if exact_translating_frame(frame) and _resolved_kinematic_component(
+        query_quantity
+    ):
+        carrier_id = frame.translating_with_entity_id
+        carriers = tuple(
+            item
+            for item in ir.quantities
+            if item.quantity_id in relevant
+            and item.quantity_id != query_quantity.quantity_id
+            and item.role is QuantityRole.acceleration
+            and item.dimension == query_quantity.dimension
+            and item.shape is query_quantity.shape
+            and item.component is query_quantity.component
+            and item.symbol_id is not None
+            and _scope_matches_query(
+                item,
+                query_quantity,
+                subject_id=carrier_id,
+                frame_id=frame.parent_frame_id,
+            )
+        )
+        if len(carriers) == 1:
+            return _issue(
+                CompilerIssueCode.translating_frame_relative_acceleration_deferred,
+                "translating-frame relative acceleration is deferred",
+                f"queries.{query.query_id}.target.frame_id",
+                frame.frame_id,
+            )
+
+    absolute_profiles: list[object] = []
+    for moving_frame in ir.reference_frames:
+        if (
+            not exact_translating_frame(moving_frame)
+            or moving_frame.parent_frame_id != query_quantity.frame_id
+            or moving_frame.translating_with_entity_id
+            == query_quantity.subject_id
+        ):
+            continue
+        carrier_id = moving_frame.translating_with_entity_id
+        relative_operands = tuple(
+            item
+            for item in ir.quantities
+            if item.quantity_id in relevant
+            and item.quantity_id != query_quantity.quantity_id
+            and item.role is QuantityRole.acceleration
+            and item.subject_id == query_quantity.subject_id
+            and item.point_id == query_quantity.point_id
+            and item.frame_id == moving_frame.frame_id
+            and item.interval_id == query_quantity.interval_id
+            and item.event_id == query_quantity.event_id
+            and item.component is query_quantity.component
+            and item.shape is query_quantity.shape
+            and item.dimension == query_quantity.dimension
+            and item.symbol_id is not None
+            and item.si_value is not None
+        )
+        reference_carriers = tuple(
+            item
+            for item in ir.quantities
+            if item.quantity_id in relevant
+            and item.role is QuantityRole.acceleration
+            and item.subject_id == carrier_id
+            and item.frame_id == moving_frame.parent_frame_id
+            and item.interval_id == query_quantity.interval_id
+            and item.event_id == query_quantity.event_id
+            and item.component is query_quantity.component
+            and item.shape is query_quantity.shape
+            and item.dimension == query_quantity.dimension
+            and item.symbol_id is not None
+            and item.si_value is not None
+        )
+        if len(relative_operands) == 1 and len(reference_carriers) == 1:
+            absolute_profiles.append(moving_frame)
+    if len(absolute_profiles) != 1:
+        return None
+    frame = absolute_profiles[0]
+    return _issue(
+        CompilerIssueCode.translating_frame_relative_acceleration_deferred,
+        "translating-frame relative acceleration is deferred",
+        f"queries.{query.query_id}.target.frame_id",
+        frame.frame_id,
+    )
+
+
+def _origin_is_relevant(
+    ir: MechanicsProblemIRV1,
+    frame_id: str,
+    parent_frame_id: str,
+    relevant: set[str],
+) -> bool:
+    frame = next(item for item in ir.reference_frames if item.frame_id == frame_id)
+    origin = frame.origin
+    if type(origin) is IRWorldOrigin:
+        return True
+    if type(origin) is IRPointOrigin:
+        return origin.point_id in relevant
+    if type(origin) is IREntityOrigin:
+        return origin.entity_id in relevant
+    if type(origin) is IRFrameOrigin:
+        return (
+            origin.frame_id in relevant
+            and origin.frame_id != frame_id
+            and origin.frame_id == parent_frame_id
+        )
+    return False
+
+
+def _rotating_frame_relative_acceleration_issue(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    query_quantity: IRQuantity,
+    relevant: set[str],
+) -> CompilerIssue | None:
+    scalar_full_output = (
+        query_quantity.shape is QuantityShape.scalar
+        and query_quantity.component
+        in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+    )
+    if (
+        query_quantity.quantity_id not in relevant
+        or query_quantity.role is not QuantityRole.acceleration
+        or query_quantity.dimension != DimensionVector(length=1, time=-2)
+        or query_quantity.symbol_id is None
+        or query_quantity.si_value is not None
+        or not (
+            _resolved_kinematic_component(query_quantity)
+            or scalar_full_output
+        )
+    ):
+        return None
+    subject = next(
+        (
+            item
+            for item in ir.entities
+            if item.entity_id == query_quantity.subject_id
+            and item.entity_id in relevant
+        ),
+        None,
+    )
+    if subject is None or subject.primitive not in {
+        EntityPrimitive.particle,
+        EntityPrimitive.body_component,
+        EntityPrimitive.joint,
+    }:
+        return None
+    frames = {item.frame_id: item for item in ir.reference_frames}
+    frame = frames.get(query_quantity.frame_id or "")
+    if (
+        frame is None
+        or frame.frame_id not in relevant
+        or frame.frame_type is not ReferenceFrameType.rotating
+        or frame.parent_frame_id is None
+        or frame.parent_frame_id not in relevant
+        or frame.parent_frame_id not in frames
+        or frame.rotating_about_point_id is None
+        or frame.rotating_about_point_id not in relevant
+        or not _origin_is_relevant(
+            ir,
+            frame.frame_id,
+            frame.parent_frame_id,
+            relevant,
+        )
+    ):
+        return None
+
+    relative_velocities = tuple(
+        item
+        for item in ir.quantities
+        if item.quantity_id in relevant
+        and (
+            item.role is QuantityRole.velocity
+            or (
+                scalar_full_output
+                and item.role is QuantityRole.speed
+                and item.shape is QuantityShape.scalar
+                and item.component
+                in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            )
+        )
+        and item.dimension == DimensionVector(length=1, time=-1)
+        and item.shape is query_quantity.shape
+        and item.symbol_id is not None
+        and (
+            _resolved_kinematic_component(item)
+            or (
+                scalar_full_output
+                and item.shape is QuantityShape.scalar
+                and item.component
+                in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            )
+        )
+        and _scope_matches_query(
+            item,
+            query_quantity,
+            subject_id=query_quantity.subject_id,
+            frame_id=frame.frame_id,
+        )
+        and item.point_id == query_quantity.point_id
+    )
+    points = {item.point_id: item for item in ir.points}
+    origin_point_id = getattr(frame.origin, "point_id", None)
+    rotation_subject_ids = {query_quantity.subject_id}
+    for point_id in (frame.rotating_about_point_id, origin_point_id):
+        owner_id = getattr(points.get(point_id), "owner_entity_id", None)
+        if owner_id is not None:
+            rotation_subject_ids.add(owner_id)
+    origin_entity_id = getattr(frame.origin, "entity_id", None)
+    if origin_entity_id is not None:
+        rotation_subject_ids.add(origin_entity_id)
+    if frame.translating_with_entity_id is not None:
+        rotation_subject_ids.add(frame.translating_with_entity_id)
+    angular_velocities = tuple(
+        item
+        for item in ir.quantities
+        if item.quantity_id in relevant
+        and item.role is QuantityRole.angular_velocity
+        and item.dimension == DimensionVector(time=-1)
+        and item.shape in {QuantityShape.scalar, QuantityShape.vector}
+        and item.symbol_id is not None
+        and item.subject_id in rotation_subject_ids
+        and item.frame_id in {frame.frame_id, frame.parent_frame_id}
+        and item.interval_id == query_quantity.interval_id
+        and item.event_id == query_quantity.event_id
+        and item.point_id in {None, frame.rotating_about_point_id}
+    )
+    if len(relative_velocities) != 1 or len(angular_velocities) != 1:
+        return None
+    return _issue(
+        CompilerIssueCode.rotating_frame_relative_acceleration_deferred,
+        "rotating-frame Coriolis relative acceleration is deferred",
+        f"queries.{query.query_id}.target.frame_id",
+        frame.frame_id,
+    )
+
+
+def _slot_pin_relative_motion_issue(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    query_quantity: IRQuantity,
+    relevant: set[str],
+) -> CompilerIssue | None:
+    component_query = (
+        query_quantity.role in {QuantityRole.velocity, QuantityRole.acceleration}
+        and query_quantity.component
+        in {QuantityComponent.radial, QuantityComponent.transverse}
+    )
+    magnitude_query = (
+        (
+            query_quantity.role is QuantityRole.speed
+            and query_quantity.component
+            in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        )
+        or (
+            query_quantity.role is QuantityRole.velocity
+            and query_quantity.component is QuantityComponent.magnitude
+        )
+    )
+    if (
+        query_quantity.quantity_id not in relevant
+        or not (component_query or magnitude_query)
+        or query_quantity.shape is not QuantityShape.scalar
+        or query_quantity.symbol_id is None
+        or query_quantity.si_value is not None
+    ):
+        return None
+    expected_dimension = (
+        DimensionVector(length=1, time=-2)
+        if query_quantity.role is QuantityRole.acceleration
+        else DimensionVector(length=1, time=-1)
+    )
+    if query_quantity.dimension != expected_dimension:
+        return None
+    frame = next(
+        (
+            item
+            for item in ir.reference_frames
+            if item.frame_id == query_quantity.frame_id
+            and item.frame_id in relevant
+        ),
+        None,
+    )
+    if frame is None or frame.frame_type is not ReferenceFrameType.radial_transverse:
+        return None
+
+    entities = {item.entity_id: item for item in ir.entities}
+    points = {item.point_id: item for item in ir.points}
+    query_point = points.get(query_quantity.point_id or "")
+    query_owner_id = getattr(query_point, "owner_entity_id", None)
+    pin_primitives = {
+        EntityPrimitive.joint,
+        EntityPrimitive.particle,
+        EntityPrimitive.body_component,
+    }
+    pin_ids = {
+        entity_id
+        for entity_id in {query_quantity.subject_id, query_owner_id}
+        if entity_id is not None
+        and entity_id in relevant
+        and entity_id in entities
+        and entities[entity_id].primitive in pin_primitives
+    }
+    if len(pin_ids) != 1:
+        return None
+    pin_id = next(iter(pin_ids))
+    owned_point_ids = {
+        item.point_id
+        for item in ir.points
+        if item.point_id in relevant and item.owner_entity_id == pin_id
+    }
+    slot_ids = {
+        item.entity_id
+        for item in ir.entities
+        if item.entity_id in relevant and item.primitive is EntityPrimitive.slot
+    }
+    relations = tuple(
+        item
+        for item in ir.geometry
+        if item.relation_id in relevant
+        and item.kind is GeometryRelationKind.lies_on
+        and item.interval_id in {None, query_quantity.interval_id}
+        and len(set(item.participant_ids).intersection(slot_ids)) == 1
+        and bool(
+            set(item.participant_ids).intersection({pin_id, *owned_point_ids})
+        )
+    )
+    if len(relations) != 1:
+        return None
+    if magnitude_query:
+        relation_slot_ids = set(relations[0].participant_ids).intersection(slot_ids)
+        radius_carriers = tuple(
+            item
+            for item in ir.quantities
+            if item.quantity_id in relevant
+            and item.role is QuantityRole.radius
+            and item.subject_id in {pin_id, *relation_slot_ids}
+            and item.point_id in {None, query_quantity.point_id, *owned_point_ids}
+            and item.frame_id in {None, frame.frame_id}
+            and item.interval_id in {None, query_quantity.interval_id}
+            and item.event_id in {None, query_quantity.event_id}
+            and item.component
+            in {
+                QuantityComponent.magnitude,
+                QuantityComponent.radial,
+                QuantityComponent.unspecified,
+            }
+            and item.shape is QuantityShape.scalar
+            and item.dimension == DimensionVector(length=1)
+            and item.symbol_id is not None
+            and isinstance(item.si_value, float)
+            and math.isfinite(item.si_value)
+            and item.si_value > 0.0
+        )
+        radial_speed_carriers = tuple(
+            item
+            for item in ir.quantities
+            if item.quantity_id in relevant
+            and item.role in {QuantityRole.speed, QuantityRole.velocity}
+            and item.quantity_id != query_quantity.quantity_id
+            and item.subject_id == pin_id
+            and item.point_id == query_quantity.point_id
+            and item.frame_id == frame.frame_id
+            and item.interval_id == query_quantity.interval_id
+            and item.event_id == query_quantity.event_id
+            and item.component is QuantityComponent.radial
+            and item.shape is QuantityShape.scalar
+            and item.dimension == DimensionVector(length=1, time=-1)
+            and item.symbol_id is not None
+            and isinstance(item.si_value, float)
+            and math.isfinite(item.si_value)
+        )
+        angular_velocity_carriers = tuple(
+            item
+            for item in ir.quantities
+            if item.quantity_id in relevant
+            and item.role is QuantityRole.angular_velocity
+            and item.subject_id in {pin_id, *relation_slot_ids}
+            and item.point_id in {None, query_quantity.point_id, *owned_point_ids}
+            and item.frame_id == frame.frame_id
+            and item.interval_id == query_quantity.interval_id
+            and item.event_id == query_quantity.event_id
+            and item.component
+            in {
+                QuantityComponent.clockwise,
+                QuantityComponent.counterclockwise,
+                QuantityComponent.unspecified,
+            }
+            and item.shape is QuantityShape.scalar
+            and item.dimension == DimensionVector(time=-1)
+            and item.symbol_id is not None
+            and isinstance(item.si_value, float)
+            and math.isfinite(item.si_value)
+        )
+        if (
+            len(radius_carriers) != 1
+            or len(radial_speed_carriers) != 1
+            or len(angular_velocity_carriers) != 1
+        ):
+            return None
+    return _issue(
+        CompilerIssueCode.slot_pin_relative_motion_deferred,
+        "slot-pin radial/transverse relative motion is deferred",
+        f"geometry.{relations[0].relation_id}",
+        relations[0].relation_id,
+    )
+
+
+def _course_scope_deferred_issue(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    query_quantity: object | None,
+    relevant: set[str],
+) -> CompilerIssue | None:
+    if type(query_quantity) is not IRQuantity:
+        return None
+    exact_quantity = query_quantity
+    return (
+        _free_linear_vibration_readout_issue(
+            ir,
+            query,
+            exact_quantity,
+            relevant,
+        )
+        or _translating_frame_relative_acceleration_issue(
+            ir,
+            query,
+            exact_quantity,
+            relevant,
+        )
+        or _rotating_frame_relative_acceleration_issue(
+            ir,
+            query,
+            exact_quantity,
+            relevant,
+        )
+        or _slot_pin_relative_motion_issue(
+            ir,
+            query,
+            exact_quantity,
+            relevant,
+        )
+    )
 
 
 def _incline_projection_domain_issue(
@@ -5330,9 +6003,6 @@ class MechanicsCompiler:
         reference_issue = _structural_reference_issue(safe_ir, query)
         if reference_issue is not None:
             return _failure(CompilerStatus.invalid, reference_issue)
-        specialization_issue = _structural_specialization_issue(safe_ir, query)
-        if specialization_issue is not None:
-            return _failure(CompilerStatus.unsupported, specialization_issue)
         query_quantity, query_issue = _query_quantity(safe_ir, query)
         if query_issue is not None:
             return _failure(CompilerStatus.invalid, query_issue)
@@ -5350,6 +6020,17 @@ class MechanicsCompiler:
         domain_issue = _known_role_domain_issue(safe_ir, relevant)
         if domain_issue is not None:
             return _failure(CompilerStatus.invalid, domain_issue)
+        deferred_issue = _course_scope_deferred_issue(
+            safe_ir,
+            query,
+            query_quantity,
+            relevant,
+        )
+        if deferred_issue is not None:
+            return _failure(CompilerStatus.unsupported, deferred_issue)
+        specialization_issue = _structural_specialization_issue(safe_ir, query)
+        if specialization_issue is not None:
+            return _failure(CompilerStatus.unsupported, specialization_issue)
         incline_domain_issue = _incline_projection_domain_issue(safe_ir, query, relevant)
         if incline_domain_issue is not None:
             return _failure(CompilerStatus.invalid, incline_domain_issue)

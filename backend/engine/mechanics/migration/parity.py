@@ -1,4 +1,4 @@
-"""Pure offline/shadow diagnostics over already completed mechanics results.
+"""Pure offline/shadow diagnostics and typed migration-scope accounting.
 
 Nothing here executes another kernel or changes generic graph, plan, candidate,
 verification, terminal, or selection authority.
@@ -12,6 +12,11 @@ import json
 from pydantic import BaseModel
 
 from engine.mechanics.migration.contracts import (
+    DEFERRED_LEGACY_SOLVER_IDS,
+    LEGACY_SOLVER_DEFERRED_COUNT,
+    LEGACY_SOLVER_IN_SCOPE_COUNT,
+    LEGACY_SOLVER_INVENTORY,
+    LEGACY_SOLVER_INVENTORY_COUNT,
     CandidateInvarianceRecord,
     DiagnosticAttemptInvarianceRecord,
     DiagnosticEntryInvarianceRecord,
@@ -24,7 +29,19 @@ from engine.mechanics.migration.contracts import (
     InvarianceVariantComparison,
     LabelledInvarianceVariant,
     LegacyDifferentialReport,
+    LegacyMigrationProgress,
     LegacyObservation,
+    LegacySolverFutureExtension,
+    LegacySolverId,
+    LegacySolverInventoryState,
+    LegacySolverLegacyAuthority,
+    LegacySolverMigrationRecord,
+    LegacySolverMigrationState,
+    LegacySolverProductGenericAuthority,
+    LegacySolverRuntimeBehavior,
+    LegacySolverSameFixtureState,
+    LegacySolverScopeState,
+    LegacySolverSilentFallback,
     LegacyTerminal,
     PARITY_ABSOLUTE_TOLERANCE,
     PARITY_RELATIVE_TOLERANCE,
@@ -39,6 +56,65 @@ from engine.mechanics.verification.contracts import (
     MechanicsSolveTerminal,
     render_canonical_si_unit,
 )
+
+
+def build_legacy_migration_progress(
+    records: tuple[LegacySolverMigrationRecord, ...],
+) -> LegacyMigrationProgress:
+    """Aggregate exact inventory rows without promoting case-level evidence."""
+
+    if type(records) is not tuple:
+        raise TypeError("migration progress records require an exact tuple")
+    if any(type(item) is not LegacySolverMigrationRecord for item in records):
+        raise TypeError("migration progress requires exact inventory record types")
+    exact_records = tuple(
+        LegacySolverMigrationRecord.model_validate(item.model_dump(mode="python"))
+        for item in records
+    )
+    accepted = sum(
+        item.scope_state is LegacySolverScopeState.IN_CURRENT_COURSE_SCOPE
+        and item.migration_state is LegacySolverMigrationState.ACCEPTED
+        for item in exact_records
+    )
+    pending = sum(
+        item.scope_state is LegacySolverScopeState.IN_CURRENT_COURSE_SCOPE
+        and item.migration_state is LegacySolverMigrationState.PENDING
+        for item in exact_records
+    )
+    return LegacyMigrationProgress(
+        records=exact_records,
+        inventory_count=LEGACY_SOLVER_INVENTORY_COUNT,
+        in_scope_count=LEGACY_SOLVER_IN_SCOPE_COUNT,
+        deferred_count=LEGACY_SOLVER_DEFERRED_COUNT,
+        accepted_in_scope_count=accepted,
+        pending_in_scope_count=pending,
+        in_scope_complete=accepted == LEGACY_SOLVER_IN_SCOPE_COUNT,
+    )
+
+
+def assert_legacy_migration_coverage_complete(
+    progress: LegacyMigrationProgress,
+) -> LegacyMigrationProgress:
+    """Return exact complete coverage or reject any partial/deferred overcount."""
+
+    if type(progress) is not LegacyMigrationProgress:
+        raise TypeError("migration coverage assertion requires exact progress")
+    exact = LegacyMigrationProgress.model_validate(progress.model_dump(mode="python"))
+    accepted = sum(
+        item.scope_state is LegacySolverScopeState.IN_CURRENT_COURSE_SCOPE
+        and item.migration_state is LegacySolverMigrationState.ACCEPTED
+        for item in exact.records
+    )
+    if (
+        accepted != LEGACY_SOLVER_IN_SCOPE_COUNT
+        or exact.accepted_in_scope_count != LEGACY_SOLVER_IN_SCOPE_COUNT
+        or exact.pending_in_scope_count != 0
+        or not exact.in_scope_complete
+    ):
+        raise ValueError(
+            "migration coverage is incomplete; deferred records never count as accepted"
+        )
+    return exact
 
 
 def build_legacy_differential_report(
@@ -359,8 +435,87 @@ def _validated_exact_observation(observation: LegacyObservation) -> LegacyObserv
     return LegacyObservation.model_validate(observation.model_dump(mode="python"))
 
 
+_ACCEPTED_MIGRATION_CHECKPOINTS: dict[LegacySolverId, str] = {
+    LegacySolverId.single_particle_newton: (
+        "8b7c5c4a6f1f972d479323f5a7179b4f177d3800"
+    ),
+    LegacySolverId.incline_no_friction: (
+        "5e49f2f267c4c8d75aec6e99e3714fc36f700257"
+    ),
+    LegacySolverId.incline_with_friction: (
+        "c134664cd863d33b50c7e5ae794af2ad61ed6524"
+    ),
+    LegacySolverId.pulley_atwood: (
+        "dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9"
+    ),
+    LegacySolverId.pulley_table_hanging: (
+        "7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e"
+    ),
+}
+
+
+def _current_migration_record(
+    registry_index: int,
+    solver_id: LegacySolverId,
+) -> LegacySolverMigrationRecord:
+    checkpoint = _ACCEPTED_MIGRATION_CHECKPOINTS.get(solver_id)
+    if solver_id in DEFERRED_LEGACY_SOLVER_IDS:
+        scope_state = (
+            LegacySolverScopeState.DEFERRED_OUT_OF_CURRENT_COURSE_SCOPE
+        )
+        migration_state = LegacySolverMigrationState.DEFERRED
+        same_fixture_state = LegacySolverSameFixtureState.NOT_PLANNED_IN_PHASE56
+        product_generic_authority = LegacySolverProductGenericAuthority.NONE
+        runtime_behavior = (
+            LegacySolverRuntimeBehavior.PRECISE_VERIFIED_UNSUPPORTED
+        )
+    elif checkpoint is not None:
+        scope_state = LegacySolverScopeState.IN_CURRENT_COURSE_SCOPE
+        migration_state = LegacySolverMigrationState.ACCEPTED
+        same_fixture_state = LegacySolverSameFixtureState.ACCEPTED
+        product_generic_authority = (
+            LegacySolverProductGenericAuthority.VERIFIED_GENERIC_ONLY
+        )
+        runtime_behavior = LegacySolverRuntimeBehavior.VERIFIED_GENERIC_ONLY
+    else:
+        scope_state = LegacySolverScopeState.IN_CURRENT_COURSE_SCOPE
+        migration_state = LegacySolverMigrationState.PENDING
+        same_fixture_state = LegacySolverSameFixtureState.PENDING
+        product_generic_authority = LegacySolverProductGenericAuthority.NONE
+        runtime_behavior = LegacySolverRuntimeBehavior.NOT_YET_AUTHORIZED
+    return LegacySolverMigrationRecord(
+        solver_id=solver_id,
+        registry_index=registry_index,
+        inventory_state=LegacySolverInventoryState.PRESENT,
+        scope_state=scope_state,
+        migration_state=migration_state,
+        same_fixture_state=same_fixture_state,
+        product_generic_authority=product_generic_authority,
+        runtime_behavior=runtime_behavior,
+        legacy_authority=LegacySolverLegacyAuthority.OFF_MODE_ROLLBACK_ONLY,
+        silent_fallback=LegacySolverSilentFallback.FORBIDDEN,
+        future_extension=LegacySolverFutureExtension.PRESERVED,
+        accepted_checkpoint_hash=checkpoint,
+    )
+
+
+CURRENT_LEGACY_SOLVER_MIGRATION_RECORDS: tuple[
+    LegacySolverMigrationRecord, ...
+] = tuple(
+    _current_migration_record(index, solver_id)
+    for index, solver_id in enumerate(LEGACY_SOLVER_INVENTORY, start=1)
+)
+CURRENT_LEGACY_MIGRATION_PROGRESS = build_legacy_migration_progress(
+    CURRENT_LEGACY_SOLVER_MIGRATION_RECORDS
+)
+
+
 __all__ = [
+    "CURRENT_LEGACY_MIGRATION_PROGRESS",
+    "CURRENT_LEGACY_SOLVER_MIGRATION_RECORDS",
+    "assert_legacy_migration_coverage_complete",
     "build_generic_result_invariance_signature",
+    "build_legacy_migration_progress",
     "build_legacy_differential_report",
     "compare_generic_result_invariance",
 ]

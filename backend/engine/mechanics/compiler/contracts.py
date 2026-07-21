@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Annotated, Literal, TypeAlias, Union
+from typing import Annotated, Iterable, Literal, TypeAlias, Union
 
 from pydantic import (
     AfterValidator,
@@ -122,6 +122,36 @@ class CompilerIssueCode(str, Enum):
     underdetermined = "underdetermined"
     overdetermined = "overdetermined"
     resource_limit = "resource_limit"
+    free_linear_vibration_readout_deferred = "free_linear_vibration_readout_deferred"
+    translating_frame_relative_acceleration_deferred = (
+        "translating_frame_relative_acceleration_deferred"
+    )
+    rotating_frame_relative_acceleration_deferred = (
+        "rotating_frame_relative_acceleration_deferred"
+    )
+    slot_pin_relative_motion_deferred = "slot_pin_relative_motion_deferred"
+
+
+COURSE_SCOPE_DEFERRED_ISSUE_CODES: frozenset[CompilerIssueCode] = frozenset(
+    {
+        CompilerIssueCode.free_linear_vibration_readout_deferred,
+        CompilerIssueCode.translating_frame_relative_acceleration_deferred,
+        CompilerIssueCode.rotating_frame_relative_acceleration_deferred,
+        CompilerIssueCode.slot_pin_relative_motion_deferred,
+    }
+)
+
+
+def has_course_scope_deferred_issue(
+    codes: Iterable[CompilerIssueCode],
+) -> bool:
+    """Return whether exact compiler issue codes include a deferred capability."""
+
+    return any(
+        type(code) is CompilerIssueCode
+        and code in COURSE_SCOPE_DEFERRED_ISSUE_CODES
+        for code in codes
+    )
 
 
 class CompilerIssueSeverity(str, Enum):
@@ -391,10 +421,32 @@ class CompilerResult(FrozenModel):
     def compilable(self) -> bool:
         return self.status in {CompilerStatus.ready, CompilerStatus.overdetermined} and self.graph is not None
 
+    @model_validator(mode="after")
+    def bind_course_scope_deferred_shape(self) -> "CompilerResult":
+        deferred = tuple(
+            issue
+            for issue in self.issues
+            if issue.code in COURSE_SCOPE_DEFERRED_ISSUE_CODES
+        )
+        if not deferred:
+            return self
+        if (
+            self.status is not CompilerStatus.unsupported
+            or self.graph is not None
+            or len(deferred) != 1
+            or len(self.issues) != 1
+            or deferred[0].severity is not CompilerIssueSeverity.error
+        ):
+            raise ValueError(
+                "course-scope deferred result requires one exact unsupported error and no graph"
+            )
+        return self
+
 
 __all__ = [
     "COMPILER_CONTRACT_VERSION",
     "COMPILER_POLICY_VERSION",
+    "COURSE_SCOPE_DEFERRED_ISSUE_CODES",
     "LAW_LIBRARY_VERSION",
     "CompilerIssue",
     "CompilerIssueCode",
@@ -414,4 +466,5 @@ __all__ = [
     "RankMethod",
     "SymbolNode",
     "ValidatedIRAuthorization",
+    "has_course_scope_deferred_issue",
 ]

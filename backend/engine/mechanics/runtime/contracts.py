@@ -17,11 +17,13 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from engine.mechanics.compiler.contracts import (
+    COURSE_SCOPE_DEFERRED_ISSUE_CODES,
     CompilerIssue,
     CompilerIssueCode,
     CompilerResult,
     CompilerStatus,
     EquationGraph,
+    has_course_scope_deferred_issue,
 )
 from engine.mechanics.contracts import (
     DRAFT_SCHEMA_VERSION,
@@ -315,6 +317,18 @@ def compiler_result_is_coherent(value: object) -> bool:
         for issue in value.issues
     ):
         return False
+    deferred = tuple(
+        issue
+        for issue in value.issues
+        if issue.code in COURSE_SCOPE_DEFERRED_ISSUE_CODES
+    )
+    if deferred and (
+        value.status is not CompilerStatus.unsupported
+        or value.graph is not None
+        or len(deferred) != 1
+        or len(value.issues) != 1
+    ):
+        return False
     return True
 
 
@@ -340,8 +354,13 @@ def solve_result_is_coherent(value: object, graph: EquationGraph) -> bool:
 def _expected_delivery(
     mode: MechanicsIRMode,
     terminal: RuntimeTerminal,
+    compiler_issue_codes: tuple[CompilerIssueCode, ...] = (),
 ) -> RuntimeDelivery:
-    if mode in {MechanicsIRMode.off, MechanicsIRMode.shadow}:
+    if mode is MechanicsIRMode.off:
+        return RuntimeDelivery.legacy
+    if has_course_scope_deferred_issue(compiler_issue_codes):
+        return RuntimeDelivery.none
+    if mode is MechanicsIRMode.shadow:
         return RuntimeDelivery.legacy
     if terminal is RuntimeTerminal.solved:
         return RuntimeDelivery.generic
@@ -390,7 +409,33 @@ class MechanicsRuntimeExecution:
             is_exact_confirmation_fingerprint(self.current_calculation_fingerprint)
         ):
             raise ValueError("current calculation fingerprint is malformed")
-        if self.delivery is not _expected_delivery(self.mode, self.terminal):
+        compiler_issue_codes = (
+            tuple(issue.code for issue in self.compiler_result.issues)
+            if self.compiler_result is not None
+            else ()
+        )
+        if has_course_scope_deferred_issue(compiler_issue_codes) and (
+            self.terminal is not RuntimeTerminal.compiler_rejected
+            or self.delivery is not RuntimeDelivery.none
+            or self.solve_result is not None
+        ):
+            raise ValueError(
+                "deferred compiler issues require one non-solving compiler rejection"
+            )
+        expected_delivery = _expected_delivery(
+            self.mode,
+            self.terminal,
+            compiler_issue_codes,
+        )
+        fail_closed_compiler_contract = (
+            self.mode is not MechanicsIRMode.off
+            and self.terminal is RuntimeTerminal.failed
+            and self.delivery is RuntimeDelivery.none
+            and self.failure is RuntimeFailure.compiler_contract
+            and self.compiler_result is None
+            and self.solve_result is None
+        )
+        if self.delivery is not expected_delivery and not fail_closed_compiler_contract:
             raise ValueError("runtime delivery contradicts rollout mode and terminal")
         self._validate_terminal_shape()
 
@@ -567,7 +612,22 @@ class MechanicsRuntimeSummary(BaseModel):
 
     @model_validator(mode="after")
     def enforce_safe_projection_shape(self) -> "MechanicsRuntimeSummary":
-        if self.delivery is not _expected_delivery(self.mode, self.terminal):
+        expected_delivery = _expected_delivery(
+            self.mode,
+            self.terminal,
+            self.compiler_issue_codes,
+        )
+        fail_closed_compiler_contract = (
+            self.mode is not MechanicsIRMode.off
+            and self.terminal is RuntimeTerminal.failed
+            and self.delivery is RuntimeDelivery.none
+            and self.failure is RuntimeFailure.compiler_contract
+            and self.compiler_status is None
+            and not self.compiler_issue_codes
+            and self.solve_terminal is None
+            and not self.solve_diagnostic_codes
+        )
+        if self.delivery is not expected_delivery and not fail_closed_compiler_contract:
             raise ValueError("summary delivery contradicts rollout mode and terminal")
         if self.mode is MechanicsIRMode.off:
             if self.terminal is not RuntimeTerminal.off:
@@ -576,6 +636,17 @@ class MechanicsRuntimeSummary(BaseModel):
             raise ValueError("active summary cannot use the off terminal")
         if self.compiler_status is None and self.compiler_issue_codes:
             raise ValueError("compiler issue codes require a compiler status")
+        if has_course_scope_deferred_issue(self.compiler_issue_codes):
+            if (
+                len(self.compiler_issue_codes) != 1
+                or self.compiler_status is not CompilerStatus.unsupported
+                or self.terminal is not RuntimeTerminal.compiler_rejected
+                or self.delivery is not RuntimeDelivery.none
+                or self.solve_terminal is not None
+            ):
+                raise ValueError(
+                    "deferred compiler issues require one exact non-solving unsupported projection"
+                )
         if self.compiler_status is not None and self.modeler_terminal is not ModelerTerminal.accepted:
             raise ValueError("compiler summary requires an accepted modeler terminal")
         if self.solve_terminal is None and self.solve_diagnostic_codes:
@@ -702,6 +773,7 @@ def build_runtime_summary(execution: MechanicsRuntimeExecution) -> MechanicsRunt
 
 
 __all__ = [
+    "COURSE_SCOPE_DEFERRED_ISSUE_CODES",
     "RUNTIME_CONTRACT_VERSION",
     "RUNTIME_SUMMARY_SCHEMA",
     "RUNTIME_SUMMARY_VERSION",
@@ -715,4 +787,5 @@ __all__ = [
     "is_exact_confirmation_fingerprint",
     "modeler_outcome_is_coherent",
     "solve_result_is_coherent",
+    "has_course_scope_deferred_issue",
 ]

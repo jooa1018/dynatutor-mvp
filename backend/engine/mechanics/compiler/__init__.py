@@ -6,6 +6,7 @@ from engine.mechanics.compiler.compiler import (
 from engine.mechanics.compiler.contracts import (
     COMPILER_CONTRACT_VERSION,
     COMPILER_POLICY_VERSION,
+    COURSE_SCOPE_DEFERRED_ISSUE_CODES,
     LAW_LIBRARY_VERSION,
     CompilerIssue,
     CompilerIssueCode,
@@ -24,11 +25,13 @@ from engine.mechanics.compiler.contracts import (
     RankMethod,
     SymbolNode,
     ValidatedIRAuthorization,
+    has_course_scope_deferred_issue,
 )
 
 __all__ = [
     "COMPILER_CONTRACT_VERSION",
     "COMPILER_POLICY_VERSION",
+    "COURSE_SCOPE_DEFERRED_ISSUE_CODES",
     "LAW_LIBRARY_VERSION",
     "CompilerIssue",
     "CompilerIssueCode",
@@ -50,4 +53,5 @@ __all__ = [
     "ValidatedIRAuthorization",
     "authorize_validated_mechanics_ir",
     "compile_mechanics_ir",
+    "has_course_scope_deferred_issue",
 ]
