@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import math
 
@@ -99,12 +99,14 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("system_momentum_conservation", "impulse_momentum", (QuantityRole.mass, QuantityRole.velocity), assumptions=("external_impulse_negligible",), cost=6, hooks=("momentum_residual",)),
     _rule("direct_restitution", "impulse_momentum", (QuantityRole.velocity, QuantityRole.coefficient_restitution), interactions=(InteractionKind.collision.value,), cost=5, hooks=("impact_residual",)),
     _rule("rope_massless_tension", "constraint", (QuantityRole.force,), interactions=(InteractionKind.rope_tension.value,), assumptions=("massless_rope",), cost=2, hooks=("constraint_residual",)),
+    _rule("rope_attachment_side_tension_transfer", "constraint", (QuantityRole.force,), interactions=(InteractionKind.rope_tension.value,), assumptions=("massless_rope",), cost=3, hooks=("constraint_residual", "topology_residual")),
     _rule("rope_attachment_tension_transfer", "constraint", (QuantityRole.force,), interactions=(InteractionKind.rope_tension.value,), assumptions=("massless_rope", "ideal_massless_frictionless_pulley"), cost=3, hooks=("constraint_residual", "topology_residual")),
     _rule("rope_attachment_acceleration_transfer", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope", "fixed_pulley"), cost=3, hooks=("constraint_residual", "topology_residual")),
     _rule("rope_inextensible_motion", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope",), cost=2, hooks=("constraint_residual",)),
     _rule("rope_fixed_pulley_motion", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope", "fixed_pulley"), cost=3, hooks=("topology_residual",)),
     _rule("rope_moving_pulley_motion", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope",), cost=4, hooks=("topology_residual",)),
     _rule("incline_hanging_sliding_direction_consistency", "constraint", (QuantityRole.acceleration, QuantityRole.velocity), interactions=(InteractionKind.contact.value,), assumptions=("acceleration_not_opposite_motion",), cost=2, hooks=("direction_residual", "friction_regime")),
+    _rule("pulley_no_slip_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.radius, QuantityRole.angular_acceleration), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope", "fixed_pulley"), cost=3, hooks=("constraint_residual", "topology_residual")),
     _rule("pulley_newton_euler", "newton_second_law", (QuantityRole.force, QuantityRole.radius, QuantityRole.moment_of_inertia, QuantityRole.angular_acceleration), interactions=(InteractionKind.rope_tension.value,), cost=5, hooks=("moment_balance",)),
     _rule("rolling_no_slip", "constraint", (QuantityRole.velocity, QuantityRole.angular_velocity, QuantityRole.radius), cost=3, hooks=("constraint_residual",)),
     _rule("gear_pitch_velocity", "constraint", (QuantityRole.angular_velocity, QuantityRole.radius), interactions=(InteractionKind.gear_contact.value,), cost=3, hooks=("constraint_residual",)),
@@ -282,10 +284,11 @@ def _emit(
     assumption_ids: tuple[str, ...] = (),
     constraint_ids: tuple[str, ...] = (),
     extra_entity_ids: tuple[str, ...] = (),
+    extra_evidence_ids: tuple[str, ...] = (),
     initial_conditions: tuple[InitialConditionBinding, ...] = (),
 ) -> LawEmission:
     rule = _RULES[rule_id]
-    return emission_for(
+    emission = emission_for(
         rule,
         expression,
         quantities,
@@ -294,6 +297,14 @@ def _emit(
         extra_entity_ids=extra_entity_ids,
         initial_conditions=initial_conditions,
         hint_priority=rule.category in context.hinted_principles,
+    )
+    if not extra_evidence_ids:
+        return emission
+    return replace(
+        emission,
+        source_evidence_ids=tuple(
+            sorted(set(emission.source_evidence_ids) | set(extra_evidence_ids))
+        ),
     )
 
 
@@ -4406,6 +4417,931 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
     return emitted
 
 
+@dataclass(frozen=True)
+class _MassivePulleyAtwoodSide:
+    sign: int
+    point_id: str
+    attachment_relation_id: str
+    radius_relation_id: str
+    tangent_relation_id: str
+    radius: BoundQuantity
+    local_tension: BoundQuantity
+    rim_tension: BoundQuantity
+    local_acceleration: BoundQuantity
+    evidence_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _MassivePulleyAtwoodLawProfile:
+    rope_interaction_id: str
+    rope_id: str
+    pulley_id: str
+    frame_id: str
+    interval_id: str
+    sides: tuple[_MassivePulleyAtwoodSide, _MassivePulleyAtwoodSide]
+    rope_acceleration: BoundQuantity
+    inertia: BoundQuantity
+    alpha: BoundQuantity
+    wrap_relation_id: str
+    taut_state_id: str
+    no_slip_state_id: str
+    massless_assumption_ids: tuple[str, ...]
+    inextensible_assumption_ids: tuple[str, ...]
+    fixed_assumption_ids: tuple[str, ...]
+    axle_assumption_ids: tuple[str, ...]
+    wrap_evidence_ids: tuple[str, ...]
+    taut_evidence_ids: tuple[str, ...]
+    no_slip_evidence_ids: tuple[str, ...]
+    massless_evidence_ids: tuple[str, ...]
+    inextensible_evidence_ids: tuple[str, ...]
+    fixed_evidence_ids: tuple[str, ...]
+    axle_evidence_ids: tuple[str, ...]
+
+
+def _massive_pulley_atwood_profile(
+    context: LawContext,
+) -> _MassivePulleyAtwoodLawProfile | None:
+    """Recognize the closed fixed-axis inertial-pulley graph."""
+
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id
+            for item in context.entities
+            if item.primitive is primitive
+        )
+        for primitive in (
+            EntityPrimitive.particle,
+            EntityPrimitive.rope,
+            EntityPrimitive.pulley,
+            EntityPrimitive.environment,
+        )
+    }
+    if (
+        len(context.entities) != 5
+        or {key: len(value) for key, value in primitive_ids.items()}
+        != {
+            EntityPrimitive.particle: 2,
+            EntityPrimitive.rope: 1,
+            EntityPrimitive.pulley: 1,
+            EntityPrimitive.environment: 1,
+        }
+        or any(
+            not item.evidence_refs or item.component_of_entity_id is not None
+            for item in context.entities
+        )
+    ):
+        return None
+    particle_ids = set(primitive_ids[EntityPrimitive.particle])
+    rope_id = primitive_ids[EntityPrimitive.rope][0]
+    pulley_id = primitive_ids[EntityPrimitive.pulley][0]
+    environment_id = primitive_ids[EntityPrimitive.environment][0]
+
+    if len(context.reference_frames) != 1:
+        return None
+    frame = context.reference_frames[0]
+    axis_signature = {
+        (
+            item.axis,
+            getattr(item.direction, "kind", None),
+            getattr(item.direction, "frame_id", None),
+            getattr(item.direction, "axis", None),
+            getattr(item.direction, "sign", None),
+        )
+        for item in frame.axes
+    }
+    if (
+        frame.frame_type is not ReferenceFrameType.cartesian_3d
+        or getattr(frame.origin, "kind", None) != "world"
+        or frame.parent_frame_id is not None
+        or frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id is not None
+        or frame.generalized_coordinate_symbol_ids
+        or not frame.evidence_refs
+        or len(frame.axes) != 3
+        or axis_signature
+        != {
+            (AxisName.x, "axis", frame.frame_id, AxisName.x, 1),
+            (AxisName.y, "axis", frame.frame_id, AxisName.y, 1),
+            (AxisName.z, "axis", frame.frame_id, AxisName.z, 1),
+        }
+    ):
+        return None
+
+    if len(context.motion_intervals) != 1 or context.events:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or set(interval.subject_ids)
+        != {item.entity_id for item in context.entities}
+        or len(interval.subject_ids) != len(context.entities)
+        or not interval.evidence_refs
+    ):
+        return None
+
+    if len(context.points) != 2:
+        return None
+    points = {item.point_id: item for item in context.points}
+    if any(
+        item.role is not PointRole.contact
+        or item.owner_entity_id != pulley_id
+        or item.frame_id != frame.frame_id
+        or not item.evidence_refs
+        for item in points.values()
+    ):
+        return None
+    point_ids = set(points)
+
+    radius_relations = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.radius
+    )
+    tangent_relations = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.tangent
+    )
+    wraps = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.wraps
+    )
+    attachments = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.attached
+    )
+    if (
+        len(context.geometry) != 7
+        or len(radius_relations) != 2
+        or len(tangent_relations) != 2
+        or len(wraps) != 1
+        or len(attachments) != 2
+        or any(
+            item.interval_id != interval.interval_id
+            or item.expression is not None
+            or not item.evidence_refs
+            or len(item.participant_ids) != len(set(item.participant_ids))
+            or len(item.quantity_ids) != len(set(item.quantity_ids))
+            for item in context.geometry
+        )
+        or {frozenset(item.participant_ids) for item in radius_relations}
+        != {frozenset((pulley_id, point_id)) for point_id in point_ids}
+        or any(len(item.quantity_ids) != 1 for item in radius_relations)
+        or {frozenset(item.participant_ids) for item in tangent_relations}
+        != {
+            frozenset((rope_id, pulley_id, point_id))
+            for point_id in point_ids
+        }
+        or any(len(item.quantity_ids) != 2 for item in tangent_relations)
+        or set(wraps[0].participant_ids)
+        != {rope_id, pulley_id, *point_ids}
+        or len(wraps[0].participant_ids) != 4
+    ):
+        return None
+    wrap = wraps[0]
+
+    gravity_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.gravity
+    )
+    rope_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.rope_tension
+    )
+    if (
+        len(context.interactions) != 3
+        or len(gravity_interactions) != 2
+        or len(rope_interactions) != 1
+    ):
+        return None
+    rope_interaction = rope_interactions[0]
+    if (
+        set(rope_interaction.participant_ids)
+        != particle_ids | {rope_id, pulley_id}
+        or len(rope_interaction.participant_ids) != 4
+        or set(rope_interaction.point_ids) != point_ids
+        or len(rope_interaction.point_ids) != 2
+        or rope_interaction.frame_id != frame.frame_id
+        or rope_interaction.interval_id != interval.interval_id
+        or rope_interaction.event_id is not None
+        or len(rope_interaction.quantity_ids) != 4
+        or len(set(rope_interaction.quantity_ids)) != 4
+        or not rope_interaction.evidence_refs
+        or {
+            next(iter(set(item.participant_ids) & particle_ids), None)
+            for item in gravity_interactions
+        }
+        != particle_ids
+        or any(
+            len(item.participant_ids) != 2
+            or len(set(item.participant_ids)) != 2
+            or environment_id not in item.participant_ids
+            or item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.point_ids
+            or len(item.quantity_ids) != 3
+            or len(set(item.quantity_ids)) != 3
+            or not item.evidence_refs
+            for item in gravity_interactions
+        )
+    ):
+        return None
+
+    taut_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.subject_id == rope_id and item.kind is StateKind.rope
+    )
+    no_slip_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.subject_id == pulley_id and item.kind is StateKind.rolling
+    )
+    if (
+        len(context.state_conditions) != 2
+        or len(taut_states) != 1
+        or taut_states[0].state is not StateValue.taut
+        or taut_states[0].quantity_ids
+        or len(no_slip_states) != 1
+        or no_slip_states[0].state is not StateValue.no_slip
+        or any(
+            item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.expression is not None
+            or not item.evidence_refs
+            for item in context.state_conditions
+        )
+    ):
+        return None
+    taut_state = taut_states[0]
+    no_slip_state = no_slip_states[0]
+
+    required_assumptions = {
+        ("massless_rope", rope_id),
+        ("inextensible_rope", rope_id),
+        ("fixed_pulley", pulley_id),
+        ("frictionless_axle", pulley_id),
+    }
+    if (
+        len(context.assumptions) != 4
+        or {(item.kind, item.subject_id) for item in context.assumptions}
+        != required_assumptions
+        or any(
+            item.interval_id != interval.interval_id
+            or item.proposed_role is not None
+            or item.proposed_value is not None
+            or item.proposed_unit is not None
+            or not item.evidence_refs
+            for item in context.assumptions
+        )
+    ):
+        return None
+    assumption_by_kind = {item.kind: item for item in context.assumptions}
+    approved_by_kind = {
+        kind: context.approved_assumptions(
+            kind,
+            assumption.subject_id,
+            interval.interval_id,
+        )
+        for kind, assumption in assumption_by_kind.items()
+    }
+    if any(
+        ids != (assumption_by_kind[kind].assumption_id,)
+        for kind, ids in approved_by_kind.items()
+    ):
+        return None
+
+    quantities = {
+        item.quantity_id: item
+        for item in context.quantities
+        if item.quantity_id is not None
+    }
+    if len(quantities) != len(context.quantities):
+        return None
+    masses: dict[str, BoundQuantity] = {}
+    weights: dict[str, BoundQuantity] = {}
+    gravities: list[BoundQuantity] = []
+    for interaction in gravity_interactions:
+        body_id = next(iter(set(interaction.participant_ids) & particle_ids))
+        linked = tuple(quantities.get(item) for item in interaction.quantity_ids)
+        local_masses = tuple(
+            item
+            for item in linked
+            if item is not None
+            and item.role is QuantityRole.mass
+            and item.subject_id == body_id
+        )
+        local_gravities = tuple(
+            item
+            for item in linked
+            if item is not None
+            and item.role is QuantityRole.gravity
+            and item.subject_id == environment_id
+        )
+        local_weights = tuple(
+            item
+            for item in linked
+            if item is not None
+            and item.role is QuantityRole.force
+            and item.subject_id == body_id
+        )
+        if not all(
+            len(items) == 1
+            for items in (local_masses, local_gravities, local_weights)
+        ):
+            return None
+        masses[body_id] = local_masses[0]
+        gravities.append(local_gravities[0])
+        weights[body_id] = local_weights[0]
+    if len({item.quantity_id for item in gravities}) != 1:
+        return None
+    gravity = gravities[0]
+
+    inertia_values = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.moment_of_inertia
+        and item.subject_id == pulley_id
+    )
+    radii = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.radius and item.subject_id == pulley_id
+    )
+    angular = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.angular_acceleration
+        and item.subject_id == pulley_id
+    )
+    rope_accelerations = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.acceleration
+        and item.subject_id == rope_id
+        and item.frame_id is None
+    )
+    if not (
+        len(inertia_values) == len(angular) == len(rope_accelerations) == 1
+        and len(radii) == 2
+    ):
+        return None
+    inertia = inertia_values[0]
+    alpha = angular[0]
+    rope_acceleration = rope_accelerations[0]
+
+    def exact_known_unscoped(item: BoundQuantity, subject_id: str) -> bool:
+        value = item.known_si_value
+        return (
+            item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.subject_id == subject_id
+            and item.evidence_ids
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id is None
+            and item.event_id is None
+            and item.component
+            in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            and not item.direction_bound
+            and type(value) is float
+            and math.isfinite(value)
+            and value > 0.0
+        )
+
+    if (
+        any(
+            not exact_known_unscoped(item, body_id)
+            for body_id, item in masses.items()
+        )
+        or not exact_known_unscoped(gravity, environment_id)
+        or not exact_known_unscoped(inertia, pulley_id)
+    ):
+        return None
+
+    radius_by_sign: dict[int, BoundQuantity] = {}
+    point_by_sign: dict[int, str] = {}
+    for radius in radii:
+        value = radius.known_si_value
+        if (
+            radius.shape is not QuantityShape.scalar
+            or radius.symbol_id is None
+            or not radius.evidence_ids
+            or radius.point_id not in point_ids
+            or radius.frame_id != frame.frame_id
+            or radius.interval_id != interval.interval_id
+            or radius.event_id is not None
+            or radius.component is not QuantityComponent.x
+            or radius.direction_sign not in {-1, 1}
+            or not _axis_bound(
+                radius,
+                frame.frame_id,
+                QuantityComponent.x,
+                radius.direction_sign,
+            )
+            or type(value) is not float
+            or not math.isfinite(value)
+            or value <= 0.0
+        ):
+            return None
+        radius_by_sign[radius.direction_sign] = radius
+        point_by_sign[radius.direction_sign] = radius.point_id
+    if (
+        set(radius_by_sign) != {-1, 1}
+        or set(point_by_sign.values()) != point_ids
+        or radius_by_sign[-1].known_si_value != radius_by_sign[1].known_si_value
+    ):
+        return None
+
+    radius_relation_by_point = {
+        next(iter(set(item.participant_ids) & point_ids)): item
+        for item in radius_relations
+    }
+    for point_id, relation in radius_relation_by_point.items():
+        radius = next(item for item in radii if item.point_id == point_id)
+        if tuple(relation.quantity_ids) != (radius.quantity_id,):
+            return None
+
+    def exact_unknown_axis(
+        item: BoundQuantity,
+        *,
+        subject_id: str,
+        point_id: str | None,
+        component: QuantityComponent,
+        sign: int,
+    ) -> bool:
+        return (
+            item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.known_si_value is None
+            and item.evidence_ids
+            and item.subject_id == subject_id
+            and item.point_id == point_id
+            and item.frame_id == frame.frame_id
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and _axis_bound(item, frame.frame_id, component, sign)
+        )
+
+    if any(
+        not exact_unknown_axis(
+            item,
+            subject_id=body_id,
+            point_id=None,
+            component=QuantityComponent.y,
+            sign=1,
+        )
+        for body_id, item in weights.items()
+    ):
+        return None
+    rope_linked = tuple(
+        quantities.get(item) for item in rope_interaction.quantity_ids
+    )
+    if any(item is None for item in rope_linked):
+        return None
+    local_tensions = tuple(
+        item
+        for item in rope_linked
+        if item.role is QuantityRole.force and item.subject_id in particle_ids
+    )
+    rim_tensions = tuple(
+        item
+        for item in rope_linked
+        if item.role is QuantityRole.force
+        and item.subject_id == pulley_id
+        and item.point_id in point_ids
+    )
+    if (
+        len(local_tensions) != 2
+        or {item.subject_id for item in local_tensions} != particle_ids
+        or len(rim_tensions) != 2
+        or {item.point_id for item in rim_tensions} != point_ids
+        or any(
+            not exact_unknown_axis(
+                item,
+                subject_id=item.subject_id,
+                point_id=None,
+                component=QuantityComponent.y,
+                sign=-1,
+            )
+            for item in local_tensions
+        )
+        or any(
+            not exact_unknown_axis(
+                item,
+                subject_id=pulley_id,
+                point_id=item.point_id,
+                component=QuantityComponent.y,
+                sign=1,
+            )
+            for item in rim_tensions
+        )
+    ):
+        return None
+    body_accelerations = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.acceleration
+        and item.subject_id in particle_ids
+    )
+    if (
+        len(body_accelerations) != 2
+        or {item.subject_id for item in body_accelerations} != particle_ids
+        or any(
+            item.shape is not QuantityShape.scalar
+            or item.symbol_id is None
+            or item.known_si_value is not None
+            or not item.evidence_ids
+            or item.point_id is not None
+            or item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.component is not QuantityComponent.y
+            or item.direction_sign not in {-1, 1}
+            or not _axis_bound(
+                item,
+                frame.frame_id,
+                QuantityComponent.y,
+                item.direction_sign,
+            )
+            for item in body_accelerations
+        )
+        or rope_acceleration.shape is not QuantityShape.scalar
+        or rope_acceleration.symbol_id is None
+        or rope_acceleration.known_si_value is not None
+        or not rope_acceleration.evidence_ids
+        or rope_acceleration.point_id is not None
+        or rope_acceleration.frame_id is not None
+        or rope_acceleration.interval_id != interval.interval_id
+        or rope_acceleration.event_id is not None
+        or rope_acceleration.component is not QuantityComponent.unspecified
+        or rope_acceleration.direction_bound
+        or alpha.shape is not QuantityShape.scalar
+        or alpha.symbol_id is None
+        or alpha.known_si_value is not None
+        or not alpha.evidence_ids
+        or alpha.point_id is not None
+        or alpha.frame_id != frame.frame_id
+        or alpha.interval_id != interval.interval_id
+        or alpha.event_id is not None
+        or not _axis_bound(
+            alpha,
+            frame.frame_id,
+            QuantityComponent.z,
+            1,
+        )
+    ):
+        return None
+
+    local_tension_by_body = {item.subject_id: item for item in local_tensions}
+    rim_tension_by_point = {item.point_id: item for item in rim_tensions}
+    acceleration_by_body = {
+        item.subject_id: item for item in body_accelerations
+    }
+    tangent_relation_by_point = {
+        next(iter(set(item.participant_ids) & point_ids)): item
+        for item in tangent_relations
+    }
+    side_values: list[_MassivePulleyAtwoodSide] = []
+    attached_bodies: set[str] = set()
+    attached_points: set[str] = set()
+    for attachment in attachments:
+        body_matches = set(attachment.participant_ids) & particle_ids
+        point_matches = set(attachment.participant_ids) & point_ids
+        if len(body_matches) != 1 or len(point_matches) != 1:
+            return None
+        body_id = next(iter(body_matches))
+        point_id = next(iter(point_matches))
+        sign = next(
+            key for key, value in point_by_sign.items() if value == point_id
+        )
+        local_acceleration = acceleration_by_body[body_id]
+        radius = radius_by_sign[sign]
+        rim_tension = rim_tension_by_point[point_id]
+        tangent = tangent_relation_by_point[point_id]
+        radius_relation = radius_relation_by_point[point_id]
+        if (
+            set(attachment.participant_ids)
+            != {rope_id, pulley_id, body_id, point_id}
+            or set(attachment.quantity_ids)
+            != {
+                local_tension_by_body[body_id].quantity_id,
+                rim_tension.quantity_id,
+                local_acceleration.quantity_id,
+                rope_acceleration.quantity_id,
+            }
+            or len(attachment.quantity_ids) != 4
+            or local_acceleration.direction_sign != sign
+            or set(tangent.quantity_ids)
+            != {radius.quantity_id, rim_tension.quantity_id}
+        ):
+            return None
+        side_values.append(
+            _MassivePulleyAtwoodSide(
+                sign=sign,
+                point_id=point_id,
+                attachment_relation_id=attachment.relation_id,
+                radius_relation_id=radius_relation.relation_id,
+                tangent_relation_id=tangent.relation_id,
+                radius=radius,
+                local_tension=local_tension_by_body[body_id],
+                rim_tension=rim_tension,
+                local_acceleration=local_acceleration,
+                evidence_ids=tuple(
+                    sorted(
+                        set(attachment.evidence_refs)
+                        | set(radius_relation.evidence_refs)
+                        | set(tangent.evidence_refs)
+                    )
+                ),
+            )
+        )
+        attached_bodies.add(body_id)
+        attached_points.add(point_id)
+    if attached_bodies != particle_ids or attached_points != point_ids:
+        return None
+    sides = tuple(sorted(side_values, key=lambda item: item.sign))
+    if len(sides) != 2 or sides[0].sign != -1 or sides[1].sign != 1:
+        return None
+
+    expected_wrap_quantities = {
+        *(item.quantity_id for item in radii),
+        *(item.quantity_id for item in rim_tensions),
+        rope_acceleration.quantity_id,
+        alpha.quantity_id,
+    }
+    if (
+        set(wrap.quantity_ids) != expected_wrap_quantities
+        or len(wrap.quantity_ids) != 6
+        or set(no_slip_state.quantity_ids)
+        != {
+            *(item.quantity_id for item in radii),
+            alpha.quantity_id,
+        }
+        or len(no_slip_state.quantity_ids) != 3
+    ):
+        return None
+
+    force_dimension = next(iter(weights.values())).dimension
+    acceleration_dimension = body_accelerations[0].dimension
+    if (
+        any(
+            item.dimension != force_dimension
+            for item in (*weights.values(), *local_tensions, *rim_tensions)
+        )
+        or any(
+            item.dimension != acceleration_dimension
+            for item in (*body_accelerations, rope_acceleration)
+        )
+        or radii[0].dimension != radii[1].dimension
+        or any(
+            item.dimension.plus(gravity.dimension) != force_dimension
+            for item in masses.values()
+        )
+        or any(
+            item.dimension.plus(acceleration_dimension) != force_dimension
+            for item in masses.values()
+        )
+        or radii[0].dimension.plus(alpha.dimension) != acceleration_dimension
+        or radii[0].dimension.plus(force_dimension)
+        != inertia.dimension.plus(alpha.dimension)
+    ):
+        return None
+    expected_quantity_ids = {
+        *(item.quantity_id for item in masses.values()),
+        gravity.quantity_id,
+        *(item.quantity_id for item in weights.values()),
+        *(item.quantity_id for item in local_tensions),
+        *(item.quantity_id for item in rim_tensions),
+        *(item.quantity_id for item in body_accelerations),
+        rope_acceleration.quantity_id,
+        inertia.quantity_id,
+        *(item.quantity_id for item in radii),
+        alpha.quantity_id,
+    }
+    if set(quantities) != expected_quantity_ids:
+        return None
+
+    def record_evidence(record: object) -> tuple[str, ...]:
+        return tuple(sorted(set(getattr(record, "evidence_refs", ()))))
+
+    return _MassivePulleyAtwoodLawProfile(
+        rope_interaction_id=rope_interaction.interaction_id,
+        rope_id=rope_id,
+        pulley_id=pulley_id,
+        frame_id=frame.frame_id,
+        interval_id=interval.interval_id,
+        sides=sides,
+        rope_acceleration=rope_acceleration,
+        inertia=inertia,
+        alpha=alpha,
+        wrap_relation_id=wrap.relation_id,
+        taut_state_id=taut_state.state_condition_id,
+        no_slip_state_id=no_slip_state.state_condition_id,
+        massless_assumption_ids=approved_by_kind["massless_rope"],
+        inextensible_assumption_ids=approved_by_kind["inextensible_rope"],
+        fixed_assumption_ids=approved_by_kind["fixed_pulley"],
+        axle_assumption_ids=approved_by_kind["frictionless_axle"],
+        wrap_evidence_ids=record_evidence(wrap),
+        taut_evidence_ids=record_evidence(taut_state),
+        no_slip_evidence_ids=record_evidence(no_slip_state),
+        massless_evidence_ids=record_evidence(
+            assumption_by_kind["massless_rope"]
+        ),
+        inextensible_evidence_ids=record_evidence(
+            assumption_by_kind["inextensible_rope"]
+        ),
+        fixed_evidence_ids=record_evidence(
+            assumption_by_kind["fixed_pulley"]
+        ),
+        axle_evidence_ids=record_evidence(
+            assumption_by_kind["frictionless_axle"]
+        ),
+    )
+
+
+def _massive_pulley_atwood_emissions(
+    context: LawContext,
+) -> list[LawEmission]:
+    profile = _massive_pulley_atwood_profile(context)
+    if profile is None:
+        return []
+    emitted: list[LawEmission] = []
+    transfer_entities = (profile.rope_id, profile.pulley_id)
+    for side in profile.sides:
+        emitted.append(
+            _emit(
+                context,
+                "rope_attachment_side_tension_transfer",
+                Equality(
+                    left=side.local_tension.expression,
+                    right=side.rim_tension.expression,
+                ),
+                (side.local_tension, side.rim_tension),
+                assumption_ids=profile.massless_assumption_ids,
+                constraint_ids=(
+                    side.attachment_relation_id,
+                    profile.taut_state_id,
+                ),
+                extra_entity_ids=transfer_entities,
+                extra_evidence_ids=tuple(
+                    sorted(
+                        set(side.evidence_ids)
+                        | set(profile.taut_evidence_ids)
+                        | set(profile.massless_evidence_ids)
+                    )
+                ),
+            )
+        )
+        emitted.append(
+            _emit(
+                context,
+                "rope_attachment_acceleration_transfer",
+                Equality(
+                    left=side.local_acceleration.expression,
+                    right=profile.rope_acceleration.expression,
+                ),
+                (side.local_acceleration, profile.rope_acceleration),
+                assumption_ids=tuple(
+                    sorted(
+                        set(profile.inextensible_assumption_ids)
+                        | set(profile.fixed_assumption_ids)
+                    )
+                ),
+                constraint_ids=(
+                    side.attachment_relation_id,
+                    profile.taut_state_id,
+                ),
+                extra_entity_ids=transfer_entities,
+                extra_evidence_ids=tuple(
+                    sorted(
+                        set(side.evidence_ids)
+                        | set(profile.taut_evidence_ids)
+                        | set(profile.inextensible_evidence_ids)
+                        | set(profile.fixed_evidence_ids)
+                    )
+                ),
+            )
+        )
+
+    left, right = profile.sides
+    topology_relation_ids = tuple(
+        sorted(
+            {
+                profile.wrap_relation_id,
+                left.radius_relation_id,
+                right.radius_relation_id,
+                left.tangent_relation_id,
+                right.tangent_relation_id,
+            }
+        )
+    )
+    topology_evidence_ids = tuple(
+        sorted(
+            set(profile.wrap_evidence_ids)
+            | set(left.evidence_ids)
+            | set(right.evidence_ids)
+        )
+    )
+    no_slip_product = Multiply(
+        factors=(right.radius.expression, profile.alpha.expression),
+        dimension=profile.rope_acceleration.dimension,
+    )
+    emitted.append(
+        _emit(
+            context,
+            "pulley_no_slip_acceleration",
+            Equality(
+                left=profile.rope_acceleration.expression,
+                right=no_slip_product,
+            ),
+            (
+                profile.rope_acceleration,
+                left.radius,
+                right.radius,
+                profile.alpha,
+            ),
+            assumption_ids=tuple(
+                sorted(
+                    set(profile.inextensible_assumption_ids)
+                    | set(profile.fixed_assumption_ids)
+                )
+            ),
+            constraint_ids=tuple(
+                sorted(
+                    set(topology_relation_ids)
+                    | {profile.no_slip_state_id, profile.taut_state_id}
+                )
+            ),
+            extra_entity_ids=transfer_entities,
+            extra_evidence_ids=tuple(
+                sorted(
+                    set(topology_evidence_ids)
+                    | set(profile.no_slip_evidence_ids)
+                    | set(profile.taut_evidence_ids)
+                    | set(profile.inextensible_evidence_ids)
+                    | set(profile.fixed_evidence_ids)
+                )
+            ),
+        )
+    )
+
+    tension_difference = Subtract(
+        left=right.rim_tension.expression,
+        right=left.rim_tension.expression,
+        dimension=right.rim_tension.dimension,
+    )
+    torque_dimension = right.radius.dimension.plus(right.rim_tension.dimension)
+    if torque_dimension is None:
+        return []
+    rope_moment = Multiply(
+        factors=(right.radius.expression, tension_difference),
+        dimension=torque_dimension,
+    )
+    inertia_moment = Multiply(
+        factors=(profile.inertia.expression, profile.alpha.expression),
+        dimension=torque_dimension,
+    )
+    emitted.append(
+        _emit(
+            context,
+            "pulley_newton_euler",
+            Equality(left=rope_moment, right=inertia_moment),
+            (
+                left.radius,
+                right.radius,
+                left.rim_tension,
+                right.rim_tension,
+                profile.inertia,
+                profile.alpha,
+            ),
+            assumption_ids=tuple(
+                sorted(
+                    set(profile.fixed_assumption_ids)
+                    | set(profile.axle_assumption_ids)
+                )
+            ),
+            constraint_ids=topology_relation_ids,
+            extra_entity_ids=transfer_entities,
+            extra_evidence_ids=tuple(
+                sorted(
+                    set(topology_evidence_ids)
+                    | set(profile.fixed_evidence_ids)
+                    | set(profile.axle_evidence_ids)
+                )
+            ),
+        )
+    )
+    return emitted
+
+
 def _fixed_ideal_pulley_topology(
     context: LawContext,
     interaction,
@@ -4599,8 +5535,15 @@ def _fixed_ideal_pulley_topology(
 def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
     emitted: list[LawEmission] = []
     primitive_by_id = {entity.entity_id: entity.primitive for entity in context.entities}
+    massive_pulley_profile = _massive_pulley_atwood_profile(context)
     for interaction in context.interactions:
         if interaction.kind is InteractionKind.rope_tension:
+            if (
+                massive_pulley_profile is not None
+                and interaction.interaction_id
+                == massive_pulley_profile.rope_interaction_id
+            ):
+                continue
             rope_ids = tuple(
                 item
                 for item in interaction.participant_ids
@@ -5344,6 +6287,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_incline_gravity_contact_emissions(context))
     emitted.extend(_horizontal_fixed_contact_emissions(context))
     emitted.extend(_incline_hanging_rope_emissions(context))
+    emitted.extend(_massive_pulley_atwood_emissions(context))
     emitted.extend(_newton_emissions(context))
     emitted.extend(_primitive_interaction_emissions(context))
     emitted.extend(_work_energy_emissions(context))
