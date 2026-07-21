@@ -141,8 +141,32 @@ def _linear_audit(
     except Exception:
         return _closed(CompletenessAuditStatus.unsupported)
     coefficient_rank = _rational_rank(matrix)
-    augmented_rank = _rational_rank(matrix.row_join(vector))
-    if coefficient_rank is None or augmented_rank is None:
+    if coefficient_rank is None:
+        return _closed(CompletenessAuditStatus.unsupported)
+    # A square rational coefficient matrix with full column rank is invertible
+    # over every characteristic-zero algebraic extension.  Therefore one
+    # unknown-free exact algebraic RHS (for example a server-owned principal
+    # square root) cannot change consistency or rank.  Keep every rectangular,
+    # rank-deficient, free-symbol, or non-finite case on the original stricter
+    # rational augmented-rank path.
+    square_full_rank_with_exact_rhs = (
+        matrix.rows == matrix.cols == len(atoms)
+        and coefficient_rank == len(atoms)
+        and all(
+            not getattr(vector[index, 0], "free_symbols", set())
+            and getattr(vector[index, 0], "is_number", False) is True
+            and getattr(vector[index, 0], "is_algebraic", None) is True
+            and getattr(vector[index, 0], "is_finite", None) is True
+            and getattr(vector[index, 0], "is_real", None) is True
+            for index in range(vector.rows)
+        )
+    )
+    augmented_rank = (
+        coefficient_rank
+        if square_full_rank_with_exact_rhs
+        else _rational_rank(matrix.row_join(vector))
+    )
+    if augmented_rank is None:
         return _closed(CompletenessAuditStatus.unsupported)
     if coefficient_rank < augmented_rank:
         solution_count = 0

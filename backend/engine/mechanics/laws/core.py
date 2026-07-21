@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from fractions import Fraction
 import json
 import math
 
@@ -39,6 +40,7 @@ from engine.mechanics.math_ast import (
     Multiply,
     Negate,
     Power,
+    Sqrt,
     Subtract,
 )
 
@@ -109,6 +111,8 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("pulley_no_slip_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.radius, QuantityRole.angular_acceleration), interactions=(InteractionKind.rope_tension.value,), assumptions=("inextensible_rope", "fixed_pulley"), cost=3, hooks=("constraint_residual", "topology_residual")),
     _rule("pulley_newton_euler", "newton_second_law", (QuantityRole.force, QuantityRole.radius, QuantityRole.moment_of_inertia, QuantityRole.angular_acceleration), interactions=(InteractionKind.rope_tension.value,), cost=5, hooks=("moment_balance",)),
     _rule("rolling_no_slip", "constraint", (QuantityRole.velocity, QuantityRole.angular_velocity, QuantityRole.radius), cost=3, hooks=("constraint_residual",)),
+    _rule("pure_rolling_shape_inertia", "work_energy", (QuantityRole.mass, QuantityRole.radius, QuantityRole.moment_of_inertia), cost=3, hooks=("constitutive_residual",)),
+    _rule("pure_rolling_principal_energy", "work_energy", (QuantityRole.speed, QuantityRole.gravity, QuantityRole.height), cost=4, hooks=("energy_residual",)),
     _rule("gear_pitch_velocity", "constraint", (QuantityRole.angular_velocity, QuantityRole.radius), interactions=(InteractionKind.gear_contact.value,), cost=3, hooks=("constraint_residual",)),
     _rule("state_at_rest", "constraint", (QuantityRole.velocity,), cost=1, hooks=("boundary_residual",)),
     _rule("angular_position_derivative", "rigid_body_kinematics", (QuantityRole.angular_position, QuantityRole.angular_velocity, QuantityRole.time), cost=4, hooks=("derivative_residual",)),
@@ -4417,6 +4421,522 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
     return emitted
 
 
+_PURE_ROLLING_SHAPE_BETA: dict[str, Fraction] = {
+    "solid_sphere": Fraction(2, 5),
+    "hollow_sphere": Fraction(2, 3),
+    "solid_cylinder": Fraction(1, 2),
+    "disk": Fraction(1, 2),
+    "hoop": Fraction(1, 1),
+    "ring": Fraction(1, 1),
+}
+
+
+@dataclass(frozen=True)
+class _PureRollingEnergyLawProfile:
+    body_id: str
+    incline_id: str
+    environment_id: str
+    center_id: str
+    contact_id: str
+    radius_relation_id: str
+    lies_on_relation_id: str
+    gravity_interaction_id: str
+    contact_interaction_id: str
+    initial_state_id: str
+    final_state_id: str
+    no_slip_state_id: str
+    touching_state_id: str
+    fixed_incline_state_id: str
+    shape_assumption_id: str
+    no_energy_loss_assumption_id: str
+    beta: Fraction
+    mass: BoundQuantity
+    radius: BoundQuantity
+    gravity: BoundQuantity
+    height: BoundQuantity
+    inertia: BoundQuantity
+    initial_speed: BoundQuantity
+    final_speed: BoundQuantity
+    initial_angular_speed: BoundQuantity
+    final_angular_speed: BoundQuantity
+    starts_from_rest: bool
+    topology_evidence_ids: tuple[str, ...]
+    state_evidence_ids: tuple[str, ...]
+    shape_evidence_ids: tuple[str, ...]
+    no_energy_loss_evidence_ids: tuple[str, ...]
+
+
+def _pure_rolling_energy_profile(
+    context: LawContext,
+) -> _PureRollingEnergyLawProfile | None:
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id
+            for item in context.entities
+            if item.primitive is primitive
+        )
+        for primitive in (
+            EntityPrimitive.rigid_body,
+            EntityPrimitive.incline,
+            EntityPrimitive.environment,
+        )
+    }
+    if (
+        {key.value: len(value) for key, value in primitive_ids.items()}
+        != {"rigid_body": 1, "incline": 1, "environment": 1}
+        or len(context.entities) != 3
+    ):
+        return None
+    body_id = primitive_ids[EntityPrimitive.rigid_body][0]
+    incline_id = primitive_ids[EntityPrimitive.incline][0]
+    environment_id = primitive_ids[EntityPrimitive.environment][0]
+    if len(context.reference_frames) != 1 or len(context.motion_intervals) != 1:
+        return None
+    frame = context.reference_frames[0]
+    interval = context.motion_intervals[0]
+    if (
+        frame.frame_type is not ReferenceFrameType.cartesian_2d
+        or len(frame.axes) != 2
+        or {item.axis for item in frame.axes} != {AxisName.x, AxisName.y}
+        or interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or set(interval.subject_ids) != {body_id, incline_id, environment_id}
+        or context.events
+    ):
+        return None
+    centers = tuple(
+        item
+        for item in context.points
+        if item.owner_entity_id == body_id and item.role is PointRole.mass_center
+    )
+    contacts = tuple(
+        item
+        for item in context.points
+        if item.owner_entity_id == body_id and item.role is PointRole.contact
+    )
+    if len(context.points) != 2 or len(centers) != 1 or len(contacts) != 1:
+        return None
+    center_id = centers[0].point_id
+    contact_id = contacts[0].point_id
+    radius_relations = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.radius
+    )
+    lies_on_relations = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.lies_on
+    )
+    if (
+        len(context.geometry) != 2
+        or len(radius_relations) != 1
+        or len(lies_on_relations) != 1
+        or set(radius_relations[0].participant_ids)
+        != {body_id, center_id, contact_id}
+        or set(lies_on_relations[0].participant_ids)
+        != {body_id, incline_id, contact_id}
+    ):
+        return None
+    gravity_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.gravity
+    )
+    contact_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.contact
+    )
+    if (
+        len(context.interactions) != 2
+        or len(gravity_interactions) != 1
+        or len(contact_interactions) != 1
+        or set(gravity_interactions[0].participant_ids)
+        != {body_id, environment_id}
+        or set(contact_interactions[0].participant_ids) != {body_id, incline_id}
+        or tuple(contact_interactions[0].point_ids) != (contact_id,)
+    ):
+        return None
+    shape_assumptions = tuple(
+        item
+        for item in context.assumptions
+        if item.kind in _PURE_ROLLING_SHAPE_BETA
+        and item.assumption_id in context.approved_assumption_ids
+        and item.subject_id == body_id
+        and item.interval_id == interval.interval_id
+    )
+    loss_assumptions = tuple(
+        item
+        for item in context.assumptions
+        if item.kind == "no_energy_loss"
+        and item.assumption_id in context.approved_assumption_ids
+        and item.subject_id == body_id
+        and item.interval_id == interval.interval_id
+    )
+    if (
+        len(context.assumptions) != 2
+        or len(shape_assumptions) != 1
+        or len(loss_assumptions) != 1
+    ):
+        return None
+    shape_assumption = shape_assumptions[0]
+    loss_assumption = loss_assumptions[0]
+
+    def role(role: QuantityRole) -> tuple[BoundQuantity, ...]:
+        return tuple(item for item in context.quantities if item.role is role)
+
+    masses = role(QuantityRole.mass)
+    radii = role(QuantityRole.radius)
+    gravities = role(QuantityRole.gravity)
+    heights = role(QuantityRole.height)
+    inertias = role(QuantityRole.moment_of_inertia)
+    speeds = role(QuantityRole.speed)
+    angular_speeds = role(QuantityRole.angular_velocity)
+    if not (
+        len(masses)
+        == len(radii)
+        == len(gravities)
+        == len(heights)
+        == len(inertias)
+        == 1
+        and len(speeds) == len(angular_speeds) == 2
+        and len(context.quantities) == 9
+    ):
+        return None
+    mass, radius, gravity, height, inertia = (
+        masses[0], radii[0], gravities[0], heights[0], inertias[0]
+    )
+    if (
+        mass.subject_id != body_id
+        or radius.subject_id != body_id
+        or gravity.subject_id != environment_id
+        or height.subject_id != body_id
+        or inertia.subject_id != body_id
+        or inertia.point_id != center_id
+        or tuple(radius_relations[0].quantity_ids) != (radius.quantity_id,)
+        or set(gravity_interactions[0].quantity_ids)
+        != {mass.quantity_id, gravity.quantity_id, height.quantity_id}
+        or tuple(contact_interactions[0].quantity_ids) != (radius.quantity_id,)
+    ):
+        return None
+    initial_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.initial and item.subject_id == body_id
+    )
+    final_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.final and item.subject_id == body_id
+    )
+    no_slip_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.rolling
+        and item.state is StateValue.no_slip
+        and item.subject_id == body_id
+    )
+    touching_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.contact
+        and item.state is StateValue.touching
+        and item.subject_id == body_id
+        and not item.quantity_ids
+    )
+    fixed_incline_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.motion
+        and item.state is StateValue.at_rest
+        and item.subject_id == incline_id
+        and not item.quantity_ids
+    )
+    if (
+        len(context.state_conditions) != 5
+        or len(initial_states) != 1
+        or len(final_states) != 1
+        or len(no_slip_states) != 1
+        or len(touching_states) != 1
+        or len(fixed_incline_states) != 1
+        or len(initial_states[0].quantity_ids) != 1
+        or len(final_states[0].quantity_ids) != 2
+    ):
+        return None
+    by_id = {item.quantity_id: item for item in context.quantities}
+    initial_speed = by_id.get(initial_states[0].quantity_ids[0])
+    final_speed = next(
+        (
+            by_id.get(item)
+            for item in final_states[0].quantity_ids
+            if by_id.get(item) in speeds
+        ),
+        None,
+    )
+    final_angular = next(
+        (
+            by_id.get(item)
+            for item in final_states[0].quantity_ids
+            if by_id.get(item) in angular_speeds
+        ),
+        None,
+    )
+    initial_angular = next(
+        (item for item in angular_speeds if item is not final_angular),
+        None,
+    )
+    if (
+        initial_speed not in speeds
+        or final_speed not in speeds
+        or initial_speed is final_speed
+        or final_angular not in angular_speeds
+        or initial_angular not in angular_speeds
+        or set(no_slip_states[0].quantity_ids)
+        != {
+            radius.quantity_id,
+            initial_speed.quantity_id,
+            final_speed.quantity_id,
+            initial_angular.quantity_id,
+            final_angular.quantity_id,
+        }
+    ):
+        return None
+
+    def evidence(*records: object) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    item
+                    for record in records
+                    for item in getattr(record, "evidence_refs", ())
+                }
+            )
+        )
+
+    return _PureRollingEnergyLawProfile(
+        body_id=body_id,
+        incline_id=incline_id,
+        environment_id=environment_id,
+        center_id=center_id,
+        contact_id=contact_id,
+        radius_relation_id=radius_relations[0].relation_id,
+        lies_on_relation_id=lies_on_relations[0].relation_id,
+        gravity_interaction_id=gravity_interactions[0].interaction_id,
+        contact_interaction_id=contact_interactions[0].interaction_id,
+        initial_state_id=initial_states[0].state_condition_id,
+        final_state_id=final_states[0].state_condition_id,
+        no_slip_state_id=no_slip_states[0].state_condition_id,
+        touching_state_id=touching_states[0].state_condition_id,
+        fixed_incline_state_id=fixed_incline_states[0].state_condition_id,
+        shape_assumption_id=shape_assumption.assumption_id,
+        no_energy_loss_assumption_id=loss_assumption.assumption_id,
+        beta=_PURE_ROLLING_SHAPE_BETA[shape_assumption.kind],
+        mass=mass,
+        radius=radius,
+        gravity=gravity,
+        height=height,
+        inertia=inertia,
+        initial_speed=initial_speed,
+        final_speed=final_speed,
+        initial_angular_speed=initial_angular,
+        final_angular_speed=final_angular,
+        starts_from_rest=initial_states[0].state is StateValue.at_rest,
+        topology_evidence_ids=evidence(
+            radius_relations[0],
+            lies_on_relations[0],
+            gravity_interactions[0],
+            contact_interactions[0],
+        ),
+        state_evidence_ids=evidence(
+            initial_states[0],
+            final_states[0],
+            no_slip_states[0],
+            touching_states[0],
+            fixed_incline_states[0],
+        ),
+        shape_evidence_ids=evidence(shape_assumption),
+        no_energy_loss_evidence_ids=evidence(loss_assumption),
+    )
+
+
+def _pure_rolling_energy_emissions(
+    context: LawContext,
+) -> list[LawEmission]:
+    profile = _pure_rolling_energy_profile(context)
+    if profile is None:
+        return []
+    beta = Divide(
+        numerator=LiteralNode(value=float(profile.beta.numerator)),
+        denominator=LiteralNode(value=float(profile.beta.denominator)),
+        dimension=DimensionVector.dimensionless(),
+    )
+    radius_squared = Power(
+        base=profile.radius.expression,
+        exponent=LiteralNode(value=2.0),
+    )
+    inertia_expression = Multiply(
+        factors=(beta, profile.mass.expression, radius_squared),
+        dimension=profile.inertia.dimension,
+    )
+    topology_constraints = tuple(
+        sorted((profile.radius_relation_id, profile.lies_on_relation_id))
+    )
+    extra_entities = (
+        profile.body_id,
+        profile.incline_id,
+        profile.environment_id,
+    )
+    emitted = [
+        _emit(
+            context,
+            "pure_rolling_shape_inertia",
+            Equality(left=profile.inertia.expression, right=inertia_expression),
+            (profile.inertia, profile.mass, profile.radius),
+            assumption_ids=(profile.shape_assumption_id,),
+            constraint_ids=(profile.radius_relation_id,),
+            extra_entity_ids=extra_entities,
+            extra_evidence_ids=tuple(
+                sorted(
+                    set(profile.topology_evidence_ids)
+                    | set(profile.shape_evidence_ids)
+                )
+            ),
+        )
+    ]
+    for speed, angular in (
+        (profile.initial_speed, profile.initial_angular_speed),
+        (profile.final_speed, profile.final_angular_speed),
+    ):
+        emitted.append(
+            _emit(
+                context,
+                "rolling_no_slip",
+                Equality(
+                    left=speed.expression,
+                    right=Multiply(
+                        factors=(profile.radius.expression, angular.expression),
+                        dimension=speed.dimension,
+                    ),
+                ),
+                (speed, profile.radius, angular),
+                constraint_ids=tuple(
+                    sorted(
+                        {
+                            profile.no_slip_state_id,
+                            profile.touching_state_id,
+                            profile.fixed_incline_state_id,
+                            profile.radius_relation_id,
+                        }
+                    )
+                ),
+                extra_entity_ids=extra_entities,
+                extra_evidence_ids=tuple(
+                    sorted(
+                        set(profile.topology_evidence_ids)
+                        | set(profile.state_evidence_ids)
+                    )
+                ),
+            )
+        )
+    squared_speed_dimension = profile.final_speed.dimension.plus(
+        profile.final_speed.dimension
+    )
+    if squared_speed_dimension is None:
+        return []
+    denominator = Add(
+        terms=(LiteralNode(value=1.0), beta),
+        dimension=DimensionVector.dimensionless(),
+    )
+    gravity_drop = Multiply(
+        factors=(
+            LiteralNode(value=2.0),
+            profile.gravity.expression,
+            profile.height.expression,
+        ),
+        dimension=squared_speed_dimension,
+    )
+    radicand = Add(
+        terms=(
+            (
+                LiteralNode(value=0.0, dimension=squared_speed_dimension)
+                if profile.starts_from_rest
+                else Power(
+                    base=profile.initial_speed.expression,
+                    exponent=LiteralNode(value=2.0),
+                    dimension=squared_speed_dimension,
+                )
+            ),
+            Divide(
+                numerator=gravity_drop,
+                denominator=denominator,
+                dimension=squared_speed_dimension,
+            ),
+        ),
+        dimension=squared_speed_dimension,
+    )
+    emitted.append(
+        _emit(
+            context,
+            "pure_rolling_principal_energy",
+            Equality(
+                left=profile.final_speed.expression,
+                right=Sqrt(
+                    operand=radicand,
+                    dimension=profile.final_speed.dimension,
+                ),
+            ),
+            (
+                profile.final_speed,
+                profile.initial_speed,
+                profile.gravity,
+                profile.height,
+            ),
+            assumption_ids=(
+                profile.shape_assumption_id,
+                profile.no_energy_loss_assumption_id,
+            ),
+            constraint_ids=tuple(
+                sorted(
+                    {
+                        *topology_constraints,
+                        profile.initial_state_id,
+                        profile.final_state_id,
+                        profile.no_slip_state_id,
+                        profile.touching_state_id,
+                        profile.fixed_incline_state_id,
+                    }
+                )
+            ),
+            extra_entity_ids=extra_entities,
+            extra_evidence_ids=tuple(
+                sorted(
+                    set(profile.topology_evidence_ids)
+                    | set(profile.state_evidence_ids)
+                    | set(profile.shape_evidence_ids)
+                    | set(profile.no_energy_loss_evidence_ids)
+                )
+            ),
+        )
+    )
+    if profile.starts_from_rest:
+        emitted.append(
+            _emit(
+                context,
+                "state_at_rest",
+                Equality(
+                    left=profile.initial_speed.expression,
+                    right=LiteralNode(
+                        value=0.0,
+                        dimension=profile.initial_speed.dimension,
+                    ),
+                ),
+                (profile.initial_speed,),
+                constraint_ids=(profile.initial_state_id,),
+                extra_entity_ids=(profile.body_id,),
+                extra_evidence_ids=profile.state_evidence_ids,
+            )
+        )
+    return emitted
+
+
 @dataclass(frozen=True)
 class _MassivePulleyAtwoodSide:
     sign: int
@@ -6276,6 +6796,21 @@ def _vibration_emissions(context: LawContext) -> list[LawEmission]:
 
 
 def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
+    pure_rolling = _pure_rolling_energy_emissions(context)
+    if pure_rolling:
+        return tuple(
+            sorted(
+                pure_rolling,
+                key=lambda item: (
+                    item.effective_cost,
+                    item.rule.law_id,
+                    item.entity_ids,
+                    item.interval_id or "",
+                    item.event_id or "",
+                    item.source_quantity_ids,
+                ),
+            )
+        )
     emitted: list[LawEmission] = []
     emitted.extend(_derivative_emissions(context, QuantityRole.position, QuantityRole.velocity, "particle_position_derivative"))
     emitted.extend(_derivative_emissions(context, QuantityRole.velocity, QuantityRole.acceleration, "particle_velocity_derivative"))

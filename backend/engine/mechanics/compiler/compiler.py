@@ -3518,6 +3518,579 @@ class _MassivePulleyAtwoodProfile:
     fixed_axis_angular_quantity_ids: frozenset[str]
 
 
+_PURE_ROLLING_SHAPE_BETA: Mapping[str, Fraction] = {
+    "solid_sphere": Fraction(2, 5),
+    "hollow_sphere": Fraction(2, 3),
+    "solid_cylinder": Fraction(1, 2),
+    "disk": Fraction(1, 2),
+    "hoop": Fraction(1, 1),
+    "ring": Fraction(1, 1),
+}
+
+
+@dataclass(frozen=True)
+class _PureRollingEnergyProfile:
+    fixed_axis_angular_quantity_ids: frozenset[str]
+
+
+def _pure_rolling_energy_candidate(ir: MechanicsProblemIRV1) -> bool:
+    """Use redundant physical signals, never the query or diagnostics."""
+
+    primitives = {item.primitive for item in ir.entities}
+    return (
+        EntityPrimitive.rigid_body in primitives
+        and any(
+            item.frame_type is ReferenceFrameType.cartesian_2d
+            for item in ir.reference_frames
+        )
+        and (
+            EntityPrimitive.incline in primitives
+            or EntityPrimitive.environment in primitives
+            or any(item.state.value == "no_slip" for item in ir.state_conditions)
+            or any(item.kind in _PURE_ROLLING_SHAPE_BETA for item in ir.assumptions)
+        )
+    )
+
+
+def _pure_rolling_energy_contract(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    approved_assumption_ids: frozenset[str],
+) -> tuple[_PureRollingEnergyProfile | None, CompilerIssue | None]:
+    """Close the shape-derived, lossless pure-rolling energy profile."""
+
+    if not _pure_rolling_energy_candidate(ir):
+        return None, None
+
+    def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            f"pure-rolling energy topology {detail}",
+            f"queries.{query.query_id}",
+            referenced_id or query.query_id,
+        )
+
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id for item in ir.entities if item.primitive is primitive
+        )
+        for primitive in (
+            EntityPrimitive.rigid_body,
+            EntityPrimitive.incline,
+            EntityPrimitive.environment,
+        )
+    }
+    if (
+        {key.value: len(value) for key, value in primitive_ids.items()}
+        != {"rigid_body": 1, "incline": 1, "environment": 1}
+        or len(ir.entities) != 3
+        or any(
+            not item.evidence_refs or item.component_of_entity_id is not None
+            for item in ir.entities
+        )
+    ):
+        return None, failure(
+            "requires exactly one evidenced rigid body, incline, and environment"
+        )
+    body_id = primitive_ids[EntityPrimitive.rigid_body][0]
+    incline_id = primitive_ids[EntityPrimitive.incline][0]
+    environment_id = primitive_ids[EntityPrimitive.environment][0]
+
+    if len(ir.reference_frames) != 1:
+        return None, failure("requires one evidenced two-dimensional world frame")
+    frame = ir.reference_frames[0]
+    axis_signature = {
+        (
+            item.axis.value,
+            getattr(item.direction, "kind", None),
+            getattr(item.direction, "frame_id", None),
+            getattr(getattr(item.direction, "axis", None), "value", None),
+            getattr(item.direction, "sign", None),
+        )
+        for item in frame.axes
+    }
+    if (
+        frame.frame_type is not ReferenceFrameType.cartesian_2d
+        or getattr(frame.origin, "kind", None) != "world"
+        or frame.parent_frame_id is not None
+        or frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id is not None
+        or frame.generalized_coordinate_symbol_ids
+        or not frame.evidence_refs
+        or len(frame.axes) != 2
+        or axis_signature
+        != {
+            ("x", "axis", frame.frame_id, "x", 1),
+            ("y", "axis", frame.frame_id, "y", 1),
+        }
+    ):
+        return None, failure(
+            "requires exact positive x/y axes in one Cartesian world frame",
+            frame.frame_id,
+        )
+
+    if len(ir.motion_intervals) != 1:
+        return None, failure("requires one evidenced event-free motion interval")
+    interval = ir.motion_intervals[0]
+    if (
+        interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or set(interval.subject_ids) != {body_id, incline_id, environment_id}
+        or len(interval.subject_ids) != 3
+        or not interval.evidence_refs
+        or ir.events
+    ):
+        return None, failure(
+            "requires one event-free interval containing the complete topology",
+            interval.interval_id,
+        )
+
+    centers = tuple(
+        item
+        for item in ir.points
+        if item.owner_entity_id == body_id and item.role.value == "mass_center"
+    )
+    contacts = tuple(
+        item
+        for item in ir.points
+        if item.owner_entity_id == body_id and item.role.value == "contact"
+    )
+    if (
+        len(ir.points) != 2
+        or len(centers) != 1
+        or len(contacts) != 1
+        or any(item.frame_id != frame.frame_id or not item.evidence_refs for item in ir.points)
+    ):
+        return None, failure(
+            "requires one evidenced body-owned mass center and contact point",
+            body_id,
+        )
+    center_id = centers[0].point_id
+    contact_id = contacts[0].point_id
+
+    radii_relations = tuple(
+        item for item in ir.geometry if item.kind is GeometryRelationKind.radius
+    )
+    lies_on_relations = tuple(
+        item for item in ir.geometry if item.kind is GeometryRelationKind.lies_on
+    )
+    if (
+        len(ir.geometry) != 2
+        or len(radii_relations) != 1
+        or len(lies_on_relations) != 1
+        or any(
+            item.expression is not None
+            or item.interval_id != interval.interval_id
+            or not item.evidence_refs
+            or len(item.participant_ids) != len(set(item.participant_ids))
+            or len(item.quantity_ids) != len(set(item.quantity_ids))
+            for item in ir.geometry
+        )
+        or set(radii_relations[0].participant_ids)
+        != {body_id, center_id, contact_id}
+        or len(radii_relations[0].participant_ids) != 3
+        or set(lies_on_relations[0].participant_ids)
+        != {body_id, incline_id, contact_id}
+        or len(lies_on_relations[0].participant_ids) != 3
+        or lies_on_relations[0].quantity_ids
+    ):
+        return None, failure(
+            "requires exact center-contact radius and body-contact-incline relations",
+            body_id,
+        )
+
+    gravity_interactions = tuple(
+        item for item in ir.interactions if item.kind is InteractionKind.gravity
+    )
+    contact_interactions = tuple(
+        item for item in ir.interactions if item.kind is InteractionKind.contact
+    )
+    if (
+        len(ir.interactions) != 2
+        or len(gravity_interactions) != 1
+        or len(contact_interactions) != 1
+    ):
+        return None, failure(
+            "requires exactly one gravity and one contact interaction"
+        )
+    gravity_interaction = gravity_interactions[0]
+    contact_interaction = contact_interactions[0]
+    if (
+        set(gravity_interaction.participant_ids) != {body_id, environment_id}
+        or len(gravity_interaction.participant_ids) != 2
+        or gravity_interaction.point_ids
+        or set(contact_interaction.participant_ids) != {body_id, incline_id}
+        or len(contact_interaction.participant_ids) != 2
+        or tuple(contact_interaction.point_ids) != (contact_id,)
+        or any(
+            item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or not item.evidence_refs
+            for item in ir.interactions
+        )
+    ):
+        return None, failure(
+            "has incomplete or ambiguous gravity/contact topology"
+        )
+
+    shape_assumptions = tuple(
+        item for item in ir.assumptions if item.kind in _PURE_ROLLING_SHAPE_BETA
+    )
+    loss_assumptions = tuple(
+        item for item in ir.assumptions if item.kind == "no_energy_loss"
+    )
+    if (
+        len(ir.assumptions) != 2
+        or len(shape_assumptions) != 1
+        or len(loss_assumptions) != 1
+        or any(
+            item.subject_id != body_id
+            or item.interval_id != interval.interval_id
+            or item.disposition is not AssumptionDisposition.approved
+            or item.assumption_id not in approved_assumption_ids
+            or item.proposed_role is not None
+            or item.proposed_value is not None
+            or item.proposed_unit is not None
+            or not item.evidence_refs
+            for item in (*shape_assumptions, *loss_assumptions)
+        )
+    ):
+        return None, failure(
+            "requires exact externally approved closed-table shape and no-energy-loss assumptions",
+            body_id,
+        )
+
+    quantities = {item.quantity_id: item for item in ir.quantities}
+
+    def by_role(role: QuantityRole) -> tuple[object, ...]:
+        return tuple(item for item in quantities.values() if item.role is role)
+
+    masses = by_role(QuantityRole.mass)
+    radii = by_role(QuantityRole.radius)
+    gravities = by_role(QuantityRole.gravity)
+    heights = by_role(QuantityRole.height)
+    inertias = by_role(QuantityRole.moment_of_inertia)
+    speeds = by_role(QuantityRole.speed)
+    angular_speeds = by_role(QuantityRole.angular_velocity)
+    if (
+        len(masses) != 1
+        or len(radii) != 1
+        or len(gravities) != 1
+        or len(heights) != 1
+        or len(inertias) != 1
+        or len(speeds) != 2
+        or len(angular_speeds) != 2
+        or len(quantities) != 9
+    ):
+        return None, failure(
+            "requires exact m, R, g, h, I, initial/final speed, and initial/final angular-speed inventory"
+        )
+    mass, radius, gravity, height, inertia = (
+        masses[0], radii[0], gravities[0], heights[0], inertias[0]
+    )
+
+    known = (mass, radius, gravity, height)
+    if any(
+        item.shape is not QuantityShape.scalar
+        or item.symbol_id is None
+        or item.provenance is not Provenance.explicit_source
+        or not item.evidence_refs
+        or item.point_id is not None
+        or item.frame_id is not None
+        or item.interval_id is not None
+        or item.event_id is not None
+        or item.component not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        or item.direction is not None
+        or type(item.si_value) is not float
+        or not math.isfinite(item.si_value)
+        for item in known
+    ):
+        return None, failure(
+            "requires exact source-backed unscoped scalar m, R, g, and h"
+        )
+    invalid_positive = next(
+        (item for item in (mass, radius, gravity) if item.si_value <= 0.0),
+        None,
+    )
+    if invalid_positive is not None or height.si_value < 0.0:
+        bad = invalid_positive or height
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "pure-rolling mass, radius, and gravity must be positive and height drop must be nonnegative",
+            f"quantities.{bad.quantity_id}.si_value",
+            bad.quantity_id,
+        )
+    if (
+        mass.subject_id != body_id
+        or radius.subject_id != body_id
+        or gravity.subject_id != environment_id
+        or height.subject_id != body_id
+        or mass.dimension != DimensionVector(mass=1)
+        or radius.dimension != DimensionVector(length=1)
+        or gravity.dimension != DimensionVector(length=1, time=-2)
+        or height.dimension != DimensionVector(length=1)
+        or tuple(radii_relations[0].quantity_ids) != (radius.quantity_id,)
+        or set(gravity_interaction.quantity_ids)
+        != {mass.quantity_id, gravity.quantity_id, height.quantity_id}
+        or len(gravity_interaction.quantity_ids) != 3
+        or tuple(contact_interaction.quantity_ids) != (radius.quantity_id,)
+    ):
+        return None, failure("contains an inexact or dimensionally invalid source binding")
+
+    if (
+        inertia.subject_id != body_id
+        or inertia.point_id != center_id
+        or inertia.frame_id is not None
+        or inertia.interval_id != interval.interval_id
+        or inertia.event_id is not None
+        or inertia.shape is not QuantityShape.scalar
+        or inertia.dimension != DimensionVector(mass=1, length=2)
+        or inertia.symbol_id is None
+        or inertia.si_value is not None
+        or inertia.provenance not in {Provenance.inferred, Provenance.unknown}
+        or not inertia.evidence_refs
+        or inertia.component not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        or inertia.direction is not None
+    ):
+        return None, failure(
+            "requires one inferred inertia at the mass center; explicit source I belongs to the general rolling solver",
+            inertia.quantity_id,
+        )
+
+    initial_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "initial" and item.subject_id == body_id
+    )
+    final_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "final" and item.subject_id == body_id
+    )
+    no_slip_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "rolling"
+        and item.state.value == "no_slip"
+        and item.subject_id == body_id
+    )
+    touching_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "contact"
+        and item.state.value == "touching"
+        and item.subject_id == body_id
+    )
+    fixed_incline_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "motion"
+        and item.state.value == "at_rest"
+        and item.subject_id == incline_id
+    )
+    if (
+        len(ir.state_conditions) != 5
+        or len(initial_states) != 1
+        or len(final_states) != 1
+        or len(no_slip_states) != 1
+        or len(touching_states) != 1
+        or touching_states[0].quantity_ids
+        or len(fixed_incline_states) != 1
+        or fixed_incline_states[0].quantity_ids
+        or final_states[0].state.value != "rolling"
+        or any(
+            item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.expression is not None
+            or not item.evidence_refs
+            for item in ir.state_conditions
+        )
+    ):
+        return None, failure(
+            "requires exact initial/final/no-slip, touching-body, and fixed-incline state topology",
+            body_id,
+        )
+
+    initial_speed_id = next(iter(initial_states[0].quantity_ids), None)
+    initial_speed = quantities.get(initial_speed_id or "")
+    final_speed = next(
+        (
+            quantities.get(item)
+            for item in final_states[0].quantity_ids
+            if quantities.get(item) in speeds
+        ),
+        None,
+    )
+    if (
+        len(initial_states[0].quantity_ids) != 1
+        or len(final_states[0].quantity_ids) != 2
+        or initial_speed not in speeds
+        or final_speed not in speeds
+        or initial_speed is final_speed
+    ):
+        return None, failure("requires distinct state-bound initial and final speeds")
+
+    def exact_speed(item: object) -> bool:
+        return (
+            item.subject_id == body_id
+            and item.point_id == center_id
+            and item.frame_id == frame.frame_id
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and item.shape is QuantityShape.scalar
+            and item.dimension == DimensionVector(length=1, time=-1)
+            and item.symbol_id is not None
+            and item.component is QuantityComponent.magnitude
+            and item.direction is None
+            and bool(item.evidence_refs)
+        )
+
+    if not exact_speed(initial_speed) or not exact_speed(final_speed):
+        return None, failure("requires exact center-of-mass scalar speed bindings")
+    starts_from_rest = initial_states[0].state.value == "at_rest"
+    if starts_from_rest:
+        initial_ok = (
+            initial_speed.si_value is None
+            and initial_speed.provenance in {Provenance.inferred, Provenance.unknown}
+        )
+    else:
+        initial_ok = (
+            initial_states[0].state.value == "moving"
+            and initial_speed.provenance is Provenance.explicit_source
+            and type(initial_speed.si_value) is float
+            and math.isfinite(initial_speed.si_value)
+            and initial_speed.si_value >= 0.0
+        )
+    if not initial_ok:
+        code = (
+            CompilerIssueCode.invalid_domain
+            if type(initial_speed.si_value) is float and initial_speed.si_value < 0.0
+            else CompilerIssueCode.requires_specialized_model
+        )
+        return None, _issue(
+            code,
+            "pure rolling requires a nonnegative source initial speed or one evidenced at-rest state",
+            f"quantities.{initial_speed.quantity_id}",
+            initial_speed.quantity_id,
+        )
+    if (
+        final_speed.si_value is not None
+        or final_speed.provenance not in {Provenance.inferred, Provenance.unknown}
+    ):
+        return None, failure("requires one inferred final center-of-mass speed")
+
+    final_angular_id = next(
+        (
+            item
+            for item in final_states[0].quantity_ids
+            if item != final_speed.quantity_id
+        ),
+        None,
+    )
+    final_angular = quantities.get(final_angular_id or "")
+    initial_angular = next(
+        (item for item in angular_speeds if item is not final_angular),
+        None,
+    )
+
+    def exact_angular_speed(item: object) -> bool:
+        direction = getattr(item, "direction", None)
+        return (
+            item is not None
+            and item.subject_id == body_id
+            and item.point_id == center_id
+            and item.frame_id == frame.frame_id
+            and item.interval_id == interval.interval_id
+            and item.event_id is None
+            and item.shape is QuantityShape.scalar
+            and item.dimension == DimensionVector(time=-1)
+            and item.symbol_id is not None
+            and item.si_value is None
+            and item.provenance in {Provenance.inferred, Provenance.unknown}
+            and item.component is QuantityComponent.clockwise
+            and getattr(direction, "kind", None) == "semantic"
+            and getattr(getattr(direction, "direction", None), "value", None)
+            == "clockwise"
+            and bool(item.evidence_refs)
+        )
+
+    if (
+        final_angular not in angular_speeds
+        or initial_angular not in angular_speeds
+        or not exact_angular_speed(initial_angular)
+        or not exact_angular_speed(final_angular)
+        or set(no_slip_states[0].quantity_ids)
+        != {
+            radius.quantity_id,
+            initial_speed.quantity_id,
+            final_speed.quantity_id,
+            initial_angular.quantity_id,
+            final_angular.quantity_id,
+        }
+        or len(no_slip_states[0].quantity_ids) != 5
+    ):
+        return None, failure(
+            "requires two inferred clockwise angular speeds and exact two-state no-slip carriers"
+        )
+
+    expected_quantity_ids = {
+        mass.quantity_id,
+        radius.quantity_id,
+        gravity.quantity_id,
+        height.quantity_id,
+        inertia.quantity_id,
+        initial_speed.quantity_id,
+        final_speed.quantity_id,
+        initial_angular.quantity_id,
+        final_angular.quantity_id,
+    }
+    query_quantity = quantities.get(query.target.target_quantity_id or "")
+    figure_dependency = ir.figure_dependency
+    if (
+        set(quantities) != expected_quantity_ids
+        or query_quantity is not final_speed
+        or query.shape is not QuantityShape.scalar
+        or query.target.role is not QuantityRole.speed
+        or query.target.subject_id != body_id
+        or query.target.point_id != center_id
+        or query.target.frame_id != frame.frame_id
+        or query.target.interval_id != interval.interval_id
+        or query.target.event_id is not None
+        or query.target.component is not QuantityComponent.magnitude
+        or query.target.direction is not None
+        or query.output_dimension != final_speed.dimension
+        or not query.evidence_refs
+        or len(ir.queries) != 1
+        or ir.constraints
+        or ir.principle_hints
+        or ir.ambiguities
+        or ir.unsupported_features
+        or figure_dependency.level.value != "none"
+        or figure_dependency.missing_information
+        or figure_dependency.evidence_refs
+        or {item.symbol_id for item in ir.symbols}
+        != {
+            item.symbol_id
+            for item in quantities.values()
+            if item.symbol_id is not None
+        }
+    ):
+        return None, failure(
+            "contains extra client authority, quantities, symbols, or a non-final-speed query",
+            query.query_id,
+        )
+    return (
+        _PureRollingEnergyProfile(
+            fixed_axis_angular_quantity_ids=frozenset(
+                (initial_angular.quantity_id, final_angular.quantity_id)
+            )
+        ),
+        None,
+    )
+
+
 def _massive_pulley_atwood_candidate(ir: MechanicsProblemIRV1) -> bool:
     primitive_ids = {
         primitive: tuple(
@@ -7209,6 +7782,12 @@ def _polynomial_degree(
             return None
         degree = base * int(exponent)
         return degree if degree <= 2 else None
+    if isinstance(expression, Sqrt):
+        # Only a principal root whose complete radicand is already an exact,
+        # nonnegative known scalar may participate as a linear coefficient.
+        # An unknown beneath sqrt remains on the nonlinear fail-closed path.
+        radicand = _exact_scalar_value(expression.operand, known_values)
+        return 0 if radicand is not None and radicand >= 0 else None
     return None
 
 
@@ -7797,6 +8376,20 @@ class MechanicsCompiler:
                 else CompilerStatus.unsupported
             )
             return _failure(status, massive_pulley_issue)
+        pure_rolling_profile, pure_rolling_issue = (
+            _pure_rolling_energy_contract(
+                safe_ir,
+                query,
+                authority.approved_assumption_ids,
+            )
+        )
+        if pure_rolling_issue is not None:
+            status = (
+                CompilerStatus.invalid
+                if pure_rolling_issue.code is CompilerIssueCode.invalid_domain
+                else CompilerStatus.unsupported
+            )
+            return _failure(status, pure_rolling_issue)
         specialization_issue = _structural_specialization_issue(safe_ir, query)
         if specialization_issue is not None:
             return _failure(CompilerStatus.unsupported, specialization_issue)
@@ -7869,9 +8462,13 @@ class MechanicsCompiler:
                 )
             ),
             accepted_fixed_axis_angular_quantity_ids=(
-                frozenset()
-                if massive_pulley_profile is None
-                else massive_pulley_profile.fixed_axis_angular_quantity_ids
+                frozenset().union(
+                    *(
+                        item.fixed_axis_angular_quantity_ids
+                        for item in (massive_pulley_profile, pure_rolling_profile)
+                        if item is not None
+                    )
+                )
             ),
         )
         if support_issue is not None:

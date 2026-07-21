@@ -39,6 +39,7 @@ from engine.mechanics.math_ast import (
     Negate,
     Norm,
     Power,
+    Sqrt,
     Subtract,
     SymbolRef,
     VectorNode,
@@ -155,6 +156,13 @@ def _polynomial_degree(expression: MathNode, unknowns: set[str]) -> int | None:
         return degree if degree <= 64 else None
     if isinstance(expression, Negate):
         return _polynomial_degree(expression.operand, unknowns)
+    if isinstance(expression, Sqrt):
+        # A principal root of an unknown-free radicand is an exact coefficient,
+        # not a nonlinear solve branch.  Unknown-dependent roots remain outside
+        # the polynomial planner and therefore keep the nonlinear fail-closed
+        # path.
+        operand = _polynomial_degree(expression.operand, unknowns)
+        return 0 if operand == 0 else None
     if isinstance(expression, Derivative):
         return _polynomial_degree(expression.expression, unknowns)
     if isinstance(expression, (Equality, Inequality)):
