@@ -2,9 +2,9 @@
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
 updated on `2026-07-22` (`Asia/Seoul`) after exact-head acceptance of the Wave A
-release gate and local acceptance of Wave B Entry 8. Wave A release run
-`29865756663` (run #433) passed at `8f18c710...`; the Entry-8 product checkpoint
-`af4b83ff...` has local evidence only. It is a pause record, not an
+release gate and local acceptance of Wave B Entries 8-9. Wave A release run
+`29865756663` (run #433) passed at `8f18c710...`; the latest Entry-9 product
+checkpoint `2a870ec...` has local evidence only. It is a pause record, not an
 `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
@@ -42,20 +42,25 @@ release gate and local acceptance of Wave B Entry 8. Wave A release run
   `af4b83ff6bde1d577b76ece3191e5b0e5b60d8af` (tree
   `c60ab8ab918dc1078e3faed2ca5d44212e5b85bb`, parent
   `8f18c710fc6d5d730fcceccfb30e3175c2613902`).
+- Latest accepted Entry-9 product/same-fixture migration checkpoint:
+  `2a870ec4808b6301e39bb99f446b457abc5458a5` (tree
+  `9430a179e8e79322b1d49d2b53ed3b68a57f4a64`, parent Entry-8 documentation
+  checkpoint `dbad228948c82809e854b0f9cf0f97bef9b998ea`).
 - Current branch head: the branch head containing this file after the
-  Entry-8 documentation update; verify its exact SHA from the branch.
+  Entry-9 documentation update; verify its exact SHA from the branch.
 - Latest release-validated migration tree:
   `5770597d55158d9634d90101451977ebc226d83c`.
 - Latest exact-head release-CI checkpoint:
   `8f18c710fc6d5d730fcceccfb30e3175c2613902`.
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
 - The Wave-A release result covers accepted Entries 1-7 at `8f18c710...`. No
-  release-CI result is attributed to Entry 8 at `af4b83ff...`.
+  release-CI result is attributed to Entry 8 at `af4b83ff...` or Entry 9 at
+  `2a870ec...`.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
 - PR #17 exact release-validated remote head:
   `8f18c710fc6d5d730fcceccfb30e3175c2613902`; re-query before relying on any
-  later remote state. Entry 8 is not a release-validated remote-head claim.
+  later remote state. Entries 8-9 are not release-validated remote-head claims.
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
 
 Remote state was read through the GitHub app immediately before checkpointing:
@@ -252,6 +257,24 @@ master instruction.
     40 deselected`. The independent integrated Entry-8 Checker returned `PASS`,
     blocking findings `0`, nonblocking findings `0`. No release CI is attributed
     to this Entry-8 product checkpoint.
+  - canonical registry entry 9, `rolling_energy_general`, at accepted product
+    checkpoint `2a870ec4808b6301e39bb99f446b457abc5458a5` (tree
+    `9430a179e8e79322b1d49d2b53ed3b68a57f4a64`, parent Entry-8 documentation
+    checkpoint `dbad228948c82809e854b0f9cf0f97bef9b998ea`). Its exact typed
+    contract binds one rigid body, one fixed incline, center-of-mass/contact
+    geometry, gravity/contact interactions, initial/final rolling states, no
+    slip, no energy loss, and an explicit positive finite center-of-mass inertia.
+    It emits the principal result `vf=sqrt(v0^2+2*m*g*h/(m+I/R^2))`; only final
+    nonnegative center-of-mass scalar speed is a valid query. Shape authority,
+    source-inertia/shape conflicts, malformed topology, unsupported internal
+    queries, missing authority, and invalid domains fail closed. Damaging the
+    rigid-body primitive fails closed for final-speed, mass, and source-inertia
+    queries rather than escaping to a broad path. Final core fast evidence is
+    `294 passed, 22 deselected`; the complete Entry-9 slow matrix is `10 passed,
+    60 deselected` in `84.11s`. Two independent Checkers returned `PASS`, each
+    with blocking findings `0` and nonblocking findings `0`; `py_compile` and
+    `git diff --check` passed, and the Entry-8 fingerprint remained unchanged.
+    No release CI is attributed to this Entry-9 product checkpoint.
 - Accepted Stage 5 decisions:
   - legacy parity is diagnostic only and can never verify, select, repair, or
     provide a generic fallback answer;
@@ -271,19 +294,19 @@ master instruction.
     variant is independently compiled and solved.
 - Still incomplete:
   - the exact inventory is `29/29` classified: `25` in scope and four deferred;
-    accepted in-scope evidence is `8/25`, with `17/25` pending;
+    accepted in-scope evidence is `9/25`, with `16/25` pending;
   - Waves A-F remain active under the superseding typed scope plan; Wave A is
-    release-accepted and Wave B is in progress with Entry 8 locally accepted and
-    Entries 9-10 pending;
+    release-accepted and Wave B is in progress with Entries 8-9 locally accepted
+    and Entry 10 pending;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: none at the accepted `8/25` in-scope boundary. Wave A
+- Current failure/blocker: none at the accepted `9/25` in-scope boundary. Wave A
   passed exact-head release CI at `8f18c710...`, run `29865756663` (run #433,
-  `SUCCESS`); the independent integrated Entry-8 Checker passed with blocking
-  and nonblocking findings both `0`.
-- Next gate: implement and locally accept Entry 9, `rolling_energy_general`, then
-  Entry 10; run the fresh independent Wave-B Checker and release CI only at the
-  complete-wave boundary.
+  `SUCCESS`); the two independent Entry-9 Checkers each passed with blocking and
+  nonblocking findings both `0`.
+- Next gate: implement and locally accept Entry 10, `vertical_circle`; run the
+  fresh independent Wave-B Checker and release CI only at the complete-wave
+  boundary.
 
 #### Superseding Stage 5 typed scope and exact waves
 
@@ -312,7 +335,7 @@ classification is `25` in scope and four deferred, exactly entries 19
 Run focused parity evidence and connected targeted tests for each entry. Run one
 fresh independent read-only Checker and release CI only at the end of a complete
 wave. Wave A passed that gate at `8f18c710...`, run #433. Wave B is in progress:
-Entry 8 is locally accepted, and Entries 9-10 precede its wave-end gate.
+Entries 8-9 are locally accepted, and Entry 10 precedes its wave-end gate.
 
 For each deferred entry, generic behavior is precise structured unsupported;
 generic answer authority is **none** and legacy answer authority is **off-mode
@@ -365,8 +388,8 @@ generic-migration total.
 
 - Work immediately before this update: accepted the Wave-A release gate at
   `8f18c710...`, run `29865756663` (run #433), then locally accepted Wave-B
-  Entry 8 at product `af4b83ff...`. Entries 1-8 are accepted in-scope evidence
-  (`8/25`); Entry 8 is not a release-CI claim.
+  Entries 8-9 at products `af4b83ff...` and `2a870ec...`. Entries 1-9 are
+  accepted in-scope evidence (`9/25`); Entries 8-9 are not release-CI claims.
 - The typed scope/runtime amendment changes these product paths:
   - `backend/engine/mechanics/__init__.py`
   - `backend/engine/mechanics/compiler/__init__.py`
@@ -438,15 +461,19 @@ generic-migration total.
   - `backend/engine/mechanics/solver/_audit.py`
   - `backend/engine/mechanics/solver/contracts.py`
   - `backend/tests/test_phase56_mechanics_pure_rolling_same_fixture_parity.py`
+- Entry-9 product/test work changed exactly these three paths:
+  - `backend/engine/mechanics/compiler/compiler.py`
+  - `backend/engine/mechanics/laws/core.py`
+  - `backend/tests/test_phase56_mechanics_rolling_general_same_fixture_parity.py`
 - Safe latest accepted product migration unit:
-  `af4b83ff6bde1d577b76ece3191e5b0e5b60d8af` (Entry 8 targeted evidence).
+  `2a870ec4808b6301e39bb99f446b457abc5458a5` (Entry 9 targeted evidence).
 - Safe last exact-head release-CI unit:
   `8f18c710fc6d5d730fcceccfb30e3175c2613902`, run `29865756663` (run #433),
-  `SUCCESS`; no release result is attributed to `af4b83ff...`.
+  `SUCCESS`; no release result is attributed to `af4b83ff...` or `2a870ec...`.
 - Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
   test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
-- Immediate next task: implement Entry 9, `rolling_energy_general`, then Entry 10
-  before the Wave-B independent Checker/release gate. Raw text,
+- Immediate next task: implement Entry 10, `vertical_circle`, before the Wave-B
+  independent Checker/release gate. Raw text,
   `system_type`, corpus labels, expected answers, and legacy output must not
   enter the generic calculation path.
 
@@ -598,6 +625,7 @@ Test files in the current Stage 5 delta:
 - `backend/tests/test_phase56_mechanics_incline_hanging_same_fixture_parity.py`
 - `backend/tests/test_phase56_mechanics_massive_pulley_same_fixture_parity.py`
 - `backend/tests/test_phase56_mechanics_pure_rolling_same_fixture_parity.py`
+- `backend/tests/test_phase56_mechanics_rolling_general_same_fixture_parity.py`
 
 ### Complete Phase 56 branch file set relative to Phase 55
 
@@ -833,6 +861,16 @@ Only actually executed evidence is listed.
   `188 passed, 40 deselected`. Fresh integrated Checker: `PASS`, blocking
   findings `0`, nonblocking findings `0`. This is local Entry-8 evidence, not a
   release-CI result.
+- Same-fixture registry entry 9, `rolling_energy_general`: accepted product
+  checkpoint `2a870ec4808b6301e39bb99f446b457abc5458a5`, tree
+  `9430a179e8e79322b1d49d2b53ed3b68a57f4a64`, parent `dbad228...`.
+  Final core fast regression selection reported `294 passed, 22 deselected`; the
+  complete Entry-9 slow matrix reported `10 passed, 60 deselected` in `84.11s`.
+  Two independent Checkers returned `PASS`, each with blocking findings `0` and
+  nonblocking findings `0`. Damaged rigid-body primitive cases for final-speed,
+  mass, and source-inertia queries all fail closed; the Entry-8 fingerprint is
+  unchanged. `py_compile` and `git diff --check` passed. This is local Entry-9
+  evidence, not a release-CI result.
 - The local Windows full runs above used only the 20-second worker-startup shim.
   They do not establish that the unchanged default 5-second symbolic and
   verification budgets are green on Windows/Python 3.12; the authoritative
@@ -868,8 +906,8 @@ Only actually executed evidence is listed.
 - Frontend unit tests, typecheck, and build: `PASS`.
 - Four-round pooled performance comparison: `PASS`, regressions `0`.
 - Independent Wave-A Checker: `PASS`, blocking findings `0`.
-- Entry 8 at `af4b83ff...` is newer local product evidence and is deliberately
-  not attributed to this release run.
+- Entries 8-9 at `af4b83ff...` and `2a870ec...` are newer local product evidence
+  and are deliberately not attributed to this release run.
 
 ### Previous accepted entry-3 release CI
 
@@ -909,17 +947,17 @@ Only actually executed evidence is listed.
 
 ### Still not run
 
-- Stage 5 in-scope same-fixture parity: `8/25` accepted; `17/25` pending.
+- Stage 5 in-scope same-fixture parity: `9/25` accepted; `16/25` pending.
   Deferred scope is exactly `4/4` classified and does not count as parity.
 - Stage 6 figure/UI tests: `NOT RUN`.
 - Stage 7 corpus/compositional/synthetic tests: `NOT RUN`.
 - Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`STAGE5_WAVE_B_ENTRY8_LOCALLY_ACCEPTED`: product `af4b83ff...` contains accepted
-same-fixture entries 1-8. This is `8/25` accepted in-scope evidence, with `17/25`
+`STAGE5_WAVE_B_ENTRY9_LOCALLY_ACCEPTED`: product `2a870ec...` contains accepted
+same-fixture entries 1-9. This is `9/25` accepted in-scope evidence, with `16/25`
 pending and four explicitly deferred. Wave A is release-accepted at
-`8f18c710...`, run #433; Entry 8 has no release-CI attribution. This is not a
+`8f18c710...`, run #433; Entries 8-9 have no release-CI attribution. This is not a
 `29/29` generic-migrated claim or a Phase 56 completion claim. Stages 6-9 and
 Stage 5 product integration remain incomplete.
 
@@ -961,12 +999,13 @@ Stage 5 product integration remain incomplete.
 
 ## I. Known risks and unresolved decisions
 
-- Per-solver accepted evidence is `8/25` in scope; compiler unit fixtures do not
-  count as same-fixture end-to-end parity for the pending `17/25`. The four
+- Per-solver accepted evidence is `9/25` in scope; compiler unit fixtures do not
+  count as same-fixture end-to-end parity for the pending `16/25`. The four
   deferred entries are classified, not accepted.
 - Wave A entries 5-7 and their exact-head release gate are accepted at
-  `8f18c710...`, run #433. Wave B Entry 8 is locally accepted at `af4b83ff...`;
-  Entry 9 is next, followed by Entry 10 and the Wave-B wave-end gate.
+  `8f18c710...`, run #433. Wave B Entries 8-9 are locally accepted at
+  `af4b83ff...` and `2a870ec...`; Entry 10 is next, followed by the Wave-B
+  wave-end gate.
 - The deferred set is exactly `spring_mass_vibration`,
   `relative_acceleration_translation`, `coriolis_relative_motion`, and
   `slot_pin_relative_motion`. Their current generic result must remain precise
@@ -1002,14 +1041,16 @@ Stage 5 product integration remain incomplete.
 4. Read the reattached Master Instruction v2 completely.
 5. Confirm exact-head Wave-A release-CI checkpoint `8f18c710...`, run
    `29865756663` (run #433), remains successful. Separately confirm the Entry-8
-   product `af4b83ff...`; do not attribute that release run to Entry 8.
+   and Entry-9 products `af4b83ff...` and `2a870ec...`; do not attribute that
+   release run to either entry.
 6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0/
-   accepted entries 1-8 reviews.
+   accepted entries 1-9 reviews.
 7. Confirm the remediated Wave A Checker verdict is `PASS`, blocking findings
-   `0`, and the integrated Entry-8 Checker verdict is `PASS`, blocking and
-   nonblocking findings both `0`.
-8. Implement Entry 9, `rolling_energy_general`, then Entry 10. Run the fresh
-   independent Wave-B Checker and exact-head release CI only at the wave end.
+   `0`, the integrated Entry-8 Checker verdict is `PASS`, and both independent
+   Entry-9 Checker verdicts are `PASS`, all with no blocking or nonblocking
+   findings.
+8. Implement Entry 10, `vertical_circle`. Run the fresh independent Wave-B
+   Checker and exact-head release CI only at the wave end.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
    permitted coverage/figure use.
 10. Continue without intermediate user confirmation unless a hard blocker,
@@ -1039,11 +1080,13 @@ Accepted Wave-A release SHA: 8f18c710fc6d5d730fcceccfb30e3175c2613902
 Accepted Wave-A release tree: 5770597d55158d9634d90101451977ebc226d83c
 Latest Entry-8 product/same-fixture SHA: af4b83ff6bde1d577b76ece3191e5b0e5b60d8af
 Latest Entry-8 product tree: c60ab8ab918dc1078e3faed2ca5d44212e5b85bb
-Current branch head: branch head containing this Entry-8 handoff update (verify exact SHA)
+Latest Entry-9 product/same-fixture SHA: 2a870ec4808b6301e39bb99f446b457abc5458a5
+Latest Entry-9 product tree: 9430a179e8e79322b1d49d2b53ed3b68a57f4a64
+Current branch head: branch head containing this Entry-9 handoff update (verify exact SHA)
 Latest release-validated migration tree: 5770597d55158d9634d90101451977ebc226d83c
 Latest exact-head release-CI SHA: 8f18c710fc6d5d730fcceccfb30e3175c2613902
 Latest exact-head release run: 29865756663 (run #433), SUCCESS
-Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 8/25 accepted and 17/25 pending, deferred 4/4 explicit
+Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 9/25 accepted and 16/25 pending, deferred 4/4 explicit
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -1066,16 +1109,15 @@ First read, in order:
 The old laptop-local work ledger may be absent. Do not treat that as a blocker;
 this handoff is authoritative. Follow Master Instruction v2 and the user's
 Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
-Stage 5 matrix/parity/runtime/W0/Entries 1-8 packages.
+Stage 5 matrix/parity/runtime/W0/Entries 1-9 packages.
 
 Wave A entries 5-7 and their release gate are accepted at `8f18c710...`, run
-`29865756663` (run #433), `SUCCESS`. Wave B Entry 8 is locally accepted at
-`af4b83ff...`; its focused fast/slow parity and integrated Checker passed, but no
-release-CI result is attributed to that Entry-8 product checkpoint.
+`29865756663` (run #433), `SUCCESS`. Wave B Entries 8-9 are locally accepted at
+`af4b83ff...` and `2a870ec...`; their focused evidence and independent Checkers
+passed, but no release-CI result is attributed to either product checkpoint.
 
-Next exact task: implement Entry 9, `rolling_energy_general`, then Entry 10; run
-the independent Wave-B Checker and pull-request release workflow only after the
-complete wave.
+Next exact task: implement Entry 10, `vertical_circle`; then run the independent
+Wave-B Checker and pull-request release workflow at the complete-wave boundary.
 Raw text, `system_type`, corpus/family/case metadata, expected answers, and legacy
 output must not enter generic compilation, solving, verification, or selection.
 
