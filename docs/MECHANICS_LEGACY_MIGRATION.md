@@ -128,7 +128,7 @@ parity**, never generic-path answer authority.
 | solver_id | current math capability; source | legacy dependencies (raw; type/subtype) | required IR primitive | required law / constraint | native generic compiler migration | kernel adapter | legacy fallback | parity test |
 |---|---|---|---|---|---|---|---|---|
 | `single_particle_newton` | `F=ma`, solve `a/F/m`; `solvers/newton/single_particle.py:SingleParticleNewtonSolver.solve` | D (force/query word heuristics); D/I | particle, force vector, acceleration query | `particle_newton_second`; force directions/balance | Native now; typed force vectors replace text net-force choice | none; formula is trivial | rollback | `m,F -> a`; multi-force signed balance; reject ambiguous directions; invariance |
-| `incline_no_friction` | `a=g sin(theta)`; `solvers/incline.py:InclineNoFrictionSolver.solve` | I; D/D | particle, incline geometry/frame, gravity/contact | `particle_weight`, `particle_newton_second`, normal constraint | Native now when geometry and force components are IR-backed | none; existing generated Newton result is not reused | rollback | 0/90-degree limits and signed slope force; invariance |
+| `incline_no_friction` | `a=g sin(theta)`; `solvers/incline.py:InclineNoFrictionSolver.solve` | I; D/D | particle, incline geometry/frame, gravity/contact | `particle_weight`, `particle_newton_second`, normal constraint | Gate/partial: add typed angle-based gravity projection, frictionless contact/no-penetration behavior, and an incline-specific physical angle domain before promotion | none; existing generated Newton result is not reused | rollback | 0/90-degree limits, interior and signed slope force, out-of-domain/contact rejection, invariance |
 | `incline_with_friction` | static hold or `a=g(sinθ-μcosθ)`; `solvers/incline.py:InclineWithFrictionSolver.solve` | I; D/D | particle, incline, contact, friction regime, motion state | `contact_normal_bound`, `contact_friction_bound` or `contact_sliding_friction`, Newton | Native now; model static inequality as graph constraint | static-friction inequality residual only; discard direction prose | rollback | hold/slip boundary, μ=0 reduction, direction contradiction; invariance |
 | `pulley_atwood` | two masses, tension and acceleration; `solvers/pulley/atwood.py:AtwoodPulleySolver.solve` | I; D/I | two particles, rope, fixed ideal pulley, gravity | particle Newton, `rope_massless_tension`, `rope_fixed_pulley_motion` | Native now with evidenced rope topology | none | rollback | m1=m2, tension residual, mass swap sign; invariance |
 | `pulley_table_hanging` | table/hanging pair, static/kinetic/no-friction branches; `solvers/pulley/table_hanging.py:TableHangingPulleySolver.solve` | I; D/D | two particles, horizontal contact, rope/pulley, friction regime | Newton, rope laws, contact friction laws | Native now for fully typed topology/regime | none; discard subtype/flag branch | rollback | static threshold, μ=0, rope/tension residual; invariance |
@@ -200,6 +200,25 @@ graph path; the retained legacy implementations have two distinct,
 non-authoritative roles: an offline differential oracle and an off-mode
 rollback after generic-path failure.
 
+## Accepted same-fixture parity ledger
+
+1. `single_particle_newton` — **ACCEPTED (1/29)** at exact checkpoint
+   `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`, GitHub Actions release run
+   `29818526780` (run #422, `SUCCESS`). The accepted Draft -> normalization ->
+   IR fixture package proves baseline `m,F -> a`, signed multi-force balance,
+   ambiguous-direction fail-closed behavior, and diagnostic-label/source-digest
+   invariance. Both solved cases compare value, canonical unit, terminal,
+   exhaustive candidate set, and an independently calculated Newton residual.
+   Generic execution finishes before the direct legacy-solver call; no registry,
+   `match()`, raw text, family/case metadata, expected answer, or legacy output
+   has generic calculation or selection authority. Fresh independent Checker:
+   `PASS`, blocking findings `0`.
+
+The remaining `28/29` entries have no accepted same-fixture parity claim. In
+particular, `incline_no_friction` must close its typed projection, frictionless
+contact, and angle-domain gaps before entry 2 can be accepted; source/test-side
+precomputation of `mg sin(theta)` is not a substitute for a generic law.
+
 ## Risks retained
 
 * The registry itself presently contains label/raw-text routing and capability
@@ -209,5 +228,6 @@ rollback after generic-path failure.
 * Conservation/event roots and polar/rotating-frame kinematics are the stated
   coverage risks.  They need typed IR, graph laws, and verification hooks;
   closed-form legacy output is not a substitute.
-* This document is an inventory and plan, not a test run.  No corpus/PDF
-  inputs were opened or used, and no parity pass is asserted.
+* This document is an inventory, plan, and limited accepted-evidence ledger.
+  Only the named 1/29 entry above has a parity pass. No corpus/PDF inputs were
+  opened or used for that evidence.

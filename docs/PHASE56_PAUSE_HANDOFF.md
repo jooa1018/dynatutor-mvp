@@ -1,7 +1,7 @@
 # Phase 56 Cross-Device Resume Handoff
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
-updated on `2026-07-21T17:39:54+09:00` (`Asia/Seoul`). It is a pause record, not
+updated on `2026-07-21T18:41:55+09:00` (`Asia/Seoul`). It is a pause record, not
 an `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
@@ -13,14 +13,15 @@ an `IMPLEMENTATION COMPLETE` claim.
 - Previous final full-CI product checkpoint: `0de62d95357de36c4a2d5a6aff01810bdf98d776`
 - Latest accepted targeted-test product checkpoint: `c19624181aaae4cd73dc3d2247b4988f5a540247`
 - Latest accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`
-- Latest exact-head release-CI checkpoint: `758d30046f22d2471e5a8f4b196d8cee35f1214b`
+- Latest accepted same-fixture migration checkpoint: `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`
+- Latest exact-head release-CI checkpoint: `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
 - `HANDOFF_COMMIT_SHA` is expected to be a documentation-only child of the
   release-CI checkpoint; no CI result is attributed to that later SHA.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
 - PR #17 head observed before this handoff-only commit:
-  `758d30046f22d2471e5a8f4b196d8cee35f1214b`
+  `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`
 - PR #17 authoritative head after a successful checkpoint push:
   `HANDOFF_COMMIT_SHA`
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
@@ -114,7 +115,7 @@ master instruction.
 ### Stage 5 — IN_PROGRESS
 
 - Accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
-- Exact-head release-CI checkpoint: `758d30046f22d2471e5a8f4b196d8cee35f1214b`.
+- Exact-head release-CI checkpoint: `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`.
 - Accepted implementation:
   - exact 29-solver migration matrix in
     `docs/MECHANICS_LEGACY_MIGRATION.md`;
@@ -126,6 +127,12 @@ master instruction.
     variants retain identical accepted evidence and calculation-authoritative
     structure while varying only source-identity metadata; a physical force
     change remains a negative control and changes the result.
+  - canonical registry entry 1, `single_particle_newton`, as a same-fixture
+    Draft -> normalization -> accepted IR -> compile -> generic solve package.
+    Baseline and signed multi-force cases have complete value/unit/terminal/
+    candidate/residual parity against a diagnostics-only direct legacy call;
+    ambiguous force direction fails closed, and diagnostic labels/source digest
+    changes do not affect the generic result.
 - Accepted Stage 5 decisions:
   - legacy parity is diagnostic only and can never verify, select, repair, or
     provide a generic fallback answer;
@@ -143,16 +150,16 @@ master instruction.
     variant is independently compiled and solved.
 - Still incomplete:
   - actual IR -> compile -> solve -> legacy diagnostic parity for every registered
-    solver: current count `0/29` same-fixture end-to-end cases;
+    solver: current count `1/29` same-fixture end-to-end cases; `28` remain;
   - Wave 1 native cases, Wave 2 coverage gates, Wave 3 typed laws for translating
     frame, Coriolis, polar, and slot-pin motion;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: none at the W0 boundary. Exact-head release CI and
-  fresh independent W0/CI Checkers passed with zero blocking findings.
-- Next gate: add the first same-fixture offline IR -> compile -> solve -> legacy
-  diagnostic parity case for canonical registry entry `single_particle_newton`,
-  then continue the 29-entry sequence without family/case-ID routing.
+- Current failure/blocker: none at the accepted 1/29 boundary. Exact-head release
+  CI and fresh independent entry-1 Checker passed with zero blocking findings.
+- Next gate: add the second same-fixture offline IR -> compile -> solve -> legacy
+  diagnostic parity package for canonical registry entry `incline_no_friction`,
+  closing any typed-law/domain gap without family/case-ID routing.
 
 ### Stage 6 — NOT_STARTED
 
@@ -196,8 +203,9 @@ master instruction.
 
 ## D. Exact work at the pause boundary
 
-- Work immediately before this update: accepted `S5-W0-BASE`, followed by a
-  coverage-preserving repair of the release workflow's duplicated fast suite.
+- Work immediately before this update: accepted the `single_particle_newton`
+  same-fixture migration unit after `S5-W0-BASE` and the coverage-preserving
+  release-workflow repair.
 - W0 production compiler/harness code changed: **NO**. The smallest correction
   was fixture-only in
   `backend/tests/test_phase56_mechanics_migration_harness.py`, plus the precise
@@ -207,17 +215,21 @@ master instruction.
   - `scripts/check_backend_fast.sh`
   - `docs/KNOWN_LIMITATIONS.md`
   - `docs/RELEASE_CHECKLIST.md`
-- Safe last product unit: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
+- Entry-1 product/test files changed after W0 acceptance:
+  - `backend/engine/mechanics/laws/core.py`
+  - `backend/tests/test_phase56_mechanics_same_fixture_parity.py`
+- Safe last accepted migration unit:
+  `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`.
 - Safe last exact-head release-CI unit:
-  `758d30046f22d2471e5a8f4b196d8cee35f1214b`, run `29814688877`, `SUCCESS`.
+  `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`, run `29818526780`, `SUCCESS`.
 - Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
   test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
-- Immediate next task: create the first independent same-fixture parity package
-  for registry entry `single_particle_newton`: one typed IR fixture must compile
-  and solve generically, while the legacy result is captured only as a
-  diagnostic oracle. Prove residual/parity and invariance without passing raw
-  text, `system_type`, corpus labels, expected answers, or legacy output into the
-  generic calculation path.
+- Immediate next task: create the second independent same-fixture parity package
+  for registry entry `incline_no_friction`. First close and test the generic
+  incline projection/domain contracts required by typed IR; then compare the
+  generic result with a direct diagnostics-only legacy oracle. Raw text,
+  `system_type`, corpus labels, expected answers, and legacy output must not enter
+  the generic calculation path.
 
 Read in this order on the laptop:
 
@@ -328,10 +340,11 @@ Test files in the current Stage 5 delta:
 - `backend/tests/test_phase56_mechanics_runtime.py`
 - `backend/tests/test_phase56_mechanics_runtime_contract.py`
 - `backend/tests/test_phase56_mechanics_runtime_static.py`
+- `backend/tests/test_phase56_mechanics_same_fixture_parity.py`
 
 ### Complete Phase 56 branch file set relative to Phase 55
 
-At exact-head release-CI checkpoint `758d300...` there are exactly `73` changed
+At exact-head release-CI checkpoint `8b7c5c4...` there are exactly `74` changed
 files:
 
 ```text
@@ -391,6 +404,7 @@ A backend/tests/test_phase56_mechanics_numeric_strictness.py
 A backend/tests/test_phase56_mechanics_runtime.py
 A backend/tests/test_phase56_mechanics_runtime_contract.py
 A backend/tests/test_phase56_mechanics_runtime_static.py
+A backend/tests/test_phase56_mechanics_same_fixture_parity.py
 A backend/tests/test_phase56_mechanics_solver_contract.py
 A backend/tests/test_phase56_mechanics_solver_execution.py
 A backend/tests/test_phase56_mechanics_solver_planner.py
@@ -454,6 +468,13 @@ Only actually executed evidence is listed.
   `114` focused tests and `7` exact regressions passed; eight solve terminals
   across four active modes `32/32`; overdetermined graph identity across four
   modes `4/4`; compile/import/schema/export/diff/whitespace checks passed.
+- Same-fixture entry 1/29, `single_particle_newton`: exact checkpoint
+  `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`; `3` focused cases passed. The
+  accepted fixture package covers baseline `m,F -> a`, signed multi-force
+  balance, ambiguous-direction fail-closed behavior, and diagnostic-label/source
+  digest invariance. Generic execution completes before a direct legacy-solver
+  observation is constructed; the legacy output has diagnostic authority only.
+  Fresh independent final Checker: `PASS`, blocking findings `0`.
 
 ### Accepted W0 evidence
 
@@ -471,43 +492,38 @@ Only actually executed evidence is listed.
 
 ### Latest exact-head release CI
 
-- Exact SHA: `758d30046f22d2471e5a8f4b196d8cee35f1214b`.
-- GitHub Actions release run: `29814688877` (run #421) — `SUCCESS`.
-- The PR checkout merge commit was `2ae67dee9034f401c64d55ceec6609ad356c75e3`;
-  its tree `7925928cb4e83aab008a7355971f565ff366e082` exactly matched the PR head
-  tree, so the tested content was the exact frozen head content.
-- Fast wrapper: `2221 passed, 1 skipped, 267 deselected` in `228.55s` under the
+- Exact SHA: `8b7c5c4a6f1f972d479323f5a7179b4f177d3800`.
+- GitHub Actions release run: `29818526780` (run #422) — `SUCCESS`; its recorded
+  head SHA is the exact checkpoint above, and both backend and frontend jobs
+  succeeded.
+- Fast wrapper: `2224 passed, 1 skipped, 267 deselected` in `318.54s` under the
   bounded 420-second watchdog.
-- Benchmark wrapper: `147 passed` in `41.96s`.
-- Audit wrapper: `111 passed` in `27.14s`.
-- Backend frontend-marker group: `15 passed` in `2.36s`.
-- The four marker groups' collected-nodeid union equals the complete backend
-  collection: `2489/2489`, uncovered `0`; slow-only uncovered tests `0`.
+- Benchmark wrapper: `147 passed, 2345 deselected` in `53.72s`.
+- Audit wrapper: `111 passed, 2381 deselected` in `34.70s`.
+- Backend frontend-marker group: `15 passed, 2477 deselected` in `3.02s`.
+- The four marker groups account for the complete `2492`-node backend collection;
+  the three added nodes are the accepted entry-1 same-fixture tests.
 - Frontend unit tests, typecheck, build, and repository metadata: `PASS`.
-- Warm latency: 43 cases/86 samples, mean `9.648245 ms`, p95 `32.204848 ms`,
-  max `41.610153 ms`; limits remain 60/120 ms.
-- Cold import: `629.619939 ms`; max RSS: `90.801 MB`; limits remain
+- Warm latency: mean `12.367519 ms`, p95 `41.08325 ms`, max `53.30079 ms`;
+  limits remain 60/120 ms.
+- Cold import: `808.411882 ms`; max RSS: `92.652 MB`; limits remain
   5000 ms/512 MB.
 - Four-round pooled performance comparison: `PASS`, regressions `0`; the worst
-  pooled p95 change was `+0.599%`, below the unchanged `15%` limit.
-- Fresh independent CI-fix Checker: `PASS`, blocking findings `0`.
-- Preceding run `29811759354` had already passed the raw default
-  (`2221 passed, 1 skipped`) and complete (`2488 passed, 1 skipped`) suites; it
-  failed only when the identical fast selection was run again under the stale
-  120-second wrapper. The accepted CI repair removes raw/aggregate duplication,
-  retains complete marker-union coverage, and changes no physics tolerance.
+  reported pooled comparison was projectile p95 `+1.487%`, below the unchanged
+  `15%` limit.
+- Entry-1 fresh independent Checker: `PASS`, blocking findings `0`.
 
 ### Still not run
 
-- Stage 5 same-fixture per-solver parity: `0/29`.
+- Stage 5 same-fixture per-solver parity: `1/29` accepted; `28/29` remain.
 - Stage 6 figure/UI tests: `NOT RUN`.
 - Stage 7 corpus/compositional/synthetic tests: `NOT RUN`.
 - Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`W0_ACCEPTED_AT_EXACT_HEAD`: the latest code/CI checkpoint contains the accepted
-Stage 5 matrix/parity/runtime packages and accepted W0 boundary. It is not a
-Phase 56 completion claim because same-fixture migration remains `0/29` and
+`STAGE5_ENTRY_1_ACCEPTED_AT_EXACT_HEAD`: the latest code/CI checkpoint contains
+the accepted Stage 5 matrix/parity/runtime/W0 packages and accepted same-fixture
+entry 1. It is not a Phase 56 completion claim because `28/29` migrations and
 Stages 6-9 remain incomplete.
 
 ## G. Architecture invariants
@@ -546,8 +562,12 @@ Stages 6-9 remain incomplete.
 
 ## I. Known risks and unresolved decisions
 
-- Per-solver migration evidence is `0/29`; compiler unit fixtures do not count as
-  same-IR end-to-end parity.
+- Per-solver migration evidence is `1/29`; compiler unit fixtures do not count as
+  same-fixture end-to-end parity for the remaining `28` entries.
+- Entry 2, `incline_no_friction`, is not test-only work: the generic law path does
+  not yet derive gravity tangent/normal components from typed incline angle, does
+  not emit the frictionless contact/no-penetration bounds, and has no incline-
+  specific inclusive angle domain. Those production gaps must close before 2/29.
 - Advanced typed-law gaps remain for translating-frame acceleration, Coriolis,
   polar kinematics, and slot-pin relative motion; full rigid acceleration and
   event-root coverage remain partial.
@@ -559,7 +579,7 @@ Stages 6-9 remain incomplete.
   wired.
 - Generic vector-answer projection into the existing product response is not
   decided; it must never silently fall back to a legacy scalar answer.
-- Marker-union coverage is exact at `758d300...`; a future slow-only test must
+- Marker-union coverage is exact at `8b7c5c4...`; a future slow-only test must
   add a dedicated CI group, as documented in `docs/KNOWN_LIMITATIONS.md`.
 - Figure/UI, public-corpus evaluation, final CI, and bounded Live are untouched.
 - Local `gh` is not installed. The GitHub app published exact verified Git
@@ -575,12 +595,12 @@ Stages 6-9 remain incomplete.
 2. Check out `codex/phase56-generic-mechanics-engine` at the final handoff head.
 3. Read this handoff completely.
 4. Read the reattached Master Instruction v2 completely.
-5. Confirm exact-head release-CI checkpoint `758d300...`, run `29814688877`,
-   remains successful; do not repeat its accepted W0/CI investigation.
-6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0
-   reviews.
-7. Start canonical registry entry 1, `single_particle_newton`, as the first
-   same-fixture IR -> compile -> solve -> legacy diagnostic parity case.
+5. Confirm exact-head release-CI checkpoint `8b7c5c4...`, run `29818526780`,
+   remains successful; do not repeat its accepted entry-1/CI investigation.
+6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0/
+   `single_particle_newton` reviews.
+7. Start canonical registry entry 2, `incline_no_friction`, by closing its typed
+   gravity-projection, frictionless-contact, and angle-domain gaps before parity.
 8. Run only the focused fixture/harness and connected accepted regressions, then
    use a fresh independent Checker before accepting that migration unit.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
@@ -600,9 +620,10 @@ PR #17: Phase 56 stacked Draft on PR #16; keep Draft and unmerged
 Current handoff SHA: branch head containing docs/PHASE56_PAUSE_HANDOFF.md (verify exact remote SHA first)
 Latest accepted W0 product SHA: 7a401642bc3c8a1acfe9805af3ada8f4eeb6045a
 Latest accepted targeted-test product SHA: c19624181aaae4cd73dc3d2247b4988f5a540247
-Latest exact-head release-CI SHA: 758d30046f22d2471e5a8f4b196d8cee35f1214b
-Latest exact-head release run: 29814688877, SUCCESS
-Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE accepted, same-fixture parity 0/29
+Latest accepted same-fixture migration SHA: 8b7c5c4a6f1f972d479323f5a7179b4f177d3800
+Latest exact-head release-CI SHA: 8b7c5c4a6f1f972d479323f5a7179b4f177d3800
+Latest exact-head release run: 29818526780, SUCCESS
+Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE accepted, same-fixture parity 1/29
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -621,14 +642,17 @@ this handoff is authoritative. Follow Master Instruction v2 and the user's
 Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
 Stage 5 matrix/parity/runtime/W0 packages.
 
-Next exact task: implement the first same-fixture offline parity package for
-canonical registry entry `single_particle_newton`. Build a typed accepted IR,
-compile and solve it through the generic path, collect the legacy result only as
-a diagnostic oracle, and prove residual/parity plus diagnostic invariance. Raw
-text, `system_type`, corpus/family/case metadata, expected answers, and legacy
+Next exact task: implement the second same-fixture offline parity package for
+canonical registry entry `incline_no_friction`. First add reusable typed incline
+gravity projection, frictionless touching-contact/no-penetration behavior, and
+the inclusive physical angle domain; do not precompute projected force inside a
+test fixture as a shortcut. Then compile and solve the typed accepted IR, collect
+the direct legacy result only as a diagnostic oracle, and prove full residual/
+candidate parity plus metadata invariance and out-of-domain fail-closed behavior.
+Raw text, `system_type`, corpus/family/case metadata, expected answers, and legacy
 output must not enter generic compilation, solving, verification, or selection.
-Run focused tests and connected regressions, then use a fresh independent
-Checker before accepting entry 1/29.
+Run focused tests and connected regressions, then use a fresh independent Checker
+before accepting entry 2/29.
 
 Keep the public corpus sealed until Stage 7. The Beer PDF is reference-only for
 Dynamics Chapters 11-19 structure and permitted later figure/coverage work; it is
