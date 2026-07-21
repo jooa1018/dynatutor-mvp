@@ -113,6 +113,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("rolling_no_slip", "constraint", (QuantityRole.velocity, QuantityRole.angular_velocity, QuantityRole.radius), cost=3, hooks=("constraint_residual",)),
     _rule("pure_rolling_shape_inertia", "work_energy", (QuantityRole.mass, QuantityRole.radius, QuantityRole.moment_of_inertia), cost=3, hooks=("constitutive_residual",)),
     _rule("pure_rolling_principal_energy", "work_energy", (QuantityRole.speed, QuantityRole.gravity, QuantityRole.height), cost=4, hooks=("energy_residual",)),
+    _rule("rolling_general_principal_energy", "work_energy", (QuantityRole.mass, QuantityRole.radius, QuantityRole.moment_of_inertia, QuantityRole.speed, QuantityRole.gravity, QuantityRole.height), cost=4, hooks=("energy_residual",)),
     _rule("gear_pitch_velocity", "constraint", (QuantityRole.angular_velocity, QuantityRole.radius), interactions=(InteractionKind.gear_contact.value,), cost=3, hooks=("constraint_residual",)),
     _rule("state_at_rest", "constraint", (QuantityRole.velocity,), cost=1, hooks=("boundary_residual",)),
     _rule("angular_position_derivative", "rigid_body_kinematics", (QuantityRole.angular_position, QuantityRole.angular_velocity, QuantityRole.time), cost=4, hooks=("derivative_residual",)),
@@ -4432,7 +4433,7 @@ _PURE_ROLLING_SHAPE_BETA: dict[str, Fraction] = {
 
 
 @dataclass(frozen=True)
-class _PureRollingEnergyLawProfile:
+class _RollingEnergyLawProfile:
     body_id: str
     incline_id: str
     environment_id: str
@@ -4447,9 +4448,9 @@ class _PureRollingEnergyLawProfile:
     no_slip_state_id: str
     touching_state_id: str
     fixed_incline_state_id: str
-    shape_assumption_id: str
+    shape_assumption_id: str | None
     no_energy_loss_assumption_id: str
-    beta: Fraction
+    beta: Fraction | None
     mass: BoundQuantity
     radius: BoundQuantity
     gravity: BoundQuantity
@@ -4466,9 +4467,9 @@ class _PureRollingEnergyLawProfile:
     no_energy_loss_evidence_ids: tuple[str, ...]
 
 
-def _pure_rolling_energy_profile(
+def _rolling_energy_profile(
     context: LawContext,
-) -> _PureRollingEnergyLawProfile | None:
+) -> _RollingEnergyLawProfile | None:
     primitive_ids = {
         primitive: tuple(
             item.entity_id
@@ -4571,13 +4572,19 @@ def _pure_rolling_energy_profile(
         and item.subject_id == body_id
         and item.interval_id == interval.interval_id
     )
-    if (
-        len(context.assumptions) != 2
-        or len(shape_assumptions) != 1
-        or len(loss_assumptions) != 1
-    ):
+    pure_mode = (
+        len(context.assumptions) == 2
+        and len(shape_assumptions) == 1
+        and len(loss_assumptions) == 1
+    )
+    general_mode = (
+        len(context.assumptions) == 1
+        and not shape_assumptions
+        and len(loss_assumptions) == 1
+    )
+    if not pure_mode and not general_mode:
         return None
-    shape_assumption = shape_assumptions[0]
+    shape_assumption = shape_assumptions[0] if pure_mode else None
     loss_assumption = loss_assumptions[0]
 
     def role(role: QuantityRole) -> tuple[BoundQuantity, ...]:
@@ -4604,6 +4611,14 @@ def _pure_rolling_energy_profile(
     mass, radius, gravity, height, inertia = (
         masses[0], radii[0], gravities[0], heights[0], inertias[0]
     )
+    if pure_mode and inertia.known_si_value is not None:
+        return None
+    if general_mode and (
+        type(inertia.known_si_value) is not float
+        or not math.isfinite(inertia.known_si_value)
+        or inertia.known_si_value <= 0.0
+    ):
+        return None
     if (
         mass.subject_id != body_id
         or radius.subject_id != body_id
@@ -4711,7 +4726,7 @@ def _pure_rolling_energy_profile(
             )
         )
 
-    return _PureRollingEnergyLawProfile(
+    return _RollingEnergyLawProfile(
         body_id=body_id,
         incline_id=incline_id,
         environment_id=environment_id,
@@ -4726,9 +4741,15 @@ def _pure_rolling_energy_profile(
         no_slip_state_id=no_slip_states[0].state_condition_id,
         touching_state_id=touching_states[0].state_condition_id,
         fixed_incline_state_id=fixed_incline_states[0].state_condition_id,
-        shape_assumption_id=shape_assumption.assumption_id,
+        shape_assumption_id=(
+            shape_assumption.assumption_id if shape_assumption is not None else None
+        ),
         no_energy_loss_assumption_id=loss_assumption.assumption_id,
-        beta=_PURE_ROLLING_SHAPE_BETA[shape_assumption.kind],
+        beta=(
+            _PURE_ROLLING_SHAPE_BETA[shape_assumption.kind]
+            if shape_assumption is not None
+            else None
+        ),
         mass=mass,
         radius=radius,
         gravity=gravity,
@@ -4752,30 +4773,19 @@ def _pure_rolling_energy_profile(
             touching_states[0],
             fixed_incline_states[0],
         ),
-        shape_evidence_ids=evidence(shape_assumption),
+        shape_evidence_ids=(
+            evidence(shape_assumption) if shape_assumption is not None else ()
+        ),
         no_energy_loss_evidence_ids=evidence(loss_assumption),
     )
 
 
-def _pure_rolling_energy_emissions(
+def _rolling_energy_emissions(
     context: LawContext,
 ) -> list[LawEmission]:
-    profile = _pure_rolling_energy_profile(context)
+    profile = _rolling_energy_profile(context)
     if profile is None:
         return []
-    beta = Divide(
-        numerator=LiteralNode(value=float(profile.beta.numerator)),
-        denominator=LiteralNode(value=float(profile.beta.denominator)),
-        dimension=DimensionVector.dimensionless(),
-    )
-    radius_squared = Power(
-        base=profile.radius.expression,
-        exponent=LiteralNode(value=2.0),
-    )
-    inertia_expression = Multiply(
-        factors=(beta, profile.mass.expression, radius_squared),
-        dimension=profile.inertia.dimension,
-    )
     topology_constraints = tuple(
         sorted((profile.radius_relation_id, profile.lies_on_relation_id))
     )
@@ -4784,23 +4794,49 @@ def _pure_rolling_energy_emissions(
         profile.incline_id,
         profile.environment_id,
     )
-    emitted = [
-        _emit(
-            context,
-            "pure_rolling_shape_inertia",
-            Equality(left=profile.inertia.expression, right=inertia_expression),
-            (profile.inertia, profile.mass, profile.radius),
-            assumption_ids=(profile.shape_assumption_id,),
-            constraint_ids=(profile.radius_relation_id,),
-            extra_entity_ids=extra_entities,
-            extra_evidence_ids=tuple(
-                sorted(
-                    set(profile.topology_evidence_ids)
-                    | set(profile.shape_evidence_ids)
-                )
-            ),
+    pure_mode = (
+        profile.shape_assumption_id is not None and profile.beta is not None
+    )
+    if (profile.shape_assumption_id is None) != (profile.beta is None):
+        return []
+    emitted: list[LawEmission] = []
+    beta: Divide | None = None
+    if pure_mode:
+        assert profile.beta is not None
+        assert profile.shape_assumption_id is not None
+        beta = Divide(
+            numerator=LiteralNode(value=float(profile.beta.numerator)),
+            denominator=LiteralNode(value=float(profile.beta.denominator)),
+            dimension=DimensionVector.dimensionless(),
         )
-    ]
+        radius_squared = Power(
+            base=profile.radius.expression,
+            exponent=LiteralNode(value=2.0),
+        )
+        inertia_expression = Multiply(
+            factors=(beta, profile.mass.expression, radius_squared),
+            dimension=profile.inertia.dimension,
+        )
+        emitted.append(
+            _emit(
+                context,
+                "pure_rolling_shape_inertia",
+                Equality(
+                    left=profile.inertia.expression,
+                    right=inertia_expression,
+                ),
+                (profile.inertia, profile.mass, profile.radius),
+                assumption_ids=(profile.shape_assumption_id,),
+                constraint_ids=(profile.radius_relation_id,),
+                extra_entity_ids=extra_entities,
+                extra_evidence_ids=tuple(
+                    sorted(
+                        set(profile.topology_evidence_ids)
+                        | set(profile.shape_evidence_ids)
+                    )
+                ),
+            )
+        )
     for speed, angular in (
         (profile.initial_speed, profile.initial_angular_speed),
         (profile.final_speed, profile.final_angular_speed),
@@ -4841,41 +4877,121 @@ def _pure_rolling_energy_emissions(
     )
     if squared_speed_dimension is None:
         return []
-    denominator = Add(
-        terms=(LiteralNode(value=1.0), beta),
-        dimension=DimensionVector.dimensionless(),
+    initial_speed_squared = (
+        LiteralNode(value=0.0, dimension=squared_speed_dimension)
+        if profile.starts_from_rest
+        else Power(
+            base=profile.initial_speed.expression,
+            exponent=LiteralNode(value=2.0),
+            dimension=squared_speed_dimension,
+        )
     )
-    gravity_drop = Multiply(
-        factors=(
-            LiteralNode(value=2.0),
-            profile.gravity.expression,
-            profile.height.expression,
-        ),
-        dimension=squared_speed_dimension,
-    )
+    if pure_mode:
+        assert beta is not None
+        denominator = Add(
+            terms=(LiteralNode(value=1.0), beta),
+            dimension=DimensionVector.dimensionless(),
+        )
+        gravity_drop = Multiply(
+            factors=(
+                LiteralNode(value=2.0),
+                profile.gravity.expression,
+                profile.height.expression,
+            ),
+            dimension=squared_speed_dimension,
+        )
+        gained_speed_squared = Divide(
+            numerator=gravity_drop,
+            denominator=denominator,
+            dimension=squared_speed_dimension,
+        )
+        principal_rule_id = "pure_rolling_principal_energy"
+        principal_quantities = (
+            profile.final_speed,
+            profile.initial_speed,
+            profile.gravity,
+            profile.height,
+        )
+        principal_assumption_ids = (
+            profile.shape_assumption_id,
+            profile.no_energy_loss_assumption_id,
+        )
+        principal_evidence_ids = tuple(
+            sorted(
+                set(profile.topology_evidence_ids)
+                | set(profile.state_evidence_ids)
+                | set(profile.shape_evidence_ids)
+                | set(profile.no_energy_loss_evidence_ids)
+            )
+        )
+    else:
+        radius_squared_dimension = profile.radius.dimension.plus(
+            profile.radius.dimension
+        )
+        energy_dimension = profile.mass.dimension.plus(squared_speed_dimension)
+        if radius_squared_dimension is None or energy_dimension is None:
+            return []
+        radius_squared = Power(
+            base=profile.radius.expression,
+            exponent=LiteralNode(value=2.0),
+            dimension=radius_squared_dimension,
+        )
+        effective_mass = Add(
+            terms=(
+                profile.mass.expression,
+                Divide(
+                    numerator=profile.inertia.expression,
+                    denominator=radius_squared,
+                    dimension=profile.mass.dimension,
+                ),
+            ),
+            dimension=profile.mass.dimension,
+        )
+        gravity_drop = Multiply(
+            factors=(
+                LiteralNode(value=2.0),
+                profile.mass.expression,
+                profile.gravity.expression,
+                profile.height.expression,
+            ),
+            dimension=energy_dimension,
+        )
+        gained_speed_squared = Divide(
+            numerator=gravity_drop,
+            denominator=effective_mass,
+            dimension=squared_speed_dimension,
+        )
+        principal_rule_id = "rolling_general_principal_energy"
+        principal_quantities = (
+            profile.final_speed,
+            profile.initial_speed,
+            profile.mass,
+            profile.radius,
+            profile.inertia,
+            profile.gravity,
+            profile.height,
+        )
+        principal_assumption_ids = (
+            profile.no_energy_loss_assumption_id,
+        )
+        principal_evidence_ids = tuple(
+            sorted(
+                set(profile.topology_evidence_ids)
+                | set(profile.state_evidence_ids)
+                | set(profile.no_energy_loss_evidence_ids)
+            )
+        )
     radicand = Add(
         terms=(
-            (
-                LiteralNode(value=0.0, dimension=squared_speed_dimension)
-                if profile.starts_from_rest
-                else Power(
-                    base=profile.initial_speed.expression,
-                    exponent=LiteralNode(value=2.0),
-                    dimension=squared_speed_dimension,
-                )
-            ),
-            Divide(
-                numerator=gravity_drop,
-                denominator=denominator,
-                dimension=squared_speed_dimension,
-            ),
+            initial_speed_squared,
+            gained_speed_squared,
         ),
         dimension=squared_speed_dimension,
     )
     emitted.append(
         _emit(
             context,
-            "pure_rolling_principal_energy",
+            principal_rule_id,
             Equality(
                 left=profile.final_speed.expression,
                 right=Sqrt(
@@ -4883,16 +4999,8 @@ def _pure_rolling_energy_emissions(
                     dimension=profile.final_speed.dimension,
                 ),
             ),
-            (
-                profile.final_speed,
-                profile.initial_speed,
-                profile.gravity,
-                profile.height,
-            ),
-            assumption_ids=(
-                profile.shape_assumption_id,
-                profile.no_energy_loss_assumption_id,
-            ),
+            principal_quantities,
+            assumption_ids=principal_assumption_ids,
             constraint_ids=tuple(
                 sorted(
                     {
@@ -4906,14 +5014,7 @@ def _pure_rolling_energy_emissions(
                 )
             ),
             extra_entity_ids=extra_entities,
-            extra_evidence_ids=tuple(
-                sorted(
-                    set(profile.topology_evidence_ids)
-                    | set(profile.state_evidence_ids)
-                    | set(profile.shape_evidence_ids)
-                    | set(profile.no_energy_loss_evidence_ids)
-                )
-            ),
+            extra_evidence_ids=principal_evidence_ids,
         )
     )
     if profile.starts_from_rest:
@@ -6796,11 +6897,11 @@ def _vibration_emissions(context: LawContext) -> list[LawEmission]:
 
 
 def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
-    pure_rolling = _pure_rolling_energy_emissions(context)
-    if pure_rolling:
+    rolling_energy = _rolling_energy_emissions(context)
+    if rolling_energy:
         return tuple(
             sorted(
-                pure_rolling,
+                rolling_energy,
                 key=lambda item: (
                     item.effective_cost,
                     item.rule.law_id,

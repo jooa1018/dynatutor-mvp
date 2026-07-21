@@ -3529,20 +3529,21 @@ _PURE_ROLLING_SHAPE_BETA: Mapping[str, Fraction] = {
 
 
 @dataclass(frozen=True)
-class _PureRollingEnergyProfile:
+class _RollingEnergyProfile:
     fixed_axis_angular_quantity_ids: frozenset[str]
 
 
-def _pure_rolling_energy_candidate(ir: MechanicsProblemIRV1) -> bool:
+def _rolling_energy_candidate(ir: MechanicsProblemIRV1) -> bool:
     """Use redundant physical signals, never the query or diagnostics."""
 
     primitives = {item.primitive for item in ir.entities}
-    return (
+    has_cartesian_2d_frame = any(
+        item.frame_type is ReferenceFrameType.cartesian_2d
+        for item in ir.reference_frames
+    )
+    intact_rigid_candidate = (
         EntityPrimitive.rigid_body in primitives
-        and any(
-            item.frame_type is ReferenceFrameType.cartesian_2d
-            for item in ir.reference_frames
-        )
+        and has_cartesian_2d_frame
         and (
             EntityPrimitive.incline in primitives
             or EntityPrimitive.environment in primitives
@@ -3550,24 +3551,88 @@ def _pure_rolling_energy_candidate(ir: MechanicsProblemIRV1) -> bool:
             or any(item.kind in _PURE_ROLLING_SHAPE_BETA for item in ir.assumptions)
         )
     )
+    if intact_rigid_candidate:
+        return True
+
+    role_counts = {
+        role: sum(item.role is role for item in ir.quantities)
+        for role in (
+            QuantityRole.radius,
+            QuantityRole.moment_of_inertia,
+            QuantityRole.speed,
+            QuantityRole.angular_velocity,
+        )
+    }
+    rolling_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "rolling" and item.state.value == "no_slip"
+    )
+    initial_states = tuple(
+        item for item in ir.state_conditions if item.kind.value == "initial"
+    )
+    final_rolling_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "final" and item.state.value == "rolling"
+    )
+    geometry_kinds = {item.kind for item in ir.geometry}
+    damaged_rolling_signature = (
+        has_cartesian_2d_frame
+        and EntityPrimitive.incline in primitives
+        and EntityPrimitive.environment in primitives
+        and bool(rolling_states)
+        and bool(initial_states)
+        and bool(final_rolling_states)
+        and GeometryRelationKind.radius in geometry_kinds
+        and GeometryRelationKind.lies_on in geometry_kinds
+        and role_counts[QuantityRole.radius] == 1
+        and role_counts[QuantityRole.moment_of_inertia] == 1
+        and role_counts[QuantityRole.speed] == 2
+        and role_counts[QuantityRole.angular_velocity] == 2
+    )
+    return damaged_rolling_signature
 
 
-def _pure_rolling_energy_contract(
+def _rolling_energy_contract(
     ir: MechanicsProblemIRV1,
     query: IRQuery,
     approved_assumption_ids: frozenset[str],
-) -> tuple[_PureRollingEnergyProfile | None, CompilerIssue | None]:
-    """Close the shape-derived, lossless pure-rolling energy profile."""
+) -> tuple[_RollingEnergyProfile | None, CompilerIssue | None]:
+    """Close either supported lossless rolling-energy profile."""
 
-    if not _pure_rolling_energy_candidate(ir):
+    if not _rolling_energy_candidate(ir):
         return None, None
 
+    source_inertia_claimed = any(
+        item.role is QuantityRole.moment_of_inertia
+        and (
+            item.provenance is Provenance.explicit_source
+            or item.si_value is not None
+        )
+        for item in ir.quantities
+    )
+    shape_claimed = any(
+        item.kind in _PURE_ROLLING_SHAPE_BETA for item in ir.assumptions
+    )
+    rolling_mode = "general" if source_inertia_claimed else "pure"
+
     def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
+        profile_name = (
+            "general rolling energy"
+            if rolling_mode == "general"
+            else "pure-rolling energy"
+        )
         return _issue(
             CompilerIssueCode.requires_specialized_model,
-            f"pure-rolling energy topology {detail}",
+            f"{profile_name} topology {detail}",
             f"queries.{query.query_id}",
             referenced_id or query.query_id,
+        )
+
+    if source_inertia_claimed and shape_claimed:
+        return None, failure(
+            "rejects simultaneous source inertia and shape-derived inertia authority"
         )
 
     primitive_ids = {
@@ -3741,26 +3806,37 @@ def _pure_rolling_energy_contract(
     loss_assumptions = tuple(
         item for item in ir.assumptions if item.kind == "no_energy_loss"
     )
-    if (
-        len(ir.assumptions) != 2
-        or len(shape_assumptions) != 1
-        or len(loss_assumptions) != 1
-        or any(
-            item.subject_id != body_id
-            or item.interval_id != interval.interval_id
-            or item.disposition is not AssumptionDisposition.approved
-            or item.assumption_id not in approved_assumption_ids
-            or item.proposed_role is not None
-            or item.proposed_value is not None
-            or item.proposed_unit is not None
-            or not item.evidence_refs
-            for item in (*shape_assumptions, *loss_assumptions)
-        )
+    expected_assumptions = (
+        (*shape_assumptions, *loss_assumptions)
+        if rolling_mode == "pure"
+        else loss_assumptions
+    )
+    assumption_inventory_ok = (
+        len(ir.assumptions) == 2
+        and len(shape_assumptions) == 1
+        and len(loss_assumptions) == 1
+        if rolling_mode == "pure"
+        else len(ir.assumptions) == 1
+        and not shape_assumptions
+        and len(loss_assumptions) == 1
+    )
+    if not assumption_inventory_ok or any(
+        item.subject_id != body_id
+        or item.interval_id != interval.interval_id
+        or item.disposition is not AssumptionDisposition.approved
+        or item.assumption_id not in approved_assumption_ids
+        or item.proposed_role is not None
+        or item.proposed_value is not None
+        or item.proposed_unit is not None
+        or not item.evidence_refs
+        for item in expected_assumptions
     ):
-        return None, failure(
-            "requires exact externally approved closed-table shape and no-energy-loss assumptions",
-            body_id,
+        detail = (
+            "requires exact externally approved closed-table shape and no-energy-loss assumptions"
+            if rolling_mode == "pure"
+            else "requires exactly one externally approved evidenced no-energy-loss assumption and no shape assumption"
         )
+        return None, failure(detail, body_id)
 
     quantities = {item.quantity_id: item for item in ir.quantities}
 
@@ -3839,25 +3915,51 @@ def _pure_rolling_energy_contract(
     ):
         return None, failure("contains an inexact or dimensionally invalid source binding")
 
-    if (
-        inertia.subject_id != body_id
-        or inertia.point_id != center_id
-        or inertia.frame_id is not None
-        or inertia.interval_id != interval.interval_id
-        or inertia.event_id is not None
-        or inertia.shape is not QuantityShape.scalar
-        or inertia.dimension != DimensionVector(mass=1, length=2)
-        or inertia.symbol_id is None
-        or inertia.si_value is not None
-        or inertia.provenance not in {Provenance.inferred, Provenance.unknown}
-        or not inertia.evidence_refs
-        or inertia.component not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
-        or inertia.direction is not None
-    ):
+    inertia_binding_ok = (
+        inertia.subject_id == body_id
+        and inertia.point_id == center_id
+        and inertia.frame_id is None
+        and inertia.interval_id == interval.interval_id
+        and inertia.event_id is None
+        and inertia.shape is QuantityShape.scalar
+        and inertia.dimension == DimensionVector(mass=1, length=2)
+        and inertia.symbol_id is not None
+        and bool(inertia.evidence_refs)
+        and inertia.component
+        in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        and inertia.direction is None
+    )
+    if not inertia_binding_ok:
         return None, failure(
-            "requires one inferred inertia at the mass center; explicit source I belongs to the general rolling solver",
+            "requires one exact scalar inertia at the body mass center",
             inertia.quantity_id,
         )
+    if rolling_mode == "pure":
+        if (
+            inertia.si_value is not None
+            or inertia.provenance not in {Provenance.inferred, Provenance.unknown}
+        ):
+            return None, failure(
+                "requires one inferred inertia at the mass center; explicit source I belongs to the general rolling solver",
+                inertia.quantity_id,
+            )
+    else:
+        if (
+            inertia.provenance is not Provenance.explicit_source
+            or type(inertia.si_value) is not float
+            or not math.isfinite(inertia.si_value)
+        ):
+            return None, failure(
+                "requires one finite evidenced explicit-source inertia at the mass center",
+                inertia.quantity_id,
+            )
+        if inertia.si_value <= 0.0:
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "general rolling moment of inertia must be positive",
+                f"quantities.{inertia.quantity_id}.si_value",
+                inertia.quantity_id,
+            )
 
     initial_states = tuple(
         item
@@ -4082,7 +4184,7 @@ def _pure_rolling_energy_contract(
             query.query_id,
         )
     return (
-        _PureRollingEnergyProfile(
+        _RollingEnergyProfile(
             fixed_axis_angular_quantity_ids=frozenset(
                 (initial_angular.quantity_id, final_angular.quantity_id)
             )
@@ -8376,20 +8478,20 @@ class MechanicsCompiler:
                 else CompilerStatus.unsupported
             )
             return _failure(status, massive_pulley_issue)
-        pure_rolling_profile, pure_rolling_issue = (
-            _pure_rolling_energy_contract(
+        rolling_energy_profile, rolling_energy_issue = (
+            _rolling_energy_contract(
                 safe_ir,
                 query,
                 authority.approved_assumption_ids,
             )
         )
-        if pure_rolling_issue is not None:
+        if rolling_energy_issue is not None:
             status = (
                 CompilerStatus.invalid
-                if pure_rolling_issue.code is CompilerIssueCode.invalid_domain
+                if rolling_energy_issue.code is CompilerIssueCode.invalid_domain
                 else CompilerStatus.unsupported
             )
-            return _failure(status, pure_rolling_issue)
+            return _failure(status, rolling_energy_issue)
         specialization_issue = _structural_specialization_issue(safe_ir, query)
         if specialization_issue is not None:
             return _failure(CompilerStatus.unsupported, specialization_issue)
@@ -8465,7 +8567,7 @@ class MechanicsCompiler:
                 frozenset().union(
                     *(
                         item.fixed_axis_angular_quantity_ids
-                        for item in (massive_pulley_profile, pure_rolling_profile)
+                        for item in (massive_pulley_profile, rolling_energy_profile)
                         if item is not None
                     )
                 )
