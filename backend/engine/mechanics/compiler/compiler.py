@@ -3518,6 +3518,723 @@ class _MassivePulleyAtwoodProfile:
     fixed_axis_angular_quantity_ids: frozenset[str]
 
 
+@dataclass(frozen=True)
+class _VerticalCircleProfile:
+    mode: str
+    location: str
+    carrier_kind: str
+    at_unilateral_boundary: bool
+
+
+def _vertical_circle_roundoff_equal(left: float, right: float) -> bool:
+    """Treat only a small fixed number of product-rounding ULPs as equal."""
+
+    if not math.isfinite(left) or not math.isfinite(right):
+        return False
+    if (left == 0.0) != (right == 0.0):
+        return False
+    return math.isclose(
+        left,
+        right,
+        rel_tol=8.0 * math.ulp(1.0),
+        abs_tol=0.0,
+    )
+
+
+def _vertical_circle_candidate(ir: MechanicsProblemIRV1) -> bool:
+    """Recognize redundant typed circular-motion signals, never the query."""
+
+    rotating_circle_frame = any(
+        item.frame_type is ReferenceFrameType.tangential_normal
+        and item.rotating_about_point_id is not None
+        for item in ir.reference_frames
+    )
+    radius_geometry = any(
+        item.kind is GeometryRelationKind.radius for item in ir.geometry
+    )
+    rope_activity = (
+        any(item.kind is InteractionKind.rope_tension for item in ir.interactions)
+        and any(
+            item.kind.value == "rope" and item.state.value == "taut"
+            for item in ir.state_conditions
+        )
+    )
+    contact_activity = (
+        any(item.kind is InteractionKind.contact for item in ir.interactions)
+        and any(
+            item.kind.value == "contact" and item.state.value == "touching"
+            for item in ir.state_conditions
+        )
+    )
+    carrier_activity = rope_activity or contact_activity
+    normal_gravity = any(
+        item.role is QuantityRole.gravity
+        and item.component is QuantityComponent.normal
+        for item in ir.quantities
+    )
+    tangential_speed = any(
+        item.role is QuantityRole.speed
+        and item.component is QuantityComponent.tangential
+        for item in ir.quantities
+    )
+    inward_reaction = any(
+        item.role is QuantityRole.force
+        and item.component is QuantityComponent.normal
+        for item in ir.quantities
+    )
+    active_boundary = any(
+        item.kind.value == "boundary"
+        and item.state.value == "active"
+        and bool(item.quantity_ids)
+        for item in ir.state_conditions
+    )
+    vertical_inventory = (
+        normal_gravity
+        and tangential_speed
+        and (inward_reaction or active_boundary)
+    )
+
+    # The first branch is the intact circular signature.  The latter two keep
+    # the specialized gate active when any one of frame, radius, or carrier
+    # activity is damaged, while an incline (no radius/rotation) and a rolling
+    # profile (no normal gravity/reaction) remain outside this recognizer.
+    return (
+        (rotating_circle_frame and radius_geometry)
+        or (rotating_circle_frame and carrier_activity)
+        or (radius_geometry and carrier_activity and vertical_inventory)
+    )
+
+
+def _vertical_circle_contract(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+) -> tuple[_VerticalCircleProfile | None, CompilerIssue | None]:
+    """Close the supported local vertical-circle reaction/boundary profiles."""
+
+    if not _vertical_circle_candidate(ir):
+        return None, None
+
+    def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            f"vertical-circle topology {detail}",
+            f"queries.{query.query_id}",
+            referenced_id or query.query_id,
+        )
+
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id for item in ir.entities if item.primitive is primitive
+        )
+        for primitive in (
+            EntityPrimitive.particle,
+            EntityPrimitive.environment,
+            EntityPrimitive.rope,
+            EntityPrimitive.surface,
+        )
+    }
+    carrier_ids = (
+        *primitive_ids[EntityPrimitive.rope],
+        *primitive_ids[EntityPrimitive.surface],
+    )
+    if (
+        len(ir.entities) != 3
+        or len(primitive_ids[EntityPrimitive.particle]) != 1
+        or len(primitive_ids[EntityPrimitive.environment]) != 1
+        or len(carrier_ids) != 1
+        or any(
+            not item.evidence_refs or item.component_of_entity_id is not None
+            for item in ir.entities
+        )
+    ):
+        return None, failure(
+            "requires exactly one evidenced particle, environment, and rope or circular surface"
+        )
+    particle_id = primitive_ids[EntityPrimitive.particle][0]
+    environment_id = primitive_ids[EntityPrimitive.environment][0]
+    carrier_id = carrier_ids[0]
+    carrier_kind = (
+        "rope"
+        if carrier_id in primitive_ids[EntityPrimitive.rope]
+        else "contact"
+    )
+    fixed_center_owner_id = environment_id if carrier_kind == "rope" else carrier_id
+
+    if len(ir.reference_frames) != 1:
+        return None, failure(
+            "requires exactly one evidenced inward-positive tangential-normal frame"
+        )
+    frame = ir.reference_frames[0]
+    particle_points = tuple(
+        item
+        for item in ir.points
+        if item.owner_entity_id == particle_id and item.role.value == "material"
+    )
+    center_points = tuple(
+        item
+        for item in ir.points
+        if item.owner_entity_id == fixed_center_owner_id
+        and item.role.value == "geometric"
+    )
+    if (
+        len(ir.points) != 2
+        or len(particle_points) != 1
+        or len(center_points) != 1
+    ):
+        return None, failure(
+            "requires one particle material point and one fixed-center geometric point"
+        )
+    particle_point_id = particle_points[0].point_id
+    center_point_id = center_points[0].point_id
+    axis_signature = {
+        (
+            item.axis.value,
+            getattr(item.direction, "kind", None),
+            getattr(item.direction, "frame_id", None),
+            getattr(getattr(item.direction, "axis", None), "value", None),
+            getattr(item.direction, "sign", None),
+        )
+        for item in frame.axes
+    }
+    if (
+        frame.frame_type is not ReferenceFrameType.tangential_normal
+        or getattr(frame.origin, "kind", None) != "point"
+        or getattr(frame.origin, "point_id", None) != particle_point_id
+        or frame.parent_frame_id is not None
+        or frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id != center_point_id
+        or frame.generalized_coordinate_symbol_ids
+        or len(frame.axes) != 2
+        or axis_signature
+        != {
+            ("tangent", "axis", frame.frame_id, "tangent", 1),
+            ("normal", "axis", frame.frame_id, "normal", 1),
+        }
+        or not frame.evidence_refs
+        or any(
+            item.frame_id != frame.frame_id or not item.evidence_refs
+            for item in ir.points
+        )
+    ):
+        return None, failure(
+            "requires an exact particle-origin frame with positive tangent/inward-normal axes rotating about the fixed center",
+            frame.frame_id,
+        )
+
+    if len(ir.motion_intervals) != 1:
+        return None, failure("requires one evidenced event-free motion interval")
+    interval = ir.motion_intervals[0]
+    if (
+        interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or set(interval.subject_ids)
+        != {particle_id, environment_id, carrier_id}
+        or len(interval.subject_ids) != 3
+        or not interval.evidence_refs
+        or ir.events
+    ):
+        return None, failure(
+            "requires one event-free interval containing the complete circular topology",
+            interval.interval_id,
+        )
+
+    radius_relations = tuple(
+        item for item in ir.geometry if item.kind is GeometryRelationKind.radius
+    )
+    carrier_geometry_kind = (
+        GeometryRelationKind.attached
+        if carrier_kind == "rope"
+        else GeometryRelationKind.lies_on
+    )
+    carrier_relations = tuple(
+        item for item in ir.geometry if item.kind is carrier_geometry_kind
+    )
+    expected_carrier_participants = (
+        {particle_id, particle_point_id, carrier_id, center_point_id}
+        if carrier_kind == "rope"
+        else {particle_id, particle_point_id, carrier_id}
+    )
+    if (
+        len(ir.geometry) != 2
+        or len(radius_relations) != 1
+        or len(carrier_relations) != 1
+        or any(
+            item.expression is not None
+            or item.interval_id != interval.interval_id
+            or not item.evidence_refs
+            or len(item.participant_ids) != len(set(item.participant_ids))
+            or len(item.quantity_ids) != len(set(item.quantity_ids))
+            for item in ir.geometry
+        )
+        or set(radius_relations[0].participant_ids)
+        != {particle_point_id, center_point_id}
+        or len(radius_relations[0].participant_ids) != 2
+        or set(carrier_relations[0].participant_ids)
+        != expected_carrier_participants
+        or len(carrier_relations[0].participant_ids)
+        != len(expected_carrier_participants)
+        or carrier_relations[0].quantity_ids
+    ):
+        relation_name = "attachment" if carrier_kind == "rope" else "lies-on"
+        return None, failure(
+            f"requires exact center-to-particle radius and {relation_name} geometry",
+            carrier_id,
+        )
+
+    gravity_interactions = tuple(
+        item for item in ir.interactions if item.kind is InteractionKind.gravity
+    )
+    expected_carrier_interaction_kind = (
+        InteractionKind.rope_tension
+        if carrier_kind == "rope"
+        else InteractionKind.contact
+    )
+    carrier_interactions = tuple(
+        item
+        for item in ir.interactions
+        if item.kind is expected_carrier_interaction_kind
+    )
+    if (
+        len(ir.interactions) != 2
+        or len(gravity_interactions) != 1
+        or len(carrier_interactions) != 1
+    ):
+        return None, failure(
+            "requires exactly one gravity and one matching rope-tension or contact interaction"
+        )
+    gravity_interaction = gravity_interactions[0]
+    carrier_interaction = carrier_interactions[0]
+    if (
+        set(gravity_interaction.participant_ids)
+        != {particle_id, environment_id}
+        or len(gravity_interaction.participant_ids) != 2
+        or tuple(gravity_interaction.point_ids) != (particle_point_id,)
+        or set(carrier_interaction.participant_ids) != {particle_id, carrier_id}
+        or len(carrier_interaction.participant_ids) != 2
+        or tuple(carrier_interaction.point_ids) != (particle_point_id,)
+        or any(
+            item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or not item.evidence_refs
+            for item in ir.interactions
+        )
+    ):
+        return None, failure(
+            "has incomplete, ambiguous, or incorrectly scoped gravity/carrier interactions"
+        )
+
+    quantities = {item.quantity_id: item for item in ir.quantities}
+
+    def by_role(role: QuantityRole) -> tuple[object, ...]:
+        return tuple(item for item in quantities.values() if item.role is role)
+
+    masses = by_role(QuantityRole.mass)
+    radii = by_role(QuantityRole.radius)
+    gravities = by_role(QuantityRole.gravity)
+    speeds = by_role(QuantityRole.speed)
+    reactions = by_role(QuantityRole.force)
+    source_speeds = tuple(
+        item
+        for item in speeds
+        if item.provenance is Provenance.explicit_source or item.si_value is not None
+    )
+    mode = "reaction" if source_speeds else "minimum_speed"
+    expected_quantity_count = 5 if mode == "reaction" else 3
+    if (
+        len(radii) != 1
+        or len(gravities) != 1
+        or len(speeds) != 1
+        or len(reactions) != (1 if mode == "reaction" else 0)
+        or len(masses) != (1 if mode == "reaction" else 0)
+        or len(quantities) != expected_quantity_count
+    ):
+        inventory = (
+            "exact source m, R, g, v and inferred local reaction"
+            if mode == "reaction"
+            else "exact source R, g and inferred minimum speed"
+        )
+        return None, failure(f"requires {inventory}")
+    radius = radii[0]
+    gravity = gravities[0]
+    speed = speeds[0]
+    reaction = reactions[0] if reactions else None
+    mass = masses[0] if masses else None
+
+    def exact_source_scalar(item: object) -> bool:
+        return (
+            item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.provenance is Provenance.explicit_source
+            and type(item.si_value) is float
+            and math.isfinite(item.si_value)
+            and bool(item.evidence_refs)
+            and item.assumption_policy_ref is None
+            and item.correction_id is None
+        )
+
+    if (
+        not exact_source_scalar(radius)
+        or radius.subject_id != particle_id
+        or radius.point_id != particle_point_id
+        or radius.frame_id is not None
+        or radius.interval_id is not None
+        or radius.event_id is not None
+        or radius.component
+        not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        or radius.direction is not None
+        or radius.dimension != DimensionVector(length=1)
+        or tuple(radius_relations[0].quantity_ids) != (radius.quantity_id,)
+    ):
+        return None, failure(
+            "requires one exact source-backed particle-point trajectory radius",
+            radius.quantity_id,
+        )
+    if (
+        not exact_source_scalar(gravity)
+        or gravity.subject_id != environment_id
+        or gravity.point_id is not None
+        or gravity.frame_id != frame.frame_id
+        or gravity.interval_id != interval.interval_id
+        or gravity.event_id is not None
+        or gravity.component is not QuantityComponent.normal
+        or gravity.dimension != DimensionVector(length=1, time=-2)
+        or not _exact_axis_direction(
+            gravity,
+            frame_id=frame.frame_id,
+            axis="normal",
+            sign=getattr(gravity.direction, "sign", 0),
+        )
+        or getattr(gravity.direction, "sign", None) not in {-1, 1}
+    ):
+        return None, failure(
+            "requires one exact local-normal source gravity direction",
+            gravity.quantity_id,
+        )
+    location = "top" if gravity.direction.sign == 1 else "bottom"
+    if (
+        speed.subject_id != particle_id
+        or speed.point_id != particle_point_id
+        or speed.frame_id != frame.frame_id
+        or speed.interval_id != interval.interval_id
+        or speed.event_id is not None
+        or speed.shape is not QuantityShape.scalar
+        or speed.symbol_id is None
+        or speed.component is not QuantityComponent.tangential
+        or speed.dimension != DimensionVector(length=1, time=-1)
+        or not speed.evidence_refs
+        or speed.assumption_policy_ref is not None
+        or speed.correction_id is not None
+        or not _exact_axis_direction(
+            speed,
+            frame_id=frame.frame_id,
+            axis="tangent",
+            sign=1,
+        )
+    ):
+        return None, failure(
+            "requires one exact positive-tangent local speed binding",
+            speed.quantity_id,
+        )
+    if reaction is not None:
+        if (
+            reaction.subject_id != particle_id
+            or reaction.point_id != particle_point_id
+            or reaction.frame_id != frame.frame_id
+            or reaction.interval_id != interval.interval_id
+            or reaction.event_id is not None
+            or reaction.shape is not QuantityShape.scalar
+            or reaction.symbol_id is None
+            or reaction.component is not QuantityComponent.normal
+            or reaction.dimension != DimensionVector(mass=1, length=1, time=-2)
+            or reaction.provenance is not Provenance.inferred
+            or reaction.si_value is not None
+            or not reaction.evidence_refs
+            or reaction.assumption_policy_ref is not None
+            or reaction.correction_id is not None
+            or not _exact_axis_direction(
+                reaction,
+                frame_id=frame.frame_id,
+                axis="normal",
+                sign=1,
+            )
+        ):
+            return None, failure(
+                "requires one inferred inward-positive unilateral local reaction",
+                reaction.quantity_id,
+            )
+
+    if radius.si_value <= 0.0 or gravity.si_value <= 0.0:
+        bad = radius if radius.si_value <= 0.0 else gravity
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "vertical-circle radius and gravity magnitude must be positive",
+            f"quantities.{bad.quantity_id}.si_value",
+            bad.quantity_id,
+        )
+    if mode == "reaction":
+        assert mass is not None
+        assert reaction is not None
+        if (
+            not exact_source_scalar(mass)
+            or mass.subject_id != particle_id
+            or mass.point_id is not None
+            or mass.frame_id is not None
+            or mass.interval_id is not None
+            or mass.event_id is not None
+            or mass.component
+            not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            or mass.direction is not None
+            or mass.dimension != DimensionVector(mass=1)
+        ):
+            return None, failure(
+                "requires one exact source-backed unscoped particle mass",
+                mass.quantity_id,
+            )
+        if (
+            not exact_source_scalar(speed)
+            or speed.si_value < 0.0
+        ):
+            code = (
+                CompilerIssueCode.invalid_domain
+                if type(speed.si_value) is float and speed.si_value < 0.0
+                else CompilerIssueCode.requires_specialized_model
+            )
+            return None, _issue(
+                code,
+                "vertical-circle local speed must be finite, source-backed, and nonnegative",
+                f"quantities.{speed.quantity_id}.si_value",
+                speed.quantity_id,
+            )
+        if mass.si_value <= 0.0:
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "vertical-circle particle mass must be positive",
+                f"quantities.{mass.quantity_id}.si_value",
+                mass.quantity_id,
+            )
+        expected_gravity_quantity_ids = {mass.quantity_id, gravity.quantity_id}
+        speed_squared = speed.si_value * speed.si_value
+        if (
+            not math.isfinite(speed_squared)
+            or (speed.si_value > 0.0 and speed_squared == 0.0)
+        ):
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "vertical-circle derived speed-squared must be finite and representable",
+                f"quantities.{speed.quantity_id}.si_value",
+                speed.quantity_id,
+            )
+        normal_acceleration = speed_squared / radius.si_value
+        reaction_acceleration = (
+            normal_acceleration - gravity.si_value
+            if location == "top"
+            else normal_acceleration + gravity.si_value
+        )
+        if (
+            not math.isfinite(normal_acceleration)
+            or not math.isfinite(reaction_acceleration)
+            or (speed_squared > 0.0 and normal_acceleration == 0.0)
+        ):
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "vertical-circle derived normal and reaction accelerations must be finite",
+                f"quantities.{speed.quantity_id}.si_value",
+                speed.quantity_id,
+            )
+        if location == "top":
+            gravity_radius = gravity.si_value * radius.si_value
+            if not math.isfinite(gravity_radius) or gravity_radius <= 0.0:
+                return None, _issue(
+                    CompilerIssueCode.invalid_domain,
+                    "top vertical-circle gravity-radius product must be finite and representably positive",
+                    f"quantities.{gravity.quantity_id}.si_value",
+                    gravity.quantity_id,
+                )
+            at_unilateral_boundary = _vertical_circle_roundoff_equal(
+                speed_squared, gravity_radius
+            )
+            if speed_squared < gravity_radius and not at_unilateral_boundary:
+                return None, failure(
+                    "rejects the top contact-loss/slack-rope regime because the required unilateral reaction would be negative",
+                    speed.quantity_id,
+                )
+            if reaction_acceleration == 0.0 and not at_unilateral_boundary:
+                return None, _issue(
+                    CompilerIssueCode.invalid_domain,
+                    "top vertical-circle reaction acceleration rounded to zero away from the unilateral boundary",
+                    f"quantities.{speed.quantity_id}.si_value",
+                    speed.quantity_id,
+                )
+        else:
+            at_unilateral_boundary = False
+        reaction_value = mass.si_value * reaction_acceleration
+        if (
+            not at_unilateral_boundary
+            and (
+                not math.isfinite(reaction_value)
+                or reaction_acceleration <= 0.0
+                or reaction_value <= 0.0
+            )
+        ):
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "vertical-circle derived non-boundary local reaction must be finite, representable, and positive",
+                f"quantities.{mass.quantity_id}.si_value",
+                mass.quantity_id,
+            )
+    else:
+        if (
+            speed.provenance is not Provenance.inferred
+            or speed.si_value is not None
+        ):
+            return None, failure(
+                "requires one inferred principal minimum-speed output",
+                speed.quantity_id,
+            )
+        if location != "top":
+            return None, failure(
+                "supports the minimum-speed boundary only at the top",
+                gravity.quantity_id,
+            )
+        gravity_radius = gravity.si_value * radius.si_value
+        if not math.isfinite(gravity_radius) or gravity_radius <= 0.0:
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "minimum-speed gravity-radius product must be finite and representably positive",
+                f"quantities.{gravity.quantity_id}.si_value",
+                gravity.quantity_id,
+            )
+        expected_gravity_quantity_ids = {gravity.quantity_id}
+        at_unilateral_boundary = True
+
+    if (
+        set(gravity_interaction.quantity_ids) != expected_gravity_quantity_ids
+        or len(gravity_interaction.quantity_ids)
+        != len(expected_gravity_quantity_ids)
+        or tuple(carrier_interaction.quantity_ids)
+        != (() if reaction is None else (reaction.quantity_id,))
+    ):
+        return None, failure(
+            "contains inexact gravity or carrier-interaction quantity bindings"
+        )
+
+    active_kind = "rope" if carrier_kind == "rope" else "contact"
+    active_value = "taut" if carrier_kind == "rope" else "touching"
+    active_subject_id = carrier_id if carrier_kind == "rope" else particle_id
+    active_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == active_kind
+        and item.state.value == active_value
+        and item.subject_id == active_subject_id
+    )
+    fixed_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "motion"
+        and item.state.value == "at_rest"
+        and item.subject_id == fixed_center_owner_id
+    )
+    boundary_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "boundary"
+        and item.state.value == "active"
+        and item.subject_id == particle_id
+    )
+    expected_state_count = 2 if mode == "reaction" else 3
+    expected_active_quantity_ids = (
+        {reaction.quantity_id}
+        if carrier_kind == "contact" and reaction is not None
+        else set()
+    )
+    if (
+        len(ir.state_conditions) != expected_state_count
+        or len(active_states) != 1
+        or len(fixed_states) != 1
+        or len(boundary_states) != (0 if mode == "reaction" else 1)
+        or set(active_states[0].quantity_ids) != expected_active_quantity_ids
+        or len(active_states[0].quantity_ids)
+        != len(expected_active_quantity_ids)
+        or fixed_states[0].quantity_ids
+        or (
+            mode == "minimum_speed"
+            and (
+                set(boundary_states[0].quantity_ids)
+                != {speed.quantity_id}
+                or len(boundary_states[0].quantity_ids) != 1
+            )
+        )
+        or any(
+            item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.expression is not None
+            or not item.evidence_refs
+            for item in ir.state_conditions
+        )
+    ):
+        return None, failure(
+            "requires exact evidenced taut/touching, fixed-center, and optional active-boundary states",
+            particle_id,
+        )
+
+    expected_quantity_ids = {
+        radius.quantity_id,
+        gravity.quantity_id,
+        speed.quantity_id,
+        *(() if reaction is None else (reaction.quantity_id,)),
+        *(() if mass is None else (mass.quantity_id,)),
+    }
+    query_quantity = quantities.get(query.target.target_quantity_id or "")
+    expected_query_quantity = reaction if reaction is not None else speed
+    figure_dependency = ir.figure_dependency
+    if (
+        set(quantities) != expected_quantity_ids
+        or query_quantity is not expected_query_quantity
+        or query.shape is not QuantityShape.scalar
+        or query.target.role is not expected_query_quantity.role
+        or query.target.subject_id != particle_id
+        or query.target.point_id != particle_point_id
+        or query.target.frame_id != frame.frame_id
+        or query.target.interval_id != interval.interval_id
+        or query.target.event_id is not None
+        or query.target.component is not expected_query_quantity.component
+        or query.target.direction != expected_query_quantity.direction
+        or query.output_dimension != expected_query_quantity.dimension
+        or not query.evidence_refs
+        or len(ir.queries) != 1
+        or ir.constraints
+        or ir.assumptions
+        or ir.principle_hints
+        or ir.ambiguities
+        or ir.unsupported_features
+        or figure_dependency.level.value != "none"
+        or figure_dependency.missing_information
+        or figure_dependency.evidence_refs
+        or {item.symbol_id for item in ir.symbols}
+        != {
+            item.symbol_id
+            for item in quantities.values()
+            if item.symbol_id is not None
+        }
+    ):
+        return None, failure(
+            "contains extra client authority, quantities, symbols, or an inexact local query",
+            query.query_id,
+        )
+    return (
+        _VerticalCircleProfile(
+            mode=mode,
+            location=location,
+            carrier_kind=carrier_kind,
+            at_unilateral_boundary=at_unilateral_boundary,
+        ),
+        None,
+    )
+
+
 _PURE_ROLLING_SHAPE_BETA: Mapping[str, Fraction] = {
     "solid_sphere": Fraction(2, 5),
     "hollow_sphere": Fraction(2, 3),
@@ -8464,6 +9181,19 @@ class MechanicsCompiler:
         )
         if deferred_issue is not None:
             return _failure(CompilerStatus.unsupported, deferred_issue)
+        vertical_circle_profile, vertical_circle_issue = (
+            _vertical_circle_contract(
+                safe_ir,
+                query,
+            )
+        )
+        if vertical_circle_issue is not None:
+            status = (
+                CompilerStatus.invalid
+                if vertical_circle_issue.code is CompilerIssueCode.invalid_domain
+                else CompilerStatus.unsupported
+            )
+            return _failure(status, vertical_circle_issue)
         massive_pulley_profile, massive_pulley_issue = (
             _massive_pulley_atwood_contract(
                 safe_ir,

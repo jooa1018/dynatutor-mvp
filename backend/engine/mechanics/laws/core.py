@@ -114,6 +114,8 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("pure_rolling_shape_inertia", "work_energy", (QuantityRole.mass, QuantityRole.radius, QuantityRole.moment_of_inertia), cost=3, hooks=("constitutive_residual",)),
     _rule("pure_rolling_principal_energy", "work_energy", (QuantityRole.speed, QuantityRole.gravity, QuantityRole.height), cost=4, hooks=("energy_residual",)),
     _rule("rolling_general_principal_energy", "work_energy", (QuantityRole.mass, QuantityRole.radius, QuantityRole.moment_of_inertia, QuantityRole.speed, QuantityRole.gravity, QuantityRole.height), cost=4, hooks=("energy_residual",)),
+    _rule("vertical_circle_local_reaction", "newton_second_law", (QuantityRole.mass, QuantityRole.radius, QuantityRole.gravity, QuantityRole.speed, QuantityRole.force), cost=3, hooks=("force_balance", "contact_validity")),
+    _rule("vertical_circle_top_minimum_speed", "kinematics", (QuantityRole.radius, QuantityRole.gravity, QuantityRole.speed), cost=2, hooks=("kinematic_residual", "contact_validity")),
     _rule("gear_pitch_velocity", "constraint", (QuantityRole.angular_velocity, QuantityRole.radius), interactions=(InteractionKind.gear_contact.value,), cost=3, hooks=("constraint_residual",)),
     _rule("state_at_rest", "constraint", (QuantityRole.velocity,), cost=1, hooks=("boundary_residual",)),
     _rule("angular_position_derivative", "rigid_body_kinematics", (QuantityRole.angular_position, QuantityRole.angular_velocity, QuantityRole.time), cost=4, hooks=("derivative_residual",)),
@@ -4422,6 +4424,573 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
     return emitted
 
 
+@dataclass(frozen=True)
+class _VerticalCircleLawProfile:
+    mode: str
+    location: str
+    at_unilateral_boundary: bool
+    particle_id: str
+    environment_id: str
+    carrier_id: str
+    particle_point_id: str
+    center_point_id: str
+    frame_id: str
+    interval_id: str
+    radius_relation_id: str
+    carrier_relation_id: str
+    gravity_interaction_id: str
+    carrier_interaction_id: str
+    active_state_id: str
+    fixed_state_id: str
+    boundary_state_id: str | None
+    mass: BoundQuantity | None
+    radius: BoundQuantity
+    gravity: BoundQuantity
+    speed: BoundQuantity
+    reaction: BoundQuantity | None
+    topology_evidence_ids: tuple[str, ...]
+    state_evidence_ids: tuple[str, ...]
+
+
+def _vertical_circle_roundoff_equal(left: float, right: float) -> bool:
+    if not math.isfinite(left) or not math.isfinite(right):
+        return False
+    if (left == 0.0) != (right == 0.0):
+        return False
+    return math.isclose(
+        left,
+        right,
+        rel_tol=8.0 * math.ulp(1.0),
+        abs_tol=0.0,
+    )
+
+
+def _vertical_circle_profile(
+    context: LawContext,
+) -> _VerticalCircleLawProfile | None:
+    primitive_ids = {
+        primitive: tuple(
+            item.entity_id
+            for item in context.entities
+            if item.primitive is primitive
+        )
+        for primitive in (
+            EntityPrimitive.particle,
+            EntityPrimitive.environment,
+            EntityPrimitive.rope,
+            EntityPrimitive.surface,
+        )
+    }
+    carrier_ids = (
+        *primitive_ids[EntityPrimitive.rope],
+        *primitive_ids[EntityPrimitive.surface],
+    )
+    if (
+        len(context.entities) != 3
+        or len(primitive_ids[EntityPrimitive.particle]) != 1
+        or len(primitive_ids[EntityPrimitive.environment]) != 1
+        or len(carrier_ids) != 1
+    ):
+        return None
+    particle_id = primitive_ids[EntityPrimitive.particle][0]
+    environment_id = primitive_ids[EntityPrimitive.environment][0]
+    carrier_id = carrier_ids[0]
+    carrier_kind = (
+        "rope"
+        if carrier_id in primitive_ids[EntityPrimitive.rope]
+        else "contact"
+    )
+    fixed_center_owner_id = environment_id if carrier_kind == "rope" else carrier_id
+
+    if len(context.reference_frames) != 1 or len(context.points) != 2:
+        return None
+    frame = context.reference_frames[0]
+    particle_points = tuple(
+        item
+        for item in context.points
+        if item.owner_entity_id == particle_id and item.role is PointRole.material
+    )
+    center_points = tuple(
+        item
+        for item in context.points
+        if item.owner_entity_id == fixed_center_owner_id
+        and item.role is PointRole.geometric
+    )
+    if len(particle_points) != 1 or len(center_points) != 1:
+        return None
+    particle_point_id = particle_points[0].point_id
+    center_point_id = center_points[0].point_id
+    if (
+        frame.frame_type is not ReferenceFrameType.tangential_normal
+        or getattr(frame.origin, "kind", None) != "point"
+        or getattr(frame.origin, "point_id", None) != particle_point_id
+        or frame.parent_frame_id is not None
+        or frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id != center_point_id
+        or frame.generalized_coordinate_symbol_ids
+        or len(frame.axes) != 2
+        or {item.axis for item in frame.axes}
+        != {AxisName.tangent, AxisName.normal}
+        or any(
+            getattr(item.direction, "kind", None) != "axis"
+            or getattr(item.direction, "frame_id", None) != frame.frame_id
+            or getattr(item.direction, "axis", None) is not item.axis
+            or getattr(item.direction, "sign", None) != 1
+            for item in frame.axes
+        )
+        or any(item.frame_id != frame.frame_id for item in context.points)
+    ):
+        return None
+
+    if len(context.motion_intervals) != 1 or context.events:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or set(interval.subject_ids)
+        != {particle_id, environment_id, carrier_id}
+        or len(interval.subject_ids) != 3
+    ):
+        return None
+
+    radius_relations = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.radius
+    )
+    carrier_geometry_kind = (
+        GeometryRelationKind.attached
+        if carrier_kind == "rope"
+        else GeometryRelationKind.lies_on
+    )
+    carrier_relations = tuple(
+        item for item in context.geometry if item.kind is carrier_geometry_kind
+    )
+    expected_carrier_participants = (
+        {particle_id, particle_point_id, carrier_id, center_point_id}
+        if carrier_kind == "rope"
+        else {particle_id, particle_point_id, carrier_id}
+    )
+    if (
+        len(context.geometry) != 2
+        or len(radius_relations) != 1
+        or len(carrier_relations) != 1
+        or set(radius_relations[0].participant_ids)
+        != {particle_point_id, center_point_id}
+        or set(carrier_relations[0].participant_ids)
+        != expected_carrier_participants
+        or carrier_relations[0].quantity_ids
+        or any(
+            item.expression is not None
+            or item.interval_id != interval.interval_id
+            for item in context.geometry
+        )
+    ):
+        return None
+
+    gravity_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.gravity
+    )
+    expected_carrier_interaction_kind = (
+        InteractionKind.rope_tension
+        if carrier_kind == "rope"
+        else InteractionKind.contact
+    )
+    carrier_interactions = tuple(
+        item
+        for item in context.interactions
+        if item.kind is expected_carrier_interaction_kind
+    )
+    if (
+        len(context.interactions) != 2
+        or len(gravity_interactions) != 1
+        or len(carrier_interactions) != 1
+    ):
+        return None
+    gravity_interaction = gravity_interactions[0]
+    carrier_interaction = carrier_interactions[0]
+    if (
+        set(gravity_interaction.participant_ids)
+        != {particle_id, environment_id}
+        or tuple(gravity_interaction.point_ids) != (particle_point_id,)
+        or set(carrier_interaction.participant_ids) != {particle_id, carrier_id}
+        or tuple(carrier_interaction.point_ids) != (particle_point_id,)
+        or any(
+            item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            for item in context.interactions
+        )
+    ):
+        return None
+
+    masses = _by_role(context, QuantityRole.mass)
+    radii = _by_role(context, QuantityRole.radius)
+    gravities = _by_role(context, QuantityRole.gravity)
+    speeds = _by_role(context, QuantityRole.speed)
+    reactions = _by_role(context, QuantityRole.force)
+    known_speeds = tuple(
+        item for item in speeds if item.known_si_value is not None
+    )
+    mode = "reaction" if known_speeds else "minimum_speed"
+    if (
+        len(radii) != 1
+        or len(gravities) != 1
+        or len(speeds) != 1
+        or len(reactions) != (1 if mode == "reaction" else 0)
+        or len(masses) != (1 if mode == "reaction" else 0)
+        or len(context.quantities) != (5 if mode == "reaction" else 3)
+    ):
+        return None
+    radius = radii[0]
+    gravity = gravities[0]
+    speed = speeds[0]
+    reaction = reactions[0] if reactions else None
+    mass = masses[0] if masses else None
+    if (
+        radius.subject_id != particle_id
+        or radius.point_id != particle_point_id
+        or radius.frame_id is not None
+        or radius.interval_id is not None
+        or radius.event_id is not None
+        or radius.shape is not QuantityShape.scalar
+        or radius.dimension != DimensionVector(length=1)
+        or type(radius.known_si_value) is not float
+        or radius.known_si_value <= 0.0
+        or tuple(radius_relations[0].quantity_ids) != (radius.quantity_id,)
+        or gravity.subject_id != environment_id
+        or gravity.point_id is not None
+        or gravity.frame_id != frame.frame_id
+        or gravity.interval_id != interval.interval_id
+        or gravity.event_id is not None
+        or gravity.shape is not QuantityShape.scalar
+        or gravity.component is not QuantityComponent.normal
+        or gravity.dimension != DimensionVector(length=1, time=-2)
+        or type(gravity.known_si_value) is not float
+        or gravity.known_si_value <= 0.0
+        or not gravity.direction_bound
+        or gravity.direction_sign not in {-1, 1}
+        or speed.subject_id != particle_id
+        or speed.point_id != particle_point_id
+        or speed.frame_id != frame.frame_id
+        or speed.interval_id != interval.interval_id
+        or speed.event_id is not None
+        or speed.shape is not QuantityShape.scalar
+        or speed.component is not QuantityComponent.tangential
+        or speed.dimension != DimensionVector(length=1, time=-1)
+        or not speed.direction_bound
+        or speed.direction_sign != 1
+    ):
+        return None
+    if reaction is not None and (
+        reaction.subject_id != particle_id
+        or reaction.point_id != particle_point_id
+        or reaction.frame_id != frame.frame_id
+        or reaction.interval_id != interval.interval_id
+        or reaction.event_id is not None
+        or reaction.shape is not QuantityShape.scalar
+        or reaction.component is not QuantityComponent.normal
+        or reaction.dimension != DimensionVector(mass=1, length=1, time=-2)
+        or reaction.known_si_value is not None
+        or not reaction.direction_bound
+        or reaction.direction_sign != 1
+    ):
+        return None
+    location = "top" if gravity.direction_sign == 1 else "bottom"
+    if mode == "reaction":
+        if reaction is None:
+            return None
+        if (
+            mass is None
+            or mass.subject_id != particle_id
+            or mass.point_id is not None
+            or mass.frame_id is not None
+            or mass.interval_id is not None
+            or mass.event_id is not None
+            or mass.shape is not QuantityShape.scalar
+            or mass.dimension != DimensionVector(mass=1)
+            or type(mass.known_si_value) is not float
+            or mass.known_si_value <= 0.0
+            or type(speed.known_si_value) is not float
+            or speed.known_si_value < 0.0
+        ):
+            return None
+        expected_gravity_quantity_ids = {mass.quantity_id, gravity.quantity_id}
+        speed_squared = speed.known_si_value * speed.known_si_value
+        if (
+            not math.isfinite(speed_squared)
+            or (speed.known_si_value > 0.0 and speed_squared == 0.0)
+        ):
+            return None
+        normal_acceleration = speed_squared / radius.known_si_value
+        reaction_acceleration = (
+            normal_acceleration - gravity.known_si_value
+            if location == "top"
+            else normal_acceleration + gravity.known_si_value
+        )
+        if (
+            not math.isfinite(normal_acceleration)
+            or not math.isfinite(reaction_acceleration)
+            or (speed_squared > 0.0 and normal_acceleration == 0.0)
+        ):
+            return None
+        if location == "top":
+            gravity_radius = gravity.known_si_value * radius.known_si_value
+            if not math.isfinite(gravity_radius) or gravity_radius <= 0.0:
+                return None
+            at_unilateral_boundary = _vertical_circle_roundoff_equal(
+                speed_squared, gravity_radius
+            )
+            if speed_squared < gravity_radius and not at_unilateral_boundary:
+                return None
+            if reaction_acceleration == 0.0 and not at_unilateral_boundary:
+                return None
+        else:
+            at_unilateral_boundary = False
+        reaction_value = mass.known_si_value * reaction_acceleration
+        if (
+            not at_unilateral_boundary
+            and (
+                not math.isfinite(reaction_value)
+                or reaction_acceleration <= 0.0
+                or reaction_value <= 0.0
+            )
+        ):
+            return None
+    else:
+        if speed.known_si_value is not None or location != "top":
+            return None
+        gravity_radius = gravity.known_si_value * radius.known_si_value
+        if not math.isfinite(gravity_radius) or gravity_radius <= 0.0:
+            return None
+        expected_gravity_quantity_ids = {gravity.quantity_id}
+        at_unilateral_boundary = True
+    if (
+        set(gravity_interaction.quantity_ids) != expected_gravity_quantity_ids
+        or tuple(carrier_interaction.quantity_ids)
+        != (() if reaction is None else (reaction.quantity_id,))
+    ):
+        return None
+
+    active_kind = StateKind.rope if carrier_kind == "rope" else StateKind.contact
+    active_value = StateValue.taut if carrier_kind == "rope" else StateValue.touching
+    active_subject_id = carrier_id if carrier_kind == "rope" else particle_id
+    active_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is active_kind
+        and item.state is active_value
+        and item.subject_id == active_subject_id
+    )
+    fixed_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.motion
+        and item.state is StateValue.at_rest
+        and item.subject_id == fixed_center_owner_id
+    )
+    boundary_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.boundary
+        and item.state is StateValue.active
+        and item.subject_id == particle_id
+    )
+    expected_active_quantity_ids = (
+        {reaction.quantity_id}
+        if carrier_kind == "contact" and reaction is not None
+        else set()
+    )
+    if (
+        len(context.state_conditions) != (2 if mode == "reaction" else 3)
+        or len(active_states) != 1
+        or len(fixed_states) != 1
+        or len(boundary_states) != (0 if mode == "reaction" else 1)
+        or set(active_states[0].quantity_ids) != expected_active_quantity_ids
+        or fixed_states[0].quantity_ids
+        or (
+            mode == "minimum_speed"
+            and set(boundary_states[0].quantity_ids)
+            != {speed.quantity_id}
+        )
+        or any(
+            item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.expression is not None
+            for item in context.state_conditions
+        )
+    ):
+        return None
+
+    def evidence(*records: object) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    evidence_id
+                    for record in records
+                    for evidence_id in getattr(record, "evidence_refs", ())
+                }
+            )
+        )
+
+    return _VerticalCircleLawProfile(
+        mode=mode,
+        location=location,
+        at_unilateral_boundary=at_unilateral_boundary,
+        particle_id=particle_id,
+        environment_id=environment_id,
+        carrier_id=carrier_id,
+        particle_point_id=particle_point_id,
+        center_point_id=center_point_id,
+        frame_id=frame.frame_id,
+        interval_id=interval.interval_id,
+        radius_relation_id=radius_relations[0].relation_id,
+        carrier_relation_id=carrier_relations[0].relation_id,
+        gravity_interaction_id=gravity_interaction.interaction_id,
+        carrier_interaction_id=carrier_interaction.interaction_id,
+        active_state_id=active_states[0].state_condition_id,
+        fixed_state_id=fixed_states[0].state_condition_id,
+        boundary_state_id=(
+            boundary_states[0].state_condition_id if boundary_states else None
+        ),
+        mass=mass,
+        radius=radius,
+        gravity=gravity,
+        speed=speed,
+        reaction=reaction,
+        topology_evidence_ids=evidence(
+            *context.entities,
+            *context.points,
+            frame,
+            interval,
+            radius_relations[0],
+            carrier_relations[0],
+            gravity_interaction,
+            carrier_interaction,
+        ),
+        state_evidence_ids=evidence(*context.state_conditions),
+    )
+
+
+def _vertical_circle_emissions(
+    context: LawContext,
+) -> list[LawEmission]:
+    profile = _vertical_circle_profile(context)
+    if profile is None:
+        return []
+    extra_entities = (
+        profile.particle_id,
+        profile.environment_id,
+        profile.carrier_id,
+    )
+    topology_constraints = (
+        profile.radius_relation_id,
+        profile.carrier_relation_id,
+        profile.active_state_id,
+        profile.fixed_state_id,
+    )
+    all_evidence = tuple(
+        sorted(
+            set(profile.topology_evidence_ids)
+            | set(profile.state_evidence_ids)
+        )
+    )
+    if profile.mode == "reaction":
+        if profile.mass is None or profile.reaction is None:
+            return []
+        squared_speed_dimension = profile.speed.dimension.plus(
+            profile.speed.dimension
+        )
+        if squared_speed_dimension is None:
+            return []
+        normal_acceleration = Divide(
+            numerator=Power(
+                base=profile.speed.expression,
+                exponent=LiteralNode(value=2.0),
+                dimension=squared_speed_dimension,
+            ),
+            denominator=profile.radius.expression,
+            dimension=profile.gravity.dimension,
+        )
+        reaction_acceleration = (
+            Subtract(
+                left=normal_acceleration,
+                right=profile.gravity.expression,
+                dimension=profile.gravity.dimension,
+            )
+            if profile.location == "top"
+            else Add(
+                terms=(normal_acceleration, profile.gravity.expression),
+                dimension=profile.gravity.dimension,
+            )
+        )
+        reaction_expression = (
+            LiteralNode(value=0.0, dimension=profile.reaction.dimension)
+            if profile.at_unilateral_boundary
+            else Multiply(
+                factors=(profile.mass.expression, reaction_acceleration),
+                dimension=profile.reaction.dimension,
+            )
+        )
+        return [
+            _emit(
+                context,
+                "vertical_circle_local_reaction",
+                Equality(
+                    left=profile.reaction.expression,
+                    right=reaction_expression,
+                ),
+                (
+                    profile.reaction,
+                    profile.mass,
+                    profile.speed,
+                    profile.radius,
+                    profile.gravity,
+                ),
+                constraint_ids=tuple(sorted(topology_constraints)),
+                extra_entity_ids=extra_entities,
+                extra_evidence_ids=all_evidence,
+            )
+        ]
+
+    if profile.location != "top" or profile.boundary_state_id is None:
+        return []
+    squared_speed_dimension = profile.speed.dimension.plus(
+        profile.speed.dimension
+    )
+    if squared_speed_dimension is None:
+        return []
+    boundary_constraints = tuple(
+        sorted((*topology_constraints, profile.boundary_state_id))
+    )
+    minimum_speed = _emit(
+        context,
+        "vertical_circle_top_minimum_speed",
+        Equality(
+            left=profile.speed.expression,
+            right=Sqrt(
+                operand=Multiply(
+                    factors=(
+                        profile.gravity.expression,
+                        profile.radius.expression,
+                    ),
+                    dimension=squared_speed_dimension,
+                ),
+                dimension=profile.speed.dimension,
+            ),
+        ),
+        (profile.speed, profile.gravity, profile.radius),
+        constraint_ids=boundary_constraints,
+        extra_entity_ids=extra_entities,
+        extra_evidence_ids=all_evidence,
+    )
+    return [minimum_speed]
+
+
 _PURE_ROLLING_SHAPE_BETA: dict[str, Fraction] = {
     "solid_sphere": Fraction(2, 5),
     "hollow_sphere": Fraction(2, 3),
@@ -6897,6 +7466,21 @@ def _vibration_emissions(context: LawContext) -> list[LawEmission]:
 
 
 def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
+    vertical_circle = _vertical_circle_emissions(context)
+    if vertical_circle:
+        return tuple(
+            sorted(
+                vertical_circle,
+                key=lambda item: (
+                    item.effective_cost,
+                    item.rule.law_id,
+                    item.entity_ids,
+                    item.interval_id or "",
+                    item.event_id or "",
+                    item.source_quantity_ids,
+                ),
+            )
+        )
     rolling_energy = _rolling_energy_emissions(context)
     if rolling_energy:
         return tuple(
