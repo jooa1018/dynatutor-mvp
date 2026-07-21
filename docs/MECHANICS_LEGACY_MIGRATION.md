@@ -205,8 +205,8 @@ a wave:
 Each entry requires its focused parity evidence and connected targeted tests.
 The independent read-only Checker and release CI run once at the end of each
 complete wave, not after every entry.  Entry 5 retains its historical accepted
-Checker evidence, while the next independent Checker and Wave A release CI
-remain pending until entries 6 and 7 are accepted.
+Checker evidence.  Entries 6 and 7 are now locally accepted, so the independent
+Wave A family Checker and release CI are the next pending gates.
 
 For all four deferred entries, current generic behavior is a precise structured
 unsupported result.  Generic answer authority is **none**; legacy answer
@@ -337,10 +337,10 @@ rollback after generic-path failure.
    Targeted fast evidence is `45 passed, 9 deselected`; targeted slow evidence
    is `9 passed, 45 deselected`; compiler regression is `57 passed`; the fresh
    independent Entry-5 Checker reported `PASS` with blocking findings `0`.  This
-   is not a new exact-head release-CI claim: Wave A family Checker/release CI
-   remains pending
-   until entries 6 and 7 are accepted.  The latest exact release evidence remains
-   entry 4 at `dedb4c7...`, run `29841110152` (run #429, `SUCCESS`).
+   was not a new exact-head release-CI claim: at that checkpoint the Wave A
+   family Checker/release CI remained pending entries 6 and 7.  The latest exact
+   release evidence remains entry 4 at `dedb4c7...`, run `29841110152` (run
+   #429, `SUCCESS`).
 
 6. `pulley_incline_hanging` — **ACCEPTED (registry entry 6; in-scope 6/25)** at
    product checkpoint `f3e747b4480f98223c113170181698c8b4822e84` (tree
@@ -372,15 +372,47 @@ rollback after generic-path failure.
    `39 passed, 16 deselected`; the complete Entry-6 slow matrix is `16 passed`;
    compiler regression is `57 passed`; connected Entry-2-through-5 regression
    is `111 passed, 21 deselected`.  The fresh independent Checker reported
-   final blocking findings `0`.  This is a local product checkpoint, not a new
-   release-CI claim; Wave A family Checker/release CI remains pending Entry 7.
+   final blocking findings `0`.  This was a local product checkpoint, not a new
+   release-CI claim; at that checkpoint Wave A family Checker/release CI remained
+   pending Entry 7.
+
+7. `massive_pulley_atwood` — **ACCEPTED (registry entry 7; in-scope 7/25)** at
+   product checkpoint `26434fc5edc25d617724c8352d1643a40b555f13` (tree
+   `852c085d5fb93ec03484a9465ab3c72c01a9a245`, parent Entry-6 documentation
+   checkpoint `02845bd77ae2dc1048512b482cc8a8ba8dd3007f`, commit
+   `feat(mechanics): migrate massive pulley atwood solver`).  The exact typed
+   contract closes the global inventory around two particles, one massless
+   inextensible rope, one fixed-center inertial pulley with a frictionless axle,
+   one gravity environment, and two pulley-owned rim contact points.  Signed
+   radius and tangent relations bind the left and right rope segments without
+   relying on identifiers or list order.  The exact equation multiset is two
+   `particle_weight`, two `particle_newton_second`, two
+   `rope_attachment_side_tension_transfer`, two
+   `rope_attachment_acceleration_transfer`, one
+   `pulley_no_slip_acceleration`, and one `pulley_newton_euler` equation.
+   Generic ideal-pulley equal-tension and fixed-pulley motion equations are
+   suppressed for this profile; in particular, `TL=TR` is never assumed.  The
+   same-fixture package proves the baseline `a=3.5316`, `alpha=11.772`,
+   `TL=26.6832`, and `TR=31.392`, plus mass-swap sign reversal, both local
+   acceleration/tension queries, equal-mass zero motion, and the positive
+   `I -> 0` reduction to Entry 4.  It also proves canonical provenance for the
+   fixed-center, no-slip, attachment, wrap, radius/tangent, and frictionless-axle
+   authority.  Complementary topology deletion, disconnected extra records,
+   internal query targets, nonpositive domains, unequal radii, missing authority,
+   and opposite-direction queries all fail closed.  Final focused evidence is
+   fast `68 passed, 9 deselected`; the complete Entry-7 slow matrix is `9 passed`;
+   compiler regression is `57 passed`; connected Entry-4-through-6 regression is
+   `120 passed, 31 deselected`.  The independent Entry-7 Checker reported final
+   blocking findings `0` and nonblocking findings `0`.  This is a local product
+   checkpoint, not a new release-CI claim; the Wave A family Checker and release
+   CI are now pending.
 
 Current authoritative roll-up: the registry inventory is `29/29` classified;
-the in-scope set is `25`, with `6/25` accepted and `19/25` pending; the deferred
+the in-scope set is `25`, with `7/25` accepted and `18/25` pending; the deferred
 set is exactly `4/4` classified.  Deferred classification is not accepted parity,
-so this is neither `9/29` nor a `29/29 generic migrated` claim.  The next exact
-task is Wave A entry 7, `massive_pulley_atwood`, followed by the Wave A family
-Checker and release CI.
+so this is neither `11/29` nor a `29/29 generic migrated` claim.  The next exact
+task is the Wave A family Checker and release CI, followed by Wave B entry 8,
+`pure_rolling_energy`.
 
 The separate typed scope/runtime amendment passed its final independent
 read-only Checker with blocking findings `0` and new nonblocking findings `0`.
@@ -405,7 +437,7 @@ worker-startup timeout rather than a scope/contract assertion.
   Coriolis, and slot-pin entries remain structured unsupported without generic
   answer authority.
 * This document is an inventory, plan, and limited accepted-evidence ledger.
-  Exactly six in-scope entries (`6/25`) have accepted parity evidence; `19/25`
+  Exactly seven in-scope entries (`7/25`) have accepted parity evidence; `18/25`
   in-scope entries remain.  The four deferred entries are not parity passes. No
   corpus/PDF inputs were opened or used for that evidence, and the public corpus
   remains sealed.
