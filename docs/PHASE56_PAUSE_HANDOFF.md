@@ -1,7 +1,7 @@
 # Phase 56 Cross-Device Resume Handoff
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
-updated on `2026-07-21T15:23:49+09:00` (`Asia/Seoul`). It is a pause record, not
+updated on `2026-07-21T17:39:54+09:00` (`Asia/Seoul`). It is a pause record, not
 an `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
@@ -9,15 +9,18 @@ an `IMPLEMENTATION COMPLETE` claim.
 - Repository: `jooa1018/dynatutor-mvp`
 - Working branch: `codex/phase56-generic-mechanics-engine`
 - Phase 55 baseline/head: `4762727e8f9191604e2531b9982a5ae72ed73db9`
-- Previous pause checkpoint: `d3b57fe2cea9bc6a610e553f21c5766842ee2c67`
+- Previous pause handoff checkpoint: `bab40bf11222b3a77fb6f5d7c736b0de831737a8`
 - Previous final full-CI product checkpoint: `0de62d95357de36c4a2d5a6aff01810bdf98d776`
 - Latest accepted targeted-test product checkpoint: `c19624181aaae4cd73dc3d2247b4988f5a540247`
-- Latest product-code checkpoint, explicit WIP: `2d3216b1303df10a1b971931bdd6cf614c670397`
+- Latest accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`
+- Latest exact-head release-CI checkpoint: `758d30046f22d2471e5a8f4b196d8cee35f1214b`
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
+- `HANDOFF_COMMIT_SHA` is expected to be a documentation-only child of the
+  release-CI checkpoint; no CI result is attributed to that later SHA.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
-- PR #17 head observed before this checkpoint push:
-  `d3b57fe2cea9bc6a610e553f21c5766842ee2c67`
+- PR #17 head observed before this handoff-only commit:
+  `758d30046f22d2471e5a8f4b196d8cee35f1214b`
 - PR #17 authoritative head after a successful checkpoint push:
   `HANDOFF_COMMIT_SHA`
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
@@ -104,13 +107,14 @@ master instruction.
   model-selected solver names, and untrusted callables cannot select a backend or
   candidate. Every generated root is retained; only exactly one independently
   verified candidate can be selected.
-- Current failure/blocker: remote publication and exact-head CI were not run at
-  this checkpoint. Targeted independent evidence passed.
+- Current failure/blocker: none. The later exact-head release run recorded in
+  section F includes all accepted Stage 4 tests.
 - Next gate: none; do not redesign or repeat Stage 4.
 
 ### Stage 5 — IN_PROGRESS
 
-- WIP product checkpoint: `2d3216b1303df10a1b971931bdd6cf614c670397`.
+- Accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
+- Exact-head release-CI checkpoint: `758d30046f22d2471e5a8f4b196d8cee35f1214b`.
 - Accepted implementation:
   - exact 29-solver migration matrix in
     `docs/MECHANICS_LEGACY_MIGRATION.md`;
@@ -118,6 +122,10 @@ master instruction.
   - internal one-call runtime coordinator for off/shadow/confirm/auto/required,
     exact IR authorization, compilation, graph solving, confirmation gating,
     retained execution, sanitized failures, and safe summaries.
+  - W0 offline IR-built migration probe and invariance comparison. Diagnostic
+    variants retain identical accepted evidence and calculation-authoritative
+    structure while varying only source-identity metadata; a physical force
+    change remains a negative control and changes the result.
 - Accepted Stage 5 decisions:
   - legacy parity is diagnostic only and can never verify, select, repair, or
     provide a generic fallback answer;
@@ -128,26 +136,23 @@ master instruction.
     chain in one request;
   - `required` plus disabled Mechanics must remain distinguishable and fail
     closed at product integration;
-  - no legacy solver is demoted before independent per-solver parity evidence.
-- Partial implementation, **not accepted**:
-  - `backend/engine/mechanics/migration/harness.py`;
-  - `backend/tests/test_phase56_mechanics_migration_harness.py`.
-  - The offline W0 probe compiles and is committed as WIP. Its focused suite is
-    `22 passed, 1 failed`. Diagnostic-only IR variants keep the same calculation
-    fingerprint but currently compare as different compiler/generic signatures.
+  - no legacy solver is demoted before independent per-solver parity evidence;
+  - evidence quote/span/occurrence changes remain provenance-sensitive and are
+    not treated as raw-text-only invariance;
+  - variant labels carry no calculation or comparison authority, and every W0
+    variant is independently compiled and solved.
 - Still incomplete:
-  - accept S5-W0-BASE through a fresh independent Checker;
   - actual IR -> compile -> solve -> legacy diagnostic parity for every registered
     solver: current count `0/29` same-fixture end-to-end cases;
   - Wave 1 native cases, Wave 2 coverage gates, Wave 3 typed laws for translating
     frame, Coriolis, polar, and slot-pin motion;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: the single W0 invariance failure above. The assigned
-  Maker and Checker then hit the Codex usage limit before handoff/independent
-  review; no Checker verdict exists for W0-BASE.
-- Next gate: fix and independently accept W0-BASE only. Do not start a new family
-  package before that gate passes.
+- Current failure/blocker: none at the W0 boundary. Exact-head release CI and
+  fresh independent W0/CI Checkers passed with zero blocking findings.
+- Next gate: add the first same-fixture offline IR -> compile -> solve -> legacy
+  diagnostic parity case for canonical registry entry `single_particle_newton`,
+  then continue the 29-entry sequence without family/case-ID routing.
 
 ### Stage 6 — NOT_STARTED
 
@@ -191,29 +196,28 @@ master instruction.
 
 ## D. Exact work at the pause boundary
 
-- Work immediately before pause: `S5-W0-BASE`, an offline accepted-IR migration
-  probe and invariance comparison layer.
-- Functions/contracts being edited:
-  - `execute_mechanics_ir_probe`
-  - `compare_mechanics_ir_invariance`
-  - `MechanicsMigrationProbeExecution`
-  - `MigrationProbeVariantComparison`
-  - `MechanicsMigrationInvarianceComparison`
-- Partial implementation exists: **YES**, committed in the WIP product checkpoint.
-- Safe last atomic unit: WIP commit
-  `2d3216b1303df10a1b971931bdd6cf614c670397`; Python compilation and
-  `git diff --check` passed before commit. No file write or test process remains.
-- Exact open failure:
-  `test_diagnostic_variants_are_fully_invariant_and_physics_change_is_not` in
-  `backend/tests/test_phase56_mechanics_migration_harness.py`.
-- Observed assertion data for both diagnostic-only variants:
-  `calculation_fingerprint_matches=True`, `compiler_result_matches=False`,
-  `terminal_matches=True`, `failure_matches=True`, `solve_shape_matches=True`,
-  `generic_signature_matches=False`.
-- Immediate next task: determine which diagnostic-only compiler/solve fields are
-  leaking into comparison authority, make the smallest W0-only correction, run
-  the focused harness plus accepted parity regression, then assign a fresh
-  read-only Checker. Do not proceed to per-solver fixtures until PASS.
+- Work immediately before this update: accepted `S5-W0-BASE`, followed by a
+  coverage-preserving repair of the release workflow's duplicated fast suite.
+- W0 production compiler/harness code changed: **NO**. The smallest correction
+  was fixture-only in
+  `backend/tests/test_phase56_mechanics_migration_harness.py`, plus the precise
+  raw-text/evidence distinction in `docs/GENERIC_MECHANICS_IR.md`.
+- CI-only files changed after W0 acceptance:
+  - `.github/workflows/backend-tests.yml`
+  - `scripts/check_backend_fast.sh`
+  - `docs/KNOWN_LIMITATIONS.md`
+  - `docs/RELEASE_CHECKLIST.md`
+- Safe last product unit: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
+- Safe last exact-head release-CI unit:
+  `758d30046f22d2471e5a8f4b196d8cee35f1214b`, run `29814688877`, `SUCCESS`.
+- Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
+  test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
+- Immediate next task: create the first independent same-fixture parity package
+  for registry entry `single_particle_newton`: one typed IR fixture must compile
+  and solve generically, while the legacy result is captured only as a
+  diagnostic oracle. Prove residual/parity and invariance without passing raw
+  text, `system_type`, corpus labels, expected answers, or legacy output into the
+  generic calculation path.
 
 Read in this order on the laptop:
 
@@ -268,7 +272,7 @@ A backend/tests/test_phase56_mechanics_verifier.py
 M docs/MECHANICS_SECURITY.md
 ```
 
-### Current Stage 5 WIP after the accepted Stage 4 checkpoint
+### Current Stage 5 implementation after the accepted Stage 4 checkpoint
 
 Modified:
 
@@ -294,14 +298,30 @@ A backend/tests/test_phase56_mechanics_runtime_static.py
 A docs/MECHANICS_LEGACY_MIGRATION.md
 ```
 
+W0 acceptance additionally modified:
+
+```text
+M backend/tests/test_phase56_mechanics_migration_harness.py
+M docs/GENERIC_MECHANICS_IR.md
+```
+
+The exact-head release-CI repair modified:
+
+```text
+M .github/workflows/backend-tests.yml
+M docs/KNOWN_LIMITATIONS.md
+M docs/RELEASE_CHECKLIST.md
+M scripts/check_backend_fast.sh
+```
+
 Deleted: `NONE`.
 
-Document-only files in the current WIP:
+Document-only files in the current Stage 5 delta:
 
 - `docs/MECHANICS_LEGACY_MIGRATION.md`
-- this handoff document is added by the final documentation commit.
+- this handoff document is updated by the final documentation commit.
 
-Test files in the current WIP:
+Test files in the current Stage 5 delta:
 
 - `backend/tests/test_phase56_mechanics_legacy_parity.py`
 - `backend/tests/test_phase56_mechanics_migration_harness.py`
@@ -311,9 +331,11 @@ Test files in the current WIP:
 
 ### Complete Phase 56 branch file set relative to Phase 55
 
-At the WIP product checkpoint there are exactly `69` changed files:
+At exact-head release-CI checkpoint `758d300...` there are exactly `73` changed
+files:
 
 ```text
+M .github/workflows/backend-tests.yml
 A backend/engine/mechanics/__init__.py
 A backend/engine/mechanics/compiler/__init__.py
 A backend/engine/mechanics/compiler/compiler.py
@@ -380,16 +402,19 @@ A backend/tests/test_phase56_phase55_adapter.py
 M backend/tools/_pint_shim.py
 A docs/ADR_PHASE56_GENERIC_MECHANICS_ENGINE.md
 A docs/GENERIC_MECHANICS_IR.md
+M docs/KNOWN_LIMITATIONS.md
 A docs/MECHANICS_LEGACY_MIGRATION.md
 A docs/MECHANICS_SECURITY.md
 A docs/PHASE56_PAUSE_HANDOFF.md
+M docs/RELEASE_CHECKLIST.md
+M scripts/check_backend_fast.sh
 ```
 
 ## F. Tests and CI evidence
 
 Only actually executed evidence is listed.
 
-### Last full-CI code checkpoint
+### Previous raw default/complete full-CI checkpoint
 
 - Exact SHA: `0de62d95357de36c4a2d5a6aff01810bdf98d776`
 - GitHub Actions release run: `29690536932` — `SUCCESS`.
@@ -430,32 +455,60 @@ Only actually executed evidence is listed.
   across four active modes `32/32`; overdetermined graph identity across four
   modes `4/4`; compile/import/schema/export/diff/whitespace checks passed.
 
-### Current W0 partial evidence
+### Accepted W0 evidence
 
-- `py_compile` for harness, migration exports, and harness tests: `PASS`.
-- `git diff --check`: `PASS` after removing one EOF-only blank line.
-- Focused command:
-  `python -m pytest -q backend/tests/test_phase56_mechanics_migration_harness.py`
-- Result: `22 passed, 1 failed, 36 warnings` in `40.56s`.
-- Failure: diagnostic-only variants were not fully invariant; assertion details
-  are preserved in section D.
-- Independent W0 Checker: `NOT RUN`; the assigned agent hit the Codex usage limit.
+- Product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
+- `py_compile`: `PASS`.
+- Accepted compiler boundary tests: `2 passed`; full compiler regression:
+  `57 passed`; runtime: `114 passed`; legacy parity: `30 passed`.
+- W0 harness: `23 passed` with the Windows-only worker-startup allowance used
+  solely for local evidence. The unchanged default 5-second symbolic budget was
+  not claimed green on Windows/Python 3.12.
+- Fresh independent W0 Checker: `PASS`, blocking findings `0`. It confirmed
+  independent compile/solve execution, full result/signature comparison,
+  evidence provenance sensitivity, physical-change detection, label
+  non-authority, and no corpus/PDF/family special case.
 
-### Not run for the latest WIP code
+### Latest exact-head release CI
 
-- Exact-WIP-head GitHub Actions: `NOT RUN`.
-- Full backend suite: `NOT RUN`.
-- Frontend tests/build/typecheck: `NOT RUN`.
-- Release wrappers: `NOT RUN`.
-- Performance: `NOT RUN`.
+- Exact SHA: `758d30046f22d2471e5a8f4b196d8cee35f1214b`.
+- GitHub Actions release run: `29814688877` (run #421) — `SUCCESS`.
+- The PR checkout merge commit was `2ae67dee9034f401c64d55ceec6609ad356c75e3`;
+  its tree `7925928cb4e83aab008a7355971f565ff366e082` exactly matched the PR head
+  tree, so the tested content was the exact frozen head content.
+- Fast wrapper: `2221 passed, 1 skipped, 267 deselected` in `228.55s` under the
+  bounded 420-second watchdog.
+- Benchmark wrapper: `147 passed` in `41.96s`.
+- Audit wrapper: `111 passed` in `27.14s`.
+- Backend frontend-marker group: `15 passed` in `2.36s`.
+- The four marker groups' collected-nodeid union equals the complete backend
+  collection: `2489/2489`, uncovered `0`; slow-only uncovered tests `0`.
+- Frontend unit tests, typecheck, build, and repository metadata: `PASS`.
+- Warm latency: 43 cases/86 samples, mean `9.648245 ms`, p95 `32.204848 ms`,
+  max `41.610153 ms`; limits remain 60/120 ms.
+- Cold import: `629.619939 ms`; max RSS: `90.801 MB`; limits remain
+  5000 ms/512 MB.
+- Four-round pooled performance comparison: `PASS`, regressions `0`; the worst
+  pooled p95 change was `+0.599%`, below the unchanged `15%` limit.
+- Fresh independent CI-fix Checker: `PASS`, blocking findings `0`.
+- Preceding run `29811759354` had already passed the raw default
+  (`2221 passed, 1 skipped`) and complete (`2488 passed, 1 skipped`) suites; it
+  failed only when the identical fast selection was run again under the stale
+  120-second wrapper. The accepted CI repair removes raw/aggregate duplication,
+  retains complete marker-union coverage, and changes no physics tolerance.
+
+### Still not run
+
+- Stage 5 same-fixture per-solver parity: `0/29`.
 - Stage 6 figure/UI tests: `NOT RUN`.
 - Stage 7 corpus/compositional/synthetic tests: `NOT RUN`.
-- Stage 8 final CI/Checker: `NOT RUN`.
+- Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`LATEST_CODE_PARTIALLY_TESTED`: the WIP commit contains accepted, independently
-tested Stage 5 subpackages plus an unaccepted W0 harness with one known focused
-failure. It is not an exact-head PASS.
+`W0_ACCEPTED_AT_EXACT_HEAD`: the latest code/CI checkpoint contains the accepted
+Stage 5 matrix/parity/runtime packages and accepted W0 boundary. It is not a
+Phase 56 completion claim because same-fixture migration remains `0/29` and
+Stages 6-9 remain incomplete.
 
 ## G. Architecture invariants
 
@@ -493,8 +546,6 @@ failure. It is not an exact-head PASS.
 
 ## I. Known risks and unresolved decisions
 
-- W0 invariance leak: diagnostic metadata/source wording is excluded from the
-  calculation fingerprint but currently changes exact compiler/solve comparison.
 - Per-solver migration evidence is `0/29`; compiler unit fixtures do not count as
   same-IR end-to-end parity.
 - Advanced typed-law gaps remain for translating-frame acceleration, Coriolis,
@@ -508,11 +559,12 @@ failure. It is not an exact-head PASS.
   wired.
 - Generic vector-answer projection into the existing product response is not
   decided; it must never silently fall back to a legacy scalar answer.
-- No exact-head CI exists for Stage 4 or Stage 5. Latest full CI remains
-  `0de62d9...`; current WIP is only partially tested.
+- Marker-union coverage is exact at `758d300...`; a future slow-only test must
+  add a dedicated CI group, as documented in `docs/KNOWN_LIMITATIONS.md`.
 - Figure/UI, public-corpus evaluation, final CI, and bounded Live are untouched.
-- Local `gh` is installed but unauthenticated. GitHub app access was available for
-  PR reads; checkpoint push status must be confirmed separately.
+- Local `gh` is not installed. The GitHub app published exact verified Git
+  objects with a non-forced fast-forward; a public fetch confirmed the remote
+  tree and clean diff.
 - No secret was accessed. No security policy, deployment, cost cap, or production
   setting was changed.
 
@@ -523,13 +575,14 @@ failure. It is not an exact-head PASS.
 2. Check out `codex/phase56-generic-mechanics-engine` at the final handoff head.
 3. Read this handoff completely.
 4. Read the reattached Master Instruction v2 completely.
-5. Audit the diff between latest accepted targeted checkpoint `c196241...` and
-   the current WIP head; do not treat the WIP as accepted.
-6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime reviews.
-7. Reproduce the one W0 focused failure and correct only that common harness
-   boundary.
-8. Run the focused harness and accepted parity regressions; assign a fresh
-   independent Checker before opening any solver-family package.
+5. Confirm exact-head release-CI checkpoint `758d300...`, run `29814688877`,
+   remains successful; do not repeat its accepted W0/CI investigation.
+6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0
+   reviews.
+7. Start canonical registry entry 1, `single_particle_newton`, as the first
+   same-fixture IR -> compile -> solve -> legacy diagnostic parity case.
+8. Run only the focused fixture/harness and connected accepted regressions, then
+   use a fresh independent Checker before accepting that migration unit.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
    permitted coverage/figure use.
 10. Continue without intermediate user confirmation unless a hard blocker,
@@ -545,10 +598,11 @@ Branch: codex/phase56-generic-mechanics-engine
 PR #16: Phase 55, open Draft, unmerged, head 4762727e8f9191604e2531b9982a5ae72ed73db9
 PR #17: Phase 56 stacked Draft on PR #16; keep Draft and unmerged
 Current handoff SHA: branch head containing docs/PHASE56_PAUSE_HANDOFF.md (verify exact remote SHA first)
-Latest WIP product-code SHA: 2d3216b1303df10a1b971931bdd6cf614c670397
+Latest accepted W0 product SHA: 7a401642bc3c8a1acfe9805af3ada8f4eeb6045a
 Latest accepted targeted-test product SHA: c19624181aaae4cd73dc3d2247b4988f5a540247
-Latest full-CI product SHA: 0de62d95357de36c4a2d5a6aff01810bdf98d776
-Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE unaccepted
+Latest exact-head release-CI SHA: 758d30046f22d2471e5a8f4b196d8cee35f1214b
+Latest exact-head release run: 29814688877, SUCCESS
+Resume Stage: Stage 5 IN_PROGRESS, S5-W0-BASE accepted, same-fixture parity 0/29
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -565,14 +619,16 @@ First read, in order:
 The old laptop-local work ledger may be absent. Do not treat that as a blocker;
 this handoff is authoritative. Follow Master Instruction v2 and the user's
 Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
-Stage 5 matrix/parity/runtime packages.
+Stage 5 matrix/parity/runtime/W0 packages.
 
-Next exact task: reproduce
-test_diagnostic_variants_are_fully_invariant_and_physics_change_is_not, identify
-which diagnostic-only fields change compiler/generic signatures despite the same
-calculation fingerprint, make the smallest W0-only fix, run the focused harness
-and accepted parity regression, then use a fresh independent Checker. Do not
-start per-solver migration fixtures until W0-BASE passes.
+Next exact task: implement the first same-fixture offline parity package for
+canonical registry entry `single_particle_newton`. Build a typed accepted IR,
+compile and solve it through the generic path, collect the legacy result only as
+a diagnostic oracle, and prove residual/parity plus diagnostic invariance. Raw
+text, `system_type`, corpus/family/case metadata, expected answers, and legacy
+output must not enter generic compilation, solving, verification, or selection.
+Run focused tests and connected regressions, then use a fresh independent
+Checker before accepting entry 1/29.
 
 Keep the public corpus sealed until Stage 7. The Beer PDF is reference-only for
 Dynamics Chapters 11-19 structure and permitted later figure/coverage work; it is
