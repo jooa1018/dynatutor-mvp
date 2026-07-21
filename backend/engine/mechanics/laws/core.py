@@ -581,6 +581,14 @@ def _newton_emissions(context: LawContext) -> list[LawEmission]:
         )
         if len(masses) != 1 or not forces:
             continue
+        if len(forces) > 1 and (
+            not all(force.direction_bound for force in forces)
+            or any(
+                not _component_compatible(forces[0], force)
+                for force in forces[1:]
+            )
+        ):
+            continue
         mass = masses[0]
         force_sum = _sum_terms(forces)
         inertial = Multiply(
