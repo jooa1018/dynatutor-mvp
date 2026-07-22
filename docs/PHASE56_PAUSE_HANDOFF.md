@@ -1,13 +1,74 @@
 # Phase 56 Cross-Device Resume Handoff
 
-This is the authoritative cross-device handoff for the Phase 56 branch. It was
-updated on `2026-07-22` (`Asia/Seoul`) after exact-head acceptance of the Wave B
-release gate. Formal PR release run `29879344293` (run #434) passed at
-`305c68d6e7173740d478fd41c11b4ae78a245469` (tree
-`dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`), and the independent Wave-B
-Checker returned `PASS` with blocking findings `0` and nonblocking findings `0`.
-Entry 11, `collision_1d`, is next as the first Wave C task. This is a pause
-record, not an `IMPLEMENTATION COMPLETE` claim.
+This is the cumulative authoritative cross-device handoff for the Phase 56
+branch. The emergency checkpoint below is the newest state and supersedes older
+current-state wording later in this document while preserving all historical
+evidence and exact attribution.
+
+## Emergency Claude Code checkpoint — 2026-07-22 Asia/Seoul
+
+- Repository/branch: `jooa1018/dynatutor-mvp`,
+  `codex/phase56-generic-mechanics-engine`.
+- Current stage: Stage 5 `IN_PROGRESS`.
+- Current wave/entry: Wave C / Entry 11 `collision_1d`,
+  `LOCAL_WIP / PARTIALLY_TESTED`; Entry 11 is **not accepted**.
+- Latest product code SHA:
+  `a31018bfd13df4a87eb1b198881bb63a2b79c9a1` (tree
+  `e4a6f9d28fcbee93dd065d6fb2697383fe332833`), commit
+  `wip(phase56): checkpoint Wave C for Claude Code handoff`.
+- Latest tested product code SHA:
+  `a31018bfd13df4a87eb1b198881bb63a2b79c9a1`, status
+  `PARTIALLY_TESTED`. Changed-file `py_compile`, two direct collision compiler
+  regressions, and `git diff --check` passed on the committed tree. Focused fast
+  evidence was `47 passed, 12 deselected` in `81.16s` on the same product code;
+  the test file subsequently received only a slow-only enum assertion fix.
+- Latest accepted product code SHA:
+  `dba0016ec9878d40e1ed6edf60106491848b3956` (Entry 10,
+  `vertical_circle`).
+- Latest accepted integrated release head remains
+  `305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`), Wave B GitHub Actions run
+  `29879344293` (run #434), `SUCCESS`; independent Checker `PASS`, blocking `0`,
+  nonblocking `0`. This evidence does not apply to Entry 11 or later docs.
+- Accepted in-scope count remains `10/25`; remaining in-scope count remains
+  `15/25`. The registry remains `29/29 classified`, with exactly `4/4` deferred:
+  Entry 19 `spring_mass_vibration`, Entry 23
+  `relative_acceleration_translation`, Entry 24
+  `coriolis_relative_motion`, and Entry 28 `slot_pin_relative_motion`. Entry 26
+  `polar_kinematics` remains in scope.
+- Partial implementation exists in four product files plus one new focused test:
+  `backend/engine/mechanics/compiler/compiler.py`,
+  `backend/engine/mechanics/laws/core.py`,
+  `backend/engine/mechanics/solver/contracts.py`,
+  `backend/engine/mechanics/solver/planner.py`, and
+  `backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py`.
+- Known current failure: `NONE`. Verification gap: the first 12-case slow run
+  failed only at a test assertion using nonexistent `DifferentialStatus.parity`;
+  the committed file corrects it to `DifferentialStatus.full_parity`, but the
+  final post-fix slow rerun result was not captured and is `UNKNOWN`.
+- Next exact task: on the final handoff checkout, rerun the entire 12-case slow
+  selection for
+  `backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py`.
+  Do not edit first; if it passes, run focused fast/direct regressions and finish
+  Entry 11 acceptance evidence. Do not start Entry 12 before Entry 11 is a
+  cohesive accepted atomic unit.
+- Claude Code execution handoff:
+  `docs/PHASE56_CLAUDE_CODE_HANDOFF.md`.
+- `FINAL_HANDOFF_HEAD = branch head containing the two emergency handoff
+  documents`; the exact SHA is reported in the final handoff response and must be
+  verified against the remote branch.
+- PR body finalization occurs only after the handoff commit is pushed. If the PR
+  does not contain the emergency checkpoint summary, treat it as
+  `PR_BODY_UPDATE_NOT_RUN` and rely on the two repository handoff documents.
+- No new Entry, Wave, feature, full CI, release CI, Live evaluation, corpus
+  evaluation, or large independent Checker was started after the stop order.
+
+The remaining sections retain the cumulative Stage 0-9 history. Any later text
+saying that Wave C has not started or that Entry 11 is merely “next” is historical
+and is superseded by this emergency checkpoint. The same applies to older
+current-state wording in `docs/MECHANICS_LEGACY_MIGRATION.md`; its accepted
+classification/evidence is preserved. This remains a pause record, not an
+`IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
 
