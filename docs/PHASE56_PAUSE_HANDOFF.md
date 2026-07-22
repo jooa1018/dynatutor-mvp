@@ -1,5 +1,35 @@
 # Phase 56 Cross-Device Resume Handoff
 
+## Remote integration acceptance — 2026-07-23 Asia/Seoul
+
+This is the current authoritative checkpoint. The local archive-candidate
+checkpoint below is preserved as historical provenance only.
+
+- Branch / PR: `codex/phase56-generic-mechanics-engine`, PR #17 is **Draft,
+  open, and unmerged**, stacked on Draft PR #16.
+- Entries 11–18 are accepted as generic same-fixture migrations. The
+  authoritative in-scope count is **18/25**; **7/25** remain. The four deferred
+  entries and their policy remain unchanged.
+- Wave C exact release head: `67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d`;
+  GitHub Actions run #439 (`29944965150`): **SUCCESS**.
+- Wave D exact release head: `34208235fabed97cc7a500668c13f5a4cf5a109d`;
+  GitHub Actions run #440 (`29947470482`): **SUCCESS**.
+- Local focused evidence for Entries 11–18: **136 fast + 48 slow = 184
+  passed**. The final connected Phase 56 selection: **1,019 passed, 1
+  skipped**.
+- Wave D release evidence: fast **2,902 passed, 1 skipped**; slow **128
+  passed** across 16 file shards; benchmark **147 passed**; audit **111
+  passed**; backend `frontend` marker **15 passed**; frontend **44/44**,
+  typecheck, and build all passed.
+- Release budgets passed: warm solve mean/p95/max **12.244836 / 40.609637 /
+  55.325761 ms** (budgets 60/120 ms); cold import **790.399726 ms** (budget
+  5000 ms); RSS **92.711 MB** (budget 512 MB). Four-round pooled comparison
+  passed with zero regressions (largest p95 change 1.048%, limit 15%).
+- A separate read-only Checker found **0 blocking** findings. Its nonblocking
+  note is that the release-job timeout was raised from 20 to 30 minutes so the
+  existing full slow and four-round performance gates can finish; no test
+  selection, assertion, or performance threshold was relaxed.
+
 
 ## Local Entries 11–18 candidate checkpoint — 2026-07-22 Asia/Seoul
 

@@ -1,5 +1,24 @@
 # Phase 56 Entries 11–18 Local Validation Candidate
 
+## Remote integration result — 2026-07-23 Asia/Seoul
+
+The local candidate was applied to the real branch and is now accepted for
+Entries 11–18. Wave C passed at exact release head
+`67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d` in run #439 (`29944965150`);
+Wave D passed at exact release head
+`34208235fabed97cc7a500668c13f5a4cf5a109d` in run #440 (`29947470482`).
+Accordingly, the authoritative in-scope count is **18/25**, not the
+candidate-only 10/25 stated below.
+
+The Wave D release completed every required gate: fast **2,902 passed, 1
+skipped**; slow **128 passed** across 16 shards; benchmark **147 passed**;
+audit **111 passed**; backend `frontend` marker **15 passed**; and frontend
+tests/typecheck/build passed. The four-round pooled performance comparison
+passed with no regression. A separate read-only Checker reported zero blocking
+findings; its only nonblocking note is the 20-to-30-minute job timeout change
+needed to complete the existing gates without changing any test or performance
+threshold.
+
 ## Disposition
 
 `LOCAL_CANDIDATE_VALIDATED / REMOTE_RELEASE_PENDING`

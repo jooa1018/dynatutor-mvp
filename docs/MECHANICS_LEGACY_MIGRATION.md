@@ -1,5 +1,21 @@
 # Mechanics legacy solver migration matrix
 
+## Entries 11–18 remote acceptance — 2026-07-23
+
+Entries 11–18 (`collision_1d`, `constant_acceleration_1d`,
+`projectile_motion`, `constant_force_work`, `fixed_axis_rotation`,
+`horizontal_friction_force`, `impulse_momentum`, and `work_energy_speed`) are
+accepted generic typed migrations. The accepted in-scope count is now
+**18/25**; the four deferred registry entries remain deferred and Entry 26
+remains in scope.
+
+The exact Wave C release head `67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d`
+passed run #439 (`29944965150`), and the exact Wave D release head
+`34208235fabed97cc7a500668c13f5a4cf5a109d` passed run #440
+(`29947470482`). The separate read-only Checker found no blocking authority or
+scope issue. Candidate-only text below remains as historical source-archive
+provenance, not as the current acceptance state.
+
 
 ## Local Entries 11–18 migration candidate — 2026-07-22
 

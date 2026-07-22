@@ -1,5 +1,24 @@
 # Phase 56 Claude Code Continuation Handoff
 
+## Current remote-accepted checkpoint — 2026-07-23 Asia/Seoul
+
+This supersedes the archive-local candidate status below while retaining it as
+historical evidence.
+
+- Entries 11–18 are accepted; in-scope progress is **18/25** with **7/25**
+  remaining. Deferred scope remains exactly the existing four entries.
+- Wave C exact release head `67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d`, run
+  #439 / `29944965150`: **SUCCESS**.
+- Wave D exact release head `34208235fabed97cc7a500668c13f5a4cf5a109d`, run
+  #440 / `29947470482`: **SUCCESS**.
+- Final local focused result: **184 passed** (136 fast, 48 slow); connected
+  Phase 56 regression selection: **1,019 passed, 1 skipped**.
+- Separate read-only Checker: **PASS**, blocking findings **0**. The only
+  nonblocking note is the job timeout increase from 20 to 30 minutes, with all
+  test and performance thresholds unchanged.
+- PR #17 remains Draft, open, and unmerged on Draft PR #16. Do not merge,
+  rebase, force-push, change `main`, deploy, or access sealed corpus/PDF data.
+
 
 ## Local Entries 11–18 candidate checkpoint — 2026-07-22
 
