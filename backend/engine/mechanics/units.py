@@ -119,6 +119,7 @@ _ALIASES: Final[dict[str, _UnitSpec]] = {
     "s": _spec("second", "1", _DT), "sec": _spec("second", "1", _DT), "초": _spec("second", "1", _DT),
     "min": _spec("minute", "1", _DT), "분": _spec("minute", "1", _DT), "h": _spec("hour", "1", _DT), "시간": _spec("hour", "1", _DT),
     "m/s": _spec("meter/second", "1", _DV), "m/sec": _spec("meter/second", "1", _DV), "mps": _spec("meter/second", "1", _DV),
+    "cm/s": _spec("centimeter/second", "1", _DV), "cm/sec": _spec("centimeter/second", "1", _DV),
     "m·s^-1": _spec("meter/second", "1", _DV), "m*s^-1": _spec("meter/second", "1", _DV),
     "km/h": _spec("kilometer/hour", "1", _DV), "km/hr": _spec("kilometer/hour", "1", _DV), "kmph": _spec("kilometer/hour", "1", _DV),
     "m/s2": _spec("meter/second**2", "1", _DA), "m/s^2": _spec("meter/second**2", "1", _DA), "m/s²": _spec("meter/second**2", "1", _DA), "m/sec2": _spec("meter/second**2", "1", _DA), "m/sec^2": _spec("meter/second**2", "1", _DA), "m/sec²": _spec("meter/second**2", "1", _DA),

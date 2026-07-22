@@ -38,6 +38,7 @@ _UNIT_ALIASES = {
     "m·s^-1": "velocity",
     "m*s^-1": "velocity",
     "km/h": "velocity",
+    "cm/s": "velocity",
     "m/s^2": "acceleration",
     "m/s2": "acceleration",
     "m/s²": "acceleration",
@@ -75,7 +76,7 @@ _SOURCE_UNIT_TOKENS = tuple(
         {
             "%", "1", "kg*m^2", "kg*m2", "kg·m^2", "kg·m²", "kg·m2",
             "m/s^2", "m/s2", "m/s²", "m·s^-2", "m*s^-2", "rad/s^2",
-            "rad/s2", "rad/s²", "m/s", "m·s^-1", "m*s^-1", "km/h",
+            "rad/s2", "rad/s²", "m/s", "m·s^-1", "m*s^-1", "km/h", "cm/s",
             "rad/s", "n*m", "n·m", "n*s", "n·s", "n/m", "rpm", "hz",
             "kn", "kg", "km", "cm", "mm", "sec", "min", "rad", "deg",
             "미터", "시간", "초", "분", "도", "m", "s", "h", "g", "n", "j", "°",

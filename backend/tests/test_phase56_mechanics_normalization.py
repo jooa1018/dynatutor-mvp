@@ -294,6 +294,7 @@ _DUAL_REGISTRY_CASES = (
     ("100", "cm", DimensionVector(length=1), 1.0, "m"),
     ("2", "min", DimensionVector(time=1), 120.0, "s"),
     ("36", "km/h", DimensionVector(length=1, time=-1), 10.0, "m*s^-1"),
+    ("100", "cm/s", DimensionVector(length=1, time=-1), 1.0, "m*s^-1"),
     ("100", "cm/s^2", DimensionVector(length=1, time=-2), 1.0, "m*s^-2"),
     ("2", "N", DimensionVector(mass=1, length=1, time=-2), 2.0, "kg*m*s^-2"),
     ("2", "J", DimensionVector(mass=1, length=2, time=-2), 2.0, "kg*m^2*s^-2"),
