@@ -88,6 +88,37 @@ Combined focused and connected backend evidence recorded here is therefore:
 This count intentionally excludes partial or concurrently interrupted wrapper
 runs and does not claim a complete repository release suite.
 
+## Complete backend fast selection
+
+The repository fast wrapper selected exactly 2,903 tests. Its single aggregate
+process reached 69 percent without an assertion failure but hit the unchanged
+420-second watchdog, so that aggregate run is recorded as `TIMEOUT`, not PASS.
+The identical collected node set was then partitioned only at the execution
+boundary, retaining the same marker expression and the same 420-second limit per
+shard:
+
+```text
+Shard 1: 725 passed, 1 skipped
+Shard 2: 727 passed
+Shard 3: 724 passed, 1 skipped
+Shard 4: 725 passed
+Total:   2,901 passed, 2 skipped, 0 failed
+```
+
+Shard 4 was also rerun from the beginning as four smaller process groups after
+an unrelated long-lived background process received SIGTERM; those groups
+passed 180, 180, 183, and 182 tests. No failed node was omitted or converted to
+a deselection.
+
+## Slow-suite boundary
+
+All 48 slow cases newly relevant to Entries 11–18 passed. An attempted repeat of
+the complete repository slow suite, including previously accepted Wave A/B
+files, was interrupted by the local execution environment sending SIGTERM to a
+long-lived background process. This report therefore does **not** claim a full
+repository slow-wrapper PASS and does not replace the historical exact-head Wave
+A/B release evidence.
+
 ## Entry 17 contract summary
 
 Entry 17 uses typed equation-graph laws:
@@ -167,18 +198,18 @@ Local environment: Linux, CPython 3.13.5. Release CI remains expected to use
 Python 3.11.
 
 ```text
-Warm solve latency:
+Warm solve latency (final rerun):
   cases: 43
   samples: 86
-  mean: 9.579002 ms
-  p95: 32.575309 ms
-  max: 41.367466 ms
+  mean: 7.929143 ms
+  p95: 31.313116 ms
+  max: 33.322398 ms
   budgets: mean <= 60 ms, p95 <= 120 ms
   result: PASS
 
-Cold import / RSS:
-  engine.services import: 317.138487 ms
-  max RSS: 148.586 MB
+Cold import / RSS (final rerun):
+  engine.services import: 381.002115 ms
+  max RSS: 148.582 MB
   budgets: import <= 5000 ms, RSS <= 512 MB
   result: PASS
 ```
