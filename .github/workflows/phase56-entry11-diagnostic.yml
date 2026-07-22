@@ -1,0 +1,59 @@
+name: Phase 56 Entry 11 diagnostic
+
+on:
+  push:
+    branches:
+      - codex/phase56-entry11-diagnostic
+
+permissions:
+  contents: read
+
+jobs:
+  entry11-slow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact diagnostic head
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+      - name: Run exact Entry 11 slow parity command
+        id: entry11
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+          PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
+          python -m pytest -q -o addopts= -m slow \
+            backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
+            2>&1 | tee entry11-slow.log
+          status=${PIPESTATUS[0]}
+          printf '%s\n' "$status" > entry11-status.txt
+          exit "$status"
+      - name: Upload exact Entry 11 log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase56-entry11-slow-log
+          path: |
+            entry11-slow.log
+            entry11-status.txt
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve exact test conclusion
+        if: always()
+        shell: bash
+        run: |
+          test -f entry11-status.txt
+          test "$(cat entry11-status.txt)" = "0"
