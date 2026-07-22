@@ -1,12 +1,13 @@
 # Phase 56 Cross-Device Resume Handoff
 
 This is the authoritative cross-device handoff for the Phase 56 branch. It was
-updated on `2026-07-22` (`Asia/Seoul`) after exact-head acceptance of the Wave A
-release gate and local acceptance of Wave B Entries 8-10. Wave A release run
-`29865756663` (run #433) passed at `8f18c710...`; the latest Entry-10 product
-checkpoint `dba0016e...` has local evidence only. Wave B is locally complete, but
-its wave Checker and release CI have not run. This is a pause record, not an
-`IMPLEMENTATION COMPLETE` claim.
+updated on `2026-07-22` (`Asia/Seoul`) after exact-head acceptance of the Wave B
+release gate. Formal PR release run `29879344293` (run #434) passed at
+`305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+`dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`), and the independent Wave-B
+Checker returned `PASS` with blocking findings `0` and nonblocking findings `0`.
+Entry 11, `collision_1d`, is next as the first Wave C task. This is a pause
+record, not an `IMPLEMENTATION COMPLETE` claim.
 
 ## A. Checkpoint identity
 
@@ -52,21 +53,27 @@ its wave Checker and release CI have not run. This is a pause record, not an
   `7d02c784030e32e9d4fc08b22f76ecd8e93fbc1f`, parent Entry-9 documentation
   checkpoint `97545c02b53eea82e2951a8f1c81ebe2f3518cf8`, commit
   `feat(mechanics): migrate vertical circle solver`).
-- Current branch head: the branch head containing this file after the
-  Entry-10 documentation update; verify its exact SHA from the branch.
+- Accepted integrated Wave-B release checkpoint:
+  `305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`, GitHub Actions run
+  `29879344293`, run #434, `SUCCESS`).
+- Exact release-validated branch head before this documentation-only handoff:
+  `305c68d6e7173740d478fd41c11b4ae78a245469`.
 - Latest release-validated migration tree:
-  `5770597d55158d9634d90101451977ebc226d83c`.
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`.
 - Latest exact-head release-CI checkpoint:
-  `8f18c710fc6d5d730fcceccfb30e3175c2613902`.
+  `305c68d6e7173740d478fd41c11b4ae78a245469`.
 - `HANDOFF_COMMIT_SHA = branch head containing this file`
-- The Wave-A release result covers accepted Entries 1-7 at `8f18c710...`. No
-  release-CI result is attributed to Entry 8 at `af4b83ff...`, Entry 9 at
-  `2a870ec...`, or Entry 10 at `dba0016e...`.
+- Run #434 validates only the integrated `305c68d...` / `dd63dd58...` release
+  object. It is not attributed to Entry 8 at `af4b83ff...`, Entry 9 at
+  `2a870ec...`, Entry 10 at `dba0016e...`, or the later documentation-only
+  handoff commit containing this update.
 - PR #17 base: `codex/phase55-gpt-first-textbook-parser` at
   `4762727e8f9191604e2531b9982a5ae72ed73db9`
 - PR #17 exact release-validated remote head:
-  `8f18c710fc6d5d730fcceccfb30e3175c2613902`; re-query before relying on any
-  later remote state. Entries 8-10 are not release-validated remote-head claims.
+  `305c68d6e7173740d478fd41c11b4ae78a245469`; re-query before relying on any
+  later remote state. The individual Entry-8/9/10 product commits are not the
+  run #434 release head.
 - Main SHA: `00b3a60de6e13756d089655879a02e4094122047`
 
 Remote state was read through the GitHub app immediately before checkpointing:
@@ -158,8 +165,10 @@ master instruction.
 ### Stage 5 — IN_PROGRESS
 
 - Accepted W0 product checkpoint: `7a401642bc3c8a1acfe9805af3ada8f4eeb6045a`.
-- Exact-head Wave-A release-CI checkpoint:
-  `8f18c710fc6d5d730fcceccfb30e3175c2613902`.
+- Latest exact-head Wave-B release-CI checkpoint:
+  `305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`, run `29879344293`, run #434,
+  `SUCCESS`).
 - Accepted implementation:
   - exact 29-solver migration matrix in
     `docs/MECHANICS_LEGACY_MIGRATION.md`;
@@ -320,16 +329,16 @@ master instruction.
   - the exact inventory is `29/29` classified: `25` in scope and four deferred;
     accepted in-scope evidence is `10/25`, with `15/25` pending;
   - Waves A-F remain active under the superseding typed scope plan; Wave A is
-    release-accepted and Wave B Entries 8-10 are locally accepted and locally
-    complete, while the Wave-B wave Checker and release CI remain pending;
+    release-accepted, and Wave B Entries 8-10 plus their integrated wave gate are
+    release-accepted at `305c68d...`, run #434; Wave C has not started;
   - product `/solve` and `/diagnose` integration, required-disabled config edge,
     dual-model exclusion, API schema/route tests, and vector-answer projection.
-- Current failure/blocker: none at the accepted `10/25` in-scope boundary. Wave A
-  passed exact-head release CI at `8f18c710...`, run `29865756663` (run #433,
-  `SUCCESS`); both independent Entry-10 Checkers passed with blocking and
-  nonblocking findings both `0`.
-- Next gate: run a fresh independent Wave-B Checker, then exact-head release CI
-  for the complete local Wave-B product. Do not start Entry 11 before that gate.
+- Current failure/blocker: none at the accepted `10/25` in-scope boundary. Wave B
+  passed its independent Checker (`PASS`, blocking `0`, nonblocking `0`) and
+  exact-head release CI at `305c68d...`, run `29879344293` (run #434,
+  `SUCCESS`).
+- Next gate: implement focused same-fixture migration evidence for Entry 11,
+  `collision_1d`, the first Wave C entry.
 
 #### Superseding Stage 5 typed scope and exact waves
 
@@ -358,8 +367,10 @@ classification is `25` in scope and four deferred, exactly entries 19
 Run focused parity evidence and connected targeted tests for each entry. Run one
 fresh independent read-only Checker and release CI only at the end of a complete
 wave. Wave A passed that gate at `8f18c710...`, run #433. Wave B Entries 8-10
-are locally accepted and locally complete; its fresh wave Checker and exact-head
-release CI are the next gate and have not run.
+passed that gate at `305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+`dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`), run `29879344293` (run #434,
+`SUCCESS`), after the Wave-B Checker returned `PASS`, blocking `0`, nonblocking
+`0`. Wave C begins with Entry 11, `collision_1d`.
 
 For each deferred entry, generic behavior is precise structured unsupported;
 generic answer authority is **none** and legacy answer authority is **off-mode
@@ -410,11 +421,13 @@ generic-migration total.
 
 ## D. Exact work at the pause boundary
 
-- Work immediately before this update: accepted the Wave-A release gate at
-  `8f18c710...`, run `29865756663` (run #433), then locally accepted Wave-B
-  Entries 8-10 at products `af4b83ff...`, `2a870ec...`, and `dba0016e...`.
-  Entries 1-10 are accepted in-scope evidence (`10/25`); Entries 8-10 are not
-  release-CI claims.
+- Work immediately before this update: accepted the integrated Wave-B release
+  gate at exact head `305c68d6e7173740d478fd41c11b4ae78a245469`, tree
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`, run `29879344293` (run #434,
+  `SUCCESS`), after the independent Wave-B Checker returned `PASS`, blocking
+  findings `0`, nonblocking findings `0`. Entries 1-10 are accepted in-scope
+  evidence (`10/25`). The release result belongs only to the integrated exact
+  head, not to the individual Entry-8/9/10 product commits.
 - The typed scope/runtime amendment changes these product paths:
   - `backend/engine/mechanics/__init__.py`
   - `backend/engine/mechanics/compiler/__init__.py`
@@ -494,17 +507,17 @@ generic-migration total.
   - `backend/engine/mechanics/compiler/compiler.py`
   - `backend/engine/mechanics/laws/core.py`
   - `backend/tests/test_phase56_mechanics_vertical_circle_same_fixture_parity.py`
-- Safe latest accepted product migration unit:
-  `dba0016ec9878d40e1ed6edf60106491848b3956` (Entry 10 targeted evidence).
-- Safe last exact-head release-CI unit:
-  `8f18c710fc6d5d730fcceccfb30e3175c2613902`, run `29865756663` (run #433),
-  `SUCCESS`; no release result is attributed to `af4b83ff...`, `2a870ec...`, or
-  `dba0016e...`.
+- Safe latest individual product migration unit:
+  `dba0016ec9878d40e1ed6edf60106491848b3956` (Entry 10 targeted evidence only).
+- Safe latest integrated exact-head release-CI unit:
+  `305c68d6e7173740d478fd41c11b4ae78a245469`, tree
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`, run `29879344293` (run #434),
+  `SUCCESS`. No release result is attributed to `af4b83ff...`, `2a870ec...`,
+  `dba0016e...`, or the later docs-only handoff commit.
 - Exact open W0 failure: **NONE**. The formerly failing diagnostic-invariance
   test and all 23 W0 harness tests pass on the authoritative Ubuntu CI runner.
-- Immediate next task: run a fresh independent Wave-B Checker, then exact-head
-  release CI for the locally complete Entries 8-10 product. Do not begin Entry 11
-  before that gate. Raw text,
+- Immediate next task: implement Entry 11, `collision_1d`, as the first Wave C
+  same-fixture migration package. Raw text,
   `system_type`, corpus labels, expected answers, and legacy output must not
   enter the generic calculation path.
 
@@ -915,6 +928,14 @@ Only actually executed evidence is listed.
   default/clamp, diagnostic-only direct legacy use, and numeric-only contact
   parity were verified. `py_compile`, `git diff --check`, and whitespace checks
   passed. This is local Entry-10 evidence, not a release-CI result.
+- Complete Wave B, Entries 8-10: independent Wave-B Checker `PASS`, blocking
+  findings `0`, nonblocking findings `0`. Exact integrated release checkpoint
+  `305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`), GitHub Actions run
+  `29879344293` (run #434), `SUCCESS`. The exact backend, frontend, metadata, and
+  performance evidence is recorded below. This gate validates only that
+  integrated head/tree, not the three individual Entry product commits or the
+  later documentation-only handoff commit.
 - The local Windows full runs above used only the 20-second worker-startup shim.
   They do not establish that the unchanged default 5-second symbolic and
   verification budgets are green on Windows/Python 3.12; the authoritative
@@ -936,22 +957,39 @@ Only actually executed evidence is listed.
 
 ### Latest exact-head release CI
 
-- Exact SHA: `8f18c710fc6d5d730fcceccfb30e3175c2613902` (tree
-  `5770597d55158d9634d90101451977ebc226d83c`).
-- GitHub Actions release run: `29865756663` (run #433) — `SUCCESS`; its recorded
-  head SHA is exact, and both backend and frontend jobs succeeded.
-- Fast wrapper: `2599 passed, 1 skipped, 313 deselected`.
-- Slow wrapper: `46` tests discovered and executed in five file shards under the
-  unchanged 240-second per-file bound: `6`, `6`, `16`, `9`, and `9`; every shard
-  passed under its bound.
-- Benchmark wrapper: `147 passed`; audit wrapper: `111 passed`; backend
-  frontend-marker group: `15 passed`.
-- Compile, repository metadata, warm-latency, and cold-import budgets: `PASS`.
-- Frontend unit tests, typecheck, and build: `PASS`.
-- Four-round pooled performance comparison: `PASS`, regressions `0`.
-- Independent Wave-A Checker: `PASS`, blocking findings `0`.
-- Entries 8-10 at `af4b83ff...`, `2a870ec...`, and `dba0016e...` are newer local
-  product evidence and are deliberately not attributed to this release run.
+- Exact SHA: `305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+  `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`).
+- Formal PR GitHub Actions release run: `29879344293` (run #434) — `SUCCESS`;
+  its recorded head SHA is exact, and both backend and frontend jobs succeeded.
+- Compile: `SUCCESS`.
+- Fast wrapper: `2766 passed, 1 skipped, 347 deselected` in `400.86s`.
+- Slow wrapper: `80 passed` across eight file shards, all under the unchanged
+  240-second per-file bound:
+  - Atwood: `6 passed, 36 deselected` in `30.44s`;
+  - incline friction: `6 passed, 15 deselected` in `57.67s`;
+  - incline hanging: `16 passed, 39 deselected` in `209.20s`;
+  - massive pulley: `9 passed, 68 deselected` in `44.83s`;
+  - pure rolling: `12 passed, 40 deselected` in `44.08s`;
+  - rolling general: `10 passed, 60 deselected` in `36.94s`;
+  - table hanging: `9 passed, 45 deselected` in `41.37s`;
+  - vertical circle: `12 passed, 67 deselected` in `44.01s`.
+- Benchmark wrapper: `147 passed, 2967 deselected` in `62.61s`.
+- Audit wrapper: `111 passed, 3003 deselected` in `40.22s`.
+- Backend frontend-marker group: `15 passed, 3099 deselected` in `3.40s`.
+- Repository metadata: `PASS`.
+- Warm latency: mean `13.220340 ms`, p95 `44.802869 ms`, max `59.695984 ms`;
+  the unchanged mean/p95 budgets are `60/120 ms`, so this passed.
+- Cold import: `853.722429 ms`; max RSS: `92.723 MB`; the unchanged limits are
+  `5000 ms/512 MB`, so this passed.
+- Frontend unit tests: `44/44`; typecheck and build: `PASS`.
+- Four-round pooled performance comparison: 60 repeats per revision per round,
+  240 samples per metric per revision; `passed=true`, regressions `0`.
+- Independent Wave-B Checker: `PASS`, blocking findings `0`, nonblocking
+  findings `0`.
+- Exact attribution guard: run #434 validates only SHA `305c68d...` and tree
+  `dd63dd58...`. It is not attributed to the individual Entry-8
+  `af4b83ff...`, Entry-9 `2a870ec...`, or Entry-10 `dba0016e...` product commits,
+  and it does not validate the later documentation-only handoff commit.
 
 ### Previous accepted entry-3 release CI
 
@@ -998,13 +1036,17 @@ Only actually executed evidence is listed.
 - Stage 8 final exact-head CI/Checker for completed Stages 5-7: `NOT RUN`.
 - Stage 9 Live: `NOT RUN`.
 
-`STAGE5_WAVE_B_LOCAL_COMPLETE_RELEASE_PENDING`: product `dba0016e...` contains
-accepted same-fixture entries 1-10. This is `10/25` accepted in-scope evidence,
-with `15/25` pending and four explicitly deferred. Wave A is release-accepted at
-`8f18c710...`, run #433; Entries 8-10 have no release-CI attribution. The Wave-B
-wave Checker and release CI have not run. This is not a `29/29` generic-migrated
-claim or a Phase 56 completion claim. Stages 6-9 and Stage 5 product integration
-remain incomplete.
+`STAGE5_WAVE_B_RELEASE_ACCEPTED_WAVE_C_ENTRY11_NEXT`: integrated release head
+`305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+`dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`) contains accepted same-fixture
+entries 1-10 and passed run `29879344293` (run #434, `SUCCESS`) plus the
+independent Wave-B Checker (`PASS`, blocking `0`, nonblocking `0`). This remains
+`10/25` accepted in-scope evidence, with `15/25` pending and four explicitly
+deferred. Run #434 is attributed only to the integrated release head, not the
+individual Entry-8/9/10 commits or this later docs-only handoff. The next exact
+task is Entry 11, `collision_1d`, beginning Wave C. This is not a `29/29`
+generic-migrated claim or a Phase 56 completion claim. Stages 6-9 and Stage 5
+product integration remain incomplete.
 
 ## G. Architecture invariants
 
@@ -1048,9 +1090,10 @@ remain incomplete.
   count as same-fixture end-to-end parity for the pending `15/25`. The four
   deferred entries are classified, not accepted.
 - Wave A entries 5-7 and their exact-head release gate are accepted at
-  `8f18c710...`, run #433. Wave B Entries 8-10 are locally accepted at
-  `af4b83ff...`, `2a870ec...`, and `dba0016e...`; the fresh independent Wave-B
-  Checker and exact-head release CI are next. Entry 11 has not started.
+  `8f18c710...`, run #433. Wave B Entries 8-10 and their integrated gate are
+  release-accepted at `305c68d...` / `dd63dd58...`, run #434; the Wave-B Checker
+  passed with blocking and nonblocking findings both `0`. Entry 11,
+  `collision_1d`, has not started and is next as the first Wave C task.
 - The deferred set is exactly `spring_mass_vibration`,
   `relative_acceleration_translation`, `coriolis_relative_motion`, and
   `slot_pin_relative_motion`. Their current generic result must remain precise
@@ -1066,10 +1109,11 @@ remain incomplete.
   wired.
 - Generic vector-answer projection into the existing product response is not
   decided; it must never silently fall back to a legacy scalar answer.
-- The latest release gate at `8f18c710...` passed backend fast plus all 46 slow
-  tests sharded by five files under the 240-second per-file bound, together with
-  benchmark, audit, frontend-marker, compile, metadata, performance, and frontend
-  checks.
+- The latest release gate at `305c68d...` passed compile; backend fast
+  (`2766 passed, 1 skipped, 347 deselected` in `400.86s`); all `80` slow tests
+  sharded by eight files under the 240-second per-file bound; benchmark, audit,
+  frontend-marker, metadata, warm/cold budgets; frontend `44/44`, typecheck and
+  build; and the four-round pooled comparison with regressions `0`.
 - Figure/UI, public-corpus evaluation, final CI, and bounded Live are untouched.
 - Local `gh` is not installed. The GitHub app published exact verified Git
   objects with a non-forced fast-forward; a public fetch confirmed the remote
@@ -1084,18 +1128,17 @@ remain incomplete.
 2. Check out `codex/phase56-generic-mechanics-engine` at the final handoff head.
 3. Read this handoff completely.
 4. Read the reattached Master Instruction v2 completely.
-5. Confirm exact-head Wave-A release-CI checkpoint `8f18c710...`, run
-   `29865756663` (run #433), remains successful. Separately confirm the Entry-8,
-   Entry-9, and Entry-10 products `af4b83ff...`, `2a870ec...`, and `dba0016e...`;
-   do not attribute that release run to any of those entries.
+5. Confirm exact integrated Wave-B release checkpoint `305c68d...`, tree
+   `dd63dd58...`, run `29879344293` (run #434), remains successful. Separately
+   confirm the Entry-8, Entry-9, and Entry-10 products `af4b83ff...`,
+   `2a870ec...`, and `dba0016e...`; do not attribute run #434 to those individual
+   commits or to the later documentation-only handoff commit.
 6. Do not repeat Stages 0-4 or the accepted Stage 5 matrix/parity/runtime/W0/
    accepted entries 1-10 reviews.
-7. Confirm the remediated Wave A Checker verdict is `PASS`, blocking findings
-   `0`, the integrated Entry-8 Checker verdict is `PASS`, and both independent
-   Entry-9 and both independent Entry-10 Checker verdicts are `PASS`, all with no
-   blocking or nonblocking findings.
-8. Run the fresh independent Wave-B Checker, then exact-head release CI for the
-   locally complete Wave B. Do not begin Entry 11 before that gate.
+7. Confirm the independent Wave-B Checker verdict is `PASS`, blocking findings
+   `0`, nonblocking findings `0`; do not repeat that accepted gate.
+8. Begin Entry 11, `collision_1d`, as the first Wave C focused same-fixture
+   migration package.
 9. Keep the corpus sealed until Stage 7 and the PDF reference-only until its
    permitted coverage/figure use.
 10. Continue without intermediate user confirmation unless a hard blocker,
@@ -1123,17 +1166,20 @@ Latest entry-7 product/same-fixture SHA: 26434fc5edc25d617724c8352d1643a40b555f1
 Latest Entry-7 documentation checkpoint before Checker remediation: bb890ea82a9271ceae23491472ea55a9c8ba2fdf
 Accepted Wave-A release SHA: 8f18c710fc6d5d730fcceccfb30e3175c2613902
 Accepted Wave-A release tree: 5770597d55158d9634d90101451977ebc226d83c
+Accepted integrated Wave-B release SHA: 305c68d6e7173740d478fd41c11b4ae78a245469
+Accepted integrated Wave-B release tree: dd63dd58c2ec10730ecb1f9781536ab78d3d6d30
 Latest Entry-8 product/same-fixture SHA: af4b83ff6bde1d577b76ece3191e5b0e5b60d8af
 Latest Entry-8 product tree: c60ab8ab918dc1078e3faed2ca5d44212e5b85bb
 Latest Entry-9 product/same-fixture SHA: 2a870ec4808b6301e39bb99f446b457abc5458a5
 Latest Entry-9 product tree: 9430a179e8e79322b1d49d2b53ed3b68a57f4a64
 Latest Entry-10 product/same-fixture SHA: dba0016ec9878d40e1ed6edf60106491848b3956
 Latest Entry-10 product tree: 7d02c784030e32e9d4fc08b22f76ecd8e93fbc1f
-Current branch head: branch head containing this Entry-10 handoff update (verify exact SHA)
-Latest release-validated migration tree: 5770597d55158d9634d90101451977ebc226d83c
-Latest exact-head release-CI SHA: 8f18c710fc6d5d730fcceccfb30e3175c2613902
-Latest exact-head release run: 29865756663 (run #433), SUCCESS
-Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 10/25 accepted and 15/25 pending, deferred 4/4 explicit; Wave B locally complete with wave Checker/release CI pending
+Exact release-validated branch head before this docs-only handoff: 305c68d6e7173740d478fd41c11b4ae78a245469
+Latest release-validated migration tree: dd63dd58c2ec10730ecb1f9781536ab78d3d6d30
+Latest exact-head release-CI SHA: 305c68d6e7173740d478fd41c11b4ae78a245469
+Latest exact-head release run: 29879344293 (run #434), SUCCESS
+Wave-B Checker: PASS, blocking findings 0, nonblocking findings 0
+Resume Stage: Stage 5 IN_PROGRESS, inventory 29/29 classified, in-scope parity 10/25 accepted and 15/25 pending, deferred 4/4 explicit; Wave B release gate accepted; Entry 11 collision_1d / Wave C next
 
 First read, in order:
 1) docs/PHASE56_PAUSE_HANDOFF.md
@@ -1159,14 +1205,16 @@ Sol-Terra-Luna operating rules. Do not repeat accepted Stages 0-4 or accepted
 Stage 5 matrix/parity/runtime/W0/Entries 1-10 packages.
 
 Wave A entries 5-7 and their release gate are accepted at `8f18c710...`, run
-`29865756663` (run #433), `SUCCESS`. Wave B Entries 8-10 are locally accepted at
-`af4b83ff...`, `2a870ec...`, and `dba0016e...`; their focused evidence and
-independent Entry Checkers passed, but no release-CI result is attributed to any
-of those product checkpoints.
+`29865756663` (run #433), `SUCCESS`. Wave B Entries 8-10 and their integrated
+gate are release-accepted at `305c68d6e7173740d478fd41c11b4ae78a245469`, tree
+`dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`, run `29879344293` (run #434),
+`SUCCESS`; the Wave-B Checker is `PASS`, blocking `0`, nonblocking `0`. This
+release result validates only that integrated exact head/tree, not the individual
+Entry-8 `af4b83ff...`, Entry-9 `2a870ec...`, or Entry-10 `dba0016e...` product
+commits and not the later documentation-only handoff commit.
 
-Next exact task: run the fresh independent Wave-B Checker, then the pull-request
-exact-head release workflow at the complete-wave boundary. Do not start Entry 11
-before that gate.
+Next exact task: implement Entry 11, `collision_1d`, as the first Wave C focused
+same-fixture migration package.
 Raw text, `system_type`, corpus/family/case metadata, expected answers, and legacy
 output must not enter generic compilation, solving, verification, or selection.
 

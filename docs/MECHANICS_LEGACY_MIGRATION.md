@@ -207,10 +207,14 @@ Each entry requires its focused parity evidence and connected targeted tests.
 The independent read-only Checker and release CI run once at the end of each
 complete wave, not after every entry.  Wave A is accepted at exact release
 checkpoint `8f18c710fc6d5d730fcceccfb30e3175c2613902`, GitHub Actions run
-`29865756663` (run #433, `SUCCESS`).  Wave B Entries 8-10 are locally accepted
-and the wave is locally complete, but its independent wave Checker and release CI
-have not run.  The next exact task is the fresh Wave-B Checker followed by
-exact-head release CI; Entry 11 does not start before that gate.
+`29865756663` (run #433, `SUCCESS`).  Wave B Entries 8-10 are accepted at exact
+release checkpoint `305c68d6e7173740d478fd41c11b4ae78a245469` (tree
+`dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`), GitHub Actions run
+`29879344293` (run #434, `SUCCESS`), after the independent Wave-B Checker
+returned `PASS` with blocking findings `0` and nonblocking findings `0`.  That
+release run validates only the integrated `305c68d...` tree, not the individual
+Entry-8/9/10 product commits or the later documentation-only handoff commit.
+The next exact task is Entry 11, `collision_1d`, beginning Wave C.
 
 For all four deferred entries, current generic behavior is a precise structured
 unsupported result.  Generic answer authority is **none**; legacy answer
@@ -436,8 +440,10 @@ rollback after generic-path failure.
    blocking findings `0`, nonblocking findings `0`; compiler/solver/planner/
    verification regressions report `144 passed`, and connected Entries 4-7 fast
    regressions report `188 passed, 40 deselected`.  This is a local product
-   checkpoint, not a release-CI checkpoint; the latest release-validated head
-   remains the Wave-A checkpoint `8f18c710...`, run #433.
+   checkpoint, not a release-CI checkpoint; at that individual checkpoint the
+   latest release-validated head was the Wave-A checkpoint `8f18c710...`, run
+   #433.  The later integrated Wave-B release is recorded below and is not
+   attributed to this Entry-8 commit.
 
 9. `rolling_energy_general` — **ACCEPTED (registry entry 9; in-scope 9/25)** at
    product checkpoint `2a870ec4808b6301e39bb99f446b457abc5458a5` (tree
@@ -463,8 +469,9 @@ rollback after generic-path failure.
    Checkers reported `PASS`, each with blocking findings `0` and nonblocking
    findings `0`; `py_compile` and `git diff --check` passed, and the Entry-8
    fingerprint remained unchanged.  This is a local product checkpoint, not a
-   release-CI checkpoint; the latest release-validated head remains the Wave-A
-   checkpoint `8f18c710...`, run #433.
+   release-CI checkpoint; at that individual checkpoint the latest
+   release-validated head was the Wave-A checkpoint `8f18c710...`, run #433.
+   The later integrated Wave-B release is not attributed to this Entry-9 commit.
 
 10. `vertical_circle` — **ACCEPTED (registry entry 10; in-scope 10/25)** at
    product checkpoint `dba0016ec9878d40e1ed6edf60106491848b3956` (tree
@@ -486,17 +493,45 @@ rollback after generic-path failure.
    `12 passed` in `105.20s`.  Two independent Entry-10 Checkers reported `PASS`,
    each with blocking findings `0` and nonblocking findings `0`; `py_compile`,
    `git diff --check`, and whitespace checks passed.  This is a local product
-   checkpoint, not a release-CI checkpoint; the latest release-validated head
-   remains the Wave-A checkpoint `8f18c710...`, run #433.
+   checkpoint, not a release-CI checkpoint; at that individual checkpoint the
+   latest release-validated head was the Wave-A checkpoint `8f18c710...`, run
+   #433.  The later integrated Wave-B release is not attributed to this Entry-10
+   commit.
 
 Current authoritative roll-up: the registry inventory is `29/29` classified;
 the in-scope set is `25`, with `10/25` accepted and `15/25` pending; the deferred
 set is exactly `4/4` classified.  Deferred classification is not accepted parity,
 so accepted and deferred counts must not be added together, and this is not a
-`29/29 generic migrated` claim.  Wave B Entries 8-10 are locally accepted and
-locally complete, but the Wave-B independent Checker and release CI have not run.
-The next exact task is that fresh wave Checker followed by exact-head release CI,
-not Entry 11.
+`29/29 generic migrated` claim.  Wave B Entries 8-10 and their integrated wave
+gate are release-accepted at `305c68d6e7173740d478fd41c11b4ae78a245469`
+(tree `dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`), release run
+`29879344293` (run #434, `SUCCESS`).  The independent Wave-B Checker is `PASS`,
+blocking findings `0`, nonblocking findings `0`.  The next exact task is Entry
+11, `collision_1d`, beginning Wave C.
+
+Exact integrated Wave-B release evidence: compile `SUCCESS`; fast
+`2766 passed, 1 skipped, 347 deselected` in `400.86s`; slow `80 passed` across
+eight shards: Atwood `6 passed, 36 deselected` in `30.44s`, incline-friction
+`6 passed, 15 deselected` in `57.67s`, incline-hanging `16 passed, 39
+deselected` in `209.20s`, massive-pulley `9 passed, 68 deselected` in `44.83s`,
+pure-rolling `12 passed, 40 deselected` in `44.08s`, rolling-general `10 passed,
+60 deselected` in `36.94s`, table-hanging `9 passed, 45 deselected` in `41.37s`,
+and vertical-circle `12 passed, 67 deselected` in `44.01s`.  Benchmark was
+`147 passed, 2967 deselected` in `62.61s`; audit was `111 passed, 3003
+deselected` in `40.22s`; the backend frontend-marker group was `15 passed, 3099
+deselected` in `3.40s`; repository metadata passed.  Warm latency was mean
+`13.220340 ms`, p95 `44.802869 ms`, max `59.695984 ms`, within the unchanged
+mean/p95 budgets of `60/120 ms`.  Cold import was `853.722429 ms` with `92.723 MB` RSS,
+within `5000 ms/512 MB`.  Frontend was `44/44` with typecheck and build passing.
+The pooled comparison used four rounds, 60 repeats per revision per round, and
+240 samples per metric per revision; `passed=true`, regressions `0`.
+
+The exact attribution boundary is strict: run #434 validates only SHA
+`305c68d6e7173740d478fd41c11b4ae78a245469` and tree
+`dd63dd58c2ec10730ecb1f9781536ab78d3d6d30`.  It does not validate the Entry-8
+`af4b83ff...`, Entry-9 `2a870ec...`, or Entry-10 `dba0016e...` individual
+product commits, and it does not validate the later documentation-only handoff
+commit containing this update.
 
 The separate typed scope/runtime amendment passed its final independent
 read-only Checker with blocking findings `0` and new nonblocking findings `0`.
