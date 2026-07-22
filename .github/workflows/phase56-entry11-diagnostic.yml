@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - codex/phase56-entry11-diagnostic
+  pull_request:
+    branches:
+      - codex/phase56-generic-mechanics-engine
 
 permissions:
   contents: read
