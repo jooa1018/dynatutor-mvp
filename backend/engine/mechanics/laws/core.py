@@ -273,7 +273,7 @@ def _is_full_translational_speed(
 
 
 def _signed(quantity: BoundQuantity):
-    if quantity.direction_sign < 0:
+    if quantity.direction_sign is not None and quantity.direction_sign < 0:
         return Negate(operand=quantity.expression, dimension=quantity.dimension)
     return quantity.expression
 
@@ -3899,18 +3899,39 @@ def _work_energy_emissions(context: LawContext) -> list[LawEmission]:
                     work_quantities = (work, force, displacement)
                 elif len(angle_items) == 1:
                     angle = angle_items[0]
+                    if (
+                        type(angle.known_si_value) is not float
+                        or not math.isfinite(angle.known_si_value)
+                    ):
+                        continue
+                    cosine = math.cos(angle.known_si_value)
+                    for canonical in (-1.0, 0.0, 1.0):
+                        if abs(cosine - canonical) <= 1.0e-15:
+                            cosine = canonical
+                            break
                     product = Multiply(
                         factors=(
-                            force.expression,
-                            displacement.expression,
-                            Cos(argument=angle.expression),
+                            _signed(force),
+                            _signed(displacement),
+                            LiteralNode(value=cosine),
                         ),
                         dimension=work.dimension,
                     )
                     work_quantities = (work, force, displacement, angle)
-                elif not angle_items:
+                elif (
+                    not angle_items
+                    and force.component is displacement.component
+                    and force.component
+                    not in {QuantityComponent.unspecified, QuantityComponent.magnitude}
+                    and force.frame_id == displacement.frame_id
+                    and (
+                        force.direction_sign is None
+                        or displacement.direction_sign is None
+                        or force.direction_key == displacement.direction_key
+                    )
+                ):
                     product = Multiply(
-                        factors=(force.expression, displacement.expression),
+                        factors=(_signed(force), _signed(displacement)),
                         dimension=work.dimension,
                     )
                     work_quantities = (work, force, displacement)

@@ -8856,6 +8856,9 @@ def _affine_expression(
     if isinstance(expression, Dot):
         value = _exact_known_dot(expression, known_values)
         return ({}, value) if value is not None else None
+    if isinstance(expression, (Sin, Cos, Tan)):
+        value = _exact_scalar_value(expression, known_values)
+        return ({}, value) if value is not None else None
     if isinstance(expression, Negate):
         value = _affine_expression(expression.operand, unknown_ids, known_values)
         if value is None:
@@ -8962,6 +8965,8 @@ def _polynomial_degree(
         return 0
     if isinstance(expression, Dot):
         return 0 if _exact_known_dot(expression, known_values) is not None else None
+    if isinstance(expression, (Sin, Cos, Tan)):
+        return 0 if _exact_scalar_value(expression, known_values) is not None else None
     if isinstance(expression, Negate):
         return _polynomial_degree(expression.operand, unknown_ids, known_values)
     if isinstance(expression, Add):
@@ -9010,6 +9015,24 @@ def _exact_scalar_value(
         return Fraction(str(expression.value))
     if isinstance(expression, Dot):
         return _exact_known_dot(expression, known_values)
+    if isinstance(expression, (Sin, Cos, Tan)):
+        argument = _exact_scalar_value(expression.argument, known_values)
+        if argument is None:
+            return None
+        numeric = float(argument)
+        if isinstance(expression, Sin):
+            result = math.sin(numeric)
+        elif isinstance(expression, Cos):
+            result = math.cos(numeric)
+        else:
+            result = math.tan(numeric)
+        if not math.isfinite(result):
+            return None
+        for canonical in (-1.0, 0.0, 1.0):
+            if abs(result - canonical) <= 1.0e-15:
+                result = canonical
+                break
+        return Fraction(str(result))
     if isinstance(expression, Negate):
         value = _exact_scalar_value(expression.operand, known_values)
         return -value if value is not None else None

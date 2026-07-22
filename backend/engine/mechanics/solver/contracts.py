@@ -127,7 +127,9 @@ def _polynomial_degree(expression: MathNode, unknowns: set[str]) -> int | None:
         return 1 if expression.symbol_id in unknowns else 0
     if isinstance(expression, LiteralNode):
         return 0
-    if isinstance(expression, (VectorNode, Dot, Cross, Norm, Integral)):
+    if isinstance(expression, Dot):
+        return 0 if not (_ordinary_symbol_ids(expression) & unknowns) else None
+    if isinstance(expression, (VectorNode, Cross, Norm, Integral)):
         return None
     if isinstance(expression, Add):
         values = tuple(_polynomial_degree(item, unknowns) for item in expression.terms)
@@ -1591,7 +1593,11 @@ def _graph_structure(graph: EquationGraph, unknown_ids: tuple[str, ...]) -> Grap
         polynomial_degree=polynomial_degree,
         has_derivative=any(isinstance(item, Derivative) for item in nodes),
         has_integral=any(isinstance(item, Integral) for item in nodes),
-        has_vector_operation=any(isinstance(item, (VectorNode, Dot, Cross, Norm)) for item in nodes),
+        has_vector_operation=any(
+            isinstance(item, (VectorNode, Dot, Cross, Norm))
+            and bool(_ordinary_symbol_ids(item) & set(unknown_ids))
+            for item in nodes
+        ),
         has_piecewise=any(getattr(item, "op", None) == "piecewise" for item in nodes),
         has_event_condition=bool(_graph_event_ids(graph)),
         # Unknown-dependent syntax whose degree is not certified is treated
