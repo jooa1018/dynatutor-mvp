@@ -9571,6 +9571,30 @@ class MechanicsCompiler:
         query_quantity, query_issue = _query_quantity(safe_ir, query)
         if query_issue is not None:
             return _failure(CompilerStatus.invalid, query_issue)
+        if query_quantity is not None and query.shape is QuantityShape.scalar:
+            try:
+                normalized_output_unit = normalize_quantity(
+                    "1",
+                    query.output_unit,
+                    query.shape,
+                    query.output_dimension,
+                )
+            except Exception:
+                normalized_output_unit = None
+            if (
+                normalized_output_unit is None
+                or normalized_output_unit.dimension != query.output_dimension
+                or query.output_dimension != query_quantity.dimension
+            ):
+                return _failure(
+                    CompilerStatus.invalid,
+                    _issue(
+                        CompilerIssueCode.invalid_binding,
+                        "query output unit is incompatible with the declared target dimension",
+                        f"queries.{query.query_id}.output_unit",
+                        query.query_id,
+                    ),
+                )
         source_symbols, binding_issue = _validate_reciprocal_bindings(safe_ir)
         if binding_issue is not None:
             return _failure(CompilerStatus.invalid, binding_issue)

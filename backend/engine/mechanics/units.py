@@ -89,6 +89,8 @@ _DK: Final = _dim(mass=1, time=-2)
 _DI: Final = _dim(mass=1, length=2)
 _DFREQ: Final = _dim(time=-1)
 _DANGULAR_ACCELERATION: Final = _dim(time=-2)
+_DANGULAR_MOMENTUM: Final = _dim(mass=1, length=2, time=-1)
+_DPOWER: Final = _dim(mass=1, length=2, time=-3)
 _DCURRENT: Final = _dim(current=1)
 _DTEMPERATURE: Final = _dim(temperature=1)
 _DAMOUNT: Final = _dim(amount=1)
@@ -117,6 +119,7 @@ _ALIASES: Final[dict[str, _UnitSpec]] = {
     "m": _spec("meter", "1", _DL), "cm": _spec("centimeter", "1", _DL),
     "mm": _spec("millimeter", "1", _DL), "km": _spec("kilometer", "1", _DL), "미터": _spec("meter", "1", _DL),
     "s": _spec("second", "1", _DT), "sec": _spec("second", "1", _DT), "초": _spec("second", "1", _DT),
+    "ms": _spec("second", "0.001", _DT),
     "min": _spec("minute", "1", _DT), "분": _spec("minute", "1", _DT), "h": _spec("hour", "1", _DT), "시간": _spec("hour", "1", _DT),
     "m/s": _spec("meter/second", "1", _DV), "m/sec": _spec("meter/second", "1", _DV), "mps": _spec("meter/second", "1", _DV),
     "cm/s": _spec("centimeter/second", "1", _DV), "cm/sec": _spec("centimeter/second", "1", _DV),
@@ -135,7 +138,10 @@ _ALIASES: Final[dict[str, _UnitSpec]] = {
     "deg": _spec("degree", "1", _D0, angle=True), "도": _spec("degree", "1", _D0, angle=True), "°": _spec("degree", "1", _D0, angle=True), "rad": _spec("radian", "1", _D0, angle=True),
     "rad/s": _spec("radian/second", "1", _DFREQ, angle=True), "rpm": _spec("radian/minute", str(_TWO_PI), _DFREQ, angle=True),
     "rad/s2": _spec("radian/second**2", "1", _DANGULAR_ACCELERATION, angle=True), "rad/s^2": _spec("radian/second**2", "1", _DANGULAR_ACCELERATION, angle=True), "rad/s²": _spec("radian/second**2", "1", _DANGULAR_ACCELERATION, angle=True),
-    "hz": _spec("second**-1", "1", _DFREQ),
+    "hz": _spec("second**-1", "1", _DFREQ), "1/s": _spec("second**-1", "1", _DFREQ),
+    "kg*m2/s": _spec("kilogram*meter**2/second", "1", _DANGULAR_MOMENTUM),
+    "kgm2/s": _spec("kilogram*meter**2/second", "1", _DANGULAR_MOMENTUM),
+    "w": _spec("kilogram*meter**2/second**3", "1", _DPOWER),
     "a": _spec("ampere", "1", _DCURRENT), "ampere": _spec("ampere", "1", _DCURRENT),
     "k": _spec("kelvin", "1", _DTEMPERATURE), "kelvin": _spec("kelvin", "1", _DTEMPERATURE),
     "mol": _spec("mole", "1", _DAMOUNT), "mole": _spec("mole", "1", _DAMOUNT),

@@ -1626,6 +1626,480 @@ def _is_static_constant_angular_acceleration_boundary_graph(
         and inequality.right.dimension == duration.symbol.dimension
     )
 
+
+def _is_static_impulse_momentum_boundary_graph(graph: EquationGraph) -> bool:
+    """Recognize one exact algebraic impulse--momentum endpoint graph.
+
+    The two event IDs identify before/after velocity states; they are not timed
+    root events.  The waiver is deliberately graph-only and exact.  Any change
+    to the law set, AST, scope, provenance, application mirror, cost, rank, or
+    domain inequality leaves the raw event IDs in the solve plan and therefore
+    preserves the ordinary fail-closed event behavior.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    impulse_law = "linear_impulse"
+    momentum_law = "linear_impulse_momentum"
+    duration_law = "elapsed_time_positive"
+    expected_laws = {impulse_law, momentum_law, duration_law}
+    if (
+        len(event_ids) != 2
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 3
+        or len(graph.applications) != 3
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or graph.rank.equality_count != 2
+        or graph.rank.inequality_count != 1
+        or graph.rank.unknown_count != 2
+        or graph.rank.structural_rank != 2
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    equality_ids = {
+        item.equation_id
+        for item in graph.equations
+        if isinstance(item.expression, Equality)
+    }
+    if (
+        len(equality_ids) != 2
+        or set(graph.selected_equation_ids) != equality_ids
+        or not isinstance(equations_by_law[duration_law].expression, Inequality)
+        or any(
+            application.equation_ids != (equations_by_law[law_id].equation_id,)
+            or application.source_quantity_ids
+            != equations_by_law[law_id].source_quantity_ids
+            or application.source_evidence_ids
+            != equations_by_law[law_id].source_evidence_ids
+            or application.assumption_ids
+            != equations_by_law[law_id].assumption_ids
+            or application.constraint_ids
+            != equations_by_law[law_id].constraint_ids
+            or application.generated_unknown_symbol_ids
+            != equations_by_law[law_id].generated_unknown_symbol_ids
+            or application.complexity_cost
+            != equations_by_law[law_id].complexity_cost
+            or application.scope != equations_by_law[law_id].scope
+            for law_id, application in applications_by_law.items()
+        )
+    ):
+        return False
+
+    symbols_by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.quantity_role is None:
+            return False
+        if item.known_si_value is not None and (
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+        ):
+            return False
+        symbols_by_role.setdefault(item.quantity_role, []).append(item)
+    if set(symbols_by_role) != {
+        "duration",
+        "force",
+        "impulse",
+        "mass",
+        "velocity",
+    }:
+        return False
+    if (
+        len(symbols_by_role["duration"]) != 1
+        or len(symbols_by_role["force"]) != 1
+        or len(symbols_by_role["impulse"]) != 1
+        or len(symbols_by_role["mass"]) != 1
+        or len(symbols_by_role["velocity"]) != 2
+        or len(graph.symbols) != 6
+    ):
+        return False
+
+    duration = symbols_by_role["duration"][0]
+    force = symbols_by_role["force"][0]
+    impulse = symbols_by_role["impulse"][0]
+    mass = symbols_by_role["mass"][0]
+    velocities = tuple(symbols_by_role["velocity"])
+    subject_ids = {
+        item.subject_id for item in (duration, force, impulse, mass, *velocities)
+    }
+    if len(subject_ids) != 1 or None in subject_ids:
+        return False
+    subject_id = next(iter(subject_ids))
+    interval_ids = {
+        item.interval_id for item in (duration, force, impulse, *velocities)
+    }
+    frame_ids = {
+        item.frame_id for item in (duration, force, impulse, *velocities)
+    }
+    if (
+        len(interval_ids) != 1
+        or None in interval_ids
+        or len(frame_ids) != 1
+        or None in frame_ids
+        or mass.frame_id is not None
+        or mass.interval_id is not None
+        or mass.event_id is not None
+        or any(item.event_id is not None for item in (duration, force, impulse))
+        or {item.event_id for item in velocities} != set(event_ids)
+        or any(item.event_id is None for item in velocities)
+        or (
+            mass.known_si_value is not None
+            and mass.known_si_value <= 0.0
+        )
+        or (
+            duration.known_si_value is not None
+            and duration.known_si_value <= 0.0
+        )
+    ):
+        return False
+    interval_id = next(iter(interval_ids))
+    frame_id = next(iter(frame_ids))
+
+    unknowns = tuple(item for item in graph.symbols if item.known_si_value is None)
+    allowed_query_symbols = {
+        duration.symbol.symbol_id,
+        force.symbol.symbol_id,
+        impulse.symbol.symbol_id,
+        mass.symbol.symbol_id,
+        *(item.symbol.symbol_id for item in velocities),
+    }
+    if (
+        len(unknowns) != 2
+        or graph.query_symbol_id not in {
+            item.symbol.symbol_id for item in unknowns
+        }
+        or graph.query_symbol_id not in allowed_query_symbols
+    ):
+        return False
+
+    impulse_equation = equations_by_law[impulse_law]
+    momentum_equation = equations_by_law[momentum_law]
+    positive_equation = equations_by_law[duration_law]
+    if (
+        not isinstance(impulse_equation.expression, Equality)
+        or not isinstance(momentum_equation.expression, Equality)
+        or impulse_equation.constraint_ids
+        or momentum_equation.constraint_ids
+        or positive_equation.constraint_ids
+        or impulse_equation.generated_unknown_symbol_ids
+        or momentum_equation.generated_unknown_symbol_ids
+        or positive_equation.generated_unknown_symbol_ids
+        or len(impulse_equation.assumption_ids) != 1
+        or momentum_equation.assumption_ids
+        or len(positive_equation.assumption_ids) != 1
+        or impulse_equation.assumption_ids == positive_equation.assumption_ids
+        or impulse_equation.scope.entity_ids != (subject_id,)
+        or impulse_equation.scope.point_ids
+        or impulse_equation.scope.frame_id != frame_id
+        or impulse_equation.scope.interval_id != interval_id
+        or impulse_equation.scope.event_id is not None
+        or impulse_equation.scope.event_ids
+        or momentum_equation.scope.entity_ids != (subject_id,)
+        or momentum_equation.scope.point_ids
+        or momentum_equation.scope.frame_id != frame_id
+        or momentum_equation.scope.interval_id != interval_id
+        or momentum_equation.scope.event_id is not None
+        or momentum_equation.scope.event_ids != event_ids
+        or positive_equation.scope.entity_ids != (subject_id,)
+        or positive_equation.scope.point_ids
+        or positive_equation.scope.frame_id != frame_id
+        or positive_equation.scope.interval_id != interval_id
+        or positive_equation.scope.event_id is not None
+        or positive_equation.scope.event_ids
+        or impulse_equation.dimension != impulse.symbol.dimension
+        or momentum_equation.dimension != impulse.symbol.dimension
+        or positive_equation.dimension != duration.symbol.dimension
+    ):
+        return False
+
+    expected_impulse_sources = tuple(
+        sorted({impulse.quantity_id, force.quantity_id, duration.quantity_id})
+    )
+    expected_momentum_sources = tuple(
+        sorted(
+            {
+                impulse.quantity_id,
+                mass.quantity_id,
+                *(item.quantity_id for item in velocities),
+            }
+        )
+    )
+    if (
+        impulse_equation.source_quantity_ids != expected_impulse_sources
+        or momentum_equation.source_quantity_ids != expected_momentum_sources
+        or positive_equation.source_quantity_ids != (duration.quantity_id,)
+    ):
+        return False
+
+    impulse_expression = impulse_equation.expression
+    if (
+        not isinstance(impulse_expression.left, SymbolRef)
+        or impulse_expression.left.symbol_id != impulse.symbol.symbol_id
+        or not isinstance(impulse_expression.right, Multiply)
+        or len(impulse_expression.right.factors) != 2
+        or {
+            item.symbol_id
+            for item in impulse_expression.right.factors
+            if isinstance(item, SymbolRef)
+        }
+        != {force.symbol.symbol_id, duration.symbol.symbol_id}
+    ):
+        return False
+
+    momentum_expression = momentum_equation.expression
+    if (
+        not isinstance(momentum_expression.left, SymbolRef)
+        or momentum_expression.left.symbol_id != impulse.symbol.symbol_id
+        or not isinstance(momentum_expression.right, Multiply)
+        or len(momentum_expression.right.factors) != 2
+    ):
+        return False
+    mass_refs = tuple(
+        item
+        for item in momentum_expression.right.factors
+        if isinstance(item, SymbolRef)
+        and item.symbol_id == mass.symbol.symbol_id
+    )
+    differences = tuple(
+        item
+        for item in momentum_expression.right.factors
+        if isinstance(item, Subtract)
+    )
+    if len(mass_refs) != 1 or len(differences) != 1:
+        return False
+    difference = differences[0]
+    if not isinstance(difference.left, SymbolRef) or not isinstance(
+        difference.right, SymbolRef
+    ):
+        return False
+    velocity_by_symbol = {
+        item.symbol.symbol_id: item for item in velocities
+    }
+    end_velocity = velocity_by_symbol.get(difference.left.symbol_id)
+    start_velocity = velocity_by_symbol.get(difference.right.symbol_id)
+    if (
+        end_velocity is None
+        or start_velocity is None
+        or end_velocity.event_id == start_velocity.event_id
+        or {end_velocity.event_id, start_velocity.event_id} != set(event_ids)
+    ):
+        return False
+
+    inequality = positive_equation.expression
+    return (
+        getattr(inequality.relation, "value", inequality.relation) == "gt"
+        and isinstance(inequality.left, SymbolRef)
+        and inequality.left.symbol_id == duration.symbol.symbol_id
+        and isinstance(inequality.right, LiteralNode)
+        and inequality.right.value == 0.0
+        and inequality.right.dimension == duration.symbol.dimension
+    )
+
+
+
+def _is_static_particle_work_energy_boundary_graph(graph: EquationGraph) -> bool:
+    """Recognize an exact scalar-speed particle work--energy endpoint graph.
+
+    The start/end events identify immutable state provenance rather than timed
+    roots.  Only the compiler-produced work-energy equality plus the semantic
+    final-speed nonnegative predicate receives the event-free algebraic plan.
+    Structural or provenance near misses keep ordinary event handling closed.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    energy_law = "particle_work_energy"
+    speed_law = "translational_speed_nonnegative"
+    expected_laws = {energy_law, speed_law}
+    if (
+        len(event_ids) != 2
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 2
+        or len(graph.applications) != 2
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or graph.rank.equality_count != 1
+        or graph.rank.inequality_count != 1
+        or graph.rank.unknown_count != 1
+        or graph.rank.structural_rank != 1
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    energy = equations_by_law[energy_law]
+    nonnegative = equations_by_law[speed_law]
+    if (
+        not isinstance(energy.expression, Equality)
+        or not isinstance(nonnegative.expression, Inequality)
+        or graph.selected_equation_ids != (energy.equation_id,)
+        or any(
+            application.equation_ids != (equations_by_law[law_id].equation_id,)
+            or application.source_quantity_ids
+            != equations_by_law[law_id].source_quantity_ids
+            or application.source_evidence_ids
+            != equations_by_law[law_id].source_evidence_ids
+            or application.assumption_ids
+            != equations_by_law[law_id].assumption_ids
+            or application.constraint_ids
+            != equations_by_law[law_id].constraint_ids
+            or application.generated_unknown_symbol_ids
+            != equations_by_law[law_id].generated_unknown_symbol_ids
+            or application.complexity_cost
+            != equations_by_law[law_id].complexity_cost
+            or application.scope != equations_by_law[law_id].scope
+            for law_id, application in applications_by_law.items()
+        )
+    ):
+        return False
+
+    by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.quantity_role is None:
+            return False
+        if item.known_si_value is not None and (
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+        ):
+            return False
+        by_role.setdefault(item.quantity_role, []).append(item)
+    if (
+        set(by_role) != {"mass", "work", "speed"}
+        or len(by_role["mass"]) != 1
+        or len(by_role["work"]) != 1
+        or len(by_role["speed"]) != 2
+        or len(graph.symbols) != 4
+    ):
+        return False
+
+    mass = by_role["mass"][0]
+    work = by_role["work"][0]
+    speeds = tuple(by_role["speed"])
+    unknowns = tuple(item for item in graph.symbols if item.known_si_value is None)
+    if len(unknowns) != 1 or graph.query_symbol_id != unknowns[0].symbol.symbol_id:
+        return False
+    final_speed = unknowns[0]
+    if final_speed not in speeds:
+        return False
+    start_speed = next((item for item in speeds if item is not final_speed), None)
+    if start_speed is None:
+        return False
+
+    subject_ids = {item.subject_id for item in (mass, work, *speeds)}
+    interval_ids = {item.interval_id for item in (work, *speeds)}
+    frame_ids = {item.frame_id for item in speeds}
+    if (
+        len(subject_ids) != 1
+        or None in subject_ids
+        or len(interval_ids) != 1
+        or None in interval_ids
+        or len(frame_ids) != 1
+        or None in frame_ids
+        or mass.frame_id is not None
+        or mass.interval_id is not None
+        or mass.event_id is not None
+        or work.event_id is not None
+        or {item.event_id for item in speeds} != set(event_ids)
+        or final_speed.event_id == start_speed.event_id
+        or mass.known_si_value is None
+        or mass.known_si_value <= 0.0
+        or work.known_si_value is None
+        or start_speed.known_si_value is None
+        or start_speed.known_si_value < 0.0
+        or final_speed.known_si_value is not None
+    ):
+        return False
+    subject_id = next(iter(subject_ids))
+    interval_id = next(iter(interval_ids))
+    frame_id = next(iter(frame_ids))
+    if work.frame_id not in {None, frame_id}:
+        return False
+
+    if (
+        energy.constraint_ids
+        or nonnegative.constraint_ids
+        or energy.assumption_ids
+        or nonnegative.assumption_ids
+        or energy.generated_unknown_symbol_ids
+        or nonnegative.generated_unknown_symbol_ids
+        or energy.scope.entity_ids != (subject_id,)
+        or energy.scope.point_ids
+        or energy.scope.frame_id != frame_id
+        or energy.scope.interval_id != interval_id
+        or energy.scope.event_id is not None
+        or energy.scope.event_ids != event_ids
+        or nonnegative.scope.entity_ids != (subject_id,)
+        or nonnegative.scope.point_ids
+        or nonnegative.scope.frame_id != frame_id
+        or nonnegative.scope.interval_id != interval_id
+        or nonnegative.scope.event_id != final_speed.event_id
+        or nonnegative.scope.event_ids != (final_speed.event_id,)
+        or energy.dimension != work.symbol.dimension
+        or nonnegative.dimension != final_speed.symbol.dimension
+        or energy.source_quantity_ids
+        != tuple(sorted({mass.quantity_id, work.quantity_id, start_speed.quantity_id, final_speed.quantity_id}))
+        or nonnegative.source_quantity_ids != (final_speed.quantity_id,)
+    ):
+        return False
+
+    expression = energy.expression
+    if (
+        not isinstance(expression.left, SymbolRef)
+        or expression.left.symbol_id != work.symbol.symbol_id
+        or not isinstance(expression.right, Multiply)
+        or len(expression.right.factors) != 3
+    ):
+        return False
+    halves = tuple(
+        item
+        for item in expression.right.factors
+        if isinstance(item, LiteralNode) and item.value == 0.5
+    )
+    masses = tuple(
+        item
+        for item in expression.right.factors
+        if isinstance(item, SymbolRef) and item.symbol_id == mass.symbol.symbol_id
+    )
+    changes = tuple(item for item in expression.right.factors if isinstance(item, Subtract))
+    if len(halves) != 1 or len(masses) != 1 or len(changes) != 1:
+        return False
+    change = changes[0]
+
+    def squared_speed(node: MathNode, symbol_id: str) -> bool:
+        return (
+            isinstance(node, Power)
+            and isinstance(node.base, SymbolRef)
+            and node.base.symbol_id == symbol_id
+            and isinstance(node.exponent, LiteralNode)
+            and node.exponent.value == 2.0
+        )
+
+    if (
+        not squared_speed(change.left, final_speed.symbol.symbol_id)
+        or not squared_speed(change.right, start_speed.symbol.symbol_id)
+    ):
+        return False
+
+    predicate = nonnegative.expression
+    return (
+        getattr(predicate.relation, "value", predicate.relation) == "ge"
+        and isinstance(predicate.left, SymbolRef)
+        and predicate.left.symbol_id == final_speed.symbol.symbol_id
+        and isinstance(predicate.right, LiteralNode)
+        and predicate.right.value == 0.0
+        and predicate.right.dimension == final_speed.symbol.dimension
+    )
+
 def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
     """Return timed plan events while retaining raw graph boundary scopes."""
 
@@ -1636,6 +2110,8 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
             or _is_static_constant_acceleration_boundary_graph(graph)
             or _is_static_projectile_boundary_graph(graph)
             or _is_static_constant_angular_acceleration_boundary_graph(graph)
+            or _is_static_impulse_momentum_boundary_graph(graph)
+            or _is_static_particle_work_energy_boundary_graph(graph)
         )
         else _graph_event_ids(graph)
     )

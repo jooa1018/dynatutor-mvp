@@ -95,6 +95,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("damper_force", "vibration", (QuantityRole.damping, QuantityRole.velocity, QuantityRole.force), interactions=(InteractionKind.damping.value,), cost=3, hooks=("constitutive_residual",)),
     _rule("force_work", "work_energy", (QuantityRole.force, QuantityRole.displacement, QuantityRole.work), cost=4, hooks=("energy_residual",)),
     _rule("particle_work_energy", "work_energy", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.work), cost=4, hooks=("energy_residual",)),
+    _rule("translational_speed_nonnegative", "work_energy", (QuantityRole.speed,), cost=1, hooks=("domain_residual",)),
     _rule("mechanical_power", "work_energy", (QuantityRole.force, QuantityRole.velocity, QuantityRole.power), cost=3, hooks=("power_residual",)),
     _rule("average_power", "work_energy", (QuantityRole.work, QuantityRole.duration, QuantityRole.power), cost=3, hooks=("power_residual",)),
     _rule("kinetic_energy", "work_energy", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.energy), cost=3, hooks=("energy_residual",)),
@@ -4594,6 +4595,22 @@ def _work_energy_emissions(context: LawContext) -> list[LawEmission]:
                         (works[0], masses[0], starts[0], ends[0]),
                     )
                 )
+                if ends[0].role is QuantityRole.speed:
+                    emitted.append(
+                        _emit(
+                            context,
+                            "translational_speed_nonnegative",
+                            Inequality(
+                                relation=InequalityRelation.ge,
+                                left=ends[0].expression,
+                                right=LiteralNode(
+                                    value=0.0,
+                                    dimension=ends[0].dimension,
+                                ),
+                            ),
+                            (ends[0],),
+                        )
+                    )
     for power in _by_role(context, QuantityRole.power):
         if power.shape is not QuantityShape.scalar:
             continue
