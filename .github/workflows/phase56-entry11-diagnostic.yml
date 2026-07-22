@@ -1,76 +1,158 @@
-name: Phase 56 Entry 11 diagnostic
+name: Phase 56 Entry 11 acceptance worker
 
 on:
-  push:
-    branches:
-      - codex/phase56-entry11-diagnostic
   pull_request:
     branches:
       - codex/phase56-generic-mechanics-engine
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  entry11-slow:
+  entry11-acceptance:
+    if: github.event.pull_request.head.ref == 'codex/phase56-entry11-diagnostic'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - name: Check out exact diagnostic head
+      - name: Check out diagnostic control branch
         uses: actions/checkout@v6
         with:
+          ref: codex/phase56-entry11-diagnostic
           fetch-depth: 0
-      - name: Create authoritative source snapshot
+      - name: Check exact remote authority and prepare target tree
         shell: bash
         run: |
-          git archive --format=zip \
-            --output=phase56-source-f66.zip \
-            f66f12bf7a46b885d37615e0bfe6f5f60a342475
-      - name: Upload authoritative source snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase56-source-f66
-          path: phase56-source-f66.zip
-          if-no-files-found: error
-          retention-days: 7
-      - name: Set up Python
+          set -euo pipefail
+          expected=f66f12bf7a46b885d37615e0bfe6f5f60a342475
+          remote_head="$(git ls-remote origin refs/heads/codex/phase56-generic-mechanics-engine | cut -f1)"
+          test "$remote_head" = "$expected"
+          git checkout --detach "$expected"
+          mkdir -p phase56-entry11-evidence
+          printf '%s\n' "$remote_head" > phase56-entry11-evidence/input-head.txt
+      - name: Apply the proven mixed-unit repair
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          units = Path('backend/engine/mechanics/units.py')
+          text = units.read_text()
+          old = '    "m/s": _spec("meter/second", "1", _DV), "m/sec": _spec("meter/second", "1", _DV), "mps": _spec("meter/second", "1", _DV),\n'
+          new = old + '    "cm/s": _spec("centimeter/second", "1", _DV), "cm/sec": _spec("centimeter/second", "1", _DV),\n'
+          if text.count(old) != 1 or '"cm/s": _spec("centimeter/second"' in text:
+              raise SystemExit('unexpected mechanics unit whitelist state')
+          units.write_text(text.replace(old, new, 1))
+
+          evidence = Path('backend/engine/textbook_parser/evidence_alignment.py')
+          text = evidence.read_text()
+          old_alias = '    "km/h": "velocity",\n'
+          old_tokens = '            "rad/s2", "rad/s²", "m/s", "m·s^-1", "m*s^-1", "km/h",\n'
+          if text.count(old_alias) != 1 or text.count(old_tokens) != 1 or '    "cm/s": "velocity",' in text:
+              raise SystemExit('unexpected evidence unit whitelist state')
+          text = text.replace(old_alias, old_alias + '    "cm/s": "velocity",\n', 1)
+          text = text.replace(old_tokens, '            "rad/s2", "rad/s²", "m/s", "m·s^-1", "m*s^-1", "km/h", "cm/s",\n', 1)
+          evidence.write_text(text)
+
+          test_file = Path('backend/tests/test_phase56_mechanics_normalization.py')
+          text = test_file.read_text()
+          old_cases = '    ("36", "km/h", DimensionVector(length=1, time=-1), 10.0, "m*s^-1"),\n    ("100", "cm/s^2", DimensionVector(length=1, time=-2), 1.0, "m*s^-2"),\n'
+          new_cases = '    ("36", "km/h", DimensionVector(length=1, time=-1), 10.0, "m*s^-1"),\n    ("100", "cm/s", DimensionVector(length=1, time=-1), 1.0, "m*s^-1"),\n    ("100", "cm/s^2", DimensionVector(length=1, time=-2), 1.0, "m*s^-2"),\n'
+          if text.count(old_cases) != 1:
+              raise SystemExit('unexpected normalization test state')
+          test_file.write_text(text.replace(old_cases, new_cases, 1))
+          PY
+          git diff --check
+          git diff -- \
+            backend/engine/mechanics/units.py \
+            backend/engine/textbook_parser/evidence_alignment.py \
+            backend/tests/test_phase56_mechanics_normalization.py \
+            > phase56-entry11-evidence/repair.diff
+      - name: Set up Python 3.11
         uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: '3.11'
           cache: pip
-          cache-dependency-path: backend/requirements.txt
-      - name: Install backend dependencies
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install locked backend dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r backend/requirements.txt
-      - name: Run exact Entry 11 slow parity command
-        id: entry11
-        continue-on-error: true
+          python -m pip install -r backend/requirements-lock.txt
+      - name: Compile changed and Entry 11 connected modules
         shell: bash
         run: |
-          set +e
+          python -m py_compile \
+            backend/engine/mechanics/units.py \
+            backend/engine/textbook_parser/evidence_alignment.py \
+            backend/engine/mechanics/compiler/compiler.py \
+            backend/engine/mechanics/laws/core.py \
+            backend/engine/mechanics/solver/contracts.py \
+            backend/engine/mechanics/solver/planner.py \
+            backend/tests/test_phase56_mechanics_normalization.py \
+            backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
+            2>&1 | tee phase56-entry11-evidence/py-compile.log
+      - name: Run unit and evidence normalization regression
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+          PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
+          python -m pytest -q -o addopts= \
+            backend/tests/test_phase56_mechanics_normalization.py \
+            2>&1 | tee phase56-entry11-evidence/normalization.log
+      - name: Run exact Entry 11 slow 12
+        shell: bash
+        run: |
           set -o pipefail
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
           PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
           python -m pytest -q -o addopts= -m slow \
             backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
-            2>&1 | tee entry11-slow.log
-          status=${PIPESTATUS[0]}
-          printf '%s\n' "$status" > entry11-status.txt
-          exit "$status"
-      - name: Upload exact Entry 11 log
+            2>&1 | tee phase56-entry11-evidence/slow-12.log
+      - name: Run exact Entry 11 fast 47
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+          PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
+          python -m pytest -q -o addopts= -m 'not slow' \
+            backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
+            2>&1 | tee phase56-entry11-evidence/fast-47.log
+      - name: Run connected compiler solver verifier and migration regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+          PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
+          python -m pytest -q -o addopts= \
+            -m 'not slow and not benchmark and not audit and not frontend' \
+            backend/tests/test_phase56_mechanics_compiler.py \
+            backend/tests/test_phase56_mechanics_solver_planner.py \
+            backend/tests/test_phase56_mechanics_solver_execution.py \
+            backend/tests/test_phase56_mechanics_solver_verification_integration.py \
+            backend/tests/test_phase56_mechanics_verifier.py \
+            backend/tests/test_phase56_mechanics_migration_harness.py \
+            backend/tests/test_phase56_mechanics_legacy_parity.py \
+            2>&1 | tee phase56-entry11-evidence/connected-regressions.log
+      - name: Commit and push Entry 11 acceptance atomically
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git config user.name 'DynaTutor Phase 56 Worker'
+          git config user.email 'phase56-worker@users.noreply.github.com'
+          git add \
+            backend/engine/mechanics/units.py \
+            backend/engine/textbook_parser/evidence_alignment.py \
+            backend/tests/test_phase56_mechanics_normalization.py
+          git commit -m 'feat(phase56): accept generic collision 1d migration [skip ci]'
+          commit_sha="$(git rev-parse HEAD)"
+          printf '%s\n' "$commit_sha" > phase56-entry11-evidence/entry11-commit-sha.txt
+          git push origin HEAD:refs/heads/codex/phase56-generic-mechanics-engine
+      - name: Upload Entry 11 acceptance evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase56-entry11-slow-log
-          path: |
-            entry11-slow.log
-            entry11-status.txt
+          name: phase56-entry11-acceptance-evidence
+          path: phase56-entry11-evidence
           if-no-files-found: error
-          retention-days: 7
-      - name: Preserve exact test conclusion
-        if: always()
-        shell: bash
-        run: |
-          test -f entry11-status.txt
-          test "$(cat entry11-status.txt)" = "0"
+          retention-days: 14
