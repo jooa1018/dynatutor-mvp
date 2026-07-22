@@ -4618,16 +4618,37 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
     for speed in _by_role(context, QuantityRole.speed):
         if speed.subject_id not in rigid_ids or speed.shape is not QuantityShape.scalar:
             continue
+        if speed.component not in {
+            QuantityComponent.magnitude,
+            QuantityComponent.unspecified,
+        }:
+            continue
         for angular in _by_role(context, QuantityRole.angular_velocity):
-            if not _scope_compatible(speed, angular):
+            if not _scope_compatible_without_component(speed, angular):
                 continue
             for radius in _by_role(context, QuantityRole.radius):
-                if not _scope_compatible(speed, radius) or any(
+                if not _scope_compatible_without_component(speed, radius) or any(
                     item.shape is not QuantityShape.scalar for item in (angular, radius)
                 ):
                     continue
-                product = Multiply(factors=(angular.expression, radius.expression), dimension=speed.dimension)
-                emitted.append(_emit(context, "fixed_axis_speed", Equality(left=speed.expression, right=product), (speed, angular, radius)))
+                magnitude = Sqrt(
+                    operand=Power(
+                        base=angular.expression,
+                        exponent=LiteralNode(value=2.0),
+                    )
+                )
+                product = Multiply(
+                    factors=(magnitude, radius.expression),
+                    dimension=speed.dimension,
+                )
+                emitted.append(
+                    _emit(
+                        context,
+                        "fixed_axis_speed",
+                        Equality(left=speed.expression, right=product),
+                        (speed, angular, radius),
+                    )
+                )
     linked_moments = {
         qid
         for interaction in context.interactions

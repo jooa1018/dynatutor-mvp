@@ -1401,6 +1401,231 @@ def _is_static_projectile_boundary_graph(graph: EquationGraph) -> bool:
         and unknown_symbols == expected_unknowns
     )
 
+
+def _is_static_constant_angular_acceleration_boundary_graph(
+    graph: EquationGraph,
+) -> bool:
+    """Recognize one exact fixed-axis constant-angular-acceleration endpoint graph."""
+
+    angular_law = "angular_velocity_derivative"
+    duration_law = "elapsed_time_positive"
+    expected_laws = {angular_law, duration_law}
+    event_ids = _graph_event_ids(graph)
+    if (
+        len(event_ids) != 2
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 2
+        or len(graph.applications) != 2
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or graph.rank.equality_count != 1
+        or graph.rank.inequality_count != 1
+        or graph.rank.unknown_count != 1
+        or graph.rank.structural_rank != 1
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    symbols_by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.quantity_role is None:
+            return False
+        if item.known_si_value is not None and (
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+        ):
+            return False
+        symbols_by_role.setdefault(item.quantity_role, []).append(item)
+    if set(symbols_by_role) != {
+        "angular_acceleration",
+        "angular_velocity",
+        "duration",
+    }:
+        return False
+    if (
+        len(symbols_by_role["angular_acceleration"]) != 1
+        or len(symbols_by_role["angular_velocity"]) != 2
+        or len(symbols_by_role["duration"]) != 1
+        or len(graph.symbols) != 4
+    ):
+        return False
+
+    acceleration = symbols_by_role["angular_acceleration"][0]
+    velocities = tuple(symbols_by_role["angular_velocity"])
+    duration = symbols_by_role["duration"][0]
+    if (
+        acceleration.subject_id is None
+        or acceleration.point_id is None
+        or acceleration.frame_id is None
+        or acceleration.interval_id is None
+        or acceleration.event_id is not None
+        or duration.subject_id != acceleration.subject_id
+        or duration.point_id is not None
+        or duration.frame_id is not None
+        or duration.interval_id != acceleration.interval_id
+        or duration.event_id is not None
+        or any(
+            item.subject_id != acceleration.subject_id
+            or item.point_id != acceleration.point_id
+            or item.frame_id != acceleration.frame_id
+            or item.interval_id != acceleration.interval_id
+            or item.event_id is None
+            for item in velocities
+        )
+        or {item.event_id for item in velocities} != set(event_ids)
+        or len({item.event_id for item in velocities}) != 2
+        or (
+            duration.known_si_value is not None
+            and duration.known_si_value <= 0.0
+        )
+    ):
+        return False
+
+    unknowns = tuple(
+        item for item in graph.symbols if item.known_si_value is None
+    )
+    if (
+        len(unknowns) != 1
+        or graph.query_symbol_id != unknowns[0].symbol.symbol_id
+        or graph.query_symbol_id
+        not in {
+            acceleration.symbol.symbol_id,
+            duration.symbol.symbol_id,
+            *(item.symbol.symbol_id for item in velocities),
+        }
+    ):
+        return False
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    if any(
+        application.equation_ids != (equations_by_law[law_id].equation_id,)
+        or application.source_quantity_ids
+        != equations_by_law[law_id].source_quantity_ids
+        or application.source_evidence_ids
+        != equations_by_law[law_id].source_evidence_ids
+        or application.assumption_ids
+        != equations_by_law[law_id].assumption_ids
+        or application.constraint_ids
+        != equations_by_law[law_id].constraint_ids
+        or application.generated_unknown_symbol_ids
+        != equations_by_law[law_id].generated_unknown_symbol_ids
+        or application.complexity_cost
+        != equations_by_law[law_id].complexity_cost
+        or application.scope != equations_by_law[law_id].scope
+        for law_id, application in applications_by_law.items()
+    ):
+        return False
+
+    angular = equations_by_law[angular_law]
+    positive = equations_by_law[duration_law]
+    if (
+        not isinstance(angular.expression, Equality)
+        or not isinstance(positive.expression, Inequality)
+        or set(graph.selected_equation_ids) != {angular.equation_id}
+        or angular.constraint_ids
+        or positive.constraint_ids
+        or angular.generated_unknown_symbol_ids
+        or positive.generated_unknown_symbol_ids
+        or len(angular.assumption_ids) != 1
+        or len(positive.assumption_ids) != 1
+        or angular.assumption_ids == positive.assumption_ids
+        or angular.scope.entity_ids != (acceleration.subject_id,)
+        or angular.scope.point_ids != (acceleration.point_id,)
+        or angular.scope.frame_id != acceleration.frame_id
+        or angular.scope.interval_id != acceleration.interval_id
+        or angular.scope.event_id is not None
+        or angular.scope.event_ids != event_ids
+        or positive.scope.entity_ids != (acceleration.subject_id,)
+        or positive.scope.point_ids
+        or positive.scope.frame_id is not None
+        or positive.scope.interval_id != acceleration.interval_id
+        or positive.scope.event_id is not None
+        or positive.scope.event_ids
+        or angular.dimension != velocities[0].symbol.dimension
+        or positive.dimension != duration.symbol.dimension
+    ):
+        return False
+
+    velocity_by_event = {item.event_id: item for item in velocities}
+    expression = angular.expression
+    if not isinstance(expression.left, SymbolRef):
+        return False
+    end_velocity = next(
+        (
+            item
+            for item in velocities
+            if item.symbol.symbol_id == expression.left.symbol_id
+        ),
+        None,
+    )
+    if end_velocity is None or not isinstance(expression.right, Add):
+        return False
+    other_event_ids = tuple(
+        identifier for identifier in event_ids if identifier != end_velocity.event_id
+    )
+    if len(other_event_ids) != 1:
+        return False
+    start_velocity = velocity_by_event.get(other_event_ids[0])
+    if start_velocity is None or len(expression.right.terms) != 2:
+        return False
+
+    start_refs = tuple(
+        item
+        for item in expression.right.terms
+        if isinstance(item, SymbolRef)
+        and item.symbol_id == start_velocity.symbol.symbol_id
+    )
+    products = tuple(
+        item for item in expression.right.terms if isinstance(item, Multiply)
+    )
+    if len(start_refs) != 1 or len(products) != 1:
+        return False
+    product = products[0]
+    if (
+        len(product.factors) != 2
+        or {
+            item.symbol_id
+            for item in product.factors
+            if isinstance(item, SymbolRef)
+        }
+        != {
+            acceleration.symbol.symbol_id,
+            duration.symbol.symbol_id,
+        }
+    ):
+        return False
+
+    expected_angular_sources = tuple(
+        sorted(
+            {
+                acceleration.quantity_id,
+                duration.quantity_id,
+                start_velocity.quantity_id,
+                end_velocity.quantity_id,
+            }
+        )
+    )
+    if (
+        angular.source_quantity_ids != expected_angular_sources
+        or positive.source_quantity_ids != (duration.quantity_id,)
+    ):
+        return False
+
+    inequality = positive.expression
+    return (
+        getattr(inequality.relation, "value", inequality.relation) == "gt"
+        and isinstance(inequality.left, SymbolRef)
+        and inequality.left.symbol_id == duration.symbol.symbol_id
+        and isinstance(inequality.right, LiteralNode)
+        and inequality.right.value == 0.0
+        and inequality.right.dimension == duration.symbol.dimension
+    )
+
 def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
     """Return timed plan events while retaining raw graph boundary scopes."""
 
@@ -1410,6 +1635,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
             _is_static_collision_boundary_graph(graph)
             or _is_static_constant_acceleration_boundary_graph(graph)
             or _is_static_projectile_boundary_graph(graph)
+            or _is_static_constant_angular_acceleration_boundary_graph(graph)
         )
         else _graph_event_ids(graph)
     )
