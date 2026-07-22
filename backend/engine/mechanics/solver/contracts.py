@@ -853,6 +853,552 @@ def _is_static_constant_acceleration_boundary_graph(graph: EquationGraph) -> boo
         ref(end_velocity),
     }
 
+
+def _is_static_projectile_boundary_graph(graph: EquationGraph) -> bool:
+    """Recognize one exact algebraic 2-D projectile endpoint graph.
+
+    Launch/landing or launch/turnaround labels remain immutable provenance.  The
+    waiver is granted only when the complete graph mirrors the compiler's typed
+    x/y constant-acceleration, gravity, height, and positive-duration laws.
+    Every structural near miss keeps ordinary timed-event fail-closed behavior.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    velocity_law = "particle_constant_acceleration_velocity"
+    position_law = "particle_constant_acceleration_position"
+    gravity_law = "uniform_gravity_acceleration"
+    height_law = "particle_height_displacement"
+    time_law = "elapsed_time_positive"
+    expected_counts = {
+        velocity_law: 2,
+        position_law: 2,
+        gravity_law: 1,
+        height_law: 1,
+        time_law: 1,
+    }
+    equation_counts = {
+        law_id: sum(item.law_id == law_id for item in graph.equations)
+        for law_id in expected_counts
+    }
+    application_counts = {
+        law_id: sum(item.law_id == law_id for item in graph.applications)
+        for law_id in expected_counts
+    }
+    if (
+        len(event_ids) != 2
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 7
+        or len(graph.applications) != 7
+        or equation_counts != expected_counts
+        or application_counts != expected_counts
+        or any(
+            item.law_id not in expected_counts for item in graph.equations
+        )
+        or any(
+            item.law_id not in expected_counts for item in graph.applications
+        )
+        or graph.rank.equality_count != 6
+        or graph.rank.inequality_count != 1
+        or graph.rank.unknown_count not in {4, 5}
+        or graph.rank.structural_rank != graph.rank.unknown_count
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    equations_by_law = {
+        law_id: tuple(
+            item for item in graph.equations if item.law_id == law_id
+        )
+        for law_id in expected_counts
+    }
+    applications_by_law = {
+        law_id: tuple(
+            item for item in graph.applications if item.law_id == law_id
+        )
+        for law_id in expected_counts
+    }
+    equation_by_id = {item.equation_id: item for item in graph.equations}
+    for law_id, applications in applications_by_law.items():
+        for application in applications:
+            if len(application.equation_ids) != 1:
+                return False
+            equation = equation_by_id.get(application.equation_ids[0])
+            if (
+                equation is None
+                or equation.law_id != law_id
+                or application.source_quantity_ids != equation.source_quantity_ids
+                or application.assumption_ids != equation.assumption_ids
+                or application.constraint_ids != equation.constraint_ids
+                or application.generated_unknown_symbol_ids
+                != equation.generated_unknown_symbol_ids
+                or application.source_evidence_ids
+                != equation.source_evidence_ids
+                or application.complexity_cost != equation.complexity_cost
+                or application.scope != equation.scope
+            ):
+                return False
+
+    by_role: dict[str, tuple[object, ...]] = {
+        role: tuple(item for item in graph.symbols if item.quantity_role == role)
+        for role in {
+            "acceleration",
+            "displacement",
+            "duration",
+            "velocity",
+            "gravity",
+            "height",
+        }
+    }
+    if (
+        any(item.generated or item.point_id is not None for item in graph.symbols)
+        or set(item.quantity_role for item in graph.symbols)
+        != set(by_role)
+        or len(graph.symbols) != 12
+        or len(by_role["acceleration"]) != 2
+        or len(by_role["displacement"]) != 2
+        or len(by_role["duration"]) != 1
+        or len(by_role["velocity"]) != 4
+        or len(by_role["gravity"]) != 1
+        or len(by_role["height"]) != 2
+    ):
+        return False
+
+    duration = by_role["duration"][0]
+    gravity = by_role["gravity"][0]
+    accelerations = by_role["acceleration"]
+    displacements = by_role["displacement"]
+    velocities = by_role["velocity"]
+    heights = by_role["height"]
+    projectile_subjects = {
+        item.subject_id
+        for item in (*accelerations, *displacements, duration, *velocities, *heights)
+    }
+    intervals = {
+        item.interval_id
+        for item in (*accelerations, *displacements, duration, *velocities, *heights)
+    }
+    frames = {
+        item.frame_id
+        for item in (*accelerations, *displacements, *velocities, *heights)
+    }
+    if (
+        len(projectile_subjects) != 1
+        or None in projectile_subjects
+        or len(intervals) != 1
+        or None in intervals
+        or len(frames) != 1
+        or None in frames
+        or duration.frame_id is not None
+        or duration.event_id is not None
+        or gravity.subject_id in projectile_subjects
+        or gravity.event_id is not None
+        or gravity.known_si_value is None
+        or any(item.known_si_value is None for item in accelerations)
+        or sum(item.known_si_value is None for item in displacements) not in {1, 2}
+        or {item.event_id for item in heights} != set(event_ids)
+        or sum(item.known_si_value is None for item in heights) not in {0, 1}
+    ):
+        return False
+    subject_id = next(iter(projectile_subjects))
+    interval_id = next(iter(intervals))
+    frame_id = next(iter(frames))
+    velocity_by_event = {
+        event_id: tuple(item for item in velocities if item.event_id == event_id)
+        for event_id in event_ids
+    }
+    known_events = tuple(
+        event_id
+        for event_id, items in velocity_by_event.items()
+        if len(items) == 2 and all(item.known_si_value is not None for item in items)
+    )
+    if len(known_events) != 1:
+        return False
+    start_event_id = known_events[0]
+    end_event_id = next((item for item in event_ids if item != start_event_id), None)
+    if end_event_id is None or len(velocity_by_event[end_event_id]) != 2:
+        return False
+    end_unknown_count = sum(
+        item.known_si_value is None for item in velocity_by_event[end_event_id]
+    )
+    if end_unknown_count not in {1, 2}:
+        return False
+
+    gravity_equation = equations_by_law[gravity_law][0]
+    height_equation = equations_by_law[height_law][0]
+    time_equation = equations_by_law[time_law][0]
+    if (
+        not isinstance(gravity_equation.expression, Equality)
+        or not isinstance(gravity_equation.expression.left, SymbolRef)
+        or not isinstance(gravity_equation.expression.right, Negate)
+        or not isinstance(gravity_equation.expression.right.operand, SymbolRef)
+        or gravity_equation.expression.right.operand.symbol_id
+        != gravity.symbol.symbol_id
+        or gravity_equation.source_quantity_ids
+        != tuple(sorted({
+            gravity.quantity_id,
+            next(
+                (
+                    item.quantity_id
+                    for item in accelerations
+                    if item.symbol.symbol_id
+                    == gravity_equation.expression.left.symbol_id
+                ),
+                "",
+            ),
+        }))
+        or gravity_equation.scope.frame_id != frame_id
+        or gravity_equation.scope.interval_id != interval_id
+        or subject_id not in gravity_equation.scope.entity_ids
+    ):
+        return False
+    vertical_acceleration = next(
+        (
+            item
+            for item in accelerations
+            if item.symbol.symbol_id == gravity_equation.expression.left.symbol_id
+        ),
+        None,
+    )
+    if vertical_acceleration is None:
+        return False
+
+    if (
+        not isinstance(height_equation.expression, Equality)
+        or not isinstance(height_equation.expression.left, SymbolRef)
+        or not isinstance(height_equation.expression.right, Subtract)
+        or not isinstance(height_equation.expression.right.left, SymbolRef)
+        or not isinstance(height_equation.expression.right.right, SymbolRef)
+        or height_equation.scope.entity_ids != (subject_id,)
+        or height_equation.scope.frame_id != frame_id
+        or height_equation.scope.interval_id != interval_id
+        or height_equation.scope.event_id is not None
+        or height_equation.scope.event_ids != event_ids
+    ):
+        return False
+    vertical_displacement = next(
+        (
+            item
+            for item in displacements
+            if item.symbol.symbol_id == height_equation.expression.left.symbol_id
+        ),
+        None,
+    )
+    height_by_symbol = {item.symbol.symbol_id: item for item in heights}
+    end_height = height_by_symbol.get(height_equation.expression.right.left.symbol_id)
+    start_height = height_by_symbol.get(height_equation.expression.right.right.symbol_id)
+    if (
+        vertical_displacement is None
+        or end_height is None
+        or start_height is None
+        or end_height.event_id != end_event_id
+        or start_height.event_id != start_event_id
+        or height_equation.source_quantity_ids
+        != tuple(sorted({
+            vertical_displacement.quantity_id,
+            start_height.quantity_id,
+            end_height.quantity_id,
+        }))
+    ):
+        return False
+
+    vertical_velocity_equation = next(
+        (
+            item
+            for item in equations_by_law[velocity_law]
+            if vertical_acceleration.quantity_id in item.source_quantity_ids
+        ),
+        None,
+    )
+    if (
+        vertical_velocity_equation is None
+        or not isinstance(vertical_velocity_equation.expression, Equality)
+        or not isinstance(vertical_velocity_equation.expression.left, SymbolRef)
+    ):
+        return False
+    vertical_end_velocity = next(
+        (
+            item
+            for item in velocity_by_event[end_event_id]
+            if item.symbol.symbol_id
+            == vertical_velocity_equation.expression.left.symbol_id
+        ),
+        None,
+    )
+    if vertical_end_velocity is None:
+        return False
+    horizontal_end_velocities = tuple(
+        item
+        for item in velocity_by_event[end_event_id]
+        if item is not vertical_end_velocity
+    )
+    horizontal_displacements = tuple(
+        item for item in displacements if item is not vertical_displacement
+    )
+    if len(horizontal_end_velocities) != 1 or len(horizontal_displacements) != 1:
+        return False
+    horizontal_end_velocity = horizontal_end_velocities[0]
+    horizontal_displacement = horizontal_displacements[0]
+    landing_mode = (
+        vertical_displacement.known_si_value is not None
+        and start_height.known_si_value is not None
+        and end_height.known_si_value is not None
+        and vertical_end_velocity.known_si_value is None
+        and horizontal_end_velocity.known_si_value is None
+        and horizontal_displacement.known_si_value is None
+        and end_unknown_count == 2
+    )
+    turnaround_mode = (
+        vertical_displacement.known_si_value is None
+        and start_height.known_si_value is not None
+        and end_height.known_si_value is None
+        and vertical_end_velocity.known_si_value == 0.0
+        and horizontal_end_velocity.known_si_value is None
+        and horizontal_displacement.known_si_value is None
+        and end_unknown_count == 1
+    )
+    if not (landing_mode or turnaround_mode):
+        return False
+
+    if (
+        not isinstance(time_equation.expression, Inequality)
+        or time_equation.expression.relation.value != "gt"
+        or not isinstance(time_equation.expression.left, SymbolRef)
+        or time_equation.expression.left.symbol_id != duration.symbol.symbol_id
+        or not isinstance(time_equation.expression.right, LiteralNode)
+        or time_equation.expression.right.value != 0.0
+        or time_equation.source_quantity_ids != (duration.quantity_id,)
+        or len(time_equation.assumption_ids) != 1
+        or time_equation.scope.entity_ids != (subject_id,)
+        or time_equation.scope.interval_id != interval_id
+    ):
+        return False
+
+    def exact_velocity_expression(equation: object, acceleration: object) -> bool:
+        expression = equation.expression
+        if (
+            not isinstance(expression, Equality)
+            or not isinstance(expression.left, SymbolRef)
+            or not isinstance(expression.right, Add)
+            or len(expression.right.terms) != 2
+        ):
+            return False
+        end_velocity = next(
+            (
+                item
+                for item in velocity_by_event[end_event_id]
+                if item.symbol.symbol_id == expression.left.symbol_id
+            ),
+            None,
+        )
+        if end_velocity is None:
+            return False
+        start_refs = tuple(
+            item
+            for item in expression.right.terms
+            if isinstance(item, SymbolRef)
+        )
+        products = tuple(
+            item for item in expression.right.terms if isinstance(item, Multiply)
+        )
+        if len(start_refs) != 1 or len(products) != 1:
+            return False
+        start_velocity = next(
+            (
+                item
+                for item in velocity_by_event[start_event_id]
+                if item.symbol.symbol_id == start_refs[0].symbol_id
+            ),
+            None,
+        )
+        product = products[0]
+        if (
+            start_velocity is None
+            or len(product.factors) != 2
+            or {
+                item.symbol_id
+                for item in product.factors
+                if isinstance(item, SymbolRef)
+            }
+            != {acceleration.symbol.symbol_id, duration.symbol.symbol_id}
+            or equation.source_quantity_ids
+            != tuple(sorted({
+                acceleration.quantity_id,
+                duration.quantity_id,
+                start_velocity.quantity_id,
+                end_velocity.quantity_id,
+            }))
+            or equation.scope.entity_ids != (subject_id,)
+            or equation.scope.frame_id != frame_id
+            or equation.scope.interval_id != interval_id
+            or equation.scope.event_id is not None
+            or equation.scope.event_ids != event_ids
+        ):
+            return False
+        return True
+
+    def exact_position_expression(equation: object, acceleration: object) -> bool:
+        expression = equation.expression
+        if (
+            not isinstance(expression, Equality)
+            or not isinstance(expression.left, SymbolRef)
+            or not isinstance(expression.right, Add)
+            or len(expression.right.terms) != 2
+        ):
+            return False
+        displacement = next(
+            (
+                item
+                for item in displacements
+                if item.symbol.symbol_id == expression.left.symbol_id
+            ),
+            None,
+        )
+        if displacement is None:
+            return False
+        products = tuple(
+            item for item in expression.right.terms if isinstance(item, Multiply)
+        )
+        if len(products) != 2:
+            return False
+        linear = tuple(
+            item
+            for item in products
+            if len(item.factors) == 2
+            and any(
+                isinstance(factor, SymbolRef)
+                and factor.symbol_id == duration.symbol.symbol_id
+                for factor in item.factors
+            )
+            and any(
+                isinstance(factor, SymbolRef)
+                and factor.symbol_id
+                in {
+                    velocity.symbol.symbol_id
+                    for velocity in velocity_by_event[start_event_id]
+                }
+                for factor in item.factors
+            )
+        )
+        quadratic = tuple(item for item in products if item not in linear)
+        if len(linear) != 1 or len(quadratic) != 1:
+            return False
+        start_velocity = next(
+            (
+                velocity
+                for velocity in velocity_by_event[start_event_id]
+                if any(
+                    isinstance(factor, SymbolRef)
+                    and factor.symbol_id == velocity.symbol.symbol_id
+                    for factor in linear[0].factors
+                )
+            ),
+            None,
+        )
+        q = quadratic[0]
+        literals = tuple(item for item in q.factors if isinstance(item, LiteralNode))
+        acceleration_refs = tuple(
+            item
+            for item in q.factors
+            if isinstance(item, SymbolRef)
+            and item.symbol_id == acceleration.symbol.symbol_id
+        )
+        powers = tuple(item for item in q.factors if isinstance(item, Power))
+        if (
+            start_velocity is None
+            or len(q.factors) != 3
+            or len(literals) != 1
+            or literals[0].value != 0.5
+            or len(acceleration_refs) != 1
+            or len(powers) != 1
+            or not isinstance(powers[0].base, SymbolRef)
+            or powers[0].base.symbol_id != duration.symbol.symbol_id
+            or not isinstance(powers[0].exponent, LiteralNode)
+            or powers[0].exponent.value != 2.0
+            or equation.source_quantity_ids
+            != tuple(sorted({
+                acceleration.quantity_id,
+                displacement.quantity_id,
+                duration.quantity_id,
+                start_velocity.quantity_id,
+            }))
+            or equation.scope.entity_ids != (subject_id,)
+            or equation.scope.frame_id != frame_id
+            or equation.scope.interval_id != interval_id
+            or equation.scope.event_id != start_event_id
+            or equation.scope.event_ids != (start_event_id,)
+        ):
+            return False
+        return True
+
+    velocity_equations = equations_by_law[velocity_law]
+    position_equations = equations_by_law[position_law]
+    for acceleration in accelerations:
+        matching_velocity = tuple(
+            item
+            for item in velocity_equations
+            if acceleration.quantity_id in item.source_quantity_ids
+        )
+        matching_position = tuple(
+            item
+            for item in position_equations
+            if acceleration.quantity_id in item.source_quantity_ids
+        )
+        if (
+            len(matching_velocity) != 1
+            or len(matching_position) != 1
+            or not exact_velocity_expression(matching_velocity[0], acceleration)
+            or not exact_position_expression(matching_position[0], acceleration)
+            or matching_velocity[0].assumption_ids
+            != matching_position[0].assumption_ids
+            or len(matching_velocity[0].assumption_ids) != 1
+        ):
+            return False
+
+    selected_expected = {
+        item.equation_id
+        for law_id in (velocity_law, position_law)
+        for item in equations_by_law[law_id]
+        if any(
+            symbol_id
+            in {
+                symbol.symbol.symbol_id
+                for symbol in graph.symbols
+                if symbol.known_si_value is None
+            }
+            for symbol_id in _ordinary_symbol_ids(item.expression)
+        )
+    }
+    if turnaround_mode:
+        selected_expected.add(height_equation.equation_id)
+    unknown_symbols = {
+        item.symbol.symbol_id
+        for item in graph.symbols
+        if item.known_si_value is None
+    }
+    expected_unknowns = {
+        duration.symbol.symbol_id,
+        horizontal_displacement.symbol.symbol_id,
+        horizontal_end_velocity.symbol.symbol_id,
+    }
+    if landing_mode:
+        expected_unknowns.add(vertical_end_velocity.symbol.symbol_id)
+    else:
+        expected_unknowns.update(
+            {
+                vertical_displacement.symbol.symbol_id,
+                end_height.symbol.symbol_id,
+            }
+        )
+    return (
+        set(graph.selected_equation_ids) == selected_expected
+        and graph.query_symbol_id in unknown_symbols
+        and unknown_symbols == expected_unknowns
+    )
+
 def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
     """Return timed plan events while retaining raw graph boundary scopes."""
 
@@ -861,6 +1407,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
         if (
             _is_static_collision_boundary_graph(graph)
             or _is_static_constant_acceleration_boundary_graph(graph)
+            or _is_static_projectile_boundary_graph(graph)
         )
         else _graph_event_ids(graph)
     )

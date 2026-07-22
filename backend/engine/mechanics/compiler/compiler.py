@@ -9886,10 +9886,39 @@ class MechanicsCompiler:
         equality_ids = tuple(
             item.equation_id for item in component_equations if isinstance(item.expression, Equality)
         )
-        matching_rank = _maximum_matching(equality_ids, incidence_map)
         known_values = {
             item.symbol.symbol_id: item.known_si_value for item in component_symbols
         }
+
+        # Equalities containing no unknowns are deterministic consistency
+        # checks, not additional solve rows.  Keeping them in the graph retains
+        # provenance and independent verification while excluding them from the
+        # closure rank avoids falsely classifying a nonlinear endpoint system as
+        # overdetermined merely because source-grounded relations (for example
+        # a_y=-g or delta_y=h_f-h_0) are also present.
+        known_only_conflicts: list[str] = []
+        known_only_inconclusive = False
+        solving_equality_ids: list[str] = []
+        for equation in component_equations:
+            if not isinstance(equation.expression, Equality):
+                continue
+            if incidence_map.get(equation.equation_id):
+                solving_equality_ids.append(equation.equation_id)
+                continue
+            left = _exact_scalar_value(equation.expression.left, known_values)
+            right = _exact_scalar_value(equation.expression.right, known_values)
+            if left is None or right is None:
+                known_only_inconclusive = True
+            elif left != right:
+                known_only_conflicts.append(equation.equation_id)
+        solving_equality_ids_tuple = tuple(solving_equality_ids)
+        solving_equations = tuple(
+            item
+            for item in component_equations
+            if not isinstance(item.expression, Equality)
+            or item.equation_id in set(solving_equality_ids_tuple)
+        )
+        matching_rank = _maximum_matching(solving_equality_ids_tuple, incidence_map)
         denominator_issue = _denominator_domain_issue(
             component_equations,
             {item.symbol.symbol_id: item for item in component_symbols},
@@ -9898,25 +9927,35 @@ class MechanicsCompiler:
         if denominator_issue is not None:
             return _failure(denominator_issue[0], denominator_issue[1])
         linear_rank, augmented_rank, linear_complete = _linear_analysis(
-            component_equations, unknown_ids, known_values
+            solving_equations, unknown_ids, known_values
         )
         nonlinear_supported = linear_complete or all(
             _supported_non_affine_equation(equation, set(unknown_ids), known_values)
-            for equation in component_equations
+            for equation in solving_equations
             if isinstance(equation.expression, Equality)
         )
         effective_rank = linear_rank if linear_complete else matching_rank
         conflicts = (
-            tuple(sorted(equality_ids))
-            if linear_complete and augmented_rank > linear_rank
-            else tuple()
+            tuple(sorted(known_only_conflicts))
+            if known_only_conflicts
+            else (
+                tuple(sorted(solving_equality_ids_tuple))
+                if linear_complete and augmented_rank > linear_rank
+                else tuple()
+            )
         )
         underdetermined = effective_rank < len(unknown_ids)
-        overdetermined = len(equality_ids) > effective_rank
-        consistency_inconclusive = overdetermined and not linear_complete
-        if nonlinear_supported and not (not linear_complete and overdetermined):
+        overdetermined = len(solving_equality_ids_tuple) > effective_rank
+        consistency_inconclusive = known_only_inconclusive or (
+            overdetermined and not linear_complete
+        )
+        if (
+            nonlinear_supported
+            and not (not linear_complete and overdetermined)
+            and not conflicts
+        ):
             selected, alternatives, branch_exhausted = _closed_sets(
-                component_equations,
+                solving_equations,
                 unknown_ids,
                 incidence_map,
                 known_values,

@@ -29,6 +29,7 @@ from engine.mechanics.laws.base import (
 )
 from engine.mechanics.math_ast import (
     Add,
+    Cos,
     Derivative,
     DimensionVector,
     Divide,
@@ -74,6 +75,9 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("particle_constant_velocity", "kinematics", (QuantityRole.displacement, QuantityRole.velocity, QuantityRole.duration), assumptions=("constant_velocity",), cost=3, hooks=("endpoint_residual",)),
     _rule("particle_constant_acceleration_velocity", "kinematics", (QuantityRole.velocity, QuantityRole.acceleration, QuantityRole.duration), assumptions=("constant_acceleration",), cost=4, hooks=("endpoint_residual",)),
     _rule("particle_constant_acceleration_position", "kinematics", (QuantityRole.displacement, QuantityRole.velocity, QuantityRole.acceleration, QuantityRole.duration), assumptions=("constant_acceleration",), cost=4, hooks=("endpoint_residual",)),
+    _rule("uniform_gravity_acceleration", "kinematics", (QuantityRole.acceleration, QuantityRole.gravity), interactions=(InteractionKind.gravity.value,), cost=2, hooks=("kinematic_residual",)),
+    _rule("particle_height_displacement", "kinematics", (QuantityRole.height, QuantityRole.displacement), cost=2, hooks=("endpoint_residual",)),
+    _rule("elapsed_time_positive", "constraint", (QuantityRole.duration,), assumptions=("strictly_positive_duration",), cost=1, hooks=("domain_residual",)),
     _rule("particle_chain_acceleration", "kinematics", (QuantityRole.position, QuantityRole.velocity, QuantityRole.acceleration), cost=5, hooks=("derivative_residual",)),
     _rule("particle_normal_acceleration", "kinematics", (QuantityRole.speed, QuantityRole.radius, QuantityRole.acceleration), cost=3, hooks=("kinematic_residual",)),
     _rule("particle_newton_second", "newton_second_law", (QuantityRole.mass, QuantityRole.force, QuantityRole.acceleration), generated=(QuantityRole.acceleration,), cost=5, hooks=("force_balance",)),
@@ -423,52 +427,70 @@ def _constant_acceleration_emissions(context: LawContext) -> list[LawEmission]:
                 and q.interval_id == interval.interval_id
                 and q.shape is QuantityShape.scalar
             )
-            if not (len(starts) == len(ends) == len(accelerations) == len(durations) == 1):
+            if len(durations) != 1:
                 continue
-            start, end, acceleration, duration = starts[0], ends[0], accelerations[0], durations[0]
-            if not _shape_compatible(start, end, acceleration) or not all(
-                _component_compatible(start, item) for item in (end, acceleration)
-            ) or not (
-                start.frame_id == end.frame_id == acceleration.frame_id
-                and start.point_id == end.point_id == acceleration.point_id
-            ):
-                continue
-            velocity_change = Add(
-                terms=(
-                    start.expression,
-                    Multiply(
-                        factors=(acceleration.expression, duration.expression),
-                        dimension=end.dimension,
-                    ),
-                ),
-                dimension=end.dimension,
-            )
-            emitted.append(
-                _emit(
-                    context,
-                    "particle_constant_acceleration_velocity",
-                    Equality(left=end.expression, right=velocity_change),
-                    (start, end, acceleration, duration),
-                    assumption_ids=assumptions,
+            duration = durations[0]
+
+            # Pair endpoint quantities by typed component/frame/point scope.  The
+            # previous exact-one implementation was sufficient for a 1-D fixture
+            # but silently prevented one validated particle from carrying the
+            # independent x/y component equations required by projectile motion.
+            # No untyped label or query wording participates in this match.
+            for start in starts:
+                matching_ends = tuple(
+                    item
+                    for item in ends
+                    if _shape_compatible(start, item)
+                    and _component_compatible(start, item)
+                    and item.frame_id == start.frame_id
+                    and item.point_id == start.point_id
                 )
-            )
-            displacements = tuple(
-                q
-                for q in _by_role(context, QuantityRole.displacement)
-                if q.subject_id == subject_id
-                and q.interval_id == interval.interval_id
-                and q.event_id is None
-                and q.shape is start.shape
-            )
-            if len(displacements) == 1:
-                displacement = displacements[0]
-                if not (
-                    displacement.frame_id == start.frame_id == acceleration.frame_id
-                    and displacement.point_id == start.point_id == acceleration.point_id
-                    and _component_compatible(displacement, start)
-                    and _component_compatible(displacement, acceleration)
-                ):
+                matching_accelerations = tuple(
+                    item
+                    for item in accelerations
+                    if _shape_compatible(start, item)
+                    and _component_compatible(start, item)
+                    and item.frame_id == start.frame_id
+                    and item.point_id == start.point_id
+                )
+                if len(matching_ends) != 1 or len(matching_accelerations) != 1:
                     continue
+                end = matching_ends[0]
+                acceleration = matching_accelerations[0]
+                velocity_change = Add(
+                    terms=(
+                        start.expression,
+                        Multiply(
+                            factors=(acceleration.expression, duration.expression),
+                            dimension=end.dimension,
+                        ),
+                    ),
+                    dimension=end.dimension,
+                )
+                emitted.append(
+                    _emit(
+                        context,
+                        "particle_constant_acceleration_velocity",
+                        Equality(left=end.expression, right=velocity_change),
+                        (start, end, acceleration, duration),
+                        assumption_ids=assumptions,
+                    )
+                )
+                displacements = tuple(
+                    q
+                    for q in _by_role(context, QuantityRole.displacement)
+                    if q.subject_id == subject_id
+                    and q.interval_id == interval.interval_id
+                    and q.event_id is None
+                    and q.shape is start.shape
+                    and q.frame_id == start.frame_id
+                    and q.point_id == start.point_id
+                    and _component_compatible(q, start)
+                    and _component_compatible(q, acceleration)
+                )
+                if len(displacements) != 1:
+                    continue
+                displacement = displacements[0]
                 duration_squared = Power(
                     base=duration.expression,
                     exponent=LiteralNode(value=2.0),
@@ -492,6 +514,245 @@ def _constant_acceleration_emissions(context: LawContext) -> list[LawEmission]:
                         "particle_constant_acceleration_position",
                         Equality(left=displacement.expression, right=position_change),
                         (displacement, start, acceleration, duration),
+                        assumption_ids=assumptions,
+                    )
+                )
+    return emitted
+
+
+
+def _projectile_boundary_emissions(context: LawContext) -> list[LawEmission]:
+    """Bind gravity, height change, and strict elapsed time through typed data.
+
+    These relations are reusable endpoint mechanics laws.  They do not inspect
+    untyped labels, metadata, or the requested output.
+    """
+
+    emitted: list[LawEmission] = []
+    intervals = {item.interval_id: item for item in context.motion_intervals}
+
+    # A gravity interaction may expose the positive gravity magnitude and the
+    # particle's signed y-acceleration.  The explicit relation is a_y = -g.
+    for interaction in context.interactions:
+        if interaction.kind is not InteractionKind.gravity:
+            continue
+        linked = _interaction_quantities(context, interaction.interaction_id)
+        gravities = tuple(
+            item
+            for item in linked
+            if item.role is QuantityRole.gravity
+            and item.shape is QuantityShape.scalar
+        )
+        accelerations = tuple(
+            item
+            for item in linked
+            if item.role is QuantityRole.acceleration
+            and item.shape is QuantityShape.scalar
+            and item.component is QuantityComponent.y
+            and item.interval_id == interaction.interval_id
+            and item.frame_id == interaction.frame_id
+        )
+        if len(gravities) != 1 or len(accelerations) != 1:
+            continue
+        gravity, acceleration = gravities[0], accelerations[0]
+        if gravity.dimension != acceleration.dimension:
+            continue
+        emitted.append(
+            _emit(
+                context,
+                "uniform_gravity_acceleration",
+                Equality(
+                    left=acceleration.expression,
+                    right=Negate(
+                        operand=gravity.expression,
+                        dimension=acceleration.dimension,
+                    ),
+                ),
+                (acceleration, gravity),
+                extra_entity_ids=tuple(interaction.participant_ids),
+            )
+        )
+
+    # Height is a scalar vertical coordinate.  For one reciprocal interval,
+    # delta-y equals final height minus initial height.
+    for displacement in _by_role(context, QuantityRole.displacement):
+        if (
+            displacement.shape is not QuantityShape.scalar
+            or displacement.component is not QuantityComponent.y
+            or displacement.interval_id is None
+        ):
+            continue
+        interval = intervals.get(displacement.interval_id)
+        if (
+            interval is None
+            or interval.start_event_id is None
+            or interval.end_event_id is None
+        ):
+            continue
+        starts = tuple(
+            item
+            for item in _by_role(context, QuantityRole.height)
+            if item.subject_id == displacement.subject_id
+            and item.interval_id == displacement.interval_id
+            and item.event_id == interval.start_event_id
+            and item.shape is QuantityShape.scalar
+            and item.dimension == displacement.dimension
+            and item.frame_id == displacement.frame_id
+        )
+        ends = tuple(
+            item
+            for item in _by_role(context, QuantityRole.height)
+            if item.subject_id == displacement.subject_id
+            and item.interval_id == displacement.interval_id
+            and item.event_id == interval.end_event_id
+            and item.shape is QuantityShape.scalar
+            and item.dimension == displacement.dimension
+            and item.frame_id == displacement.frame_id
+        )
+        if len(starts) != 1 or len(ends) != 1:
+            continue
+        emitted.append(
+            _emit(
+                context,
+                "particle_height_displacement",
+                Equality(
+                    left=displacement.expression,
+                    right=Subtract(
+                        left=ends[0].expression,
+                        right=starts[0].expression,
+                        dimension=displacement.dimension,
+                    ),
+                ),
+                (displacement, starts[0], ends[0]),
+            )
+        )
+
+    # Distinct physical boundary events may explicitly authorize t > 0.  This
+    # excludes the launch root from a same-height landing solve without relying
+    # on an answer, a scenario label, or a numerical-nearness heuristic.
+    for duration in _by_role(context, QuantityRole.duration):
+        if duration.shape is not QuantityShape.scalar or duration.interval_id is None:
+            continue
+        interval = intervals.get(duration.interval_id)
+        if (
+            interval is None
+            or interval.start_event_id is None
+            or interval.end_event_id is None
+            or interval.start_event_id == interval.end_event_id
+        ):
+            continue
+        authority = context.approved_assumptions(
+            "strictly_positive_duration",
+            duration.subject_id,
+            duration.interval_id,
+        )
+        if not authority:
+            continue
+        emitted.append(
+            _emit(
+                context,
+                "elapsed_time_positive",
+                Inequality(
+                    relation=InequalityRelation.gt,
+                    left=duration.expression,
+                    right=LiteralNode(value=0.0, dimension=duration.dimension),
+                ),
+                (duration,),
+                assumption_ids=authority,
+            )
+        )
+    return emitted
+
+def _constant_angular_acceleration_emissions(
+    context: LawContext,
+) -> list[LawEmission]:
+    """Emit the endpoint form of dω/dt=α for an evidenced constant-α interval."""
+
+    emitted: list[LawEmission] = []
+    for interval in context.motion_intervals:
+        if interval.start_event_id is None or interval.end_event_id is None:
+            continue
+        for subject_id in interval.subject_ids:
+            assumptions = context.approved_assumptions(
+                "constant_angular_acceleration", subject_id, interval.interval_id
+            )
+            if not assumptions:
+                continue
+            durations = tuple(
+                item
+                for item in _by_role(context, QuantityRole.duration)
+                if item.subject_id == subject_id
+                and item.interval_id == interval.interval_id
+                and item.event_id is None
+                and item.shape is QuantityShape.scalar
+            )
+            if len(durations) != 1:
+                continue
+            duration = durations[0]
+            starts = tuple(
+                item
+                for item in _by_role(context, QuantityRole.angular_velocity)
+                if item.subject_id == subject_id
+                and item.interval_id == interval.interval_id
+                and item.event_id == interval.start_event_id
+                and item.shape is QuantityShape.scalar
+            )
+            ends = tuple(
+                item
+                for item in _by_role(context, QuantityRole.angular_velocity)
+                if item.subject_id == subject_id
+                and item.interval_id == interval.interval_id
+                and item.event_id == interval.end_event_id
+                and item.shape is QuantityShape.scalar
+            )
+            accelerations = tuple(
+                item
+                for item in _by_role(context, QuantityRole.angular_acceleration)
+                if item.subject_id == subject_id
+                and item.interval_id == interval.interval_id
+                and item.event_id is None
+                and item.shape is QuantityShape.scalar
+            )
+            for start in starts:
+                matching_ends = tuple(
+                    item
+                    for item in ends
+                    if item.frame_id == start.frame_id
+                    and item.point_id == start.point_id
+                    and _component_compatible(item, start)
+                )
+                matching_accelerations = tuple(
+                    item
+                    for item in accelerations
+                    if item.frame_id == start.frame_id
+                    and item.point_id == start.point_id
+                    and _component_compatible(item, start)
+                )
+                if len(matching_ends) != 1 or len(matching_accelerations) != 1:
+                    continue
+                end = matching_ends[0]
+                acceleration = matching_accelerations[0]
+                emitted.append(
+                    _emit(
+                        context,
+                        "angular_velocity_derivative",
+                        Equality(
+                            left=end.expression,
+                            right=Add(
+                                terms=(
+                                    start.expression,
+                                    Multiply(
+                                        factors=(
+                                            acceleration.expression,
+                                            duration.expression,
+                                        ),
+                                        dimension=end.dimension,
+                                    ),
+                                ),
+                                dimension=end.dimension,
+                            ),
+                        ),
+                        (start, end, acceleration, duration),
                         assumption_ids=assumptions,
                     )
                 )
@@ -3602,17 +3863,65 @@ def _work_energy_emissions(context: LawContext) -> list[LawEmission]:
                 )
                 if not constant_authority:
                     continue
-                product = (
-                    Dot(left=force.expression, right=displacement.expression, dimension=work.dimension)
-                    if force.shape is QuantityShape.vector
-                    else Multiply(factors=(force.expression, displacement.expression), dimension=work.dimension)
+                linked_ids = next(
+                    (
+                        link
+                        for link in work_links
+                        if {
+                            work.quantity_id,
+                            force.quantity_id,
+                            displacement.quantity_id,
+                        }.issubset(link)
+                    ),
+                    None,
                 )
+                if linked_ids is None:
+                    continue
+                angle_items = tuple(
+                    item
+                    for item in _by_role(context, QuantityRole.angle)
+                    if item.quantity_id in linked_ids
+                    and item.shape is QuantityShape.scalar
+                    and item.dimension == DimensionVector()
+                    and _scope_compatible_without_component(work, item)
+                )
+                if force.shape is QuantityShape.vector:
+                    if angle_items:
+                        # A vector dot product already owns the included angle;
+                        # accepting an extra scalar angle would create two
+                        # competing authorities for the same direction relation.
+                        continue
+                    product = Dot(
+                        left=force.expression,
+                        right=displacement.expression,
+                        dimension=work.dimension,
+                    )
+                    work_quantities = (work, force, displacement)
+                elif len(angle_items) == 1:
+                    angle = angle_items[0]
+                    product = Multiply(
+                        factors=(
+                            force.expression,
+                            displacement.expression,
+                            Cos(argument=angle.expression),
+                        ),
+                        dimension=work.dimension,
+                    )
+                    work_quantities = (work, force, displacement, angle)
+                elif not angle_items:
+                    product = Multiply(
+                        factors=(force.expression, displacement.expression),
+                        dimension=work.dimension,
+                    )
+                    work_quantities = (work, force, displacement)
+                else:
+                    continue
                 emitted.append(
                     _emit(
                         context,
                         "force_work",
                         Equality(left=work.expression, right=product),
-                        (work, force, displacement),
+                        work_quantities,
                         assumption_ids=constant_authority,
                     )
                 )
@@ -7565,6 +7874,8 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_derivative_emissions(context, QuantityRole.angular_velocity, QuantityRole.angular_acceleration, "angular_velocity_derivative"))
     emitted.extend(_constant_velocity_emissions(context))
     emitted.extend(_constant_acceleration_emissions(context))
+    emitted.extend(_projectile_boundary_emissions(context))
+    emitted.extend(_constant_angular_acceleration_emissions(context))
     emitted.extend(_chain_kinematics_emissions(context))
     emitted.extend(_incline_gravity_contact_emissions(context))
     emitted.extend(_horizontal_fixed_contact_emissions(context))
