@@ -3519,6 +3519,395 @@ class _MassivePulleyAtwoodProfile:
 
 
 @dataclass(frozen=True)
+class _Collision1DProfile:
+    system_id: str
+    participant_ids: frozenset[str]
+
+
+def _collision_1d_candidate(ir: MechanicsProblemIRV1) -> bool:
+    """Recognize redundant typed impact signals without consulting the query."""
+
+    has_system_topology = (
+        any(item.primitive is EntityPrimitive.system for item in ir.entities)
+        or any(item.component_of_entity_id is not None for item in ir.entities)
+        or len(ir.entities) >= 3
+    )
+    if not has_system_topology:
+        # Preserve the deliberately broad, evidence-less Stage 0--4 collision
+        # compiler fixture.  The product profile below is the system-scoped
+        # contract and must not retroactively reinterpret that low-level test.
+        return False
+    collision_signals = (
+        any(item.kind is InteractionKind.collision for item in ir.interactions),
+        any(item.kind.value == "collision_start" for item in ir.events)
+        or any(item.kind.value == "collision_end" for item in ir.events),
+        any(
+            item.role is QuantityRole.coefficient_restitution
+            for item in ir.quantities
+        ),
+    )
+    return any(collision_signals)
+
+
+def _collision_1d_contract(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    approved_assumption_ids: Collection[str],
+) -> tuple[_Collision1DProfile | None, CompilerIssue | None]:
+    """Close one evidenced, system-scoped, direct one-dimensional impact."""
+
+    if not _collision_1d_candidate(ir):
+        return None, None
+
+    def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            f"one-dimensional collision topology {detail}",
+            f"queries.{query.query_id}",
+            referenced_id or query.query_id,
+        )
+
+    systems = tuple(
+        item for item in ir.entities if item.primitive is EntityPrimitive.system
+    )
+    particles = tuple(
+        item for item in ir.entities if item.primitive is EntityPrimitive.particle
+    )
+    if (
+        len(ir.entities) != 3
+        or len(systems) != 1
+        or len(particles) != 2
+        or systems[0].component_of_entity_id is not None
+        or any(
+            item.component_of_entity_id != systems[0].entity_id
+            for item in particles
+        )
+        or any(not item.evidence_refs for item in ir.entities)
+    ):
+        return None, failure(
+            "requires one evidenced system containing exactly two evidenced particles"
+        )
+    system_id = systems[0].entity_id
+    participant_ids = frozenset(item.entity_id for item in particles)
+
+    if len(ir.reference_frames) != 1:
+        return None, failure(
+            "requires exactly one evidenced world-origin positive-x Cartesian frame"
+        )
+    frame = ir.reference_frames[0]
+    axis = frame.axes[0] if len(frame.axes) == 1 else None
+    if (
+        frame.frame_type is not ReferenceFrameType.cartesian_1d
+        or not isinstance(frame.origin, IRWorldOrigin)
+        or frame.parent_frame_id is not None
+        or frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id is not None
+        or frame.generalized_coordinate_symbol_ids
+        or axis is None
+        or axis.axis.value != "x"
+        or getattr(axis.direction, "kind", None) != "axis"
+        or getattr(axis.direction, "frame_id", None) != frame.frame_id
+        or getattr(getattr(axis.direction, "axis", None), "value", None) != "x"
+        or getattr(axis.direction, "sign", None) != 1
+        or not frame.evidence_refs
+    ):
+        return None, failure(
+            "requires exactly one evidenced world-origin positive-x Cartesian frame",
+            frame.frame_id,
+        )
+
+    if len(ir.motion_intervals) != 1:
+        return None, failure("requires exactly one evidenced collision interval")
+    interval = ir.motion_intervals[0]
+    if (
+        interval.order != 1
+        or set(interval.subject_ids) != {system_id, *participant_ids}
+        or len(interval.subject_ids) != 3
+        or interval.frame_id != frame.frame_id
+        or interval.start_event_id is None
+        or interval.end_event_id is None
+        or interval.start_event_id == interval.end_event_id
+        or not interval.evidence_refs
+    ):
+        return None, failure(
+            "requires one exact system-and-particles interval with distinct impact boundaries",
+            interval.interval_id,
+        )
+    events = {item.event_id: item for item in ir.events}
+    start = events.get(interval.start_event_id)
+    end = events.get(interval.end_event_id)
+    if (
+        len(events) != 2
+        or start is None
+        or end is None
+        or start.kind.value != "collision_start"
+        or end.kind.value != "collision_end"
+        or any(
+            set(item.subject_ids) != set(participant_ids)
+            or len(item.subject_ids) != 2
+            or item.interval_ids != (interval.interval_id,)
+            or item.time_quantity_id is not None
+            or not item.evidence_refs
+            for item in (start, end)
+        )
+    ):
+        return None, failure(
+            "requires exact evidenced start/end events naming both particles and no event time",
+            interval.interval_id,
+        )
+
+    collisions = tuple(
+        item for item in ir.interactions if item.kind is InteractionKind.collision
+    )
+    if len(ir.interactions) != 1 or len(collisions) != 1:
+        return None, failure("requires exactly one evidenced collision interaction")
+    collision = collisions[0]
+    if (
+        set(collision.participant_ids) != set(participant_ids)
+        or len(collision.participant_ids) != 2
+        or collision.point_ids
+        or collision.frame_id != frame.frame_id
+        or collision.interval_id != interval.interval_id
+        or collision.event_id is not None
+        or not collision.evidence_refs
+    ):
+        return None, failure(
+            "requires one interval-scoped particle-only collision interaction",
+            collision.interaction_id,
+        )
+
+    quantities = {item.quantity_id: item for item in ir.quantities}
+    masses = tuple(
+        item for item in quantities.values() if item.role is QuantityRole.mass
+    )
+    velocities = tuple(
+        item for item in quantities.values() if item.role is QuantityRole.velocity
+    )
+    coefficients = tuple(
+        item
+        for item in quantities.values()
+        if item.role is QuantityRole.coefficient_restitution
+    )
+    if (
+        len(quantities) != 7
+        or len(masses) != 2
+        or len(velocities) != 4
+        or len(coefficients) != 1
+    ):
+        return None, failure(
+            "requires exactly two masses, four boundary velocities, and one restitution coefficient"
+        )
+
+    def exact_source_scalar(item: IRQuantity) -> bool:
+        return (
+            item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.provenance is Provenance.explicit_source
+            and type(item.si_value) is float
+            and math.isfinite(item.si_value)
+            and bool(item.evidence_refs)
+            and item.assumption_policy_ref is None
+            and item.correction_id is None
+        )
+
+    mass_by_subject = {item.subject_id: item for item in masses}
+    if (
+        set(mass_by_subject) != set(participant_ids)
+        or len(mass_by_subject) != 2
+        or any(
+            not exact_source_scalar(item)
+            or item.point_id is not None
+            or item.frame_id is not None
+            or item.interval_id is not None
+            or item.event_id is not None
+            or item.component
+            not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            or item.direction is not None
+            or item.dimension != DimensionVector(mass=1)
+            for item in masses
+        )
+    ):
+        return None, failure("requires one exact unscoped source mass per particle")
+    nonpositive_mass = next((item for item in masses if item.si_value <= 0.0), None)
+    if nonpositive_mass is not None:
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "one-dimensional collision masses must be positive",
+            f"quantities.{nonpositive_mass.quantity_id}.si_value",
+            nonpositive_mass.quantity_id,
+        )
+
+    def exact_velocity_scope(item: IRQuantity, event_id: str) -> bool:
+        return (
+            item.subject_id in participant_ids
+            and item.point_id is None
+            and item.frame_id == frame.frame_id
+            and item.interval_id == interval.interval_id
+            and item.event_id == event_id
+            and item.component is QuantityComponent.x
+            and item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and item.dimension == DimensionVector(length=1, time=-1)
+            and bool(item.evidence_refs)
+            and item.assumption_policy_ref is None
+            and item.correction_id is None
+            and _exact_axis_direction(
+                item,
+                frame_id=frame.frame_id,
+                axis="x",
+                sign=getattr(item.direction, "sign", 0),
+            )
+            and getattr(item.direction, "sign", None) in {-1, 1}
+        )
+
+    before = tuple(item for item in velocities if item.event_id == start.event_id)
+    after = tuple(item for item in velocities if item.event_id == end.event_id)
+    if (
+        len(before) != 2
+        or len(after) != 2
+        or {item.subject_id for item in before} != set(participant_ids)
+        or {item.subject_id for item in after} != set(participant_ids)
+        or any(
+            not exact_velocity_scope(item, start.event_id)
+            or not exact_source_scalar(item)
+            or item.si_value < 0.0
+            for item in before
+        )
+        or any(
+            not exact_velocity_scope(item, end.event_id)
+            or item.provenance is not Provenance.inferred
+            or item.si_value is not None
+            or getattr(item.direction, "sign", None) != 1
+            for item in after
+        )
+    ):
+        return None, failure(
+            "requires one source-backed signed pre-impact and one inferred algebraic post-impact x velocity per particle"
+        )
+    signed_before = tuple(
+        item.si_value * getattr(item.direction, "sign", 1) for item in before
+    )
+    if signed_before[0] == signed_before[1]:
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "a collision-start event requires distinct pre-impact particle velocities",
+            f"events.{start.event_id}",
+            start.event_id,
+        )
+
+    coefficient = coefficients[0]
+    if (
+        not exact_source_scalar(coefficient)
+        or coefficient.subject_id != system_id
+        or coefficient.point_id is not None
+        or coefficient.frame_id != frame.frame_id
+        or coefficient.interval_id != interval.interval_id
+        or coefficient.event_id is not None
+        or coefficient.component
+        not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        or coefficient.direction is not None
+        or coefficient.dimension != DimensionVector()
+    ):
+        return None, failure(
+            "requires one exact source-backed system restitution coefficient",
+            coefficient.quantity_id,
+        )
+    if not 0.0 <= coefficient.si_value <= 1.0:
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "one-dimensional collision restitution must lie in the closed interval [0, 1]",
+            f"quantities.{coefficient.quantity_id}.si_value",
+            coefficient.quantity_id,
+        )
+
+    expected_quantity_ids = set(quantities)
+    if (
+        set(collision.quantity_ids) != expected_quantity_ids
+        or len(collision.quantity_ids) != len(expected_quantity_ids)
+    ):
+        return None, failure(
+            "requires the collision interaction to bind the exact seven-quantity inventory",
+            collision.interaction_id,
+        )
+
+    assumptions = tuple(ir.assumptions)
+    isolation = assumptions[0] if len(assumptions) == 1 else None
+    if (
+        isolation is None
+        or isolation.kind != "external_impulse_negligible"
+        or isolation.subject_id != system_id
+        or isolation.interval_id != interval.interval_id
+        or isolation.disposition is not AssumptionDisposition.approved
+        or isolation.proposed_role is not None
+        or isolation.proposed_value is not None
+        or isolation.proposed_unit is not None
+        or not isolation.evidence_refs
+        or isolation.assumption_id not in set(approved_assumption_ids)
+    ):
+        return None, failure(
+            "requires one externally approved, evidenced, system-scoped negligible-impulse assumption",
+            system_id,
+        )
+
+    after_by_id = {item.quantity_id: item for item in after}
+    query_quantity = after_by_id.get(query.target.target_quantity_id or "")
+    try:
+        normalized_query_unit = normalize_quantity(
+            "1",
+            query.output_unit,
+            query.shape,
+            query.output_dimension,
+        )
+    except Exception:
+        normalized_query_unit = None
+    figure_dependency = ir.figure_dependency
+    if (
+        query_quantity is None
+        or normalized_query_unit is None
+        or normalized_query_unit.dimension != query_quantity.dimension
+        or query.shape is not QuantityShape.scalar
+        or query.target.role is not QuantityRole.velocity
+        or query.target.subject_id != query_quantity.subject_id
+        or query.target.point_id is not None
+        or query.target.frame_id != frame.frame_id
+        or query.target.interval_id != interval.interval_id
+        or query.target.event_id != end.event_id
+        or query.target.component is not QuantityComponent.x
+        or query.target.direction != query_quantity.direction
+        or query.output_dimension != query_quantity.dimension
+        or not query.evidence_refs
+        or len(ir.queries) != 1
+        or ir.points
+        or ir.geometry
+        or ir.constraints
+        or ir.state_conditions
+        or ir.principle_hints
+        or ir.ambiguities
+        or ir.unsupported_features
+        or figure_dependency.level.value != "none"
+        or figure_dependency.missing_information
+        or figure_dependency.evidence_refs
+        or {item.symbol_id for item in ir.symbols}
+        != {
+            item.symbol_id
+            for item in quantities.values()
+            if item.symbol_id is not None
+        }
+    ):
+        return None, failure(
+            "contains extra client authority, symbols, topology, or an inexact post-impact velocity query",
+            query.query_id,
+        )
+    return (
+        _Collision1DProfile(
+            system_id=system_id,
+            participant_ids=participant_ids,
+        ),
+        None,
+    )
+
+
+@dataclass(frozen=True)
 class _VerticalCircleProfile:
     mode: str
     location: str
@@ -9181,6 +9570,18 @@ class MechanicsCompiler:
         )
         if deferred_issue is not None:
             return _failure(CompilerStatus.unsupported, deferred_issue)
+        collision_1d_profile, collision_1d_issue = _collision_1d_contract(
+            safe_ir,
+            query,
+            authority.approved_assumption_ids,
+        )
+        if collision_1d_issue is not None:
+            status = (
+                CompilerStatus.invalid
+                if collision_1d_issue.code is CompilerIssueCode.invalid_domain
+                else CompilerStatus.unsupported
+            )
+            return _failure(status, collision_1d_issue)
         vertical_circle_profile, vertical_circle_issue = (
             _vertical_circle_contract(
                 safe_ir,

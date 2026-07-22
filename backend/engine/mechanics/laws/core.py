@@ -3916,14 +3916,62 @@ def _momentum_emissions(context: LawContext) -> list[LawEmission]:
             and _component_compatible(before[0], after[1])
         ):
             continue
+        common_system_ids = tuple(
+            sorted(
+                entity.entity_id
+                for entity in context.entities
+                if entity.primitive is EntityPrimitive.system
+                and all(
+                    next(
+                        (
+                            participant_entity.component_of_entity_id
+                            for participant_entity in context.entities
+                            if participant_entity.entity_id == participant_id
+                        ),
+                        None,
+                    )
+                    == entity.entity_id
+                    for participant_id in participants
+                )
+            )
+        )
+        structural_evidence = tuple(
+            sorted(
+                {
+                    evidence_id
+                    for record in (
+                        *(
+                            entity
+                            for entity in context.entities
+                            if entity.entity_id
+                            in {*participants, *common_system_ids}
+                        ),
+                        *(
+                            frame
+                            for frame in context.reference_frames
+                            if frame.frame_id == interaction.frame_id
+                        ),
+                        interval,
+                        *(
+                            event
+                            for event in context.events
+                            if event.event_id in {*start_events, *end_events}
+                        ),
+                        interaction,
+                    )
+                    for evidence_id in record.evidence_refs
+                }
+            )
+        )
+        conservation_subject_ids = common_system_ids or participants
         conservation_authority = tuple(
             sorted(
                 {
                     assumption_id
-                    for participant_id in participants
+                    for subject_id in conservation_subject_ids
                     for assumption_id in context.approved_assumptions(
                         "external_impulse_negligible",
-                        participant_id,
+                        subject_id,
                         interaction.interval_id,
                     )
                 }
@@ -3932,14 +3980,24 @@ def _momentum_emissions(context: LawContext) -> list[LawEmission]:
         if conservation_authority:
             before_sum = Add(
                 terms=tuple(
-                    Multiply(factors=(mass.expression, velocity.expression))
+                    Multiply(factors=(mass.expression, _signed(velocity)))
                     for mass, velocity in zip(masses, before)
                 )
             )
             after_sum = Add(
                 terms=tuple(
-                    Multiply(factors=(mass.expression, velocity.expression))
+                    Multiply(factors=(mass.expression, _signed(velocity)))
                     for mass, velocity in zip(masses, after)
+                )
+            )
+            conservation_evidence = tuple(
+                sorted(
+                    {
+                        evidence_id
+                        for assumption in context.assumptions
+                        if assumption.assumption_id in conservation_authority
+                        for evidence_id in assumption.evidence_refs
+                    }
                 )
             )
             emitted.append(
@@ -3949,7 +4007,10 @@ def _momentum_emissions(context: LawContext) -> list[LawEmission]:
                     Equality(left=before_sum, right=after_sum),
                     tuple((*masses, *before, *after)),
                     assumption_ids=conservation_authority,
-                    extra_entity_ids=participants,
+                    extra_entity_ids=tuple((*participants, *common_system_ids)),
+                    extra_evidence_ids=tuple(
+                        (*structural_evidence, *conservation_evidence)
+                    ),
                 )
             )
         coefficients = tuple(
@@ -3961,8 +4022,8 @@ def _momentum_emissions(context: LawContext) -> list[LawEmission]:
             and q.interval_id in {None, interaction.interval_id}
         )
         if len(coefficients) == 1:
-            separation = Subtract(left=after[1].expression, right=after[0].expression)
-            approach = Subtract(left=before[1].expression, right=before[0].expression)
+            separation = Subtract(left=_signed(after[1]), right=_signed(after[0]))
+            approach = Subtract(left=_signed(before[1]), right=_signed(before[0]))
             restitution = Negate(
                 operand=Multiply(factors=(coefficients[0].expression, approach)),
             )
@@ -3972,7 +4033,8 @@ def _momentum_emissions(context: LawContext) -> list[LawEmission]:
                     "direct_restitution",
                     Equality(left=separation, right=restitution),
                     tuple((*before, *after, coefficients[0])),
-                    extra_entity_ids=participants,
+                    extra_entity_ids=tuple((*participants, *common_system_ids)),
+                    extra_evidence_ids=structural_evidence,
                 )
             )
     return emitted

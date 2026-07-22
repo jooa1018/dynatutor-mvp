@@ -12,7 +12,7 @@ from .contracts import (
     SolvePlan,
     SolverBudget,
     _graph_evidence_ids,
-    _graph_event_ids,
+    _graph_plan_event_ids,
     _graph_structure,
     _graph_unknown_ids,
     numeric_fallback_for_structure,
@@ -69,7 +69,7 @@ def plan_equation_graph(
             initial_condition_ids=tuple(sorted(
                 item.condition_id for item in graph.initial_conditions
             )),
-            event_ids=_graph_event_ids(graph),
+            event_ids=_graph_plan_event_ids(graph),
             allowed_source_evidence_ids=_graph_evidence_ids(graph),
             unknown_symbol_ids=unknown_ids,
             known_symbol_ids=tuple(sorted(

@@ -10,6 +10,7 @@ from __future__ import annotations
 from enum import Enum
 import hashlib
 import json
+import math
 from typing import Annotated, Iterable, Literal, TypeAlias, Union
 
 from pydantic import (
@@ -30,6 +31,7 @@ from engine.mechanics.math_ast import (
     Derivative,
     Divide,
     Dot,
+    DimensionVector,
     Equality,
     Inequality,
     Integral,
@@ -185,6 +187,420 @@ def _graph_event_ids(graph: EquationGraph) -> tuple[str, ...]:
         ids.extend(application.scope.event_ids)
     ids.extend(item.event_id for item in graph.symbols if item.event_id is not None)
     return _sorted_unique(ids)
+
+
+def _is_static_collision_boundary_graph(graph: EquationGraph) -> bool:
+    """Recognize only the closed algebraic before/after impact boundary graph.
+
+    Collision boundary labels are provenance, not timed root events.  This
+    predicate is intentionally graph-only and exact: every near miss retains
+    the ordinary timed-event fail-closed behavior.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    expected_laws = {
+        "system_momentum_conservation",
+        "direct_restitution",
+    }
+    if (
+        len(event_ids) != 2
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 2
+        or len(graph.applications) != 2
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or any(not isinstance(item.expression, Equality) for item in graph.equations)
+        or set(graph.selected_equation_ids)
+        != {item.equation_id for item in graph.equations}
+        or graph.rank.equality_count != 2
+        or graph.rank.inequality_count != 0
+        or graph.rank.unknown_count != 2
+        or graph.rank.structural_rank != 2
+        or graph.rank.underdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    scoped = (*graph.equations, *graph.applications)
+    scope_pairs = {
+        (item.scope.frame_id, item.scope.interval_id) for item in scoped
+    }
+    if (
+        len(scope_pairs) != 1
+        or next(iter(scope_pairs))[0] is None
+        or next(iter(scope_pairs))[1] is None
+        or any(
+            item.scope.event_id is not None
+            or item.scope.event_ids != event_ids
+            for item in scoped
+        )
+    ):
+        return False
+    frame_id, interval_id = next(iter(scope_pairs))
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    if any(
+        application.equation_ids != (equations_by_law[law_id].equation_id,)
+        or application.source_quantity_ids
+        != equations_by_law[law_id].source_quantity_ids
+        or application.assumption_ids != equations_by_law[law_id].assumption_ids
+        or application.constraint_ids
+        or equations_by_law[law_id].constraint_ids
+        or application.generated_unknown_symbol_ids
+        or equations_by_law[law_id].generated_unknown_symbol_ids
+        or not application.source_evidence_ids
+        or not equations_by_law[law_id].source_evidence_ids
+        for law_id, application in applications_by_law.items()
+    ):
+        return False
+    momentum = equations_by_law["system_momentum_conservation"]
+    restitution = equations_by_law["direct_restitution"]
+    if (
+        len(momentum.assumption_ids) != 1
+        or restitution.assumption_ids
+        or momentum.complexity_cost != 6
+        or restitution.complexity_cost != 5
+        or momentum.dimension != DimensionVector(mass=1, length=1, time=-1)
+        or restitution.dimension != DimensionVector(length=1, time=-1)
+    ):
+        return False
+
+    roles = [item.quantity_role for item in graph.symbols]
+    if (
+        len(graph.symbols) != 7
+        or roles.count("mass") != 2
+        or roles.count("velocity") != 4
+        or roles.count("coefficient_restitution") != 1
+        or any(role in {"time", "duration"} for role in roles)
+        or any(item.generated or item.quantity_id is None for item in graph.symbols)
+    ):
+        return False
+    masses = tuple(item for item in graph.symbols if item.quantity_role == "mass")
+    velocities = tuple(
+        item for item in graph.symbols if item.quantity_role == "velocity"
+    )
+    coefficients = tuple(
+        item
+        for item in graph.symbols
+        if item.quantity_role == "coefficient_restitution"
+    )
+    participant_ids = {item.subject_id for item in masses}
+    if (
+        None in participant_ids
+        or len(participant_ids) != 2
+        or any(
+            item.known_si_value is None
+            or item.event_id is not None
+            or item.frame_id is not None
+            or item.interval_id is not None
+            for item in masses
+        )
+        or len(coefficients) != 1
+        or coefficients[0].known_si_value is None
+        or coefficients[0].event_id is not None
+        or coefficients[0].frame_id != frame_id
+        or coefficients[0].interval_id != interval_id
+        or any(
+            item.subject_id not in participant_ids
+            or item.frame_id != frame_id
+            or item.interval_id != interval_id
+            or item.event_id not in event_ids
+            for item in velocities
+        )
+    ):
+        return False
+    velocity_by_event = {
+        event_id: tuple(item for item in velocities if item.event_id == event_id)
+        for event_id in event_ids
+    }
+    if any(
+        len(items) != 2
+        or {item.subject_id for item in items} != participant_ids
+        for items in velocity_by_event.values()
+    ):
+        return False
+    known_events = tuple(
+        event_id
+        for event_id, items in velocity_by_event.items()
+        if all(item.known_si_value is not None for item in items)
+    )
+    unknown_events = tuple(
+        event_id
+        for event_id, items in velocity_by_event.items()
+        if all(item.known_si_value is None for item in items)
+    )
+    if len(known_events) != 1 or len(unknown_events) != 1:
+        return False
+    unknown_symbols = {
+        item.symbol.symbol_id for item in velocity_by_event[unknown_events[0]]
+    }
+    if (
+        graph.query_symbol_id not in unknown_symbols
+        or _graph_unknown_ids(graph) != tuple(sorted(unknown_symbols))
+    ):
+        return False
+
+    mass_quantity_ids = {item.quantity_id for item in masses}
+    velocity_quantity_ids = {item.quantity_id for item in velocities}
+    coefficient_quantity_id = coefficients[0].quantity_id
+    if (
+        set(momentum.source_quantity_ids)
+        != mass_quantity_ids | velocity_quantity_ids
+        or len(momentum.source_quantity_ids) != 6
+        or set(restitution.source_quantity_ids)
+        != velocity_quantity_ids | {coefficient_quantity_id}
+        or len(restitution.source_quantity_ids) != 5
+        or _ordinary_symbol_ids(momentum.expression)
+        != {
+            item.symbol.symbol_id for item in (*masses, *velocities)
+        }
+        or _ordinary_symbol_ids(restitution.expression)
+        != {
+            item.symbol.symbol_id for item in (*velocities, *coefficients)
+        }
+    ):
+        return False
+
+    if not (
+        isinstance(momentum.expression.left, Add)
+        and isinstance(momentum.expression.right, Add)
+        and len(momentum.expression.left.terms) == 2
+        and len(momentum.expression.right.terms) == 2
+        and all(
+            isinstance(term, Multiply) and len(term.factors) == 2
+            for term in (
+                *momentum.expression.left.terms,
+                *momentum.expression.right.terms,
+            )
+        )
+        and isinstance(restitution.expression.left, Subtract)
+        and isinstance(restitution.expression.right, Negate)
+        and isinstance(restitution.expression.right.operand, Multiply)
+        and len(restitution.expression.right.operand.factors) == 2
+        and any(
+            isinstance(item, Subtract)
+            for item in restitution.expression.right.operand.factors
+        )
+        and any(
+            isinstance(item, SymbolRef)
+            and item.symbol_id == coefficients[0].symbol.symbol_id
+            for item in restitution.expression.right.operand.factors
+        )
+    ):
+        return False
+
+    # Exact compiler-generated topology and provenance mirror.  Law labels and
+    # symbol-set equality are not sufficient authority for this waiver.
+    entity_ids = momentum.scope.entity_ids
+    if (
+        len(entity_ids) != 3
+        or momentum.scope.point_ids
+        or restitution.scope != momentum.scope
+        or any(
+            application.scope != equations_by_law[law_id].scope
+            or application.source_evidence_ids
+            != equations_by_law[law_id].source_evidence_ids
+            or application.complexity_cost
+            != equations_by_law[law_id].complexity_cost
+            for law_id, application in applications_by_law.items()
+        )
+        or graph.rank.overdetermined
+    ):
+        return False
+
+    mass_dimension = DimensionVector(mass=1)
+    velocity_dimension = DimensionVector(length=1, time=-1)
+    scalar_nodes = all(
+        item.symbol.shape.value == "scalar"
+        and item.point_id is None
+        and item.symbol.vector_length is None
+        for item in graph.symbols
+    )
+    coefficient = coefficients[0]
+    system_ids = set(entity_ids) - participant_ids
+    if (
+        not scalar_nodes
+        or len(system_ids) != 1
+        or coefficient.subject_id not in system_ids
+        or coefficient.symbol.dimension != DimensionVector()
+        or type(coefficient.known_si_value) is not float
+        or not math.isfinite(coefficient.known_si_value)
+        or not 0.0 <= coefficient.known_si_value <= 1.0
+        or any(
+            item.symbol.dimension != mass_dimension
+            or type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+            or item.known_si_value <= 0.0
+            for item in masses
+        )
+        or any(item.symbol.dimension != velocity_dimension for item in velocities)
+        or any(
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+            or item.known_si_value < 0.0
+            for item in velocity_by_event[known_events[0]]
+        )
+    ):
+        return False
+
+    exact_incidence = {
+        (equation.equation_id, symbol_id)
+        for equation in graph.equations
+        for symbol_id in unknown_symbols
+    }
+    if {
+        (edge.equation_id, edge.symbol_id) for edge in graph.incidence
+    } != exact_incidence or len(graph.incidence) != 4:
+        return False
+
+    symbol_nodes = {
+        item.symbol.symbol_id: item for item in graph.symbols
+    }
+
+    def signed_symbol(node: MathNode) -> tuple[str, int] | None:
+        sign = 1
+        if isinstance(node, Negate):
+            sign = -1
+            node = node.operand
+            if isinstance(node, Negate):
+                return None
+        if not isinstance(node, SymbolRef):
+            return None
+        symbol_node = symbol_nodes.get(node.symbol_id)
+        if symbol_node is None or node.dimension != symbol_node.symbol.dimension:
+            return None
+        return node.symbol_id, sign
+
+    def momentum_side(
+        expression: MathNode,
+        event_id: str,
+    ) -> dict[str, tuple[str, str, int]] | None:
+        if not isinstance(expression, Add) or len(expression.terms) != 2:
+            return None
+        result: dict[str, tuple[str, str, int]] = {}
+        for term in expression.terms:
+            if not isinstance(term, Multiply) or len(term.factors) != 2:
+                return None
+            direct = tuple(
+                item for item in term.factors if isinstance(item, SymbolRef)
+            )
+            mass_refs = tuple(
+                item
+                for item in direct
+                if symbol_nodes.get(item.symbol_id) in masses
+            )
+            if len(mass_refs) != 1:
+                return None
+            mass_node = symbol_nodes[mass_refs[0].symbol_id]
+            velocity_factor = next(
+                (item for item in term.factors if item is not mass_refs[0]),
+                None,
+            )
+            signed = signed_symbol(velocity_factor) if velocity_factor is not None else None
+            if signed is None:
+                return None
+            velocity_node = symbol_nodes.get(signed[0])
+            if (
+                velocity_node not in velocities
+                or velocity_node.event_id != event_id
+                or velocity_node.subject_id != mass_node.subject_id
+                or mass_node.subject_id in result
+            ):
+                return None
+            result[mass_node.subject_id] = (
+                mass_refs[0].symbol_id,
+                signed[0],
+                signed[1],
+            )
+        return result
+
+    known_side = momentum_side(momentum.expression.left, known_events[0])
+    unknown_side = momentum_side(momentum.expression.right, unknown_events[0])
+    if (
+        known_side is None
+        or unknown_side is None
+        or set(known_side) != participant_ids
+        or set(unknown_side) != participant_ids
+        or any(
+            known_side[subject_id][0] != unknown_side[subject_id][0]
+            or unknown_side[subject_id][2] != 1
+            for subject_id in participant_ids
+        )
+    ):
+        return False
+
+    def velocity_difference(
+        expression: MathNode,
+        event_id: str,
+    ) -> tuple[tuple[str, int], tuple[str, int]] | None:
+        if not isinstance(expression, Subtract):
+            return None
+        left = signed_symbol(expression.left)
+        right = signed_symbol(expression.right)
+        if left is None or right is None:
+            return None
+        left_node = symbol_nodes.get(left[0])
+        right_node = symbol_nodes.get(right[0])
+        if (
+            left_node not in velocities
+            or right_node not in velocities
+            or left_node.event_id != event_id
+            or right_node.event_id != event_id
+            or left_node.subject_id == right_node.subject_id
+        ):
+            return None
+        # The signs are part of the compiler-emitted physical components and
+        # must agree subject-by-subject across the two boundary differences.
+        return (
+            (left_node.subject_id, left[1]),
+            (right_node.subject_id, right[1]),
+        )
+
+    left_order = velocity_difference(
+        restitution.expression.left,
+        unknown_events[0],
+    )
+    right = restitution.expression.right
+    if not isinstance(right, Negate) or not isinstance(right.operand, Multiply):
+        return False
+    factors = right.operand.factors
+    if len(factors) != 2:
+        return False
+    coefficient_factors = tuple(
+        item
+        for item in factors
+        if isinstance(item, SymbolRef)
+        and item.symbol_id == coefficient.symbol.symbol_id
+    )
+    difference_factors = tuple(item for item in factors if isinstance(item, Subtract))
+    if len(coefficient_factors) != 1 or len(difference_factors) != 1:
+        return False
+    right_order = velocity_difference(difference_factors[0], known_events[0])
+    if left_order is None or right_order is None:
+        return False
+    if (
+        tuple(item[0] for item in left_order)
+        != tuple(item[0] for item in right_order)
+        or any(
+            sign != unknown_side[subject_id][2]
+            for subject_id, sign in left_order
+        )
+        or any(
+            sign != known_side[subject_id][2]
+            for subject_id, sign in right_order
+        )
+    ):
+        return False
+    return True
+
+
+def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
+    """Return timed plan events while retaining raw graph boundary scopes."""
+
+    return () if _is_static_collision_boundary_graph(graph) else _graph_event_ids(graph)
 
 
 def _graph_evidence_ids(graph: EquationGraph) -> tuple[str, ...]:
@@ -453,7 +869,7 @@ class SolvePlan(FrozenModel):
         )
         expected_constraints = _sorted_unique(constraint_ids)
         expected_conditions = _sorted_unique(condition_ids)
-        expected_events = _graph_event_ids(self.graph)
+        expected_events = _graph_plan_event_ids(self.graph)
         expected_evidence = _graph_evidence_ids(self.graph)
         expected_unknowns = _graph_unknown_ids(self.graph)
         expected_known = _sorted_unique(
