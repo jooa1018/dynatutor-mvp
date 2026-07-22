@@ -27,7 +27,10 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The release job includes the full slow suite and balanced PR performance
+    # comparison; allow those required gates to complete without loosening any
+    # test or performance budget.
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: backend
