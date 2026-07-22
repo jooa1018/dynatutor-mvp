@@ -1,4 +1,4 @@
-name: Phase 56 Entry 11 acceptance worker
+name: Phase 56 Entry 12 acceptance worker
 
 on:
   pull_request:
@@ -9,10 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  entry11-acceptance:
+  entry12-acceptance:
     if: github.event.pull_request.head.ref == 'codex/phase56-entry11-diagnostic'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Check out diagnostic control branch
         uses: actions/checkout@v6
@@ -23,50 +23,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected=f66f12bf7a46b885d37615e0bfe6f5f60a342475
+          expected=fbe6a8ad88c87d3bea378e498fef4d199576dd4e
           remote_head="$(git ls-remote origin refs/heads/codex/phase56-generic-mechanics-engine | cut -f1)"
           test "$remote_head" = "$expected"
           git checkout --detach "$expected"
-          mkdir -p phase56-entry11-evidence
-          printf '%s\n' "$remote_head" > phase56-entry11-evidence/input-head.txt
-      - name: Apply the proven mixed-unit repair
+          mkdir -p phase56-entry12-evidence
+          printf '%s\n' "$remote_head" > phase56-entry12-evidence/input-head.txt
+      - name: Apply exact Entry 12 patch
         shell: bash
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          units = Path('backend/engine/mechanics/units.py')
-          text = units.read_text()
-          old = '    "m/s": _spec("meter/second", "1", _DV), "m/sec": _spec("meter/second", "1", _DV), "mps": _spec("meter/second", "1", _DV),\n'
-          new = old + '    "cm/s": _spec("centimeter/second", "1", _DV), "cm/sec": _spec("centimeter/second", "1", _DV),\n'
-          if text.count(old) != 1 or '"cm/s": _spec("centimeter/second"' in text:
-              raise SystemExit('unexpected mechanics unit whitelist state')
-          units.write_text(text.replace(old, new, 1))
-
-          evidence = Path('backend/engine/textbook_parser/evidence_alignment.py')
-          text = evidence.read_text()
-          old_alias = '    "km/h": "velocity",\n'
-          old_tokens = '            "rad/s2", "rad/s²", "m/s", "m·s^-1", "m*s^-1", "km/h",\n'
-          if text.count(old_alias) != 1 or text.count(old_tokens) != 1 or '    "cm/s": "velocity",' in text:
-              raise SystemExit('unexpected evidence unit whitelist state')
-          text = text.replace(old_alias, old_alias + '    "cm/s": "velocity",\n', 1)
-          text = text.replace(old_tokens, '            "rad/s2", "rad/s²", "m/s", "m·s^-1", "m*s^-1", "km/h", "cm/s",\n', 1)
-          evidence.write_text(text)
-
-          test_file = Path('backend/tests/test_phase56_mechanics_normalization.py')
-          text = test_file.read_text()
-          old_cases = '    ("36", "km/h", DimensionVector(length=1, time=-1), 10.0, "m*s^-1"),\n    ("100", "cm/s^2", DimensionVector(length=1, time=-2), 1.0, "m*s^-2"),\n'
-          new_cases = '    ("36", "km/h", DimensionVector(length=1, time=-1), 10.0, "m*s^-1"),\n    ("100", "cm/s", DimensionVector(length=1, time=-1), 1.0, "m*s^-1"),\n    ("100", "cm/s^2", DimensionVector(length=1, time=-2), 1.0, "m*s^-2"),\n'
-          if text.count(old_cases) != 1:
-              raise SystemExit('unexpected normalization test state')
-          test_file.write_text(text.replace(old_cases, new_cases, 1))
-          PY
+          set -euo pipefail
+          printf '%s' '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' | base64 -d | gzip -d > /tmp/entry12.patch
+          git apply --check /tmp/entry12.patch
+          git apply /tmp/entry12.patch
           git diff --check
-          git diff -- \
-            backend/engine/mechanics/units.py \
-            backend/engine/textbook_parser/evidence_alignment.py \
-            backend/tests/test_phase56_mechanics_normalization.py \
-            > phase56-entry11-evidence/repair.diff
+          git diff > phase56-entry12-evidence/entry12.diff
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
         with:
@@ -77,46 +48,31 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements-lock.txt
-      - name: Compile changed and Entry 11 connected modules
+      - name: Compile changed and connected modules
         shell: bash
         run: |
           python -m py_compile \
-            backend/engine/mechanics/units.py \
-            backend/engine/textbook_parser/evidence_alignment.py \
-            backend/engine/mechanics/compiler/compiler.py \
-            backend/engine/mechanics/laws/core.py \
             backend/engine/mechanics/solver/contracts.py \
-            backend/engine/mechanics/solver/planner.py \
-            backend/tests/test_phase56_mechanics_normalization.py \
-            backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
-            2>&1 | tee phase56-entry11-evidence/py-compile.log
-      - name: Run unit and evidence normalization regression
-        shell: bash
-        run: |
-          set -o pipefail
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-          PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
-          python -m pytest -q -o addopts= \
-            backend/tests/test_phase56_mechanics_normalization.py \
-            2>&1 | tee phase56-entry11-evidence/normalization.log
-      - name: Run exact Entry 11 slow 12
-        shell: bash
-        run: |
-          set -o pipefail
-          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
-          PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
-          python -m pytest -q -o addopts= -m slow \
-            backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
-            2>&1 | tee phase56-entry11-evidence/slow-12.log
-      - name: Run exact Entry 11 fast 47
+            backend/tests/test_phase56_mechanics_constant_acceleration_same_fixture_parity.py \
+            2>&1 | tee phase56-entry12-evidence/py-compile.log
+      - name: Run Entry 12 focused fast
         shell: bash
         run: |
           set -o pipefail
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
           PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
           python -m pytest -q -o addopts= -m 'not slow' \
-            backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
-            2>&1 | tee phase56-entry11-evidence/fast-47.log
+            backend/tests/test_phase56_mechanics_constant_acceleration_same_fixture_parity.py \
+            2>&1 | tee phase56-entry12-evidence/fast.log
+      - name: Run Entry 12 focused slow
+        shell: bash
+        run: |
+          set -o pipefail
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+          PYTHONPATH="$PWD/backend:$PWD/backend/tests" \
+          python -m pytest -q -o addopts= -m slow \
+            backend/tests/test_phase56_mechanics_constant_acceleration_same_fixture_parity.py \
+            2>&1 | tee phase56-entry12-evidence/slow.log
       - name: Run connected compiler solver verifier and migration regressions
         shell: bash
         run: |
@@ -126,14 +82,15 @@ jobs:
           python -m pytest -q -o addopts= \
             -m 'not slow and not benchmark and not audit and not frontend' \
             backend/tests/test_phase56_mechanics_compiler.py \
+            backend/tests/test_phase56_mechanics_solver_contract.py \
             backend/tests/test_phase56_mechanics_solver_planner.py \
             backend/tests/test_phase56_mechanics_solver_execution.py \
             backend/tests/test_phase56_mechanics_solver_verification_integration.py \
             backend/tests/test_phase56_mechanics_verifier.py \
             backend/tests/test_phase56_mechanics_migration_harness.py \
-            backend/tests/test_phase56_mechanics_legacy_parity.py \
-            2>&1 | tee phase56-entry11-evidence/connected-regressions.log
-      - name: Commit and push Entry 11 acceptance atomically
+            backend/tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py \
+            2>&1 | tee phase56-entry12-evidence/connected-regressions.log
+      - name: Commit and push Entry 12 atomically
         shell: bash
         run: |
           set -euo pipefail
@@ -141,18 +98,17 @@ jobs:
           git config user.name 'DynaTutor Phase 56 Worker'
           git config user.email 'phase56-worker@users.noreply.github.com'
           git add \
-            backend/engine/mechanics/units.py \
-            backend/engine/textbook_parser/evidence_alignment.py \
-            backend/tests/test_phase56_mechanics_normalization.py
-          git commit -m 'feat(phase56): accept generic collision 1d migration [skip ci]'
+            backend/engine/mechanics/solver/contracts.py \
+            backend/tests/test_phase56_mechanics_constant_acceleration_same_fixture_parity.py
+          git commit -m 'feat(phase56): migrate constant acceleration 1d [skip ci]'
           commit_sha="$(git rev-parse HEAD)"
-          printf '%s\n' "$commit_sha" > phase56-entry11-evidence/entry11-commit-sha.txt
+          printf '%s\n' "$commit_sha" > phase56-entry12-evidence/entry12-commit-sha.txt
           git push origin HEAD:refs/heads/codex/phase56-generic-mechanics-engine
-      - name: Upload Entry 11 acceptance evidence
+      - name: Upload Entry 12 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: phase56-entry11-acceptance-evidence
-          path: phase56-entry11-evidence
+          name: phase56-entry12-acceptance-evidence
+          path: phase56-entry12-evidence
           if-no-files-found: error
           retention-days: 14
