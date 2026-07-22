@@ -1,5 +1,19 @@
 # Mechanics legacy solver migration matrix
 
+
+## Local Entries 11–18 migration candidate — 2026-07-22
+
+The user-supplied archive has been extended locally through Entry 18 at product
+commit `c0909da336b4723012199f53d6be04bb0e19f8ce`. Focused
+same-fixture evidence for Entries 11–18 totals
+**184 passed**; connected backend evidence totals **960 passed, 1 skipped**, plus
+**15 passed** under the backend `frontend` marker. This is
+`LOCAL_CANDIDATE_VALIDATED / REMOTE_RELEASE_PENDING`, not a remote release or an
+accepted-count update. The authoritative accepted count remains **10/25** until
+exact-head Wave C/Wave D CI and a fresh independent Checker pass. See
+`docs/PHASE56_LOCAL_ENTRIES11_18_VALIDATION.md` for exact scope, limitations, and
+continuation steps.
+
 ## Scope and authority
 
 This is a planning and audit artifact for the registered legacy analytic

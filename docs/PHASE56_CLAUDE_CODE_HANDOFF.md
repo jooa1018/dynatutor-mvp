@@ -1,5 +1,35 @@
 # Phase 56 Claude Code Continuation Handoff
 
+
+## Local Entries 11–18 candidate checkpoint — 2026-07-22
+
+> This section records work completed from the user-supplied source archive. It
+> is local candidate evidence, not a pushed GitHub exact-head release, and it
+> supersedes the older Entry 11 resume instruction only inside this packaged
+> artifact. Historical accepted evidence and exact-SHA attribution below remain
+> unchanged.
+
+- Source archive snapshot:
+  `202912edb5a4db0781d4f40abad345441fc5cf71`; the archive contained no `.git`
+  directory.
+- Local product commit: `c0909da336b4723012199f53d6be04bb0e19f8ce`.
+- Entries 11–18 focused same-fixture evidence: **184 passed** — **136 fast** and
+  **48 slow**.
+- Connected backend evidence: **960 passed, 1 skipped**; backend
+  `frontend`-marker selection: **15 passed**.
+- Combined recorded backend candidate evidence: **1,159 passed, 1 skipped**.
+- Changed-file compilation, whitespace validation, authority audit, warm/cold
+  performance, and same-model read-only audit: **PASS**; blocking findings **0**.
+- Frontend repository metadata: **PASS**. Frontend dependency installation was
+  blocked by package-gateway HTTP 503; 36 dependency-available tests passed, but
+  full tests, typecheck, and build are **NOT RUN / FRONTEND_DEPENDENCY_BLOCKED**.
+- Disposition: `LOCAL_CANDIDATE_VALIDATED / REMOTE_RELEASE_PENDING`.
+- Official accepted count remains **10/25** until the patch is applied to the
+  real branch and exact-head Wave C/Wave D CI plus an independent Checker pass.
+- Complete local evidence and exact remote continuation commands are in
+  `docs/PHASE56_LOCAL_ENTRIES11_18_VALIDATION.md`.
+- `FINAL_LOCAL_DOCUMENTATION_HEAD = branch head containing this section`.
+
 This is the execution-oriented, device-independent handoff for continuing Phase
 56 without access to the preceding Codex conversation, its local work ledger, or
 its temporary tooling. Read this document completely before changing code. The
