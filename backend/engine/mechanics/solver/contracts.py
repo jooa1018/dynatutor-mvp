@@ -597,10 +597,273 @@ def _is_static_collision_boundary_graph(graph: EquationGraph) -> bool:
     return True
 
 
+def _is_static_constant_acceleration_boundary_graph(graph: EquationGraph) -> bool:
+    """Recognize the exact closed 1D constant-acceleration endpoint graph.
+
+    Start/end labels in this graph identify state boundaries; they are not
+    timed root events.  The recognition is intentionally graph-only and exact:
+    it does not inspect problem text, metadata, family labels, fixture IDs, or
+    legacy output, and every structural near miss retains ordinary timed-event
+    fail-closed behavior.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    velocity_law = "particle_constant_acceleration_velocity"
+    position_law = "particle_constant_acceleration_position"
+    expected_laws = {velocity_law, position_law}
+    if (
+        len(event_ids) != 2
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 2
+        or len(graph.applications) != 2
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or any(not isinstance(item.expression, Equality) for item in graph.equations)
+        or set(graph.selected_equation_ids)
+        != {item.equation_id for item in graph.equations}
+        or graph.rank.equality_count != 2
+        or graph.rank.inequality_count != 0
+        or graph.rank.unknown_count != 2
+        or graph.rank.structural_rank != 2
+        or graph.rank.underdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    symbols_by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.point_id is not None or item.quantity_role is None:
+            return False
+        symbols_by_role.setdefault(item.quantity_role, []).append(item)
+    if set(symbols_by_role) != {
+        "acceleration",
+        "displacement",
+        "duration",
+        "velocity",
+    }:
+        return False
+    if (
+        len(symbols_by_role["acceleration"]) != 1
+        or len(symbols_by_role["displacement"]) != 1
+        or len(symbols_by_role["duration"]) != 1
+        or len(symbols_by_role["velocity"]) != 2
+        or len(graph.symbols) != 5
+    ):
+        return False
+
+    acceleration = symbols_by_role["acceleration"][0]
+    displacement = symbols_by_role["displacement"][0]
+    duration = symbols_by_role["duration"][0]
+    velocities = tuple(symbols_by_role["velocity"])
+    subjects = {
+        item.subject_id
+        for item in (acceleration, displacement, duration, *velocities)
+    }
+    intervals = {
+        item.interval_id
+        for item in (acceleration, displacement, duration, *velocities)
+    }
+    if (
+        len(subjects) != 1
+        or None in subjects
+        or len(intervals) != 1
+        or None in intervals
+        or acceleration.event_id is not None
+        or displacement.event_id is not None
+        or duration.event_id is not None
+        or {item.event_id for item in velocities} != set(event_ids)
+        or any(item.event_id is None for item in velocities)
+        or acceleration.frame_id is None
+        or displacement.frame_id != acceleration.frame_id
+        or any(item.frame_id != acceleration.frame_id for item in velocities)
+        or duration.frame_id not in {None, acceleration.frame_id}
+    ):
+        return False
+    subject_id = next(iter(subjects))
+    interval_id = next(iter(intervals))
+    frame_id = acceleration.frame_id
+    velocity_by_event = {item.event_id: item for item in velocities}
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    if any(
+        application.equation_ids != (equations_by_law[law_id].equation_id,)
+        or application.source_quantity_ids
+        != equations_by_law[law_id].source_quantity_ids
+        or application.assumption_ids != equations_by_law[law_id].assumption_ids
+        or application.constraint_ids
+        or equations_by_law[law_id].constraint_ids
+        or application.generated_unknown_symbol_ids
+        or equations_by_law[law_id].generated_unknown_symbol_ids
+        or application.source_evidence_ids
+        != equations_by_law[law_id].source_evidence_ids
+        or application.complexity_cost != equations_by_law[law_id].complexity_cost
+        or application.scope != equations_by_law[law_id].scope
+        for law_id, application in applications_by_law.items()
+    ):
+        return False
+
+    velocity = equations_by_law[velocity_law]
+    position = equations_by_law[position_law]
+    assumption_ids = velocity.assumption_ids
+    if (
+        len(assumption_ids) != 1
+        or position.assumption_ids != assumption_ids
+        or velocity.scope.entity_ids != (subject_id,)
+        or velocity.scope.point_ids
+        or velocity.scope.frame_id != frame_id
+        or velocity.scope.interval_id != interval_id
+        or velocity.scope.event_id is not None
+        or velocity.scope.event_ids != event_ids
+        or position.scope.entity_ids != (subject_id,)
+        or position.scope.point_ids
+        or position.scope.frame_id != frame_id
+        or position.scope.interval_id != interval_id
+        or position.scope.event_id is None
+        or position.scope.event_ids != (position.scope.event_id,)
+        or position.scope.event_id not in event_ids
+    ):
+        return False
+
+    end_event_id = next(
+        (
+            identifier
+            for identifier in event_ids
+            if identifier != position.scope.event_id
+        ),
+        None,
+    )
+    if end_event_id is None:
+        return False
+    start_velocity = velocity_by_event.get(position.scope.event_id)
+    end_velocity = velocity_by_event.get(end_event_id)
+    if start_velocity is None or end_velocity is None:
+        return False
+
+    def ref(item: object) -> str:
+        return item.symbol.symbol_id
+
+    expected_velocity_sources = tuple(sorted({
+        acceleration.quantity_id,
+        duration.quantity_id,
+        start_velocity.quantity_id,
+        end_velocity.quantity_id,
+    }))
+    expected_position_sources = tuple(sorted({
+        acceleration.quantity_id,
+        displacement.quantity_id,
+        duration.quantity_id,
+        start_velocity.quantity_id,
+    }))
+    if (
+        velocity.source_quantity_ids != expected_velocity_sources
+        or position.source_quantity_ids != expected_position_sources
+    ):
+        return False
+
+    velocity_expression = velocity.expression
+    if (
+        not isinstance(velocity_expression.left, SymbolRef)
+        or velocity_expression.left.symbol_id != ref(end_velocity)
+        or not isinstance(velocity_expression.right, Add)
+        or len(velocity_expression.right.terms) != 2
+    ):
+        return False
+    velocity_terms = velocity_expression.right.terms
+    start_terms = tuple(
+        item
+        for item in velocity_terms
+        if isinstance(item, SymbolRef)
+        and item.symbol_id == ref(start_velocity)
+    )
+    product_terms = tuple(
+        item for item in velocity_terms if isinstance(item, Multiply)
+    )
+    if len(start_terms) != 1 or len(product_terms) != 1:
+        return False
+    velocity_product = product_terms[0]
+    if {
+        item.symbol_id
+        for item in velocity_product.factors
+        if isinstance(item, SymbolRef)
+    } != {ref(acceleration), ref(duration)} or len(velocity_product.factors) != 2:
+        return False
+
+    position_expression = position.expression
+    if (
+        not isinstance(position_expression.left, SymbolRef)
+        or position_expression.left.symbol_id != ref(displacement)
+        or not isinstance(position_expression.right, Add)
+        or len(position_expression.right.terms) != 2
+    ):
+        return False
+    position_products = tuple(
+        item
+        for item in position_expression.right.terms
+        if isinstance(item, Multiply)
+    )
+    if len(position_products) != 2:
+        return False
+
+    linear_products = tuple(
+        item
+        for item in position_products
+        if len(item.factors) == 2
+        and {
+            factor.symbol_id
+            for factor in item.factors
+            if isinstance(factor, SymbolRef)
+        } == {ref(start_velocity), ref(duration)}
+    )
+    quadratic_products = tuple(
+        item for item in position_products if item not in linear_products
+    )
+    if len(linear_products) != 1 or len(quadratic_products) != 1:
+        return False
+    quadratic = quadratic_products[0]
+    literals = tuple(
+        item for item in quadratic.factors if isinstance(item, LiteralNode)
+    )
+    acceleration_refs = tuple(
+        item
+        for item in quadratic.factors
+        if isinstance(item, SymbolRef)
+        and item.symbol_id == ref(acceleration)
+    )
+    powers = tuple(item for item in quadratic.factors if isinstance(item, Power))
+    if (
+        len(quadratic.factors) != 3
+        or len(literals) != 1
+        or literals[0].value != 0.5
+        or len(acceleration_refs) != 1
+        or len(powers) != 1
+        or not isinstance(powers[0].base, SymbolRef)
+        or powers[0].base.symbol_id != ref(duration)
+        or not isinstance(powers[0].exponent, LiteralNode)
+        or powers[0].exponent.value != 2.0
+    ):
+        return False
+    return graph.query_symbol_id in {
+        ref(acceleration),
+        ref(displacement),
+        ref(duration),
+        ref(start_velocity),
+        ref(end_velocity),
+    }
+
 def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
     """Return timed plan events while retaining raw graph boundary scopes."""
 
-    return () if _is_static_collision_boundary_graph(graph) else _graph_event_ids(graph)
+    return (
+        ()
+        if (
+            _is_static_collision_boundary_graph(graph)
+            or _is_static_constant_acceleration_boundary_graph(graph)
+        )
+        else _graph_event_ids(graph)
+    )
 
 
 def _graph_evidence_ids(graph: EquationGraph) -> tuple[str, ...]:
