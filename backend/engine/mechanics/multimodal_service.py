@@ -13,6 +13,10 @@ from engine.mechanics.multimodal_api_contracts import (
     RevisionConfirmationRequest, SanitizedImageDescriptor,
 )
 from engine.mechanics.multimodal_contracts import MechanicsCorrectionRequestV1
+from engine.mechanics.multimodal_idempotency import (
+    IdempotentRevisionStore,
+    initial_request_fingerprint,
+)
 from engine.mechanics.multimodal_modeler import MechanicsMultimodalModeler
 from engine.mechanics.multimodal_observability import build_multimodal_metric_event
 from engine.mechanics.multimodal_revision import ModelingRevision, RevisionError, RevisionStore
@@ -66,12 +70,19 @@ class MultimodalEvidenceService:
         return self.process_raw(problem_text=request.problem_text,images=raw,client_request_id=request.client_request_id,confirmations=tuple(EvidenceConfirmation(item.conflict_id,item.conflict_fingerprint,item.chosen_source_id,item.chosen_candidate_fingerprint) for item in request.confirmations))
 
     def process_raw(self, *, problem_text: str, images: tuple[RawImageInput,...], client_request_id: str|None=None, confirmations: tuple[EvidenceConfirmation,...]=()) -> MultimodalEvidenceResponse:
-        if client_request_id:
-            existing=self._revision_store.get_by_request(owner_key=self._owner_key,client_request_id=client_request_id)
-            if existing is not None: return self._response(existing)
-        if self._modeler is None: raise MultimodalRequestError("multimodal_modeler_unavailable","The multimodal interpretation adapter is not configured.")
         try: sanitized=sanitize_images(images)
         except ImageSecurityError as exc: raise MultimodalRequestError(exc.code,str(exc)) from exc
+        request_signature=initial_request_fingerprint(problem_text=problem_text,images=sanitized,confirmations=confirmations)
+        if client_request_id:
+            try:
+                if isinstance(self._revision_store,IdempotentRevisionStore):
+                    existing=self._revision_store.get_by_request_checked(owner_key=self._owner_key,client_request_id=client_request_id,request_signature=request_signature)
+                else:
+                    existing=self._revision_store.get_by_request(owner_key=self._owner_key,client_request_id=client_request_id)
+            except RevisionError as exc:
+                raise MultimodalRequestError(exc.code,str(exc)) from exc
+            if existing is not None: return self._response(existing)
+        if self._modeler is None: raise MultimodalRequestError("multimodal_modeler_unavailable","The multimodal interpretation adapter is not configured.")
         try: outcome=self._modeler.interpret(problem_text=problem_text,images=sanitized,confirmations=confirmations)
         except Exception as exc:
             code=getattr(exc,"code","multimodal_provider_failure")
@@ -79,7 +90,13 @@ class MultimodalEvidenceService:
         if outcome.envelope is None:
             response=MultimodalEvidenceResponse(terminal=outcome.terminal.value,sanitized_images=tuple(_descriptor(item) for item in sanitized),diagnostics=outcome.diagnostics)
             self._emit(response,image_count=len(sanitized),confirmation_count=len(confirmations)); return response
-        revision=self._revision_store.create(owner_key=self._owner_key,problem_text=problem_text,envelope=outcome.envelope,reconciliation=outcome.reconciliation,client_request_id=client_request_id)
+        try:
+            if isinstance(self._revision_store,IdempotentRevisionStore):
+                revision=self._revision_store.create(owner_key=self._owner_key,problem_text=problem_text,envelope=outcome.envelope,reconciliation=outcome.reconciliation,client_request_id=client_request_id,request_signature=request_signature)
+            else:
+                revision=self._revision_store.create(owner_key=self._owner_key,problem_text=problem_text,envelope=outcome.envelope,reconciliation=outcome.reconciliation,client_request_id=client_request_id)
+        except RevisionError as exc:
+            raise MultimodalRequestError(exc.code,str(exc)) from exc
         response=self._response(revision,images=tuple(_descriptor(item) for item in sanitized))
         self._emit(response,image_count=len(sanitized),confirmation_count=len(confirmations)); return response
 
