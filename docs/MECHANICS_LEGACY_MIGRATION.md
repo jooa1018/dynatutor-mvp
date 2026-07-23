@@ -1,5 +1,43 @@
 # Mechanics legacy solver migration matrix
 
+## Entries 20–22 remote acceptance — 2026-07-23
+
+Wave E Entries 20–22 (`spring_energy_speed`, `flat_curve_friction`, and
+`banked_curve_no_friction`) are accepted Generic typed migrations. The
+authoritative in-scope progress is now **21/25**, with **4/25** Wave F
+entries remaining. Deferred Entries 19, 23, 24, and 28 remain deferred;
+Entry 26 remains in scope.
+
+- Wave E code-containing checkpoint: `d3c4d27f6f4558242f1151f35eb16e6ae430c43c`
+- Exact Wave E release head: `114b11d26ee1aa1e4107aa8eea9c66de9ea009af`
+- DynaTutor release run #443 / `29979533898`: **SUCCESS**
+- Phase 55 parser run #95 / `29979533893`: **SUCCESS**
+- Focused Wave E evidence: **46 passed** — **36 fast**, **10 slow**
+- Backend fast: **2,938 passed, 1 skipped** across four shards
+- Backend slow: **138 passed** across **19** file shards
+- Benchmark: **147 passed**; audit: **111 passed**; frontend marker: **15 passed**
+- Frontend: **44/44**, typecheck, and static build: **PASS**
+- Warm latency mean/p95/max: **11.940567 / 39.479565 / 52.174770 ms**
+  against the **60/120 ms** budgets
+- Cold import: **765.574531 ms**; RSS: **90.820 MB** against the
+  **5000 ms / 512 MB** budgets
+- Four-round pooled performance comparison: **PASS**, regressions **0**;
+  largest positive p95 change **1.724%** against the **15%** limit
+- Fresh same-model read-only audit: **PASS**, blocking findings **0**.
+  This is accurately classified as same-model, not an independent Checker.
+
+The Wave E product files on the release head have the same Git blob hashes
+as the locally validated candidate. No test selection, assertion, timeout,
+or performance threshold was relaxed. Legacy output remains diagnostics-only
+and has no Generic routing, equation, candidate, verification, selection,
+repair, or fallback authority.
+
+PR #17 remains Draft, open, and unmerged on Draft PR #16. No merge, rebase,
+reset, force-push, main update, production change, Live API/model call,
+secret access, sealed-corpus access, or textbook-PDF access occurred.
+
+
+
 ## Entries 11–18 remote acceptance — 2026-07-23
 
 Entries 11–18 (`collision_1d`, `constant_acceleration_1d`,
