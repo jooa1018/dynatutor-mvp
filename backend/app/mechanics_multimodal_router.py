@@ -11,8 +11,8 @@ from starlette.datastructures import UploadFile
 from engine.mechanics.image_security import MAX_IMAGE_BYTES, MAX_IMAGE_COUNT, MAX_TOTAL_IMAGE_BYTES, RawImageInput
 from engine.mechanics.multimodal_api_contracts import ExecuteRevisionRequest, MultimodalEvidenceRequest, MultimodalEvidenceResponse, RevisionConfirmationRequest
 from engine.mechanics.multimodal_contracts import MechanicsCorrectionRequestV1
+from engine.mechanics.multimodal_idempotency import IdempotentRevisionStore
 from engine.mechanics.multimodal_modeler import MechanicsMultimodalModeler
-from engine.mechanics.multimodal_revision import RevisionStore
 from engine.mechanics.multimodal_service import MultimodalEvidenceService, MultimodalRequestError
 
 router=APIRouter(prefix="/api/mechanics/multimodal",tags=["mechanics-multimodal"])
@@ -30,8 +30,8 @@ def _owner_key(request: Request) -> str:
 
 def _service(request: Request, *, require_modeler: bool=False) -> MultimodalEvidenceService:
     store=getattr(request.app.state,"mechanics_multimodal_revision_store",None)
-    if not isinstance(store,RevisionStore):
-        raise HTTPException(status_code=503,detail={"code":"multimodal_revision_store_unavailable","message":"The multimodal revision store is not configured."})
+    if not isinstance(store,IdempotentRevisionStore):
+        raise HTTPException(status_code=503,detail={"code":"multimodal_revision_store_unavailable","message":"The collision-safe multimodal revision store is not configured."})
     generator=getattr(request.app.state,"mechanics_multimodal_envelope_generator",None)
     if require_modeler and generator is None:
         raise HTTPException(status_code=503,detail={"code":"multimodal_modeler_unavailable","message":"The multimodal interpretation adapter is not configured."})
