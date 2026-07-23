@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+from engine.mechanics.multimodal_revision import RevisionStore
 from tests.support.stage6_multimodal_fixtures import FORCE_PROBLEM_TEXT, force_envelope
 
 
@@ -124,3 +125,15 @@ def test_correction_idempotency_key_cannot_substitute_different_mutation(monkeyp
     )
     assert collision.status_code == 409
     assert collision.json()["detail"]["code"] == "request_id_conflict"
+
+
+def test_product_router_rejects_legacy_revision_store_configuration(monkeypatch) -> None:
+    client, _ = _client(monkeypatch)
+    client.app.state.mechanics_multimodal_revision_store = RevisionStore()
+    response = client.post(
+        "/api/mechanics/multimodal/evidence",
+        json=_initial(request_id="legacy-store"),
+        headers=_headers(),
+    )
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "multimodal_revision_store_unavailable"
