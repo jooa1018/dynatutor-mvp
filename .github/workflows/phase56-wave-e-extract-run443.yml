@@ -1,0 +1,76 @@
+name: Phase 56 Wave E extract run 443 summary
+
+on:
+  push:
+    branches:
+      - agent/phase56-wave-e-staging-20260723
+    paths:
+      - ".github/workflows/phase56-wave-e-extract-run443.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/phase56-wave-e-staging-20260723
+          fetch-depth: 0
+      - name: Download completed job logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/89118292468/logs" \
+            -o /tmp/backend.log
+          curl --fail --location --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/jobs/89118292364/logs" \
+            -o /tmp/frontend.log
+      - name: Extract privacy-safe evidence lines
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          patterns = re.compile(
+              r"(passed|skipped|deselected|slow tests|shard|mean|p95|max|RSS|"
+              r"regression|typecheck|build|test suites|tests passed|frontend metadata)",
+              re.IGNORECASE,
+          )
+          output = [
+              "Phase 56 Wave E run #443 privacy-safe summary",
+              "release_run_id=29979533898",
+              "release_run_number=443",
+              "release_head=114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
+              "",
+              "[backend]",
+          ]
+          for raw in Path('/tmp/backend.log').read_text(encoding='utf-8-sig', errors='replace').splitlines():
+              line = raw.split('Z ', 1)[-1]
+              if patterns.search(line) and 'Authorization:' not in line and 'token' not in line.lower():
+                  output.append(line)
+          output.extend(["", "[frontend]"])
+          for raw in Path('/tmp/frontend.log').read_text(encoding='utf-8-sig', errors='replace').splitlines():
+              line = raw.split('Z ', 1)[-1]
+              if patterns.search(line) and 'Authorization:' not in line and 'token' not in line.lower():
+                  output.append(line)
+          Path('.phase56-wave-e/run-443-summary.txt').write_text('\n'.join(output) + '\n', encoding='utf-8')
+          PY
+      - name: Commit summary to staging branch
+        run: |
+          set -euo pipefail
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add .phase56-wave-e/run-443-summary.txt
+          git commit -m "docs(phase56): capture privacy-safe Wave E release evidence"
+          git push origin HEAD:agent/phase56-wave-e-staging-20260723
