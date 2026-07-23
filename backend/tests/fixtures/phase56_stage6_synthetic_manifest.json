@@ -1,0 +1,19 @@
+{
+  "schema": "dynatutor.phase56_stage6_synthetic_manifest",
+  "version": "1.0",
+  "source_policy": "synthetic_only",
+  "cases": [
+    {"id": "incline_force_match", "family": "incline", "relation": "match"},
+    {"id": "incline_force_conflict", "family": "incline", "relation": "conflict"},
+    {"id": "incline_angle_match", "family": "incline", "relation": "match"},
+    {"id": "incline_angle_conflict", "family": "incline", "relation": "conflict"},
+    {"id": "pulley_left_mass_match", "family": "pulley", "relation": "match"},
+    {"id": "pulley_left_mass_conflict", "family": "pulley", "relation": "conflict"},
+    {"id": "pulley_right_mass_match", "family": "pulley", "relation": "match"},
+    {"id": "pulley_right_mass_conflict", "family": "pulley", "relation": "conflict"},
+    {"id": "fbd_normal_visible", "family": "free_body", "relation": "figure_only"},
+    {"id": "fbd_weight_visible", "family": "free_body", "relation": "figure_only"},
+    {"id": "fbd_direction_conflict", "family": "free_body", "relation": "conflict"},
+    {"id": "fbd_convention_not_promoted", "family": "free_body", "relation": "convention"}
+  ]
+}
