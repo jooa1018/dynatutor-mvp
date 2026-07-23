@@ -115,6 +115,16 @@ class RequestBodyLimitMiddleware:
         )
         await response(scope, receive, send)
 
+    async def _reject_framing(self, scope: Scope, receive: Receive, send: Send) -> None:
+        response = JSONResponse(
+            status_code=400,
+            content={
+                "detail": "요청 본문 길이 헤더가 안전한 형식이 아닙니다.",
+                "code": "invalid_request_framing",
+            },
+        )
+        await response(scope, receive, send)
+
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         path = scope.get("path", "")
         if (
@@ -129,14 +139,26 @@ class RequestBodyLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        raw_content_length = dict(scope.get("headers", [])).get(b"content-length")
+        headers = tuple(scope.get("headers", []))
+        content_lengths = [value for name, value in headers if name.lower() == b"content-length"]
+        transfer_encodings = [value.lower() for name, value in headers if name.lower() == b"transfer-encoding"]
+        # Reject ambiguous framing instead of allowing a proxy and the ASGI server to
+        # disagree about where the request body ends. One canonical Content-Length or
+        # chunked transfer encoding is permitted, never both or repeated lengths.
+        if len(content_lengths) > 1 or (content_lengths and transfer_encodings):
+            await self._reject_framing(scope, receive, send)
+            return
+        raw_content_length = content_lengths[0] if content_lengths else None
         if raw_content_length is not None:
             try:
                 declared = int(raw_content_length)
             except (TypeError, ValueError):
-                await self._reject(scope, receive, send, limit=limit)
+                await self._reject_framing(scope, receive, send)
                 return
-            if declared < 0 or declared > limit:
+            if declared < 0:
+                await self._reject_framing(scope, receive, send)
+                return
+            if declared > limit:
                 await self._reject(scope, receive, send, limit=limit)
                 return
 
