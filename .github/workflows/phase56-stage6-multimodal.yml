@@ -61,9 +61,22 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
       - name: Frontend tests
-        run: npm test --if-present
+        run: |
+          set +e
+          npm test > frontend-test.log 2>&1
+          status=$?
+          cat frontend-test.log
+          exit "$status"
         env:
           CI: "true"
+      - name: Upload frontend test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage6-frontend-test-log-${{ github.sha }}
+          path: frontend/frontend-test.log
+          if-no-files-found: error
+          retention-days: 1
       - name: Frontend lint
         run: npm run lint --if-present
       - name: Frontend typecheck
