@@ -1,0 +1,105 @@
+name: Phase 56 Wave E PR apply
+
+on:
+  pull_request:
+    branches:
+      - codex/phase56-generic-mechanics-engine
+    paths:
+      - ".phase56-wave-e/**"
+      - ".github/workflows/phase56-wave-e-pr-apply.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase56-wave-e-pr-apply
+  cancel-in-progress: false
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out staging payload
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Reconstruct and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .phase56-wave-e/b64-*.txt > /tmp/wave-e.patch.gz.b64
+          base64 --decode /tmp/wave-e.patch.gz.b64 | gzip --decompress > /tmp/wave-e.patch
+          echo "cf2627694ac49518fec9cc3b1a38cc1966ff3a29e69946ae53fb068d85bff145  /tmp/wave-e.patch" | sha256sum --check --strict
+
+      - name: Apply commit series to exact Phase 56 branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --prune origin codex/phase56-generic-mechanics-engine
+          test "$(git rev-parse origin/codex/phase56-generic-mechanics-engine)" = "a2354ac37faeb18f920f3a4407cb650f0205cb24"
+          git switch --detach origin/codex/phase56-generic-mechanics-engine
+          git switch -c phase56-wave-e-apply
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git am --3way /tmp/wave-e.patch
+          git diff --check origin/codex/phase56-generic-mechanics-engine..HEAD
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements-lock.txt
+
+      - name: Compile Wave E modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            backend/engine/mechanics/compiler/compiler.py \
+            backend/engine/mechanics/laws/core.py \
+            backend/tests/test_phase56_mechanics_spring_energy_speed_same_fixture_parity.py \
+            backend/tests/test_phase56_mechanics_flat_curve_friction_same_fixture_parity.py \
+            backend/tests/test_phase56_mechanics_banked_curve_no_friction_same_fixture_parity.py
+
+      - name: Run Wave E focused fast
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}/backend/tests
+        run: >-
+          python -m pytest -q -o addopts= -m "not slow"
+          backend/tests/test_phase56_mechanics_spring_energy_speed_same_fixture_parity.py
+          backend/tests/test_phase56_mechanics_flat_curve_friction_same_fixture_parity.py
+          backend/tests/test_phase56_mechanics_banked_curve_no_friction_same_fixture_parity.py
+
+      - name: Run Wave E focused slow
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}/backend/tests
+        run: >-
+          python -m pytest -q -o addopts= -m slow
+          backend/tests/test_phase56_mechanics_spring_energy_speed_same_fixture_parity.py
+          backend/tests/test_phase56_mechanics_flat_curve_friction_same_fixture_parity.py
+          backend/tests/test_phase56_mechanics_banked_curve_no_friction_same_fixture_parity.py
+
+      - name: Run connected compiler solver planner regressions
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}/backend/tests
+        run: >-
+          python -m pytest -q -o addopts=
+          backend/tests/test_phase56_mechanics_compiler.py
+          backend/tests/test_phase56_mechanics_solver_contract.py
+          backend/tests/test_phase56_mechanics_solver_planner.py
+
+      - name: Push Wave E commits by non-forced fast-forward
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:codex/phase56-generic-mechanics-engine
