@@ -6,6 +6,9 @@ cd "$ROOT_DIR"
 echo "== Backend fast =="
 ./scripts/check_backend_fast.sh
 
+echo "== Backend slow-only =="
+./scripts/check_backend_slow.sh
+
 echo "== Backend benchmark =="
 ./scripts/check_backend_benchmark.sh
 

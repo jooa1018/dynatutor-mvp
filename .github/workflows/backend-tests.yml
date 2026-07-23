@@ -25,7 +25,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  backend_fast:
+    name: backend fast
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -34,40 +35,70 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
           cache-dependency-path: backend/requirements-lock.txt
-
       - name: Install backend dependencies
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
-
       - name: Compile backend modules
         run: python -m compileall -q app engine
-
-      - name: Run backend default tests
-        run: python -m pytest -q
-
-      - name: Run complete backend suite
-        run: python -m pytest -q -o addopts=
-
       - name: Run backend fast wrapper
         run: bash ../scripts/check_backend_fast.sh
 
+  backend_slow:
+    name: backend slow
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+      - name: Compile backend modules
+        run: python -m compileall -q app engine
+      - name: Run complete backend slow wrapper
+        run: bash ../scripts/check_backend_slow.sh
+
+  backend_quality:
+    name: backend quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+      - name: Compile backend modules
+        run: python -m compileall -q app engine
       - name: Run backend benchmark wrapper
         run: bash ../scripts/check_backend_benchmark.sh
-
       - name: Run backend audit wrapper
         run: bash ../scripts/check_backend_audit.sh
-
-      - name: Run aggregate repository wrapper
-        run: bash ../scripts/check_all.sh
-
+      - name: Run backend frontend-marker tests
+        run: python -m pytest -q -o addopts= -m "frontend"
+      - name: Check frontend repository metadata
+        run: bash ../scripts/check_frontend_metadata.sh
       - name: Enforce warm solve latency budget
         run: >-
           python scripts/measure_phase42_latency.py
@@ -76,22 +107,40 @@ jobs:
           --block-optional-dependencies
           --max-mean-ms 60
           --max-p95-ms 120
-
       - name: Enforce cold import and RSS budgets
         run: >-
           python scripts/measure_runtime_budget.py
           --max-import-ms 5000
           --max-rss-mb 512
 
-      - name: Measure PR10 hotfix head performance
+  backend_performance:
+    name: backend performance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Check out repository with full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+      - name: Measure release head performance
         if: github.event_name != 'pull_request'
         run: >-
           python scripts/measure_pr10_hotfix_performance.py
           --output "$RUNNER_TEMP/pr10-head-performance.json"
           --repeats 30
           --warmups 5
-
-      - name: Measure balanced PR10 hotfix performance rounds
+      - name: Measure balanced PR10 performance rounds
         if: github.event_name == 'pull_request'
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -134,8 +183,7 @@ jobs:
               position=$((position + 1))
             done
           done
-
-      - name: Compare pooled PR10 hotfix performance
+      - name: Compare pooled PR10 performance
         if: github.event_name == 'pull_request'
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -150,6 +198,7 @@ jobs:
           --output "$RUNNER_TEMP/pr10-pooled-performance.json"
 
   frontend:
+    name: frontend
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -158,22 +207,45 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Install frontend dependencies
         run: npm ci
-
       - name: Test frontend clarification logic
         run: npm test
-
       - name: Typecheck frontend
         run: npm run typecheck
-
       - name: Build frontend
         run: npm run build
+
+  release_gate:
+    name: release gate
+    if: always()
+    needs:
+      - backend_fast
+      - backend_slow
+      - backend_quality
+      - backend_performance
+      - frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every release gate
+        env:
+          FAST: ${{ needs.backend_fast.result }}
+          SLOW: ${{ needs.backend_slow.result }}
+          QUALITY: ${{ needs.backend_quality.result }}
+          PERFORMANCE: ${{ needs.backend_performance.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+        run: |
+          printf 'fast=%s slow=%s quality=%s performance=%s frontend=%s\n' \
+            "$FAST" "$SLOW" "$QUALITY" "$PERFORMANCE" "$FRONTEND"
+          [[ "$FAST" == success ]]
+          [[ "$SLOW" == success ]]
+          [[ "$QUALITY" == success ]]
+          [[ "$PERFORMANCE" == success ]]
+          [[ "$FRONTEND" == success ]]

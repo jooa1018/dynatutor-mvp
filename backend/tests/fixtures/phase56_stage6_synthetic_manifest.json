@@ -1,0 +1,278 @@
+{
+  "schema": "dynatutor.phase56_stage6_synthetic_manifest",
+  "version": "2.0",
+  "source_policy": "synthetic_only",
+  "runtime_receives_expected_metadata": false,
+  "cases": [
+    {
+      "id": "incline_base",
+      "family": "incline",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 01"
+    },
+    {
+      "id": "friction_contact",
+      "family": "friction",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 02"
+    },
+    {
+      "id": "ideal_pulley",
+      "family": "pulley",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 03"
+    },
+    {
+      "id": "rolling_body",
+      "family": "rolling",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 04"
+    },
+    {
+      "id": "vertical_circle",
+      "family": "vertical_circle",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 05"
+    },
+    {
+      "id": "collision_direct",
+      "family": "collision",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 06"
+    },
+    {
+      "id": "projectile_launch",
+      "family": "projectile",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 07"
+    },
+    {
+      "id": "work_force",
+      "family": "work_force",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 08"
+    },
+    {
+      "id": "fixed_axis_rotation",
+      "family": "fixed_axis_rotation",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 09"
+    },
+    {
+      "id": "impulse_time",
+      "family": "impulse",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 10"
+    },
+    {
+      "id": "spring_energy",
+      "family": "spring_energy",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 11"
+    },
+    {
+      "id": "flat_curve",
+      "family": "flat_curve",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 12"
+    },
+    {
+      "id": "banked_curve",
+      "family": "banked_curve",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 13"
+    },
+    {
+      "id": "rigid_body_velocity",
+      "family": "rigid_body_velocity",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 14"
+    },
+    {
+      "id": "rigid_body_acceleration",
+      "family": "rigid_body_acceleration",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 15"
+    },
+    {
+      "id": "polar_kinematics",
+      "family": "polar_kinematics",
+      "variant": "base",
+      "relation": "positive",
+      "label": "fixture 16"
+    },
+    {
+      "id": "angle_value_conflict",
+      "family": "incline",
+      "variant": "conflict",
+      "relation": "conflict",
+      "label": "fixture 17"
+    },
+    {
+      "id": "unit_conflict",
+      "family": "work_force",
+      "variant": "unit_conflict",
+      "relation": "conflict",
+      "label": "fixture 18"
+    },
+    {
+      "id": "ambiguous_arrow",
+      "family": "free_body",
+      "variant": "ambiguous_arrow",
+      "relation": "ambiguity",
+      "label": "fixture 19"
+    },
+    {
+      "id": "occluded_value",
+      "family": "pulley",
+      "variant": "occlusion",
+      "relation": "ambiguity",
+      "label": "fixture 20"
+    },
+    {
+      "id": "prompt_injection",
+      "family": "projectile",
+      "variant": "prompt_injection",
+      "relation": "security",
+      "label": "fixture 21"
+    },
+    {
+      "id": "jpeg_low_quality",
+      "family": "incline",
+      "variant": "jpeg_low",
+      "relation": "metamorphic",
+      "label": "fixture 22",
+      "media_type": "image/jpeg",
+      "quality": 45
+    },
+    {
+      "id": "jpeg_high_quality",
+      "family": "incline",
+      "variant": "jpeg_high",
+      "relation": "metamorphic",
+      "label": "fixture 23",
+      "media_type": "image/jpeg",
+      "quality": 95
+    },
+    {
+      "id": "scaled_resolution",
+      "family": "incline",
+      "variant": "scaled_resolution",
+      "relation": "metamorphic",
+      "label": "fixture 24"
+    },
+    {
+      "id": "metadata_only",
+      "family": "incline",
+      "variant": "metadata_only",
+      "relation": "metamorphic",
+      "label": "fixture 25"
+    },
+    {
+      "id": "mirrored_geometry",
+      "family": "rolling",
+      "variant": "mirrored",
+      "relation": "metamorphic",
+      "label": "fixture 26"
+    },
+    {
+      "id": "cropped_whitespace",
+      "family": "projectile",
+      "variant": "cropped_whitespace",
+      "relation": "metamorphic",
+      "label": "fixture 27"
+    },
+    {
+      "id": "reordered_labels",
+      "family": "pulley",
+      "variant": "reordered_labels",
+      "relation": "metamorphic",
+      "label": "fixture 28"
+    },
+    {
+      "id": "duplicate_point_label",
+      "family": "rigid_body_velocity",
+      "variant": "duplicate_label",
+      "relation": "ambiguity",
+      "label": "fixture 29"
+    },
+    {
+      "id": "missing_scale",
+      "family": "polar_kinematics",
+      "variant": "missing_scale",
+      "relation": "ambiguity",
+      "label": "fixture 30"
+    },
+    {
+      "id": "two_possible_attachments",
+      "family": "pulley",
+      "variant": "two_attachments",
+      "relation": "ambiguity",
+      "label": "fixture 31"
+    },
+    {
+      "id": "unclear_query_target",
+      "family": "collision",
+      "variant": "query_ambiguous",
+      "relation": "ambiguity",
+      "label": "fixture 32"
+    },
+    {
+      "id": "conflicting_frame_axis",
+      "family": "rigid_body_acceleration",
+      "variant": "frame_conflict",
+      "relation": "conflict",
+      "label": "fixture 33"
+    },
+    {
+      "id": "unsupported_structure",
+      "family": "unsupported",
+      "variant": "base",
+      "relation": "unsupported",
+      "label": "fixture 34"
+    },
+    {
+      "id": "image_only_explicit",
+      "family": "fixed_axis_rotation",
+      "variant": "image_only",
+      "relation": "figure_only",
+      "label": "fixture 35"
+    },
+    {
+      "id": "convention_only",
+      "family": "rolling",
+      "variant": "convention_only",
+      "relation": "convention",
+      "label": "fixture 36"
+    },
+    {
+      "id": "transparent_hidden_text",
+      "family": "free_body",
+      "variant": "transparent_text",
+      "relation": "security",
+      "label": "fixture 37"
+    },
+    {
+      "id": "irrelevant_annotation",
+      "family": "spring_energy",
+      "variant": "irrelevant_annotation",
+      "relation": "metamorphic",
+      "label": "fixture 38"
+    }
+  ]
+}
