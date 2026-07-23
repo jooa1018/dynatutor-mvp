@@ -159,7 +159,7 @@ def sanitize_images(images: Sequence[RawImageInput] | Iterable[RawImageInput]) -
     ids = [item.image_id for item in items]
     if len(set(ids)) != len(ids):
         _reject("duplicate_image_id", "Every image identifier must be unique.")
-    return tuple(
+    sanitized = tuple(
         sanitize_image(
             item.content,
             image_id=item.image_id,
@@ -168,6 +168,10 @@ def sanitize_images(images: Sequence[RawImageInput] | Iterable[RawImageInput]) -
         )
         for index, item in enumerate(items)
     )
+    digests = tuple(item.content_sha256 for item in sanitized)
+    if len(set(digests)) != len(digests):
+        _reject("duplicate_image_content", "Duplicate image content is not accepted.")
+    return sanitized
 
 
 __all__ = [

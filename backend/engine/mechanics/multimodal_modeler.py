@@ -1,22 +1,19 @@
-"""Interpretation-only orchestration for Stage 6 multimodal modeling.
-
-The injected generator may describe source-grounded evidence and a typed draft.
-It cannot select equations, solvers, roots, verification results, or answers.
-"""
+"""Interpretation-only orchestration for Stage 6 multimodal modeling."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Callable, Iterable, Mapping, Protocol, Sequence
+import json
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from engine.mechanics.evidence_reconciliation import (
     EvidenceCandidate,
     EvidenceConfirmation,
-    EvidenceConflict,
     ReconciliationResult,
     ReconciliationStatus,
     candidate_from_mapping,
     reconcile_evidence,
+    semantic_target_key,
 )
 from engine.mechanics.image_security import SanitizedImage
 from engine.mechanics.multimodal_authority_audit import AuthorityAudit, audit_modeling_payload
@@ -31,9 +28,7 @@ class MultimodalModelerTerminal(StrEnum):
 
 class EnvelopeGenerator(Protocol):
     def __call__(
-        self,
-        problem_text: str,
-        images: tuple[SanitizedImage, ...],
+        self, problem_text: str, images: tuple[SanitizedImage, ...]
     ) -> MechanicsModelingEnvelopeV1 | Mapping[str, Any]: ...
 
 
@@ -54,7 +49,7 @@ class MultimodalModelerOutcome:
 
 def _dump(value: Any) -> dict[str, Any]:
     if hasattr(value, "model_dump"):
-        return dict(value.model_dump(mode="python"))
+        return dict(value.model_dump(mode="json"))
     if isinstance(value, Mapping):
         return dict(value)
     raise TypeError(f"unsupported evidence value: {type(value).__name__}")
@@ -71,13 +66,49 @@ def _figure_candidates(envelope: MechanicsModelingEnvelopeV1) -> list[EvidenceCa
 
 
 def _text_candidates(envelope: MechanicsModelingEnvelopeV1) -> list[EvidenceCandidate]:
+    """Project source-bound explicit quantities into deterministic candidates."""
+
     result: list[EvidenceCandidate] = []
-    for evidence in envelope.text_evidence:
-        payload = _dump(evidence)
-        if payload.get("normalized_value") is None and payload.get("observed_value") is None and payload.get("direction_candidate") is None:
+    source_by_id = {item.evidence_id: item for item in envelope.draft.source_evidence}
+    declared_text_ids = {item.evidence_id for item in envelope.text_evidence}
+    for quantity in envelope.draft.quantities:
+        if quantity.raw_value is None or quantity.raw_unit is None:
             continue
-        result.append(candidate_from_mapping(payload))
+        for evidence_id in quantity.evidence_refs:
+            source = source_by_id.get(evidence_id)
+            if source is None or getattr(source, "kind", None) != "text":
+                continue
+            if declared_text_ids and evidence_id not in declared_text_ids:
+                continue
+            target = {
+                "kind": "quantity",
+                "target_id": quantity.quantity_id,
+                "role": getattr(quantity.role, "value", quantity.role),
+                "component": getattr(quantity.component, "value", quantity.component),
+                "relation_kind": None,
+            }
+            direction = quantity.direction
+            result.append(
+                EvidenceCandidate(
+                    source_id=evidence_id,
+                    source_type="TEXT_EXPLICIT",
+                    semantic_target_key=semantic_target_key(target),
+                    normalized_value=str(quantity.raw_value),
+                    normalized_unit=str(quantity.raw_unit),
+                    direction=(
+                        json.dumps(direction.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+                        if direction is not None else None
+                    ),
+                    policy_eligibility="automatic",
+                    provenance="TEXT_EXPLICIT",
+                )
+            )
     return result
+
+
+def evidence_candidates_from_envelope(envelope: MechanicsModelingEnvelopeV1) -> tuple[EvidenceCandidate, ...]:
+    validated = MechanicsModelingEnvelopeV1.model_validate(envelope.model_dump(mode="python"))
+    return tuple(_text_candidates(validated) + _figure_candidates(validated))
 
 
 def _validate_image_bindings(
@@ -88,7 +119,6 @@ def _validate_image_bindings(
     by_id = {item.image_id: item for item in images}
     if len(by_id) != len(images):
         return ("duplicate_sanitized_image_id",)
-
     observation_ids: set[str] = set()
     evidence_ids: set[str] = set()
     for observation in envelope.figure_observations:
@@ -100,9 +130,7 @@ def _validate_image_bindings(
         observation_ids.add(observation_id)
         if evidence_id:
             evidence_ids.add(evidence_id)
-
-        image_id = str(payload.get("image_id") or "")
-        image = by_id.get(image_id)
+        image = by_id.get(str(payload.get("image_id") or ""))
         if image is None:
             diagnostics.append("unknown_observation_image")
             continue
@@ -114,10 +142,8 @@ def _validate_image_bindings(
             "height": image.height,
         }
         for field, expected_value in expected.items():
-            actual = payload.get(field)
-            if actual != expected_value:
+            if payload.get(field) != expected_value:
                 diagnostics.append(f"observation_{field}_mismatch")
-
     for binding in envelope.proposed_bindings:
         payload = _dump(binding)
         if str(payload.get("observation_id") or "") not in observation_ids:
@@ -125,13 +151,10 @@ def _validate_image_bindings(
         evidence_id = str(payload.get("evidence_id") or "")
         if evidence_id and evidence_id not in evidence_ids:
             diagnostics.append("binding_unknown_evidence")
-
     return tuple(sorted(set(diagnostics)))
 
 
 class MechanicsMultimodalModeler:
-    """Validate a generated envelope and hand only confirmed draft data onward."""
-
     def __init__(self, generator: EnvelopeGenerator) -> None:
         if generator is None:
             raise ValueError("An explicit envelope generator is required.")
@@ -153,13 +176,8 @@ class MechanicsMultimodalModeler:
                 authority_audit=AuthorityAudit(passed=True, findings=()),
                 diagnostics=("problem_text_required",),
             )
-
         generated = self._generator(problem_text, tuple(images))
-        envelope = (
-            generated
-            if isinstance(generated, MechanicsModelingEnvelopeV1)
-            else MechanicsModelingEnvelopeV1.model_validate(generated)
-        )
+        envelope = generated if isinstance(generated, MechanicsModelingEnvelopeV1) else MechanicsModelingEnvelopeV1.model_validate(generated)
         authority = audit_modeling_payload(envelope)
         image_diagnostics = _validate_image_bindings(envelope, images)
         if not authority.passed or image_diagnostics:
@@ -171,21 +189,13 @@ class MechanicsMultimodalModeler:
                 authority_audit=authority,
                 diagnostics=tuple(sorted(set(image_diagnostics + (("forbidden_authority",) if not authority.passed else ())))),
             )
-
-        candidates = tuple(_text_candidates(envelope) + _figure_candidates(envelope))
-        reconciliation = reconcile_evidence(candidates, confirmations)
+        reconciliation = reconcile_evidence(evidence_candidates_from_envelope(envelope), confirmations)
         terminal = {
             ReconciliationStatus.ready: MultimodalModelerTerminal.ready,
             ReconciliationStatus.confirmation_required: MultimodalModelerTerminal.confirmation_required,
             ReconciliationStatus.blocked: MultimodalModelerTerminal.blocked,
         }[reconciliation.status]
-        return MultimodalModelerOutcome(
-            terminal=terminal,
-            envelope=envelope,
-            reconciliation=reconciliation,
-            authority_audit=authority,
-            diagnostics=(),
-        )
+        return MultimodalModelerOutcome(terminal, envelope, reconciliation, authority, ())
 
 
 __all__ = [
@@ -193,4 +203,5 @@ __all__ = [
     "MechanicsMultimodalModeler",
     "MultimodalModelerOutcome",
     "MultimodalModelerTerminal",
+    "evidence_candidates_from_envelope",
 ]

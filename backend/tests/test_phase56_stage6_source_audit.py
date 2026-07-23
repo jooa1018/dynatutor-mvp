@@ -10,6 +10,8 @@ STAGE6_SOURCES = (
     ROOT / "engine" / "mechanics" / "multimodal_modeler.py",
     ROOT / "engine" / "mechanics" / "multimodal_revision.py",
     ROOT / "engine" / "mechanics" / "multimodal_service.py",
+    ROOT / "engine" / "mechanics" / "multimodal_provider.py",
+    ROOT / "engine" / "mechanics" / "multimodal_runtime.py",
     ROOT / "app" / "mechanics_multimodal_router.py",
 )
 
@@ -19,7 +21,6 @@ def test_stage6_has_no_ocr_or_implicit_live_model_client() -> None:
         "pytesseract",
         "easyocr",
         "google.cloud.vision",
-        "openai(",
         "anthropic(",
         "requests.post(",
         "httpx.post(",
@@ -28,6 +29,14 @@ def test_stage6_has_no_ocr_or_implicit_live_model_client() -> None:
     for token in forbidden:
         assert token not in combined
 
+    provider = (ROOT / "engine" / "mechanics" / "multimodal_provider.py").read_text(encoding="utf-8")
+    assert 'MECHANICS_MULTIMODAL_PROVIDER' in provider
+    assert 'if not provider or provider in {"off", "disabled", "none"}' in provider
+    assert 'store=False' in provider
+    assert 'max_retries=0' in provider
 
-def test_temporary_workspace_export_workflow_is_absent() -> None:
-    assert not (ROOT.parent / ".github" / "workflows" / "phase56-workspace-export.yml").exists()
+
+def test_temporary_stage6_mutating_workflows_are_absent() -> None:
+    workflows = ROOT.parent / ".github" / "workflows"
+    assert not (workflows / "phase56-workspace-export.yml").exists()
+    assert not (workflows / "phase56-stage6-finalize.yml").exists()
