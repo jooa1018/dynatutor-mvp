@@ -1,0 +1,417 @@
+From d704945462f8aae8a30008f53f69ef3901ddea8f Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Thu, 23 Jul 2026 02:53:27 +0000
+Subject: [PATCH 1/2] feat(mechanics): migrate Wave E energy and curve solvers
+
+---
+ backend/engine/mechanics/compiler/compiler.py |  317 +++++
+ backend/engine/mechanics/laws/core.py         | 1220 +++++++++++++++++
+ ...d_curve_no_friction_same_fixture_parity.py |  481 +++++++
+ ...flat_curve_friction_same_fixture_parity.py |  588 ++++++++
+ ...spring_energy_speed_same_fixture_parity.py |  540 ++++++++
+ 5 files changed, 3146 insertions(+)
+ create mode 100644 backend/tests/test_phase56_mechanics_banked_curve_no_friction_same_fixture_parity.py
+ create mode 100644 backend/tests/test_phase56_mechanics_flat_curve_friction_same_fixture_parity.py
+ create mode 100644 backend/tests/test_phase56_mechanics_spring_energy_speed_same_fixture_parity.py
+
+diff --git a/backend/engine/mechanics/compiler/compiler.py b/backend/engine/mechanics/compiler/compiler.py
+index cec612f..e8e7b22 100644
+--- a/backend/engine/mechanics/compiler/compiler.py
++++ b/backend/engine/mechanics/compiler/compiler.py
+@@ -9426,6 +9426,311 @@ def _graph_fingerprint(
+     return _digest(payload)
+ 
+ 
++@dataclass(frozen=True)
++class _WaveEContractProfile:
++    kind: str
++    query_quantity_id: str
++
++
++def _wave_e_contract(
++    ir: MechanicsProblemIRV1,
++    query: IRQuery,
++    approved_assumption_ids: Collection[str],
++) -> tuple[_WaveEContractProfile | None, CompilerIssue | None]:
++    """Close the exact Wave E typed query/authority boundary.
++
++    The law layer performs the complete topology fingerprint.  This compiler
++    guard prevents a malformed spring/curve candidate from escaping into a
++    different generic template and prevents an internal known quantity from
++    receiving the speed answer path.
++    """
++
++    primitive_counts = {
++        primitive: sum(item.primitive is primitive for item in ir.entities)
++        for primitive in (
++            EntityPrimitive.particle,
++            EntityPrimitive.spring,
++            EntityPrimitive.surface,
++            EntityPrimitive.incline,
++            EntityPrimitive.environment,
++        )
++    }
++    has_radius = any(
++        item.kind is GeometryRelationKind.radius for item in ir.geometry
++    )
++    has_contact = any(
++        item.kind is InteractionKind.contact for item in ir.interactions
++    )
++    has_spring = any(
++        item.kind is InteractionKind.spring for item in ir.interactions
++    )
++    has_normal_acceleration = any(
++        item.role is QuantityRole.acceleration
++        and item.component is QuantityComponent.normal
++        for item in ir.quantities
++    )
++    kind: str | None = None
++    spring_energy_count = sum(
++        item.role is QuantityRole.energy for item in ir.quantities
++    )
++    spring_displacement_count = sum(
++        item.role is QuantityRole.displacement for item in ir.quantities
++    )
++    if (
++        (primitive_counts[EntityPrimitive.spring] or has_spring)
++        and query.target.role is QuantityRole.speed
++        and spring_energy_count == 4
++        and spring_displacement_count == 2
++    ):
++        kind = "spring_energy_speed"
++    elif (
++        has_radius
++        and has_contact
++        and query.target.role is QuantityRole.speed
++        and has_normal_acceleration
++        and primitive_counts[EntityPrimitive.particle] >= 1
++        and primitive_counts[EntityPrimitive.environment] >= 1
++        and primitive_counts[EntityPrimitive.surface] >= 1
++        and primitive_counts[EntityPrimitive.incline] == 0
++    ):
++        kind = "flat_curve_friction"
++    elif (
++        has_radius
++        and has_contact
++        and query.target.role is QuantityRole.speed
++        and has_normal_acceleration
++        and primitive_counts[EntityPrimitive.particle] >= 1
++        and primitive_counts[EntityPrimitive.environment] >= 1
++        and primitive_counts[EntityPrimitive.incline] >= 1
++        and primitive_counts[EntityPrimitive.surface] == 0
++    ):
++        kind = "banked_curve_no_friction"
++    if kind is None:
++        return None, None
++
++    def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
++        return _issue(
++            CompilerIssueCode.requires_specialized_model,
++            f"Wave E typed topology {detail}",
++            f"queries.{query.query_id}",
++            referenced_id or query.query_id,
++        )
++
++    expected_entities = {
++        "spring_energy_speed": {
++            EntityPrimitive.particle: 1,
++            EntityPrimitive.spring: 1,
++            EntityPrimitive.surface: 0,
++            EntityPrimitive.incline: 0,
++            EntityPrimitive.environment: 0,
++        },
++        "flat_curve_friction": {
++            EntityPrimitive.particle: 1,
++            EntityPrimitive.spring: 0,
++            EntityPrimitive.surface: 1,
++            EntityPrimitive.incline: 0,
++            EntityPrimitive.environment: 1,
++        },
++        "banked_curve_no_friction": {
++            EntityPrimitive.particle: 1,
++            EntityPrimitive.spring: 0,
++            EntityPrimitive.surface: 0,
++            EntityPrimitive.incline: 1,
++            EntityPrimitive.environment: 1,
++        },
++    }[kind]
++    if (
++        any(primitive_counts[item] != count for item, count in expected_entities.items())
++        or len(ir.entities) != sum(expected_entities.values())
++    ):
++        return None, failure("requires the exact Wave E actor inventory")
++
++    quantities = {item.quantity_id: item for item in ir.quantities}
++    speeds = tuple(
++        item for item in ir.quantities if item.role is QuantityRole.speed
++    )
++    expected_speed_count = 2 if kind == "spring_energy_speed" else 1
++    if len(speeds) != expected_speed_count:
++        return None, failure(
++            "requires the exact initial/final scalar-speed inventory"
++            if kind == "spring_energy_speed"
++            else "requires exactly one scalar speed output"
++        )
++    speed = next(
++        (
++            item
++            for item in speeds
++            if item.quantity_id == query.target.target_quantity_id
++        ),
++        None,
++    )
++    if speed is None:
++        return None, failure("requires the query to name the inferred speed")
++    if (
++        speed.shape is not QuantityShape.scalar
++        or speed.symbol_id is None
++        or speed.si_value is not None
++        or speed.component
++        not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
++        or query.target.target_quantity_id != speed.quantity_id
++        or query.target.role is not QuantityRole.speed
++        or query.target.subject_id != speed.subject_id
++        or query.target.point_id != speed.point_id
++        or query.target.frame_id != speed.frame_id
++        or query.target.interval_id != speed.interval_id
++        or query.target.event_id != speed.event_id
++        or query.target.component is not speed.component
++        or query.target.direction != speed.direction
++        or query.output_dimension != speed.dimension
++        or query.shape is not QuantityShape.scalar
++        or not query.evidence_refs
++    ):
++        return None, failure(
++            "requires an exact inferred scalar-speed query binding",
++            speed.quantity_id,
++        )
++
++    positive_roles = (
++        (
++            (QuantityRole.mass, "mass"),
++            (QuantityRole.stiffness, "spring stiffness"),
++        )
++        if kind == "spring_energy_speed"
++        else (
++            (QuantityRole.mass, "mass"),
++            (QuantityRole.gravity, "gravity magnitude"),
++            (QuantityRole.radius, "curve radius"),
++        )
++    )
++    for role, label in positive_roles:
++        matching = tuple(item for item in ir.quantities if item.role is role)
++        if len(matching) != 1:
++            return None, failure(f"requires exactly one {label} quantity")
++        item = matching[0]
++        if (
++            type(item.si_value) is not float
++            or not math.isfinite(item.si_value)
++            or item.si_value <= 0.0
++        ):
++            return None, _issue(
++                CompilerIssueCode.invalid_domain,
++                f"{label} must be positive and finite",
++                f"quantities.{item.quantity_id}.si_value",
++                item.quantity_id,
++            )
++    if kind == "flat_curve_friction":
++        coefficients = tuple(
++            item
++            for item in ir.quantities
++            if item.role is QuantityRole.coefficient_friction
++        )
++        if len(coefficients) != 1:
++            return None, failure(
++                "requires exactly one limiting-static friction coefficient"
++            )
++        coefficient = coefficients[0]
++        if (
++            type(coefficient.si_value) is not float
++            or not math.isfinite(coefficient.si_value)
++            or coefficient.si_value < 0.0
++        ):
++            return None, _issue(
++                CompilerIssueCode.invalid_domain,
++                "friction coefficient must be finite and nonnegative",
++                f"quantities.{coefficient.quantity_id}.si_value",
++                coefficient.quantity_id,
++            )
++
++    approved = {
++        item.kind
++        for item in ir.assumptions
++        if item.disposition is AssumptionDisposition.approved
++        and item.assumption_id in set(approved_assumption_ids)
++    }
++    required = {
++        "spring_energy_speed": {
++            "linear_spring",
++            "kinetic_energy",
++            "no_energy_loss",
++        },
++        "flat_curve_friction": {
++            "horizontal_surface",
++            "uniform_circular_motion",
++            "limiting_static_friction",
++        },
++        "banked_curve_no_friction": {
++            "uniform_circular_motion",
++            "frictionless_contact",
++        },
++    }[kind]
++    if approved != required or len(ir.assumptions) != len(required):
++        return None, failure(
++            "requires the exact approved source-evidenced authority set"
++        )
++    if any(not item.evidence_refs for item in ir.assumptions):
++        return None, failure("requires source evidence on every authority")
++
++    if kind == "spring_energy_speed":
++        particles = tuple(
++            item for item in ir.entities if item.primitive is EntityPrimitive.particle
++        )
++        final_states = tuple(
++            item
++            for item in ir.state_conditions
++            if item.kind.value == "final"
++            and len(particles) == 1
++            and item.subject_id == particles[0].entity_id
++            and speed.quantity_id in item.quantity_ids
++        )
++        if len(final_states) != 1:
++            return None, failure(
++                "requires the queried speed in one exact final particle state",
++                speed.quantity_id,
++            )
++    elif kind == "flat_curve_friction":
++        regimes = tuple(
++            item
++            for item in ir.state_conditions
++            if item.kind.value == "regime"
++            and item.state.value == "sticking"
++            and speed.subject_id == item.subject_id
++        )
++        if len(regimes) != 1:
++            return None, failure(
++                "requires one limiting-static typed regime",
++                speed.quantity_id,
++            )
++    else:
++        regimes = tuple(
++            item
++            for item in ir.state_conditions
++            if item.kind.value == "regime"
++            and item.state.value == "inactive"
++            and speed.subject_id == item.subject_id
++        )
++        angles = tuple(
++            item for item in ir.quantities if item.role is QuantityRole.angle
++        )
++        if len(regimes) != 1 or len(angles) != 1:
++            return None, failure(
++                "requires one frictionless regime and one bank angle"
++            )
++        angle = angles[0]
++        if (
++            type(angle.si_value) is not float
++            or not math.isfinite(angle.si_value)
++            or not 0.0 < angle.si_value < math.pi / 2.0
++        ):
++            return None, _issue(
++                CompilerIssueCode.invalid_domain,
++                "bank angle must lie strictly between zero and pi/2 radians",
++                f"quantities.{angle.quantity_id}.si_value",
++                angle.quantity_id,
++            )
++
++    return _WaveEContractProfile(kind=kind, query_quantity_id=speed.quantity_id), None
++
++
+ class MechanicsCompiler:
+     def __init__(self, limits: CompilerLimits | None = None) -> None:
+         self._limits = limits or CompilerLimits()
+@@ -9670,6 +9975,18 @@ class MechanicsCompiler:
+                 else CompilerStatus.unsupported
+             )
+             return _failure(status, rolling_energy_issue)
++        wave_e_profile, wave_e_issue = _wave_e_contract(
++            safe_ir,
++            query,
++            authority.approved_assumption_ids,
++        )
++        if wave_e_issue is not None:
++            status = (
++                CompilerStatus.invalid
++                if wave_e_issue.code is CompilerIssueCode.invalid_domain
++                else CompilerStatus.unsupported
++            )
++            return _failure(status, wave_e_issue)
+         specialization_issue = _structural_specialization_issue(safe_ir, query)
+         if specialization_issue is not None:
+             return _failure(CompilerStatus.unsupported, specialization_issue)
+diff --git a/backend/engine/mechanics/laws/core.py b/backend/engine/mechanics/laws/core.py
+index 15ac9c3..55de4b1 100644
+--- a/backend/engine/mechanics/laws/core.py
++++ b/backend/engine/mechanics/laws/core.py
+@@ -101,6 +101,11 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
+     _rule("kinetic_energy", "work_energy", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.energy), cost=3, hooks=("energy_residual",)),
+     _rule("gravity_potential", "work_energy", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.height, QuantityRole.energy), interactions=(InteractionKind.gravity.value,), cost=3, hooks=("energy_residual",)),
+     _rule("spring_potential", "work_energy", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.energy), interactions=(InteractionKind.spring.value,), cost=3, hooks=("energy_residual",)),
++    _rule("mechanical_energy_conservation", "work_energy", (QuantityRole.energy,), assumptions=("no_energy_loss",), cost=4, hooks=("energy_residual",)),
++    _rule("contact_limiting_static_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction",), cost=3, hooks=("friction_regime", "force_balance")),
++    _rule("flat_curve_zero_friction_boundary", "constraint", (QuantityRole.speed, QuantityRole.acceleration, QuantityRole.coefficient_friction, QuantityRole.gravity, QuantityRole.radius), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction", "uniform_circular_motion"), cost=1, hooks=("domain_residual", "friction_regime", "kinematic_residual")),
++    _rule("banked_curve_vertical_balance", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.force, QuantityRole.angle), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), assumptions=("frictionless_contact",), cost=4, hooks=("force_balance", "contact_validity")),
++    _rule("banked_curve_inward_balance", "newton_second_law", (QuantityRole.mass, QuantityRole.acceleration, QuantityRole.force, QuantityRole.angle), interactions=(InteractionKind.contact.value,), assumptions=("frictionless_contact", "uniform_circular_motion"), cost=4, hooks=("force_balance", "contact_validity")),
+     _rule("linear_momentum", "impulse_momentum", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.momentum), cost=3, hooks=("momentum_residual",)),
+     _rule("linear_impulse", "impulse_momentum", (QuantityRole.force, QuantityRole.duration, QuantityRole.impulse), cost=4, hooks=("impulse_residual",)),
+     _rule("linear_impulse_momentum", "impulse_momentum", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.impulse), cost=4, hooks=("momentum_residual",)),
+@@ -8490,6 +8495,1191 @@ def _vibration_emissions(context: LawContext) -> list[LawEmission]:
+     return emitted
+ 
+ 
++@dataclass(frozen=True)
++class _SpringEnergySpeedLawProfile:
++    body_id: str
++    spring_id: str
++    frame_id: str
++    interval_id: str
++    mass: BoundQuantity
++    stiffness: BoundQuantity
++    displacement_start: BoundQuantity
++    displacement_end: BoundQuantity
++    speed_start: BoundQuantity
++    speed_end: BoundQuantity
++    spring_energy_start: BoundQuantity
++    spring_energy_end: BoundQuantity
++    kinetic_energy_start: BoundQuantity
++    kinetic_energy_end: BoundQuantity
++    linear_spring_ids: tuple[str, ...]
++    kinetic_energy_ids: tuple[str, ...]
++    conservation_ids: tuple[str, ...]
++    state_ids: tuple[str, ...]
++
++
++def _exact_world_cartesian_1d_frame(frame: object) -> bool:
++    if (
++        getattr(frame, "frame_type", None) is not ReferenceFrameType.cartesian_1d
++        or getattr(getattr(frame, "origin", None), "kind", None) != "world"
++        or getattr(frame, "parent_frame_id", None) is not None
++        or getattr(frame, "translating_with_entity_id", None) is not None
++        or getattr(frame, "rotating_about_point_id", None) is not None
++        or getattr(frame, "generalized_coordinate_symbol_ids", ())
++        or len(getattr(frame, "axes", ())) != 1
++        or not getattr(frame, "evidence_refs", ())
++    ):
++        return False
++    axis = frame.axes[0]
++    direction = axis.direction
++    return (
++        axis.axis is AxisName.x
++        and getattr(direction, "kind", None) == "axis"
++        and getattr(direction, "frame_id", None) == frame.frame_id
++        and getattr(direction, "axis", None) is AxisName.x
++        and getattr(direction, "sign", None) == 1
++    )
++
++
++def _spring_energy_speed_profile(
