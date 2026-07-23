@@ -130,11 +130,16 @@ def sanitize_image(
     if max(oriented.size) > MAX_MODEL_EDGE:
         oriented.thumbnail((MAX_MODEL_EDGE, MAX_MODEL_EDGE), Image.Resampling.LANCZOS)
 
-    has_alpha = oriented.mode in {"RGBA", "LA"} or "transparency" in oriented.info
-    canonical_mode = "RGBA" if has_alpha else "RGB"
-    converted = oriented.convert(canonical_mode)
-    clean = Image.new(canonical_mode, converted.size)
-    clean.paste(converted)
+    # Flatten transparency onto a canonical white page. Fully transparent pixels can
+    # otherwise retain hidden RGB payloads that different renderers may reveal.
+    if oriented.mode in {"RGBA", "LA"} or "transparency" in oriented.info:
+        rgba = oriented.convert("RGBA")
+        clean = Image.new("RGB", rgba.size, "white")
+        clean.paste(rgba, mask=rgba.getchannel("A"))
+    else:
+        converted = oriented.convert("RGB")
+        clean = Image.new("RGB", converted.size, "white")
+        clean.paste(converted)
 
     output = BytesIO()
     clean.save(output, format="PNG", optimize=False, compress_level=9)
@@ -168,6 +173,11 @@ def sanitize_images(images: Sequence[RawImageInput] | Iterable[RawImageInput]) -
         )
         for index, item in enumerate(items)
     )
+    if sum(len(item.content) for item in sanitized) > MAX_TOTAL_IMAGE_BYTES:
+        _reject(
+            "sanitized_total_image_bytes_exceeded",
+            "The combined sanitized image bytes exceed the safety limit.",
+        )
     digests = tuple(item.content_sha256 for item in sanitized)
     if len(set(digests)) != len(digests):
         _reject("duplicate_image_content", "Duplicate image content is not accepted.")
