@@ -1,5 +1,6 @@
 name: Phase 56 workspace export
 
+# Temporary Stage 6 bootstrap; removed after the local workspace is materialized.
 on:
   push:
     branches:
