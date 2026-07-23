@@ -2,6 +2,11 @@ name: Phase 56 workspace export
 
 # Temporary Stage 6 bootstrap; removed after the local workspace is materialized.
 on:
+  pull_request:
+    branches:
+      - codex/phase55-gpt-first-textbook-parser
+    paths:
+      - ".github/workflows/phase56-workspace-export.yml"
   push:
     branches:
       - codex/phase56-generic-mechanics-engine
