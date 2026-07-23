@@ -40,7 +40,7 @@ def _service(request: Request, *, require_modeler: bool=False) -> MultimodalEvid
 
 
 def _raise_request_error(exc: MultimodalRequestError):
-    if exc.code in {"revision_stale","revision_id_mismatch","confirmation_invalid"}: code=409
+    if exc.code in {"revision_stale","revision_id_mismatch","confirmation_invalid","request_id_conflict"}: code=409
     elif exc.code == "revision_not_found": code=404
     elif exc.code in {"multimodal_modeler_unavailable","multimodal_provider_unavailable","multimodal_provider_failure","multimodal_provider_incomplete","multimodal_provider_invalid_output"}: code=503
     else: code=422
