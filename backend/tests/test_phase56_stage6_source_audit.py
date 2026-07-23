@@ -9,6 +9,7 @@ STAGE6_SOURCES = (
     ROOT / "engine" / "mechanics" / "evidence_reconciliation.py",
     ROOT / "engine" / "mechanics" / "multimodal_modeler.py",
     ROOT / "engine" / "mechanics" / "multimodal_revision.py",
+    ROOT / "engine" / "mechanics" / "multimodal_idempotency.py",
     ROOT / "engine" / "mechanics" / "multimodal_service.py",
     ROOT / "engine" / "mechanics" / "multimodal_provider.py",
     ROOT / "engine" / "mechanics" / "multimodal_runtime.py",
