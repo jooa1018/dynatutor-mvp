@@ -14,7 +14,7 @@ const correction = fs.readFileSync(path.join(root, 'components', 'mechanics', 'M
 const viewer = fs.readFileSync(path.join(root, 'components', 'mechanics', 'MechanicsEvidenceViewer.tsx'), 'utf8');
 const client = fs.readFileSync(path.join(root, 'lib', 'mechanicsMultimodal.ts'), 'utf8');
 
-function renderPanel() {
+async function renderPanel() {
   const entry = `
     const React = require('react');
     const { renderToStaticMarkup } = require('react-dom/server');
@@ -26,7 +26,7 @@ function renderPanel() {
       onVerifiedResult() {},
     }));
   `;
-  const built = esbuild.buildSync({
+  const built = (await esbuild.build({
     stdin: { contents: entry, resolveDir: root, sourcefile: 'phase56-stage6-render.tsx', loader: 'tsx' },
     bundle: true,
     platform: 'node',
@@ -45,7 +45,7 @@ function renderPanel() {
         }));
       },
     }],
-  }).outputFiles[0].text;
+  })).outputFiles[0].text;
   const compiled = new Module(path.join(root, 'tests', 'phase56-stage6-rendered.cjs'), module);
   compiled.filename = path.join(root, 'tests', 'phase56-stage6-rendered.cjs');
   compiled.paths = module.paths;
@@ -53,12 +53,12 @@ function renderPanel() {
   return compiled.exports();
 }
 
-test('official solve screen renders the Stage 6 panel with existing text state', () => {
+test('official solve screen renders the Stage 6 panel with existing text state', async () => {
   assert.match(home, /import \{ MechanicsMultimodalPanel \}/);
   assert.match(home, /<MechanicsMultimodalPanel/);
   assert.match(home, /problemText=\{text\}/);
   assert.match(home, /onAuthError=/);
-  const markup = renderPanel();
+  const markup = await renderPanel();
   assert.match(markup, /글과 그림으로 풀기/);
   assert.match(markup, /문제 그림/);
   assert.match(markup, /글\+그림 분석하고 풀기|Generic 경로로 분석하고 풀기/);
