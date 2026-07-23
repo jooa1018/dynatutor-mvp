@@ -1,0 +1,115 @@
+name: Phase 56 Wave E finalize acceptance docs
+
+on:
+  push:
+    branches:
+      - agent/phase56-wave-e-staging-20260723
+    paths:
+      - ".github/workflows/phase56-wave-e-finalize.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase56-wave-e-finalize
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Check out exact accepted release head
+        run: |
+          set -euo pipefail
+          git fetch --prune origin codex/phase56-generic-mechanics-engine
+          test "$(git rev-parse origin/codex/phase56-generic-mechanics-engine)" = "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
+          git switch --detach origin/codex/phase56-generic-mechanics-engine
+          git switch -c phase56-wave-e-finalize
+      - name: Prepend authoritative Wave E acceptance records
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          common = """
+          Wave E Entries 20–22 (`spring_energy_speed`, `flat_curve_friction`, and
+          `banked_curve_no_friction`) are accepted Generic typed migrations. The
+          authoritative in-scope progress is now **21/25**, with **4/25** Wave F
+          entries remaining. Deferred Entries 19, 23, 24, and 28 remain deferred;
+          Entry 26 remains in scope.
+
+          - Wave E code-containing checkpoint: `d3c4d27f6f4558242f1151f35eb16e6ae430c43c`
+          - Exact Wave E release head: `114b11d26ee1aa1e4107aa8eea9c66de9ea009af`
+          - DynaTutor release run #443 / `29979533898`: **SUCCESS**
+          - Phase 55 parser run #95 / `29979533893`: **SUCCESS**
+          - Focused Wave E evidence: **46 passed** — **36 fast**, **10 slow**
+          - Backend fast: **2,938 passed, 1 skipped** across four shards
+          - Backend slow: **138 passed** across **19** file shards
+          - Benchmark: **147 passed**; audit: **111 passed**; frontend marker: **15 passed**
+          - Frontend: **44/44**, typecheck, and static build: **PASS**
+          - Warm latency mean/p95/max: **11.940567 / 39.479565 / 52.174770 ms**
+            against the **60/120 ms** budgets
+          - Cold import: **765.574531 ms**; RSS: **90.820 MB** against the
+            **5000 ms / 512 MB** budgets
+          - Four-round pooled performance comparison: **PASS**, regressions **0**;
+            largest positive p95 change **1.724%** against the **15%** limit
+          - Fresh same-model read-only audit: **PASS**, blocking findings **0**.
+            This is accurately classified as same-model, not an independent Checker.
+
+          The Wave E product files on the release head have the same Git blob hashes
+          as the locally validated candidate. No test selection, assertion, timeout,
+          or performance threshold was relaxed. Legacy output remains diagnostics-only
+          and has no Generic routing, equation, candidate, verification, selection,
+          repair, or fallback authority.
+
+          PR #17 remains Draft, open, and unmerged on Draft PR #16. No merge, rebase,
+          reset, force-push, main update, production change, Live API/model call,
+          secret access, sealed-corpus access, or textbook-PDF access occurred.
+          """.strip()
+
+          records = {
+              Path("docs/MECHANICS_LEGACY_MIGRATION.md"): (
+                  "## Entries 20–22 remote acceptance — 2026-07-23",
+                  common,
+              ),
+              Path("docs/PHASE56_CLAUDE_CODE_HANDOFF.md"): (
+                  "## Current remote-accepted Wave E checkpoint — 2026-07-23 Asia/Seoul",
+                  common + "\n\nThe next exact Stage 5 work is Wave F: Entries 25, 26, 27, and 29.",
+              ),
+              Path("docs/PHASE56_PAUSE_HANDOFF.md"): (
+                  "## Wave E remote integration acceptance — 2026-07-23 Asia/Seoul",
+                  common + "\n\nWave F remains not started. Stage 6 must not begin before Stage 5 completes.",
+              ),
+              Path("docs/PHASE56_LOCAL_WAVE_E_VALIDATION.md"): (
+                  "## Remote integration result — 2026-07-23 Asia/Seoul",
+                  common + "\n\nThe local candidate disposition below is retained only as historical provenance.",
+              ),
+          }
+
+          for path, (heading, body) in records.items():
+              text = path.read_text(encoding="utf-8")
+              if heading in text:
+                  continue
+              first, sep, rest = text.partition("\n")
+              if not sep:
+                  raise SystemExit(f"missing title line: {path}")
+              path.write_text(
+                  first + "\n\n" + heading + "\n\n" + body + "\n\n\n" + rest,
+                  encoding="utf-8",
+              )
+          PY
+      - name: Commit and fast-forward documentation
+        run: |
+          set -euo pipefail
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git diff --check
+          git add \
+            docs/MECHANICS_LEGACY_MIGRATION.md \
+            docs/PHASE56_CLAUDE_CODE_HANDOFF.md \
+            docs/PHASE56_PAUSE_HANDOFF.md \
+            docs/PHASE56_LOCAL_WAVE_E_VALIDATION.md
+          git commit -m "docs(phase56): record remote Wave E acceptance"
+          git push origin HEAD:codex/phase56-generic-mechanics-engine
