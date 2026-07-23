@@ -9426,6 +9426,311 @@ def _graph_fingerprint(
     return _digest(payload)
 
 
+@dataclass(frozen=True)
+class _WaveEContractProfile:
+    kind: str
+    query_quantity_id: str
+
+
+def _wave_e_contract(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    approved_assumption_ids: Collection[str],
+) -> tuple[_WaveEContractProfile | None, CompilerIssue | None]:
+    """Close the exact Wave E typed query/authority boundary.
+
+    The law layer performs the complete topology fingerprint.  This compiler
+    guard prevents a malformed spring/curve candidate from escaping into a
+    different generic template and prevents an internal known quantity from
+    receiving the speed answer path.
+    """
+
+    primitive_counts = {
+        primitive: sum(item.primitive is primitive for item in ir.entities)
+        for primitive in (
+            EntityPrimitive.particle,
+            EntityPrimitive.spring,
+            EntityPrimitive.surface,
+            EntityPrimitive.incline,
+            EntityPrimitive.environment,
+        )
+    }
+    has_radius = any(
+        item.kind is GeometryRelationKind.radius for item in ir.geometry
+    )
+    has_contact = any(
+        item.kind is InteractionKind.contact for item in ir.interactions
+    )
+    has_spring = any(
+        item.kind is InteractionKind.spring for item in ir.interactions
+    )
+    has_normal_acceleration = any(
+        item.role is QuantityRole.acceleration
+        and item.component is QuantityComponent.normal
+        for item in ir.quantities
+    )
+    kind: str | None = None
+    spring_energy_count = sum(
+        item.role is QuantityRole.energy for item in ir.quantities
+    )
+    spring_displacement_count = sum(
+        item.role is QuantityRole.displacement for item in ir.quantities
+    )
+    if (
+        (primitive_counts[EntityPrimitive.spring] or has_spring)
+        and query.target.role is QuantityRole.speed
+        and spring_energy_count == 4
+        and spring_displacement_count == 2
+    ):
+        kind = "spring_energy_speed"
+    elif (
+        has_radius
+        and has_contact
+        and query.target.role is QuantityRole.speed
+        and has_normal_acceleration
+        and primitive_counts[EntityPrimitive.particle] >= 1
+        and primitive_counts[EntityPrimitive.environment] >= 1
+        and primitive_counts[EntityPrimitive.surface] >= 1
+        and primitive_counts[EntityPrimitive.incline] == 0
+    ):
+        kind = "flat_curve_friction"
+    elif (
+        has_radius
+        and has_contact
+        and query.target.role is QuantityRole.speed
+        and has_normal_acceleration
+        and primitive_counts[EntityPrimitive.particle] >= 1
+        and primitive_counts[EntityPrimitive.environment] >= 1
+        and primitive_counts[EntityPrimitive.incline] >= 1
+        and primitive_counts[EntityPrimitive.surface] == 0
+    ):
+        kind = "banked_curve_no_friction"
+    if kind is None:
+        return None, None
+
+    def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            f"Wave E typed topology {detail}",
+            f"queries.{query.query_id}",
+            referenced_id or query.query_id,
+        )
+
+    expected_entities = {
+        "spring_energy_speed": {
+            EntityPrimitive.particle: 1,
+            EntityPrimitive.spring: 1,
+            EntityPrimitive.surface: 0,
+            EntityPrimitive.incline: 0,
+            EntityPrimitive.environment: 0,
+        },
+        "flat_curve_friction": {
+            EntityPrimitive.particle: 1,
+            EntityPrimitive.spring: 0,
+            EntityPrimitive.surface: 1,
+            EntityPrimitive.incline: 0,
+            EntityPrimitive.environment: 1,
+        },
+        "banked_curve_no_friction": {
+            EntityPrimitive.particle: 1,
+            EntityPrimitive.spring: 0,
+            EntityPrimitive.surface: 0,
+            EntityPrimitive.incline: 1,
+            EntityPrimitive.environment: 1,
+        },
+    }[kind]
+    if (
+        any(primitive_counts[item] != count for item, count in expected_entities.items())
+        or len(ir.entities) != sum(expected_entities.values())
+    ):
+        return None, failure("requires the exact Wave E actor inventory")
+
+    quantities = {item.quantity_id: item for item in ir.quantities}
+    speeds = tuple(
+        item for item in ir.quantities if item.role is QuantityRole.speed
+    )
+    expected_speed_count = 2 if kind == "spring_energy_speed" else 1
+    if len(speeds) != expected_speed_count:
+        return None, failure(
+            "requires the exact initial/final scalar-speed inventory"
+            if kind == "spring_energy_speed"
+            else "requires exactly one scalar speed output"
+        )
+    speed = next(
+        (
+            item
+            for item in speeds
+            if item.quantity_id == query.target.target_quantity_id
+        ),
+        None,
+    )
+    if speed is None:
+        return None, failure("requires the query to name the inferred speed")
+    if (
+        speed.shape is not QuantityShape.scalar
+        or speed.symbol_id is None
+        or speed.si_value is not None
+        or speed.component
+        not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        or query.target.target_quantity_id != speed.quantity_id
+        or query.target.role is not QuantityRole.speed
+        or query.target.subject_id != speed.subject_id
+        or query.target.point_id != speed.point_id
+        or query.target.frame_id != speed.frame_id
+        or query.target.interval_id != speed.interval_id
+        or query.target.event_id != speed.event_id
+        or query.target.component is not speed.component
+        or query.target.direction != speed.direction
+        or query.output_dimension != speed.dimension
+        or query.shape is not QuantityShape.scalar
+        or not query.evidence_refs
+    ):
+        return None, failure(
+            "requires an exact inferred scalar-speed query binding",
+            speed.quantity_id,
+        )
+
+    positive_roles = (
+        (
+            (QuantityRole.mass, "mass"),
+            (QuantityRole.stiffness, "spring stiffness"),
+        )
+        if kind == "spring_energy_speed"
+        else (
+            (QuantityRole.mass, "mass"),
+            (QuantityRole.gravity, "gravity magnitude"),
+            (QuantityRole.radius, "curve radius"),
+        )
+    )
+    for role, label in positive_roles:
+        matching = tuple(item for item in ir.quantities if item.role is role)
+        if len(matching) != 1:
+            return None, failure(f"requires exactly one {label} quantity")
+        item = matching[0]
+        if (
+            type(item.si_value) is not float
+            or not math.isfinite(item.si_value)
+            or item.si_value <= 0.0
+        ):
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                f"{label} must be positive and finite",
+                f"quantities.{item.quantity_id}.si_value",
+                item.quantity_id,
+            )
+    if kind == "flat_curve_friction":
+        coefficients = tuple(
+            item
+            for item in ir.quantities
+            if item.role is QuantityRole.coefficient_friction
+        )
+        if len(coefficients) != 1:
+            return None, failure(
+                "requires exactly one limiting-static friction coefficient"
+            )
+        coefficient = coefficients[0]
+        if (
+            type(coefficient.si_value) is not float
+            or not math.isfinite(coefficient.si_value)
+            or coefficient.si_value < 0.0
+        ):
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "friction coefficient must be finite and nonnegative",
+                f"quantities.{coefficient.quantity_id}.si_value",
+                coefficient.quantity_id,
+            )
+
+    approved = {
+        item.kind
+        for item in ir.assumptions
+        if item.disposition is AssumptionDisposition.approved
+        and item.assumption_id in set(approved_assumption_ids)
+    }
+    required = {
+        "spring_energy_speed": {
+            "linear_spring",
+            "kinetic_energy",
+            "no_energy_loss",
+        },
+        "flat_curve_friction": {
+            "horizontal_surface",
+            "uniform_circular_motion",
+            "limiting_static_friction",
+        },
+        "banked_curve_no_friction": {
+            "uniform_circular_motion",
+            "frictionless_contact",
+        },
+    }[kind]
+    if approved != required or len(ir.assumptions) != len(required):
+        return None, failure(
+            "requires the exact approved source-evidenced authority set"
+        )
+    if any(not item.evidence_refs for item in ir.assumptions):
+        return None, failure("requires source evidence on every authority")
+
+    if kind == "spring_energy_speed":
+        particles = tuple(
+            item for item in ir.entities if item.primitive is EntityPrimitive.particle
+        )
+        final_states = tuple(
+            item
+            for item in ir.state_conditions
+            if item.kind.value == "final"
+            and len(particles) == 1
+            and item.subject_id == particles[0].entity_id
+            and speed.quantity_id in item.quantity_ids
+        )
+        if len(final_states) != 1:
+            return None, failure(
+                "requires the queried speed in one exact final particle state",
+                speed.quantity_id,
+            )
+    elif kind == "flat_curve_friction":
+        regimes = tuple(
+            item
+            for item in ir.state_conditions
+            if item.kind.value == "regime"
+            and item.state.value == "sticking"
+            and speed.subject_id == item.subject_id
+        )
+        if len(regimes) != 1:
+            return None, failure(
+                "requires one limiting-static typed regime",
+                speed.quantity_id,
+            )
+    else:
+        regimes = tuple(
+            item
+            for item in ir.state_conditions
+            if item.kind.value == "regime"
+            and item.state.value == "inactive"
+            and speed.subject_id == item.subject_id
+        )
+        angles = tuple(
+            item for item in ir.quantities if item.role is QuantityRole.angle
+        )
+        if len(regimes) != 1 or len(angles) != 1:
+            return None, failure(
+                "requires one frictionless regime and one bank angle"
+            )
+        angle = angles[0]
+        if (
+            type(angle.si_value) is not float
+            or not math.isfinite(angle.si_value)
+            or not 0.0 < angle.si_value < math.pi / 2.0
+        ):
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "bank angle must lie strictly between zero and pi/2 radians",
+                f"quantities.{angle.quantity_id}.si_value",
+                angle.quantity_id,
+            )
+
+    return _WaveEContractProfile(kind=kind, query_quantity_id=speed.quantity_id), None
+
+
 class MechanicsCompiler:
     def __init__(self, limits: CompilerLimits | None = None) -> None:
         self._limits = limits or CompilerLimits()
@@ -9670,6 +9975,18 @@ class MechanicsCompiler:
                 else CompilerStatus.unsupported
             )
             return _failure(status, rolling_energy_issue)
+        wave_e_profile, wave_e_issue = _wave_e_contract(
+            safe_ir,
+            query,
+            authority.approved_assumption_ids,
+        )
+        if wave_e_issue is not None:
+            status = (
+                CompilerStatus.invalid
+                if wave_e_issue.code is CompilerIssueCode.invalid_domain
+                else CompilerStatus.unsupported
+            )
+            return _failure(status, wave_e_issue)
         specialization_issue = _structural_specialization_issue(safe_ir, query)
         if specialization_issue is not None:
             return _failure(CompilerStatus.unsupported, specialization_issue)

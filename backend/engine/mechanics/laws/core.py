@@ -101,6 +101,11 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("kinetic_energy", "work_energy", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.energy), cost=3, hooks=("energy_residual",)),
     _rule("gravity_potential", "work_energy", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.height, QuantityRole.energy), interactions=(InteractionKind.gravity.value,), cost=3, hooks=("energy_residual",)),
     _rule("spring_potential", "work_energy", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.energy), interactions=(InteractionKind.spring.value,), cost=3, hooks=("energy_residual",)),
+    _rule("mechanical_energy_conservation", "work_energy", (QuantityRole.energy,), assumptions=("no_energy_loss",), cost=4, hooks=("energy_residual",)),
+    _rule("contact_limiting_static_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction",), cost=3, hooks=("friction_regime", "force_balance")),
+    _rule("flat_curve_zero_friction_boundary", "constraint", (QuantityRole.speed, QuantityRole.acceleration, QuantityRole.coefficient_friction, QuantityRole.gravity, QuantityRole.radius), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction", "uniform_circular_motion"), cost=1, hooks=("domain_residual", "friction_regime", "kinematic_residual")),
+    _rule("banked_curve_vertical_balance", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.force, QuantityRole.angle), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), assumptions=("frictionless_contact",), cost=4, hooks=("force_balance", "contact_validity")),
+    _rule("banked_curve_inward_balance", "newton_second_law", (QuantityRole.mass, QuantityRole.acceleration, QuantityRole.force, QuantityRole.angle), interactions=(InteractionKind.contact.value,), assumptions=("frictionless_contact", "uniform_circular_motion"), cost=4, hooks=("force_balance", "contact_validity")),
     _rule("linear_momentum", "impulse_momentum", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.momentum), cost=3, hooks=("momentum_residual",)),
     _rule("linear_impulse", "impulse_momentum", (QuantityRole.force, QuantityRole.duration, QuantityRole.impulse), cost=4, hooks=("impulse_residual",)),
     _rule("linear_impulse_momentum", "impulse_momentum", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.impulse), cost=4, hooks=("momentum_residual",)),
@@ -8490,6 +8495,1191 @@ def _vibration_emissions(context: LawContext) -> list[LawEmission]:
     return emitted
 
 
+@dataclass(frozen=True)
+class _SpringEnergySpeedLawProfile:
+    body_id: str
+    spring_id: str
+    frame_id: str
+    interval_id: str
+    mass: BoundQuantity
+    stiffness: BoundQuantity
+    displacement_start: BoundQuantity
+    displacement_end: BoundQuantity
+    speed_start: BoundQuantity
+    speed_end: BoundQuantity
+    spring_energy_start: BoundQuantity
+    spring_energy_end: BoundQuantity
+    kinetic_energy_start: BoundQuantity
+    kinetic_energy_end: BoundQuantity
+    linear_spring_ids: tuple[str, ...]
+    kinetic_energy_ids: tuple[str, ...]
+    conservation_ids: tuple[str, ...]
+    state_ids: tuple[str, ...]
+
+
+def _exact_world_cartesian_1d_frame(frame: object) -> bool:
+    if (
+        getattr(frame, "frame_type", None) is not ReferenceFrameType.cartesian_1d
+        or getattr(getattr(frame, "origin", None), "kind", None) != "world"
+        or getattr(frame, "parent_frame_id", None) is not None
+        or getattr(frame, "translating_with_entity_id", None) is not None
+        or getattr(frame, "rotating_about_point_id", None) is not None
+        or getattr(frame, "generalized_coordinate_symbol_ids", ())
+        or len(getattr(frame, "axes", ())) != 1
+        or not getattr(frame, "evidence_refs", ())
+    ):
+        return False
+    axis = frame.axes[0]
+    direction = axis.direction
+    return (
+        axis.axis is AxisName.x
+        and getattr(direction, "kind", None) == "axis"
+        and getattr(direction, "frame_id", None) == frame.frame_id
+        and getattr(direction, "axis", None) is AxisName.x
+        and getattr(direction, "sign", None) == 1
+    )
+
+
+def _spring_energy_speed_profile(
+    context: LawContext,
+) -> _SpringEnergySpeedLawProfile | None:
+    bodies = tuple(
+        item for item in context.entities if item.primitive is EntityPrimitive.particle
+    )
+    springs = tuple(
+        item for item in context.entities if item.primitive is EntityPrimitive.spring
+    )
+    if (
+        len(context.entities) != 2
+        or len(bodies) != 1
+        or len(springs) != 1
+        or any(not item.evidence_refs for item in context.entities)
+    ):
+        return None
+    body_id = bodies[0].entity_id
+    spring_id = springs[0].entity_id
+
+    if len(context.reference_frames) != 1:
+        return None
+    frame = context.reference_frames[0]
+    if not _exact_world_cartesian_1d_frame(frame):
+        return None
+
+    if len(context.motion_intervals) != 1 or context.events or context.points:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        set(interval.subject_ids) != {body_id, spring_id}
+        or len(interval.subject_ids) != 2
+        or interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or not interval.evidence_refs
+    ):
+        return None
+
+    attachments = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.attached
+    )
+    if (
+        len(context.geometry) != 1
+        or len(attachments) != 1
+        or set(attachments[0].participant_ids) != {body_id, spring_id}
+        or len(attachments[0].participant_ids) != 2
+        or attachments[0].expression is not None
+        or attachments[0].quantity_ids
+        or attachments[0].interval_id != interval.interval_id
+        or not attachments[0].evidence_refs
+    ):
+        return None
+
+    interactions = tuple(
+        item for item in context.interactions if item.kind is InteractionKind.spring
+    )
+    if len(context.interactions) != 1 or len(interactions) != 1:
+        return None
+    interaction = interactions[0]
+    if (
+        set(interaction.participant_ids) != {body_id, spring_id}
+        or len(interaction.participant_ids) != 2
+        or interaction.point_ids
+        or interaction.frame_id != frame.frame_id
+        or interaction.interval_id != interval.interval_id
+        or interaction.event_id is not None
+        or not interaction.evidence_refs
+    ):
+        return None
+
+    states = tuple(context.state_conditions)
+    if (
+        len(states) != 4
+        or any(
+            item.state is not StateValue.active
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.expression is not None
+            or not item.evidence_refs
+            for item in states
+        )
+    ):
+        return None
+    state_by_key = {(item.subject_id, item.kind): item for item in states}
+    if len(state_by_key) != 4:
+        return None
+    body_start = state_by_key.get((body_id, StateKind.initial))
+    body_end = state_by_key.get((body_id, StateKind.final))
+    spring_start = state_by_key.get((spring_id, StateKind.initial))
+    spring_end = state_by_key.get((spring_id, StateKind.final))
+    if any(item is None for item in (body_start, body_end, spring_start, spring_end)):
+        return None
+
+    quantities = {item.quantity_id: item for item in context.quantities}
+    if None in quantities:
+        return None
+
+    def state_pair(state: object, role_a: QuantityRole, role_b: QuantityRole):
+        if len(state.quantity_ids) != 2:
+            return None
+        selected = tuple(quantities.get(item) for item in state.quantity_ids)
+        if any(item is None for item in selected):
+            return None
+        by_role = {item.role: item for item in selected}
+        if set(by_role) != {role_a, role_b}:
+            return None
+        return by_role[role_a], by_role[role_b]
+
+    body_start_pair = state_pair(body_start, QuantityRole.speed, QuantityRole.energy)
+    body_end_pair = state_pair(body_end, QuantityRole.speed, QuantityRole.energy)
+    spring_start_pair = state_pair(
+        spring_start, QuantityRole.displacement, QuantityRole.energy
+    )
+    spring_end_pair = state_pair(
+        spring_end, QuantityRole.displacement, QuantityRole.energy
+    )
+    if any(
+        item is None
+        for item in (
+            body_start_pair,
+            body_end_pair,
+            spring_start_pair,
+            spring_end_pair,
+        )
+    ):
+        return None
+    speed_start, kinetic_start = body_start_pair
+    speed_end, kinetic_end = body_end_pair
+    displacement_start, spring_energy_start = spring_start_pair
+    displacement_end, spring_energy_end = spring_end_pair
+
+    masses = _by_role(context, QuantityRole.mass)
+    stiffnesses = _by_role(context, QuantityRole.stiffness)
+    if len(masses) != 1 or len(stiffnesses) != 1:
+        return None
+    mass = masses[0]
+    stiffness = stiffnesses[0]
+
+    energy_dimension = DimensionVector(mass=1, length=2, time=-2)
+    speed_dimension = DimensionVector(length=1, time=-1)
+    displacement_dimension = DimensionVector(length=1)
+    stiffness_dimension = DimensionVector(mass=1, time=-2)
+    if (
+        mass.subject_id != body_id
+        or mass.shape is not QuantityShape.scalar
+        or mass.dimension != DimensionVector(mass=1)
+        or mass.point_id is not None
+        or mass.frame_id is not None
+        or mass.interval_id is not None
+        or mass.event_id is not None
+        or type(mass.known_si_value) is not float
+        or not math.isfinite(mass.known_si_value)
+        or mass.known_si_value <= 0.0
+        or not mass.evidence_ids
+        or stiffness.subject_id != spring_id
+        or stiffness.shape is not QuantityShape.scalar
+        or stiffness.dimension != stiffness_dimension
+        or stiffness.point_id is not None
+        or stiffness.frame_id is not None
+        or stiffness.interval_id is not None
+        or stiffness.event_id is not None
+        or type(stiffness.known_si_value) is not float
+        or not math.isfinite(stiffness.known_si_value)
+        or stiffness.known_si_value <= 0.0
+        or not stiffness.evidence_ids
+    ):
+        return None
+
+    for displacement in (displacement_start, displacement_end):
+        if (
+            displacement.subject_id != spring_id
+            or displacement.shape is not QuantityShape.scalar
+            or displacement.dimension != displacement_dimension
+            or displacement.point_id is not None
+            or displacement.frame_id != frame.frame_id
+            or displacement.interval_id != interval.interval_id
+            or displacement.event_id is not None
+            or displacement.component is not QuantityComponent.x
+            or type(displacement.known_si_value) is not float
+            or not math.isfinite(displacement.known_si_value)
+            or not displacement.evidence_ids
+            or not _axis_bound(
+                displacement,
+                frame.frame_id,
+                QuantityComponent.x,
+                displacement.direction_sign,
+            )
+        ):
+            return None
+    for speed, known in ((speed_start, True), (speed_end, False)):
+        if (
+            speed.subject_id != body_id
+            or speed.shape is not QuantityShape.scalar
+            or speed.dimension != speed_dimension
+            or speed.point_id is not None
+            or speed.frame_id != frame.frame_id
+            or speed.interval_id != interval.interval_id
+            or speed.event_id is not None
+            or speed.component is not QuantityComponent.magnitude
+            or bool(speed.known_si_value is not None) is not known
+            or (
+                known
+                and (
+                    type(speed.known_si_value) is not float
+                    or not math.isfinite(speed.known_si_value)
+                    or speed.known_si_value < 0.0
+                )
+            )
+            or not speed.evidence_ids
+        ):
+            return None
+    for energy, subject_id in (
+        (kinetic_start, body_id),
+        (kinetic_end, body_id),
+        (spring_energy_start, spring_id),
+        (spring_energy_end, spring_id),
+    ):
+        if (
+            energy.subject_id != subject_id
+            or energy.shape is not QuantityShape.scalar
+            or energy.dimension != energy_dimension
+            or energy.point_id is not None
+            or energy.frame_id != frame.frame_id
+            or energy.interval_id != interval.interval_id
+            or energy.event_id is not None
+            or energy.component
+            not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            or energy.known_si_value is not None
+            or not energy.evidence_ids
+        ):
+            return None
+
+    expected_quantities = {
+        mass.quantity_id,
+        stiffness.quantity_id,
+        displacement_start.quantity_id,
+        displacement_end.quantity_id,
+        speed_start.quantity_id,
+        speed_end.quantity_id,
+        kinetic_start.quantity_id,
+        kinetic_end.quantity_id,
+        spring_energy_start.quantity_id,
+        spring_energy_end.quantity_id,
+    }
+    if (
+        set(quantities) != expected_quantities
+        or set(interaction.quantity_ids)
+        != {
+            stiffness.quantity_id,
+            displacement_start.quantity_id,
+            displacement_end.quantity_id,
+            spring_energy_start.quantity_id,
+            spring_energy_end.quantity_id,
+        }
+        or len(interaction.quantity_ids) != 5
+    ):
+        return None
+
+    linear_ids = context.approved_assumptions(
+        "linear_spring", spring_id, interval.interval_id
+    )
+    kinetic_ids = context.approved_assumptions(
+        "kinetic_energy", body_id, interval.interval_id
+    )
+    conservation_ids = context.approved_assumptions(
+        "no_energy_loss", body_id, interval.interval_id
+    )
+    if (
+        len(linear_ids) != 1
+        or len(kinetic_ids) != 1
+        or len(conservation_ids) != 1
+        or len(context.assumptions) != 3
+        or any(not item.evidence_refs for item in context.assumptions)
+    ):
+        return None
+
+    return _SpringEnergySpeedLawProfile(
+        body_id=body_id,
+        spring_id=spring_id,
+        frame_id=frame.frame_id,
+        interval_id=interval.interval_id,
+        mass=mass,
+        stiffness=stiffness,
+        displacement_start=displacement_start,
+        displacement_end=displacement_end,
+        speed_start=speed_start,
+        speed_end=speed_end,
+        spring_energy_start=spring_energy_start,
+        spring_energy_end=spring_energy_end,
+        kinetic_energy_start=kinetic_start,
+        kinetic_energy_end=kinetic_end,
+        linear_spring_ids=linear_ids,
+        kinetic_energy_ids=kinetic_ids,
+        conservation_ids=conservation_ids,
+        state_ids=tuple(sorted(item.state_condition_id for item in states)),
+    )
+
+
+def _spring_energy_speed_emissions(context: LawContext) -> list[LawEmission]:
+    profile = _spring_energy_speed_profile(context)
+    if profile is None:
+        return []
+    half = LiteralNode(value=0.5)
+    spring_pairs = (
+        (profile.spring_energy_start, profile.displacement_start),
+        (profile.spring_energy_end, profile.displacement_end),
+    )
+    kinetic_pairs = (
+        (profile.kinetic_energy_start, profile.speed_start),
+        (profile.kinetic_energy_end, profile.speed_end),
+    )
+    emitted: list[LawEmission] = []
+    for energy, displacement in spring_pairs:
+        emitted.append(
+            _emit(
+                context,
+                "spring_potential",
+                Equality(
+                    left=energy.expression,
+                    right=Multiply(
+                        factors=(
+                            half,
+                            profile.stiffness.expression,
+                            Power(
+                                base=displacement.expression,
+                                exponent=LiteralNode(value=2.0),
+                            ),
+                        ),
+                        dimension=energy.dimension,
+                    ),
+                ),
+                (energy, profile.stiffness, displacement),
+                assumption_ids=profile.linear_spring_ids,
+                constraint_ids=profile.state_ids,
+                extra_entity_ids=(profile.body_id,),
+            )
+        )
+    for energy, speed in kinetic_pairs:
+        emitted.append(
+            _emit(
+                context,
+                "kinetic_energy",
+                Equality(
+                    left=energy.expression,
+                    right=Multiply(
+                        factors=(
+                            half,
+                            profile.mass.expression,
+                            Power(
+                                base=speed.expression,
+                                exponent=LiteralNode(value=2.0),
+                            ),
+                        ),
+                        dimension=energy.dimension,
+                    ),
+                ),
+                (energy, profile.mass, speed),
+                assumption_ids=profile.kinetic_energy_ids,
+                constraint_ids=profile.state_ids,
+            )
+        )
+    emitted.append(
+        _emit(
+            context,
+            "mechanical_energy_conservation",
+            Equality(
+                left=Add(
+                    terms=(
+                        profile.kinetic_energy_start.expression,
+                        profile.spring_energy_start.expression,
+                    ),
+                    dimension=profile.kinetic_energy_start.dimension,
+                ),
+                right=Add(
+                    terms=(
+                        profile.kinetic_energy_end.expression,
+                        profile.spring_energy_end.expression,
+                    ),
+                    dimension=profile.kinetic_energy_end.dimension,
+                ),
+            ),
+            (
+                profile.kinetic_energy_start,
+                profile.spring_energy_start,
+                profile.kinetic_energy_end,
+                profile.spring_energy_end,
+            ),
+            assumption_ids=profile.conservation_ids,
+            constraint_ids=profile.state_ids,
+            extra_entity_ids=(profile.body_id, profile.spring_id),
+        )
+    )
+    emitted.append(
+        _emit(
+            context,
+            "translational_speed_nonnegative",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=profile.speed_end.expression,
+                right=LiteralNode(
+                    value=0.0,
+                    dimension=profile.speed_end.dimension,
+                ),
+            ),
+            (profile.speed_end,),
+            constraint_ids=profile.state_ids,
+        )
+    )
+    return emitted
+
+
+@dataclass(frozen=True)
+class _CurveSpeedLawProfile:
+    kind: str
+    body_id: str
+    road_id: str
+    environment_id: str
+    contact_point_id: str
+    frame_id: str
+    interval_id: str
+    mass: BoundQuantity
+    gravity: BoundQuantity
+    radius: BoundQuantity
+    speed: BoundQuantity
+    normal_acceleration: BoundQuantity
+    normal_force: BoundQuantity
+    friction_force: BoundQuantity | None
+    coefficient: BoundQuantity | None
+    angle: BoundQuantity | None
+    horizontal_ids: tuple[str, ...]
+    circular_ids: tuple[str, ...]
+    regime_ids: tuple[str, ...]
+    state_ids: tuple[str, ...]
+
+
+def _curve_speed_profile(context: LawContext) -> _CurveSpeedLawProfile | None:
+    bodies = tuple(
+        item for item in context.entities if item.primitive is EntityPrimitive.particle
+    )
+    environments = tuple(
+        item
+        for item in context.entities
+        if item.primitive is EntityPrimitive.environment
+    )
+    roads = tuple(
+        item
+        for item in context.entities
+        if item.primitive in {EntityPrimitive.surface, EntityPrimitive.incline}
+    )
+    if (
+        len(context.entities) != 3
+        or any(len(items) != 1 for items in (bodies, environments, roads))
+        or any(not item.evidence_refs for item in context.entities)
+    ):
+        return None
+    body_id = bodies[0].entity_id
+    environment_id = environments[0].entity_id
+    road = roads[0]
+    road_id = road.entity_id
+    kind = "flat" if road.primitive is EntityPrimitive.surface else "banked"
+
+    if len(context.reference_frames) != 2:
+        return None
+    world_frames = tuple(
+        item
+        for item in context.reference_frames
+        if item.frame_type is ReferenceFrameType.cartesian_2d
+        and getattr(item.origin, "kind", None) == "world"
+    )
+    path_frames = tuple(
+        item
+        for item in context.reference_frames
+        if item.frame_type is ReferenceFrameType.tangential_normal
+        and getattr(item.origin, "entity_id", None) == road_id
+    )
+    if len(world_frames) != 1 or len(path_frames) != 1:
+        return None
+    world = world_frames[0]
+    frame = path_frames[0]
+
+    def axis_signature(item: object) -> set[tuple[object, ...]]:
+        return {
+            (
+                axis.axis,
+                getattr(axis.direction, "kind", None),
+                getattr(axis.direction, "frame_id", None),
+                getattr(axis.direction, "axis", None),
+                getattr(axis.direction, "sign", None),
+            )
+            for axis in item.axes
+        }
+
+    if (
+        world.parent_frame_id is not None
+        or world.translating_with_entity_id is not None
+        or world.rotating_about_point_id is not None
+        or world.generalized_coordinate_symbol_ids
+        or axis_signature(world)
+        != {
+            (AxisName.x, "axis", world.frame_id, AxisName.x, 1),
+            (AxisName.y, "axis", world.frame_id, AxisName.y, 1),
+        }
+        or frame.parent_frame_id != world.frame_id
+        or frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id is not None
+        or frame.generalized_coordinate_symbol_ids
+        or axis_signature(frame)
+        != {
+            (AxisName.tangent, "axis", frame.frame_id, AxisName.tangent, 1),
+            (AxisName.normal, "axis", frame.frame_id, AxisName.normal, 1),
+        }
+        or any(not item.evidence_refs for item in context.reference_frames)
+    ):
+        return None
+
+    if len(context.motion_intervals) != 1 or context.events:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        set(interval.subject_ids) != {body_id, road_id, environment_id}
+        or len(interval.subject_ids) != 3
+        or interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or not interval.evidence_refs
+    ):
+        return None
+
+    if len(context.points) != 1:
+        return None
+    point = context.points[0]
+    if (
+        point.role is not PointRole.contact
+        or point.owner_entity_id != body_id
+        or point.frame_id != frame.frame_id
+        or not point.evidence_refs
+    ):
+        return None
+
+    radius_relations = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.radius
+    )
+    lies_on = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.lies_on
+    )
+    angle_relations = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.angle
+    )
+    expected_geometry_count = 2 if kind == "flat" else 3
+    if (
+        len(context.geometry) != expected_geometry_count
+        or len(radius_relations) != 1
+        or len(lies_on) != 1
+        or len(angle_relations) != (0 if kind == "flat" else 1)
+        or any(
+            set(item.participant_ids) != {body_id, road_id}
+            or len(item.participant_ids) != 2
+            or item.expression is not None
+            or item.interval_id != interval.interval_id
+            or not item.evidence_refs
+            for item in context.geometry
+        )
+    ):
+        return None
+
+    gravities = tuple(
+        item for item in context.interactions if item.kind is InteractionKind.gravity
+    )
+    contacts = tuple(
+        item for item in context.interactions if item.kind is InteractionKind.contact
+    )
+    if len(context.interactions) != 2 or len(gravities) != 1 or len(contacts) != 1:
+        return None
+    gravity_link = gravities[0]
+    contact = contacts[0]
+    if (
+        set(gravity_link.participant_ids) != {body_id, environment_id}
+        or len(gravity_link.participant_ids) != 2
+        or gravity_link.point_ids
+        or gravity_link.frame_id is not None
+        or gravity_link.interval_id != interval.interval_id
+        or gravity_link.event_id is not None
+        or not gravity_link.evidence_refs
+        or set(contact.participant_ids) != {body_id, road_id}
+        or len(contact.participant_ids) != 2
+        or contact.point_ids != (point.point_id,)
+        or contact.frame_id != frame.frame_id
+        or contact.interval_id != interval.interval_id
+        or contact.event_id is not None
+        or not contact.evidence_refs
+    ):
+        return None
+
+    quantities = {item.quantity_id: item for item in context.quantities}
+    if None in quantities:
+        return None
+    by_role = {
+        role: tuple(item for item in context.quantities if item.role is role)
+        for role in QuantityRole
+    }
+    if (
+        len(by_role[QuantityRole.mass]) != 1
+        or len(by_role[QuantityRole.gravity]) != 1
+        or len(by_role[QuantityRole.radius]) != 1
+        or len(by_role[QuantityRole.speed]) != 1
+        or len(by_role[QuantityRole.acceleration]) != 1
+        or len(by_role[QuantityRole.force]) != (2 if kind == "flat" else 1)
+        or len(by_role[QuantityRole.coefficient_friction]) != (1 if kind == "flat" else 0)
+        or len(by_role[QuantityRole.angle]) != (0 if kind == "flat" else 1)
+    ):
+        return None
+    mass = by_role[QuantityRole.mass][0]
+    gravity = by_role[QuantityRole.gravity][0]
+    radius = by_role[QuantityRole.radius][0]
+    speed = by_role[QuantityRole.speed][0]
+    normal_acceleration = by_role[QuantityRole.acceleration][0]
+    normal_force = next(
+        (
+            item
+            for item in by_role[QuantityRole.force]
+            if item.component
+            in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        ),
+        None,
+    )
+    friction_force = next(
+        (
+            item
+            for item in by_role[QuantityRole.force]
+            if item.component is QuantityComponent.normal
+        ),
+        None,
+    )
+    coefficient = (
+        by_role[QuantityRole.coefficient_friction][0]
+        if kind == "flat"
+        else None
+    )
+    angle = by_role[QuantityRole.angle][0] if kind == "banked" else None
+    if normal_force is None or (kind == "flat" and friction_force is None):
+        return None
+
+    known_positive = (mass, gravity, radius)
+    if any(
+        item.shape is not QuantityShape.scalar
+        or type(item.known_si_value) is not float
+        or not math.isfinite(item.known_si_value)
+        or item.known_si_value <= 0.0
+        or not item.evidence_ids
+        for item in known_positive
+    ):
+        return None
+    if (
+        mass.subject_id != body_id
+        or mass.dimension != DimensionVector(mass=1)
+        or mass.point_id is not None
+        or mass.frame_id is not None
+        or mass.interval_id is not None
+        or mass.event_id is not None
+        or gravity.subject_id != environment_id
+        or gravity.dimension != DimensionVector(length=1, time=-2)
+        or gravity.point_id is not None
+        or gravity.frame_id is not None
+        or gravity.interval_id is not None
+        or gravity.event_id is not None
+        or radius.subject_id != body_id
+        or radius.dimension != DimensionVector(length=1)
+        or radius.point_id is not None
+        or radius.frame_id is not None
+        or radius.interval_id is not None
+        or radius.event_id is not None
+    ):
+        return None
+    if (
+        speed.subject_id != body_id
+        or speed.shape is not QuantityShape.scalar
+        or speed.dimension != DimensionVector(length=1, time=-1)
+        or speed.point_id is not None
+        or speed.frame_id != frame.frame_id
+        or speed.interval_id != interval.interval_id
+        or speed.event_id is not None
+        or speed.component is not QuantityComponent.magnitude
+        or speed.known_si_value is not None
+        or not speed.evidence_ids
+        or normal_acceleration.subject_id != body_id
+        or normal_acceleration.shape is not QuantityShape.scalar
+        or normal_acceleration.dimension != DimensionVector(length=1, time=-2)
+        or normal_acceleration.point_id is not None
+        or normal_acceleration.frame_id != frame.frame_id
+        or normal_acceleration.interval_id != interval.interval_id
+        or normal_acceleration.event_id is not None
+        or normal_acceleration.component is not QuantityComponent.normal
+        or normal_acceleration.known_si_value is not None
+        or not normal_acceleration.evidence_ids
+        or not _axis_bound(
+            normal_acceleration,
+            frame.frame_id,
+            QuantityComponent.normal,
+            1,
+        )
+        or normal_force.subject_id != body_id
+        or normal_force.shape is not QuantityShape.scalar
+        or normal_force.dimension != DimensionVector(mass=1, length=1, time=-2)
+        or normal_force.point_id != point.point_id
+        or normal_force.frame_id is not None
+        or normal_force.interval_id != interval.interval_id
+        or normal_force.event_id is not None
+        or normal_force.known_si_value is not None
+        or not normal_force.evidence_ids
+    ):
+        return None
+
+    if tuple(radius_relations[0].quantity_ids) != (radius.quantity_id,):
+        return None
+    if kind == "flat":
+        if (
+            coefficient is None
+            or friction_force is None
+            or coefficient.subject_id != body_id
+            or coefficient.shape is not QuantityShape.scalar
+            or coefficient.dimension != DimensionVector()
+            or coefficient.point_id is not None
+            or coefficient.frame_id is not None
+            or coefficient.interval_id is not None
+            or coefficient.event_id is not None
+            or type(coefficient.known_si_value) is not float
+            or not math.isfinite(coefficient.known_si_value)
+            or coefficient.known_si_value < 0.0
+            or not coefficient.evidence_ids
+            or friction_force.subject_id != body_id
+            or friction_force.shape is not QuantityShape.scalar
+            or friction_force.dimension != normal_force.dimension
+            or friction_force.point_id != point.point_id
+            or friction_force.frame_id != frame.frame_id
+            or friction_force.interval_id != interval.interval_id
+            or friction_force.event_id is not None
+            or friction_force.known_si_value is not None
+            or not friction_force.evidence_ids
+            or not _axis_bound(
+                friction_force,
+                frame.frame_id,
+                QuantityComponent.normal,
+                1,
+            )
+        ):
+            return None
+    else:
+        if (
+            angle is None
+            or angle.subject_id != road_id
+            or angle.shape is not QuantityShape.scalar
+            or angle.dimension != DimensionVector()
+            or angle.point_id is not None
+            or angle.frame_id is not None
+            or angle.interval_id is not None
+            or angle.event_id is not None
+            or type(angle.known_si_value) is not float
+            or not math.isfinite(angle.known_si_value)
+            or not 0.0 < angle.known_si_value < math.pi / 2.0
+            or not angle.evidence_ids
+            or tuple(angle_relations[0].quantity_ids) != (angle.quantity_id,)
+        ):
+            return None
+
+    linked_gravity_ids = {mass.quantity_id, gravity.quantity_id}
+    linked_contact_ids = {
+        radius.quantity_id,
+        speed.quantity_id,
+        normal_acceleration.quantity_id,
+        normal_force.quantity_id,
+        *(() if friction_force is None else (friction_force.quantity_id,)),
+        *(() if coefficient is None else (coefficient.quantity_id,)),
+        *(() if angle is None else (angle.quantity_id,)),
+    }
+    if (
+        set(gravity_link.quantity_ids) != linked_gravity_ids
+        or len(gravity_link.quantity_ids) != len(linked_gravity_ids)
+        or set(contact.quantity_ids) != linked_contact_ids
+        or len(contact.quantity_ids) != len(linked_contact_ids)
+        or set(quantities) != linked_gravity_ids | linked_contact_ids
+    ):
+        return None
+
+    states = tuple(context.state_conditions)
+    if (
+        len(states) != 4
+        or any(
+            item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.expression is not None
+            or not item.evidence_refs
+            for item in states
+        )
+    ):
+        return None
+    touching = tuple(
+        item
+        for item in states
+        if item.kind is StateKind.contact
+        and item.state is StateValue.touching
+        and item.subject_id == body_id
+        and item.quantity_ids == (normal_force.quantity_id,)
+    )
+    regime = tuple(
+        item
+        for item in states
+        if item.kind is StateKind.regime
+        and item.subject_id == body_id
+        and item.state
+        is (StateValue.sticking if kind == "flat" else StateValue.inactive)
+    )
+    moving = tuple(
+        item
+        for item in states
+        if item.kind is StateKind.motion
+        and item.state is StateValue.moving
+        and item.subject_id == body_id
+        and item.quantity_ids == (speed.quantity_id,)
+    )
+    fixed = tuple(
+        item
+        for item in states
+        if item.kind is StateKind.motion
+        and item.state is StateValue.at_rest
+        and item.subject_id == road_id
+        and not item.quantity_ids
+    )
+    expected_regime_quantities = (
+        {
+            friction_force.quantity_id,
+            normal_force.quantity_id,
+            coefficient.quantity_id,
+        }
+        if kind == "flat"
+        else set()
+    )
+    if (
+        any(len(items) != 1 for items in (touching, regime, moving, fixed))
+        or set(regime[0].quantity_ids) != expected_regime_quantities
+        or len(regime[0].quantity_ids) != len(expected_regime_quantities)
+    ):
+        return None
+
+    circular_ids = context.approved_assumptions(
+        "uniform_circular_motion", body_id, interval.interval_id
+    )
+    horizontal_ids = (
+        context.approved_assumptions(
+            "horizontal_surface", road_id, interval.interval_id
+        )
+        if kind == "flat"
+        else ()
+    )
+    regime_ids = context.approved_assumptions(
+        "limiting_static_friction" if kind == "flat" else "frictionless_contact",
+        body_id,
+        interval.interval_id,
+    )
+    expected_assumptions = 3 if kind == "flat" else 2
+    if (
+        len(circular_ids) != 1
+        or len(horizontal_ids) != (1 if kind == "flat" else 0)
+        or len(regime_ids) != 1
+        or len(context.assumptions) != expected_assumptions
+        or any(not item.evidence_refs for item in context.assumptions)
+    ):
+        return None
+
+    return _CurveSpeedLawProfile(
+        kind=kind,
+        body_id=body_id,
+        road_id=road_id,
+        environment_id=environment_id,
+        contact_point_id=point.point_id,
+        frame_id=frame.frame_id,
+        interval_id=interval.interval_id,
+        mass=mass,
+        gravity=gravity,
+        radius=radius,
+        speed=speed,
+        normal_acceleration=normal_acceleration,
+        normal_force=normal_force,
+        friction_force=friction_force,
+        coefficient=coefficient,
+        angle=angle,
+        horizontal_ids=horizontal_ids,
+        circular_ids=circular_ids,
+        regime_ids=regime_ids,
+        state_ids=tuple(sorted(item.state_condition_id for item in states)),
+    )
+
+
+def _curve_speed_emissions(context: LawContext) -> list[LawEmission]:
+    profile = _curve_speed_profile(context)
+    if profile is None:
+        return []
+    zero_friction_boundary = (
+        profile.kind == "flat"
+        and profile.coefficient is not None
+        and profile.coefficient.known_si_value == 0.0
+    )
+    emitted: list[LawEmission] = []
+    if zero_friction_boundary:
+        frequency = math.sqrt(
+            profile.gravity.known_si_value / profile.radius.known_si_value
+        )
+        if not math.isfinite(frequency) or frequency <= 0.0:
+            return []
+        emitted.append(
+            _emit(
+                context,
+                "flat_curve_zero_friction_boundary",
+                Equality(
+                    left=profile.normal_acceleration.expression,
+                    right=Multiply(
+                        factors=(
+                            profile.speed.expression,
+                            LiteralNode(
+                                value=frequency,
+                                dimension=DimensionVector(time=-1),
+                            ),
+                        ),
+                        dimension=profile.normal_acceleration.dimension,
+                    ),
+                ),
+                (
+                    profile.speed,
+                    profile.normal_acceleration,
+                    profile.coefficient,
+                    profile.gravity,
+                    profile.radius,
+                ),
+                assumption_ids=profile.circular_ids + profile.regime_ids,
+                constraint_ids=profile.state_ids,
+                extra_entity_ids=(profile.road_id,),
+            )
+        )
+    else:
+        emitted.append(
+            _emit(
+                context,
+                "particle_normal_acceleration",
+                Equality(
+                    left=profile.normal_acceleration.expression,
+                    right=Divide(
+                        numerator=Power(
+                            base=profile.speed.expression,
+                            exponent=LiteralNode(value=2.0),
+                        ),
+                        denominator=profile.radius.expression,
+                        dimension=profile.normal_acceleration.dimension,
+                    ),
+                ),
+                (profile.normal_acceleration, profile.speed, profile.radius),
+                assumption_ids=profile.circular_ids,
+                constraint_ids=profile.state_ids,
+                extra_entity_ids=(profile.road_id,),
+            )
+        )
+    emitted.extend([
+        _emit(
+            context,
+            "contact_normal_bound",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=profile.normal_force.expression,
+                right=LiteralNode(
+                    value=0.0,
+                    dimension=profile.normal_force.dimension,
+                ),
+            ),
+            (profile.normal_force,),
+            constraint_ids=profile.state_ids,
+            extra_entity_ids=(profile.road_id,),
+        ),
+        _emit(
+            context,
+            "translational_speed_nonnegative",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=profile.speed.expression,
+                right=LiteralNode(
+                    value=0.0,
+                    dimension=profile.speed.dimension,
+                ),
+            ),
+            (profile.speed,),
+            constraint_ids=profile.state_ids,
+        ),
+    ])
+    if profile.kind == "flat":
+        assert profile.friction_force is not None
+        assert profile.coefficient is not None
+        emitted.extend(
+            [
+                _emit(
+                    context,
+                    "horizontal_gravity_normal_projection",
+                    Equality(
+                        left=profile.normal_force.expression,
+                        right=Multiply(
+                            factors=(
+                                profile.mass.expression,
+                                profile.gravity.expression,
+                            ),
+                            dimension=profile.normal_force.dimension,
+                        ),
+                    ),
+                    (profile.normal_force, profile.mass, profile.gravity),
+                    assumption_ids=profile.horizontal_ids,
+                    constraint_ids=profile.state_ids,
+                    extra_entity_ids=(profile.road_id, profile.environment_id),
+                ),
+                _emit(
+                    context,
+                    "particle_newton_second",
+                    Equality(
+                        left=profile.friction_force.expression,
+                        right=Multiply(
+                            factors=(
+                                profile.mass.expression,
+                                profile.normal_acceleration.expression,
+                            ),
+                            dimension=profile.friction_force.dimension,
+                        ),
+                    ),
+                    (
+                        profile.friction_force,
+                        profile.mass,
+                        profile.normal_acceleration,
+                    ),
+                    assumption_ids=profile.circular_ids,
+                    constraint_ids=profile.state_ids,
+                    extra_entity_ids=(profile.road_id,),
+                ),
+                _emit(
+                    context,
+                    "contact_limiting_static_friction",
+                    Equality(
+                        left=profile.friction_force.expression,
+                        right=Multiply(
+                            factors=(
+                                profile.coefficient.expression,
+                                profile.normal_force.expression,
+                            ),
+                            dimension=profile.friction_force.dimension,
+                        ),
+                    ),
+                    (
+                        profile.friction_force,
+                        profile.coefficient,
+                        profile.normal_force,
+                    ),
+                    assumption_ids=profile.regime_ids,
+                    constraint_ids=profile.state_ids,
+                    extra_entity_ids=(profile.road_id,),
+                ),
+            ]
+        )
+    else:
+        assert profile.angle is not None
+        cosine = math.cos(profile.angle.known_si_value)
+        sine = math.sin(profile.angle.known_si_value)
+        for name, value in (("cosine", cosine), ("sine", sine)):
+            if not math.isfinite(value) or value <= 0.0:
+                return []
+            for canonical in (0.0, 0.5, math.sqrt(0.5), 1.0):
+                if abs(value - canonical) <= 1.0e-15:
+                    if name == "cosine":
+                        cosine = canonical
+                    else:
+                        sine = canonical
+                    break
+        emitted.extend(
+            [
+                _emit(
+                    context,
+                    "banked_curve_vertical_balance",
+                    Equality(
+                        left=Multiply(
+                            factors=(
+                                profile.normal_force.expression,
+                                LiteralNode(value=cosine),
+                            ),
+                            dimension=profile.normal_force.dimension,
+                        ),
+                        right=Multiply(
+                            factors=(
+                                profile.mass.expression,
+                                profile.gravity.expression,
+                            ),
+                            dimension=profile.normal_force.dimension,
+                        ),
+                    ),
+                    (
+                        profile.normal_force,
+                        profile.angle,
+                        profile.mass,
+                        profile.gravity,
+                    ),
+                    assumption_ids=profile.regime_ids,
+                    constraint_ids=profile.state_ids,
+                    extra_entity_ids=(profile.road_id, profile.environment_id),
+                ),
+                _emit(
+                    context,
+                    "banked_curve_inward_balance",
+                    Equality(
+                        left=Multiply(
+                            factors=(
+                                profile.normal_force.expression,
+                                LiteralNode(value=sine),
+                            ),
+                            dimension=profile.normal_force.dimension,
+                        ),
+                        right=Multiply(
+                            factors=(
+                                profile.mass.expression,
+                                profile.normal_acceleration.expression,
+                            ),
+                            dimension=profile.normal_force.dimension,
+                        ),
+                    ),
+                    (
+                        profile.normal_force,
+                        profile.angle,
+                        profile.mass,
+                        profile.normal_acceleration,
+                    ),
+                    assumption_ids=tuple(
+                        sorted(set(profile.regime_ids) | set(profile.circular_ids))
+                    ),
+                    constraint_ids=profile.state_ids,
+                    extra_entity_ids=(profile.road_id,),
+                ),
+            ]
+        )
+    return emitted
+
+
 def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     vertical_circle = _vertical_circle_emissions(context)
     if vertical_circle:
@@ -8511,6 +9701,36 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
         return tuple(
             sorted(
                 rolling_energy,
+                key=lambda item: (
+                    item.effective_cost,
+                    item.rule.law_id,
+                    item.entity_ids,
+                    item.interval_id or "",
+                    item.event_id or "",
+                    item.source_quantity_ids,
+                ),
+            )
+        )
+    spring_energy = _spring_energy_speed_emissions(context)
+    if spring_energy:
+        return tuple(
+            sorted(
+                spring_energy,
+                key=lambda item: (
+                    item.effective_cost,
+                    item.rule.law_id,
+                    item.entity_ids,
+                    item.interval_id or "",
+                    item.event_id or "",
+                    item.source_quantity_ids,
+                ),
+            )
+        )
+    curve_speed = _curve_speed_emissions(context)
+    if curve_speed:
+        return tuple(
+            sorted(
+                curve_speed,
                 key=lambda item: (
                     item.effective_cost,
                     item.rule.law_id,
