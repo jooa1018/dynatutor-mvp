@@ -1,0 +1,1 @@
+Temporary Wave E application payload for PR-triggered exact-branch validation. Do not merge this staging PR. The workflow verifies the attached patch and pushes only the validated Wave E commits to `codex/phase56-generic-mechanics-engine` by non-forced fast-forward.
