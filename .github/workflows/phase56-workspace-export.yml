@@ -1,0 +1,38 @@
+name: Phase 56 workspace export
+
+on:
+  push:
+    branches:
+      - codex/phase56-generic-mechanics-engine
+    paths:
+      - ".github/workflows/phase56-workspace-export.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out exact branch head
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Create deterministic source snapshot
+        run: |
+          tar \
+            --exclude=.git \
+            --exclude='backend/.pytest_cache' \
+            --exclude='frontend/node_modules' \
+            -czf "$RUNNER_TEMP/dynatutor-phase56-workspace.tar.gz" .
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynatutor-phase56-workspace-${{ github.sha }}
+          path: ${{ runner.temp }}/dynatutor-phase56-workspace.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
