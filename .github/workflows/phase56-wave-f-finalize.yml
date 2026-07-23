@@ -1,0 +1,308 @@
+name: Phase 56 Wave F finalize Stage 5
+
+on:
+  push:
+    branches:
+      - agent/phase56-wave-f-apply-20260723-a
+    paths:
+      - ".github/workflows/phase56-wave-f-finalize.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: phase56-wave-f-finalize-stage5
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+      PRODUCT_SHA: dddab1eb00fc13efe78a6be60fc5f2755906fc77
+      PRODUCT_RUN_ID: "29986498873"
+      PRODUCT_RUN_NUMBER: "448"
+    steps:
+      - name: Check out finalizer
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Check out exact Wave F product head
+        run: |
+          git fetch origin "$TARGET_BRANCH"
+          git switch --detach "origin/$TARGET_BRANCH"
+          test "$(git rev-parse HEAD)" = "$PRODUCT_SHA"
+          test "$(git status --porcelain)" = ""
+
+      - name: Reconcile migration ledger and Stage 5 handoffs
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          product_sha = "dddab1eb00fc13efe78a6be60fc5f2755906fc77"
+          product_run_id = "29986498873"
+          product_run_number = "448"
+
+          parity_path = Path("backend/engine/mechanics/migration/parity.py")
+          parity = parity_path.read_text(encoding="utf-8")
+          marker = '''    LegacySolverId.banked_curve_no_friction: (
+                  "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
+              ),
+          }'''
+          replacement = f'''    LegacySolverId.banked_curve_no_friction: (
+                  "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
+              ),
+              LegacySolverId.plane_rigid_body_acceleration: (
+                  "{product_sha}"
+              ),
+              LegacySolverId.polar_kinematics: (
+                  "{product_sha}"
+              ),
+              LegacySolverId.instant_center_velocity: (
+                  "{product_sha}"
+              ),
+              LegacySolverId.plane_rigid_body_velocity: (
+                  "{product_sha}"
+              ),
+          }}'''
+          if marker not in parity:
+              raise SystemExit("migration checkpoint insertion marker not found")
+          parity = parity.replace(marker, replacement, 1)
+          parity_path.write_text(parity, encoding="utf-8")
+
+          test_path = Path("backend/tests/test_phase56_mechanics_migration_scope.py")
+          test = test_path.read_text(encoding="utf-8")
+          accepted_marker = '''    "banked_curve_no_friction",
+          }'''
+          accepted_replacement = '''    "banked_curve_no_friction",
+              "plane_rigid_body_acceleration",
+              "polar_kinematics",
+              "instant_center_velocity",
+              "plane_rigid_body_velocity",
+          }'''
+          if accepted_marker not in test:
+              raise SystemExit("accepted-set insertion marker not found")
+          test = test.replace(accepted_marker, accepted_replacement, 1)
+
+          checkpoints_marker = '''    "banked_curve_no_friction": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
+          }'''
+          checkpoints_replacement = f'''    "banked_curve_no_friction": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
+              "plane_rigid_body_acceleration": "{product_sha}",
+              "polar_kinematics": "{product_sha}",
+              "instant_center_velocity": "{product_sha}",
+              "plane_rigid_body_velocity": "{product_sha}",
+          }}'''
+          if checkpoints_marker not in test:
+              raise SystemExit("checkpoint-map insertion marker not found")
+          test = test.replace(checkpoints_marker, checkpoints_replacement, 1)
+          replacements = {
+              "test_current_progress_is_29_classified_21_accepted_4_pending_4_deferred":
+                  "test_current_progress_is_29_classified_25_accepted_0_pending_4_deferred",
+              "assert progress.accepted_in_scope_count == 21":
+                  "assert progress.accepted_in_scope_count == 25",
+              "assert progress.pending_in_scope_count == 4":
+                  "assert progress.pending_in_scope_count == 0",
+              "assert progress.in_scope_complete is False":
+                  "assert progress.in_scope_complete is True",
+              '        "false_complete",':
+                  '        "forged_incomplete",',
+              '    elif mutation == "false_complete":\n        progress_payload["in_scope_complete"] = True':
+                  '    elif mutation == "forged_incomplete":\n        progress_payload["in_scope_complete"] = False',
+              '    with pytest.raises(ValueError, match="deferred records never count"):\n        assert_legacy_migration_coverage_complete(CURRENT_LEGACY_MIGRATION_PROGRESS)':
+                  '    assert (\n        assert_legacy_migration_coverage_complete(CURRENT_LEGACY_MIGRATION_PROGRESS)\n        == CURRENT_LEGACY_MIGRATION_PROGRESS\n    )',
+          }
+          for old, new in replacements.items():
+              if old not in test:
+                  raise SystemExit(f"test reconciliation marker not found: {old}")
+              test = test.replace(old, new, 1)
+          test_path.write_text(test, encoding="utf-8")
+
+          section = f'''## Wave F product acceptance and Stage 5 completion — 2026-07-23 Asia/Seoul
+
+          Wave F Entries 25, 26, 27, and 29 (`plane_rigid_body_acceleration`,
+          `polar_kinematics`, `instant_center_velocity`, and
+          `plane_rigid_body_velocity`) are accepted Generic typed migrations.
+          The exact code-containing product head is `{product_sha}`. DynaTutor
+          release run #{product_run_number} (`{product_run_id}`) completed
+          successfully with backend compile, fast, slow, benchmark, audit,
+          frontend-marker, frontend tests/typecheck/build, warm/cold performance,
+          and four-round pooled comparison gates all passing.
+
+          Focused Wave F evidence is **55 passed** — **36 fast** and **19 slow**.
+          Directly connected mechanics regression evidence is **741 passed, 1
+          skipped**. The migration ledger now reports exactly **25 accepted / 0
+          pending / 4 deferred** and its complete-coverage assertion passes.
+          Stages 0–5 are complete; **Stage 6 is the next permitted phase**.
+
+          PR #17 remains Draft, open, and unmerged on Draft PR #16. No merge,
+          rebase, reset, force-push, main update, deployment, secret access, Live
+          API/model call, sealed-corpus access, or textbook-PDF access occurred.
+          Legacy output remains diagnostics-only and has no Generic routing,
+          equation, candidate, verification, selection, repair, or fallback
+          authority.
+
+          The commit containing this section is the Stage 5 acceptance candidate;
+          its exact-head release and Phase 55 regression runs must pass before
+          beginning Stage 6 implementation.
+          '''
+          section = "\n".join(line[10:] if line.startswith("          ") else line for line in section.splitlines()).strip() + "\n\n"
+
+          def prepend_after_title(path: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              first, sep, rest = text.partition("\n")
+              if not sep:
+                  raise SystemExit(f"missing title newline in {path}")
+              target.write_text(first + "\n\n" + section + rest.lstrip("\n"), encoding="utf-8")
+
+          for path in (
+              "docs/MECHANICS_LEGACY_MIGRATION.md",
+              "docs/PHASE56_CLAUDE_CODE_HANDOFF.md",
+              "docs/PHASE56_PAUSE_HANDOFF.md",
+          ):
+              prepend_after_title(path)
+
+          gate = f'''# Phase 56 Wave F and Stage 5 acceptance gate
+
+          - Wave F product head: `{product_sha}`
+          - DynaTutor product release: run #{product_run_number} (`{product_run_id}`), **SUCCESS**
+          - Focused Wave F: **55 passed** — **36 fast + 19 slow**
+          - Connected mechanics regression: **741 passed, 1 skipped**
+          - Migration scope after reconciliation: **25 accepted / 0 pending / 4 deferred**
+          - Stage status: **Stages 0–5 complete; Stage 6 next**
+
+          The exact-head CI for the acceptance commit containing this document is
+          pending. No product, test-selection, assertion, timeout, or performance
+          threshold relaxation is introduced by the ledger/documentation update.
+          '''
+          gate = "\n".join(line[10:] if line.startswith("          ") else line for line in gate.splitlines()).strip() + "\n"
+          Path("docs/PHASE56_WAVE_F_STAGE5_ACCEPTANCE.md").write_text(gate, encoding="utf-8")
+          PY
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Validate complete Stage 5 ledger and Wave F
+        working-directory: backend
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}/backend/tests
+        run: |
+          python -m py_compile \
+            engine/mechanics/migration/parity.py \
+            tests/test_phase56_mechanics_migration_scope.py
+          python -m pytest -q -o addopts= \
+            tests/test_phase56_mechanics_migration_scope.py \
+            tests/test_phase56_mechanics_deferred_scope.py
+          python -m pytest -q -o addopts= -m "not slow" \
+            tests/test_phase56_mechanics_plane_rigid_body_acceleration_same_fixture_parity.py \
+            tests/test_phase56_mechanics_plane_rigid_body_velocity_same_fixture_parity.py \
+            tests/test_phase56_mechanics_polar_kinematics_same_fixture_parity.py \
+            tests/test_phase56_mechanics_instant_center_velocity_same_fixture_parity.py
+          python -m pytest -q -o addopts= -m slow \
+            tests/test_phase56_mechanics_plane_rigid_body_acceleration_same_fixture_parity.py \
+            tests/test_phase56_mechanics_plane_rigid_body_velocity_same_fixture_parity.py \
+            tests/test_phase56_mechanics_polar_kinematics_same_fixture_parity.py \
+            tests/test_phase56_mechanics_instant_center_velocity_same_fixture_parity.py
+          python - <<'PY'
+          from engine.mechanics.migration import (
+              CURRENT_LEGACY_MIGRATION_PROGRESS,
+              assert_legacy_migration_coverage_complete,
+          )
+          progress = CURRENT_LEGACY_MIGRATION_PROGRESS
+          assert progress.accepted_in_scope_count == 25
+          assert progress.pending_in_scope_count == 0
+          assert progress.deferred_count == 4
+          assert progress.in_scope_complete is True
+          assert assert_legacy_migration_coverage_complete(progress) == progress
+          PY
+
+      - name: Commit and fast-forward Stage 5 acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git diff --check
+          test "$(git status --porcelain | wc -l)" -eq 6
+          git config user.name "phase56-stage5-bot"
+          git config user.email "phase56-stage5-bot@users.noreply.github.com"
+          git add \
+            backend/engine/mechanics/migration/parity.py \
+            backend/tests/test_phase56_mechanics_migration_scope.py \
+            docs/MECHANICS_LEGACY_MIGRATION.md \
+            docs/PHASE56_CLAUDE_CODE_HANDOFF.md \
+            docs/PHASE56_PAUSE_HANDOFF.md \
+            docs/PHASE56_WAVE_F_STAGE5_ACCEPTANCE.md
+          git commit -m "docs(phase56): accept Wave F and complete Stage 5"
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          git rev-parse HEAD | tee "$RUNNER_TEMP/stage5-head.txt"
+
+      - name: Update product PR and close temporary validation PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stage5_head="$(cat "$RUNNER_TEMP/stage5-head.txt")"
+          cat > "$RUNNER_TEMP/pr17-body.md" <<EOF
+          # Phase 56 — Generic Mechanics Engine
+
+          ## Current authoritative checkpoint — Wave F product accepted, Stage 5 complete
+
+          PR #17 remains **Draft, open, and unmerged**, stacked on Draft PR #16.
+
+          ### Progress
+
+          - Stages 0–5: **COMPLETE / ACCEPTED**
+          - Registry inventory: **29/29 classified**
+          - Course-scoped migrations: **25/25 accepted**
+          - Remaining in scope: **0/25**
+          - Deferred: **4/4**, unchanged
+          - Next permitted phase: **Stage 6**
+
+          ### Wave F evidence
+
+          - Product head: `$PRODUCT_SHA`
+          - DynaTutor release run #$PRODUCT_RUN_NUMBER (`$PRODUCT_RUN_ID`): **SUCCESS**
+          - Focused same-fixture: **55 passed** — **36 fast + 19 slow**
+          - Connected mechanics regression: **741 passed, 1 skipped**
+          - Backend compile, fast, slow, benchmark, audit, frontend-marker: **PASS**
+          - Frontend tests, typecheck, build: **PASS**
+          - Warm/cold performance and four-round pooled comparison: **PASS**
+          - Same-model read-only authority audit: **PASS**, blocking findings **0**
+
+          ### Stage 5 acceptance candidate
+
+          - Ledger/documentation head: `$stage5_head`
+          - Migration ledger: **25 accepted / 0 pending / 4 deferred**
+          - Exact-head release and Phase 55 regression CI for this acceptance head are now triggered.
+
+          ### Protections
+
+          - PR #16 and PR #17 remain Draft, open, and unmerged
+          - main unchanged
+          - no merge, rebase, reset, or force-push
+          - no production deployment/environment change
+          - no secret or Live API/model access
+          - public/private corpus remained sealed
+          - textbook PDF was not accessed or committed
+          - no test deletion, assertion/threshold/timeout relaxation, raw-text/system_type routing, or legacy answer authority
+
+          Stage 6 implementation must begin only after the exact-head acceptance CI above succeeds.
+          EOF
+          gh pr edit 17 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Phase 56: Generic mechanics engine — Stage 5 complete (25/25)" \
+            --body-file "$RUNNER_TEMP/pr17-body.md"
+          gh pr close 21 \
+            --repo "$GITHUB_REPOSITORY" \
+            --comment "Wave F product candidate was validated successfully in release run #$PRODUCT_RUN_NUMBER and fast-forwarded into Draft PR #17 without merging this temporary PR. Closing validation-only PR as intended."
