@@ -69,17 +69,38 @@ jobs:
           exit "$status"
         env:
           CI: "true"
-      - name: Upload frontend test diagnostics
+      - name: Frontend lint
+        run: |
+          set +e
+          npm run lint > frontend-lint.log 2>&1
+          status=$?
+          cat frontend-lint.log
+          exit "$status"
+      - name: Frontend typecheck
+        if: always()
+        run: |
+          set +e
+          npm run typecheck > frontend-typecheck.log 2>&1
+          status=$?
+          cat frontend-typecheck.log
+          exit "$status"
+      - name: Frontend production build
+        if: always()
+        run: |
+          set +e
+          npm run build > frontend-build.log 2>&1
+          status=$?
+          cat frontend-build.log
+          exit "$status"
+      - name: Upload frontend gate diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: stage6-frontend-test-log-${{ github.sha }}
-          path: frontend/frontend-test.log
-          if-no-files-found: error
+          name: stage6-frontend-gate-logs-${{ github.sha }}
+          path: |
+            frontend/frontend-test.log
+            frontend/frontend-lint.log
+            frontend/frontend-typecheck.log
+            frontend/frontend-build.log
+          if-no-files-found: warn
           retention-days: 1
-      - name: Frontend lint
-        run: npm run lint --if-present
-      - name: Frontend typecheck
-        run: npm run typecheck
-      - name: Frontend production build
-        run: npm run build
