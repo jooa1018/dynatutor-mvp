@@ -23,11 +23,11 @@ from app.routes.feedback import router as feedback_router
 from app.routes.records import router as records_router
 from app.routes.solve import router as solve_router
 from app.routes.study import router as study_router
+from engine.mechanics.multimodal_idempotency import IdempotentRevisionStore
 from engine.mechanics.multimodal_provider import (
     MultimodalProviderError,
     build_multimodal_generator_from_environment,
 )
-from engine.mechanics.multimodal_revision import RevisionStore
 
 
 def _is_production() -> bool:
@@ -78,7 +78,7 @@ def _bounded_int(name: str, default: int, minimum: int, maximum: int) -> int:
 
 
 def _configure_multimodal_state(application: FastAPI) -> None:
-    application.state.mechanics_multimodal_revision_store = RevisionStore(
+    application.state.mechanics_multimodal_revision_store = IdempotentRevisionStore(
         ttl_seconds=_bounded_int(
             "MECHANICS_MULTIMODAL_REVISION_TTL_SECONDS", 900, 60, 86_400
         ),
