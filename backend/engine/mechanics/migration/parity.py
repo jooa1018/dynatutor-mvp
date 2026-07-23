@@ -451,6 +451,54 @@ _ACCEPTED_MIGRATION_CHECKPOINTS: dict[LegacySolverId, str] = {
     LegacySolverId.pulley_table_hanging: (
         "7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e"
     ),
+    LegacySolverId.pulley_incline_hanging: (
+        "8f18c710fc6d5d730fcceccfb30e3175c2613902"
+    ),
+    LegacySolverId.massive_pulley_atwood: (
+        "8f18c710fc6d5d730fcceccfb30e3175c2613902"
+    ),
+    LegacySolverId.pure_rolling_energy: (
+        "305c68d6e7173740d478fd41c11b4ae78a245469"
+    ),
+    LegacySolverId.rolling_energy_general: (
+        "305c68d6e7173740d478fd41c11b4ae78a245469"
+    ),
+    LegacySolverId.vertical_circle: (
+        "305c68d6e7173740d478fd41c11b4ae78a245469"
+    ),
+    LegacySolverId.collision_1d: (
+        "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d"
+    ),
+    LegacySolverId.constant_acceleration_1d: (
+        "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d"
+    ),
+    LegacySolverId.projectile_motion: (
+        "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d"
+    ),
+    LegacySolverId.constant_force_work: (
+        "34208235fabed97cc7a500668c13f5a4cf5a109d"
+    ),
+    LegacySolverId.fixed_axis_rotation: (
+        "34208235fabed97cc7a500668c13f5a4cf5a109d"
+    ),
+    LegacySolverId.horizontal_friction_force: (
+        "34208235fabed97cc7a500668c13f5a4cf5a109d"
+    ),
+    LegacySolverId.impulse_momentum: (
+        "34208235fabed97cc7a500668c13f5a4cf5a109d"
+    ),
+    LegacySolverId.work_energy_speed: (
+        "34208235fabed97cc7a500668c13f5a4cf5a109d"
+    ),
+    LegacySolverId.spring_energy_speed: (
+        "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
+    ),
+    LegacySolverId.flat_curve_friction: (
+        "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
+    ),
+    LegacySolverId.banked_curve_no_friction: (
+        "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
+    ),
 }
 
 
