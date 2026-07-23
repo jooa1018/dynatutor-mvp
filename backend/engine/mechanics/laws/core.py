@@ -135,6 +135,19 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("rigid_point_velocity", "rigid_body_kinematics", (QuantityRole.velocity, QuantityRole.angular_velocity, QuantityRole.radius), cost=5, hooks=("point_kinematic_residual",)),
     _rule("rigid_point_tangential_acceleration", "rigid_body_kinematics", (QuantityRole.acceleration, QuantityRole.angular_acceleration, QuantityRole.radius), cost=5, hooks=("point_kinematic_residual",)),
     _rule("rigid_point_normal_acceleration", "rigid_body_kinematics", (QuantityRole.acceleration, QuantityRole.angular_velocity, QuantityRole.radius), cost=5, hooks=("point_kinematic_residual",)),
+    _rule("planar_rigid_velocity_x", "rigid_body_kinematics", (QuantityRole.velocity, QuantityRole.angular_velocity, QuantityRole.displacement), cost=4, hooks=("point_kinematic_residual",)),
+    _rule("planar_rigid_velocity_y", "rigid_body_kinematics", (QuantityRole.velocity, QuantityRole.angular_velocity, QuantityRole.displacement), cost=4, hooks=("point_kinematic_residual",)),
+    _rule("planar_rigid_acceleration_x", "rigid_body_kinematics", (QuantityRole.acceleration, QuantityRole.angular_velocity, QuantityRole.angular_acceleration, QuantityRole.displacement), cost=5, hooks=("point_kinematic_residual",)),
+    _rule("planar_rigid_acceleration_y", "rigid_body_kinematics", (QuantityRole.acceleration, QuantityRole.angular_velocity, QuantityRole.angular_acceleration, QuantityRole.displacement), cost=5, hooks=("point_kinematic_residual",)),
+    _rule("planar_velocity_magnitude", "kinematics", (QuantityRole.velocity, QuantityRole.speed), cost=2, hooks=("kinematic_residual",)),
+    _rule("planar_acceleration_magnitude", "kinematics", (QuantityRole.acceleration,), cost=2, hooks=("kinematic_residual",)),
+    _rule("acceleration_magnitude_nonnegative", "constraint", (QuantityRole.acceleration,), cost=1, hooks=("domain_residual",)),
+    _rule("polar_velocity_radial", "kinematics", (QuantityRole.velocity,), cost=2, hooks=("kinematic_residual",)),
+    _rule("polar_velocity_transverse", "kinematics", (QuantityRole.radius, QuantityRole.velocity, QuantityRole.angular_velocity), cost=3, hooks=("kinematic_residual",)),
+    _rule("polar_acceleration_radial", "kinematics", (QuantityRole.radius, QuantityRole.velocity, QuantityRole.acceleration, QuantityRole.angular_velocity), cost=4, hooks=("kinematic_residual",)),
+    _rule("polar_acceleration_transverse", "kinematics", (QuantityRole.radius, QuantityRole.velocity, QuantityRole.acceleration, QuantityRole.angular_velocity, QuantityRole.angular_acceleration), cost=4, hooks=("kinematic_residual",)),
+    _rule("rigid_instant_center_speed", "rigid_body_kinematics", (QuantityRole.speed, QuantityRole.angular_velocity, QuantityRole.radius), assumptions=("instantaneous_center",), cost=3, hooks=("point_kinematic_residual", "boundary_residual")),
+    _rule("angular_speed_nonnegative", "constraint", (QuantityRole.angular_velocity,), cost=1, hooks=("domain_residual",)),
     _rule("rigid_newton_euler", "newton_second_law", (QuantityRole.moment_of_inertia, QuantityRole.angular_acceleration, QuantityRole.moment), generated=(QuantityRole.angular_acceleration,), cost=5, hooks=("moment_balance",)),
     _rule("rigid_kinetic_energy", "work_energy", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.moment_of_inertia, QuantityRole.angular_velocity, QuantityRole.energy), assumptions=("kinetic_energy",), cost=5, hooks=("energy_residual",)),
     _rule("rigid_angular_momentum", "impulse_momentum", (QuantityRole.moment_of_inertia, QuantityRole.angular_velocity, QuantityRole.angular_momentum), cost=4, hooks=("momentum_residual",)),
@@ -9680,6 +9693,827 @@ def _curve_speed_emissions(context: LawContext) -> list[LawEmission]:
     return emitted
 
 
+
+@dataclass(frozen=True)
+class _PlaneRigidVelocityLawProfile:
+    body_id: str
+    point_a_id: str
+    point_b_id: str
+    frame_id: str
+    interval_id: str
+    relation_id: str
+    v_ax: BoundQuantity
+    v_ay: BoundQuantity
+    omega: BoundQuantity
+    r_x: BoundQuantity
+    r_y: BoundQuantity
+    v_bx: BoundQuantity
+    v_by: BoundQuantity
+    speed_b: BoundQuantity
+
+
+@dataclass(frozen=True)
+class _PlaneRigidAccelerationLawProfile:
+    body_id: str
+    point_a_id: str
+    point_b_id: str
+    frame_id: str
+    interval_id: str
+    relation_id: str
+    a_ax: BoundQuantity
+    a_ay: BoundQuantity
+    omega: BoundQuantity
+    alpha: BoundQuantity
+    r_x: BoundQuantity
+    r_y: BoundQuantity
+    a_bx: BoundQuantity
+    a_by: BoundQuantity
+    magnitude_b: BoundQuantity
+
+
+@dataclass(frozen=True)
+class _PolarKinematicsLawProfile:
+    particle_id: str
+    coordinate_id: str
+    frame_id: str
+    interval_id: str
+    relation_id: str
+    radius: BoundQuantity
+    radial_rate: BoundQuantity
+    radial_acceleration: BoundQuantity
+    omega: BoundQuantity
+    alpha: BoundQuantity
+    velocity_radial: BoundQuantity
+    velocity_transverse: BoundQuantity
+    speed: BoundQuantity
+    acceleration_radial: BoundQuantity
+    acceleration_transverse: BoundQuantity
+    acceleration_magnitude: BoundQuantity
+
+
+@dataclass(frozen=True)
+class _InstantCenterLawProfile:
+    body_id: str
+    center_point_id: str
+    target_point_id: str
+    frame_id: str
+    interval_id: str
+    relation_id: str
+    state_id: str
+    radius: BoundQuantity
+    omega: BoundQuantity
+    center_speed: BoundQuantity
+    target_speed: BoundQuantity
+    authority_ids: tuple[str, ...]
+
+
+def _exact_world_cartesian_2d_frame(frame: object) -> bool:
+    if (
+        getattr(frame, "frame_type", None) is not ReferenceFrameType.cartesian_2d
+        or getattr(getattr(frame, "origin", None), "kind", None) != "world"
+        or getattr(frame, "parent_frame_id", None) is not None
+        or getattr(frame, "translating_with_entity_id", None) is not None
+        or getattr(frame, "rotating_about_point_id", None) is not None
+        or getattr(frame, "generalized_coordinate_symbol_ids", ())
+        or len(getattr(frame, "axes", ())) != 2
+        or not getattr(frame, "evidence_refs", ())
+    ):
+        return False
+    axes = {item.axis: item.direction for item in frame.axes}
+    return set(axes) == {AxisName.x, AxisName.y} and all(
+        getattr(direction, "kind", None) == "axis"
+        and getattr(direction, "frame_id", None) == frame.frame_id
+        and getattr(direction, "axis", None) is axis
+        and getattr(direction, "sign", None) == 1
+        for axis, direction in axes.items()
+    )
+
+
+def _exact_world_radial_transverse_frame(frame: object) -> bool:
+    if (
+        getattr(frame, "frame_type", None) is not ReferenceFrameType.radial_transverse
+        or getattr(getattr(frame, "origin", None), "kind", None) != "world"
+        or getattr(frame, "parent_frame_id", None) is not None
+        or getattr(frame, "translating_with_entity_id", None) is not None
+        or getattr(frame, "rotating_about_point_id", None) is not None
+        or getattr(frame, "generalized_coordinate_symbol_ids", ())
+        or len(getattr(frame, "axes", ())) != 2
+        or not getattr(frame, "evidence_refs", ())
+    ):
+        return False
+    axes = {item.axis: item.direction for item in frame.axes}
+    return set(axes) == {AxisName.radial, AxisName.transverse} and all(
+        getattr(direction, "kind", None) == "axis"
+        and getattr(direction, "frame_id", None) == frame.frame_id
+        and getattr(direction, "axis", None) is axis
+        and getattr(direction, "sign", None) == 1
+        for axis, direction in axes.items()
+    )
+
+
+def _wave_f_base_rigid_context(context: LawContext):
+    bodies = tuple(
+        item for item in context.entities if item.primitive is EntityPrimitive.rigid_body
+    )
+    if len(context.entities) != 1 or len(bodies) != 1 or not bodies[0].evidence_refs:
+        return None
+    body_id = bodies[0].entity_id
+    if len(context.reference_frames) != 1 or not _exact_world_cartesian_2d_frame(context.reference_frames[0]):
+        return None
+    frame = context.reference_frames[0]
+    if len(context.motion_intervals) != 1 or context.events:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        tuple(interval.subject_ids) != (body_id,)
+        or interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or not interval.evidence_refs
+    ):
+        return None
+    points = tuple(item for item in context.points if item.owner_entity_id == body_id)
+    if len(points) != 2 or any(not item.evidence_refs for item in points):
+        return None
+    reference = tuple(
+        item for item in points if item.role in {PointRole.reference, PointRole.joint}
+    )
+    material = tuple(item for item in points if item.role is PointRole.material)
+    if len(reference) != 1 or len(material) != 1:
+        return None
+    return body_id, reference[0].point_id, material[0].point_id, frame, interval
+
+
+def _exact_component_quantity(
+    item: BoundQuantity,
+    *,
+    role: QuantityRole,
+    subject_id: str,
+    point_id: str | None,
+    frame_id: str,
+    interval_id: str,
+    component: QuantityComponent,
+    known: bool,
+) -> bool:
+    return (
+        item.role is role
+        and item.subject_id == subject_id
+        and item.point_id == point_id
+        and item.frame_id == frame_id
+        and item.interval_id == interval_id
+        and item.event_id is None
+        and item.component is component
+        and item.shape is QuantityShape.scalar
+        and item.symbol_id is not None
+        and bool(item.evidence_ids)
+        and (item.known_si_value is not None) is known
+    )
+
+
+def _plane_rigid_velocity_profile(
+    context: LawContext,
+) -> _PlaneRigidVelocityLawProfile | None:
+    base = _wave_f_base_rigid_context(context)
+    if base is None or context.interactions or context.state_conditions or context.assumptions:
+        return None
+    body_id, point_a_id, point_b_id, frame, interval = base
+    relations = tuple(item for item in context.geometry if item.kind is GeometryRelationKind.attached)
+    if len(context.geometry) != 1 or len(relations) != 1:
+        return None
+    relation = relations[0]
+    if (
+        set(relation.participant_ids) != {body_id, point_a_id, point_b_id}
+        or len(relation.participant_ids) != 3
+        or relation.expression is not None
+        or relation.interval_id != interval.interval_id
+        or not relation.evidence_refs
+    ):
+        return None
+    by_key = {(item.role, item.point_id, item.component): item for item in context.quantities}
+    expected = {
+        (QuantityRole.velocity, point_a_id, QuantityComponent.x),
+        (QuantityRole.velocity, point_a_id, QuantityComponent.y),
+        (QuantityRole.angular_velocity, point_a_id, QuantityComponent.z),
+        (QuantityRole.displacement, point_b_id, QuantityComponent.x),
+        (QuantityRole.displacement, point_b_id, QuantityComponent.y),
+        (QuantityRole.velocity, point_b_id, QuantityComponent.x),
+        (QuantityRole.velocity, point_b_id, QuantityComponent.y),
+        (QuantityRole.speed, point_b_id, QuantityComponent.magnitude),
+    }
+    if len(context.quantities) != len(expected) or set(by_key) != expected:
+        return None
+    v_ax = by_key[(QuantityRole.velocity, point_a_id, QuantityComponent.x)]
+    v_ay = by_key[(QuantityRole.velocity, point_a_id, QuantityComponent.y)]
+    omega = by_key[(QuantityRole.angular_velocity, point_a_id, QuantityComponent.z)]
+    r_x = by_key[(QuantityRole.displacement, point_b_id, QuantityComponent.x)]
+    r_y = by_key[(QuantityRole.displacement, point_b_id, QuantityComponent.y)]
+    v_bx = by_key[(QuantityRole.velocity, point_b_id, QuantityComponent.x)]
+    v_by = by_key[(QuantityRole.velocity, point_b_id, QuantityComponent.y)]
+    speed_b = by_key[(QuantityRole.speed, point_b_id, QuantityComponent.magnitude)]
+    checks = (
+        _exact_component_quantity(v_ax, role=QuantityRole.velocity, subject_id=body_id, point_id=point_a_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.x, known=True),
+        _exact_component_quantity(v_ay, role=QuantityRole.velocity, subject_id=body_id, point_id=point_a_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.y, known=True),
+        _exact_component_quantity(omega, role=QuantityRole.angular_velocity, subject_id=body_id, point_id=point_a_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.z, known=True),
+        _exact_component_quantity(r_x, role=QuantityRole.displacement, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.x, known=True),
+        _exact_component_quantity(r_y, role=QuantityRole.displacement, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.y, known=True),
+        _exact_component_quantity(v_bx, role=QuantityRole.velocity, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.x, known=False),
+        _exact_component_quantity(v_by, role=QuantityRole.velocity, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.y, known=False),
+        _exact_component_quantity(speed_b, role=QuantityRole.speed, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.magnitude, known=False),
+    )
+    if not all(checks) or set(relation.quantity_ids) != {r_x.quantity_id, r_y.quantity_id}:
+        return None
+    return _PlaneRigidVelocityLawProfile(
+        body_id, point_a_id, point_b_id, frame.frame_id, interval.interval_id,
+        relation.relation_id, v_ax, v_ay, omega, r_x, r_y, v_bx, v_by, speed_b,
+    )
+
+
+def _plane_rigid_acceleration_profile(
+    context: LawContext,
+) -> _PlaneRigidAccelerationLawProfile | None:
+    base = _wave_f_base_rigid_context(context)
+    if base is None or context.interactions or context.state_conditions or context.assumptions:
+        return None
+    body_id, point_a_id, point_b_id, frame, interval = base
+    relations = tuple(item for item in context.geometry if item.kind is GeometryRelationKind.attached)
+    if len(context.geometry) != 1 or len(relations) != 1:
+        return None
+    relation = relations[0]
+    if (
+        set(relation.participant_ids) != {body_id, point_a_id, point_b_id}
+        or len(relation.participant_ids) != 3
+        or relation.expression is not None
+        or relation.interval_id != interval.interval_id
+        or not relation.evidence_refs
+    ):
+        return None
+    by_key = {(item.role, item.point_id, item.component): item for item in context.quantities}
+    expected = {
+        (QuantityRole.acceleration, point_a_id, QuantityComponent.x),
+        (QuantityRole.acceleration, point_a_id, QuantityComponent.y),
+        (QuantityRole.angular_velocity, point_a_id, QuantityComponent.z),
+        (QuantityRole.angular_acceleration, point_a_id, QuantityComponent.z),
+        (QuantityRole.displacement, point_b_id, QuantityComponent.x),
+        (QuantityRole.displacement, point_b_id, QuantityComponent.y),
+        (QuantityRole.acceleration, point_b_id, QuantityComponent.x),
+        (QuantityRole.acceleration, point_b_id, QuantityComponent.y),
+        (QuantityRole.acceleration, point_b_id, QuantityComponent.magnitude),
+    }
+    if len(context.quantities) != len(expected) or set(by_key) != expected:
+        return None
+    a_ax = by_key[(QuantityRole.acceleration, point_a_id, QuantityComponent.x)]
+    a_ay = by_key[(QuantityRole.acceleration, point_a_id, QuantityComponent.y)]
+    omega = by_key[(QuantityRole.angular_velocity, point_a_id, QuantityComponent.z)]
+    alpha = by_key[(QuantityRole.angular_acceleration, point_a_id, QuantityComponent.z)]
+    r_x = by_key[(QuantityRole.displacement, point_b_id, QuantityComponent.x)]
+    r_y = by_key[(QuantityRole.displacement, point_b_id, QuantityComponent.y)]
+    a_bx = by_key[(QuantityRole.acceleration, point_b_id, QuantityComponent.x)]
+    a_by = by_key[(QuantityRole.acceleration, point_b_id, QuantityComponent.y)]
+    magnitude_b = by_key[(QuantityRole.acceleration, point_b_id, QuantityComponent.magnitude)]
+    checks = (
+        _exact_component_quantity(a_ax, role=QuantityRole.acceleration, subject_id=body_id, point_id=point_a_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.x, known=True),
+        _exact_component_quantity(a_ay, role=QuantityRole.acceleration, subject_id=body_id, point_id=point_a_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.y, known=True),
+        _exact_component_quantity(omega, role=QuantityRole.angular_velocity, subject_id=body_id, point_id=point_a_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.z, known=True),
+        _exact_component_quantity(alpha, role=QuantityRole.angular_acceleration, subject_id=body_id, point_id=point_a_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.z, known=True),
+        _exact_component_quantity(r_x, role=QuantityRole.displacement, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.x, known=True),
+        _exact_component_quantity(r_y, role=QuantityRole.displacement, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.y, known=True),
+        _exact_component_quantity(a_bx, role=QuantityRole.acceleration, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.x, known=False),
+        _exact_component_quantity(a_by, role=QuantityRole.acceleration, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.y, known=False),
+        _exact_component_quantity(magnitude_b, role=QuantityRole.acceleration, subject_id=body_id, point_id=point_b_id, frame_id=frame.frame_id, interval_id=interval.interval_id, component=QuantityComponent.magnitude, known=False),
+    )
+    if not all(checks) or set(relation.quantity_ids) != {r_x.quantity_id, r_y.quantity_id}:
+        return None
+    return _PlaneRigidAccelerationLawProfile(
+        body_id, point_a_id, point_b_id, frame.frame_id, interval.interval_id,
+        relation.relation_id, a_ax, a_ay, omega, alpha, r_x, r_y, a_bx, a_by,
+        magnitude_b,
+    )
+
+
+def _polar_kinematics_profile(context: LawContext) -> _PolarKinematicsLawProfile | None:
+    particles = tuple(item for item in context.entities if item.primitive is EntityPrimitive.particle)
+    coordinates = tuple(item for item in context.entities if item.primitive is EntityPrimitive.reference_frame)
+    if (
+        len(context.entities) != 2
+        or len(particles) != 1
+        or len(coordinates) != 1
+        or any(not item.evidence_refs for item in context.entities)
+        or context.points
+        or context.events
+        or context.interactions
+        or context.state_conditions
+        or context.assumptions
+
+    ):
+        return None
+    particle_id = particles[0].entity_id
+    coordinate_id = coordinates[0].entity_id
+    if len(context.reference_frames) != 1 or not _exact_world_radial_transverse_frame(context.reference_frames[0]):
+        return None
+    frame = context.reference_frames[0]
+    if len(context.motion_intervals) != 1:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        set(interval.subject_ids) != {particle_id, coordinate_id}
+        or len(interval.subject_ids) != 2
+        or interval.frame_id != frame.frame_id
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or not interval.evidence_refs
+    ):
+        return None
+    radii = tuple(item for item in context.geometry if item.kind is GeometryRelationKind.radius)
+    if len(context.geometry) != 1 or len(radii) != 1:
+        return None
+    relation = radii[0]
+    if (
+        set(relation.participant_ids) != {particle_id, coordinate_id}
+        or len(relation.participant_ids) != 2
+        or relation.expression is not None
+        or relation.interval_id != interval.interval_id
+        or not relation.evidence_refs
+    ):
+        return None
+    by_key = {(item.subject_id, item.role, item.component): item for item in context.quantities}
+    expected = {
+        (coordinate_id, QuantityRole.radius, QuantityComponent.radial),
+        (coordinate_id, QuantityRole.velocity, QuantityComponent.radial),
+        (coordinate_id, QuantityRole.acceleration, QuantityComponent.radial),
+        (coordinate_id, QuantityRole.angular_velocity, QuantityComponent.transverse),
+        (coordinate_id, QuantityRole.angular_acceleration, QuantityComponent.transverse),
+        (particle_id, QuantityRole.velocity, QuantityComponent.radial),
+        (particle_id, QuantityRole.velocity, QuantityComponent.transverse),
+        (particle_id, QuantityRole.speed, QuantityComponent.magnitude),
+        (particle_id, QuantityRole.acceleration, QuantityComponent.radial),
+        (particle_id, QuantityRole.acceleration, QuantityComponent.transverse),
+        (particle_id, QuantityRole.acceleration, QuantityComponent.magnitude),
+    }
+    if len(context.quantities) != len(expected) or set(by_key) != expected:
+        return None
+    radius = by_key[(coordinate_id, QuantityRole.radius, QuantityComponent.radial)]
+    radial_rate = by_key[(coordinate_id, QuantityRole.velocity, QuantityComponent.radial)]
+    radial_acceleration = by_key[(coordinate_id, QuantityRole.acceleration, QuantityComponent.radial)]
+    omega = by_key[(coordinate_id, QuantityRole.angular_velocity, QuantityComponent.transverse)]
+    alpha = by_key[(coordinate_id, QuantityRole.angular_acceleration, QuantityComponent.transverse)]
+    velocity_radial = by_key[(particle_id, QuantityRole.velocity, QuantityComponent.radial)]
+    velocity_transverse = by_key[(particle_id, QuantityRole.velocity, QuantityComponent.transverse)]
+    speed = by_key[(particle_id, QuantityRole.speed, QuantityComponent.magnitude)]
+    acceleration_radial = by_key[(particle_id, QuantityRole.acceleration, QuantityComponent.radial)]
+    acceleration_transverse = by_key[(particle_id, QuantityRole.acceleration, QuantityComponent.transverse)]
+    acceleration_magnitude = by_key[(particle_id, QuantityRole.acceleration, QuantityComponent.magnitude)]
+    known = (radius, radial_rate, radial_acceleration, omega, alpha)
+    inferred = (
+        velocity_radial, velocity_transverse, speed, acceleration_radial,
+        acceleration_transverse, acceleration_magnitude,
+    )
+    if (
+        any(
+            item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.point_id is not None
+            or item.shape is not QuantityShape.scalar
+            or item.symbol_id is None
+            or not item.evidence_ids
+            for item in (*known, *inferred)
+        )
+        or any(item.known_si_value is None for item in known)
+        or any(item.known_si_value is not None for item in inferred)
+        or set(relation.quantity_ids) != {radius.quantity_id}
+    ):
+        return None
+    return _PolarKinematicsLawProfile(
+        particle_id, coordinate_id, frame.frame_id, interval.interval_id,
+        relation.relation_id, radius, radial_rate, radial_acceleration, omega,
+        alpha, velocity_radial, velocity_transverse, speed,
+        acceleration_radial, acceleration_transverse, acceleration_magnitude,
+    )
+
+
+def _instant_center_profile(context: LawContext) -> _InstantCenterLawProfile | None:
+    base = _wave_f_base_rigid_context(context)
+    if base is None or context.interactions:
+        return None
+    body_id, center_point_id, target_point_id, frame, interval = base
+    radii = tuple(item for item in context.geometry if item.kind is GeometryRelationKind.radius)
+    if len(context.geometry) != 1 or len(radii) != 1:
+        return None
+    relation = radii[0]
+    if (
+        set(relation.participant_ids) != {body_id, center_point_id, target_point_id}
+        or len(relation.participant_ids) != 3
+        or relation.expression is not None
+        or relation.interval_id != interval.interval_id
+        or not relation.evidence_refs
+    ):
+        return None
+    states = tuple(context.state_conditions)
+    if len(states) != 1:
+        return None
+    state = states[0]
+    if (
+        state.kind is not StateKind.motion
+        or state.state is not StateValue.at_rest
+        or state.subject_id != body_id
+        or state.interval_id != interval.interval_id
+        or state.event_id is not None
+        or state.expression is not None
+        or len(state.quantity_ids) != 1
+        or not state.evidence_refs
+    ):
+        return None
+    authority_ids = context.approved_assumptions(
+        "instantaneous_center", body_id, interval.interval_id
+    )
+    if len(context.assumptions) != 1 or len(authority_ids) != 1:
+        return None
+    by_key = {(item.role, item.point_id, item.component): item for item in context.quantities}
+    expected = {
+        (QuantityRole.radius, target_point_id, QuantityComponent.magnitude),
+        (QuantityRole.angular_velocity, center_point_id, QuantityComponent.magnitude),
+        (QuantityRole.speed, center_point_id, QuantityComponent.magnitude),
+        (QuantityRole.speed, target_point_id, QuantityComponent.magnitude),
+    }
+    if len(context.quantities) != 4 or set(by_key) != expected:
+        return None
+    radius = by_key[(QuantityRole.radius, target_point_id, QuantityComponent.magnitude)]
+    omega = by_key[(QuantityRole.angular_velocity, center_point_id, QuantityComponent.magnitude)]
+    center_speed = by_key[(QuantityRole.speed, center_point_id, QuantityComponent.magnitude)]
+    target_speed = by_key[(QuantityRole.speed, target_point_id, QuantityComponent.magnitude)]
+    if (
+        any(
+            item.subject_id != body_id
+            or item.frame_id != frame.frame_id
+            or item.interval_id != interval.interval_id
+            or item.event_id is not None
+            or item.shape is not QuantityShape.scalar
+            or item.symbol_id is None
+            or not item.evidence_ids
+            for item in (radius, omega, center_speed, target_speed)
+        )
+        or radius.known_si_value is None
+        or center_speed.known_si_value != 0.0
+        or ((omega.known_si_value is None) == (target_speed.known_si_value is None))
+        or set(relation.quantity_ids) != {radius.quantity_id}
+        or tuple(state.quantity_ids) != (center_speed.quantity_id,)
+    ):
+        return None
+    return _InstantCenterLawProfile(
+        body_id, center_point_id, target_point_id, frame.frame_id,
+        interval.interval_id, relation.relation_id, state.state_condition_id,
+        radius, omega, center_speed, target_speed, authority_ids,
+    )
+
+
+def _square_sum(left: BoundQuantity, right: BoundQuantity, dimension: DimensionVector):
+    return Add(
+        terms=(
+            Power(base=left.expression, exponent=LiteralNode(value=2.0)),
+            Power(base=right.expression, exponent=LiteralNode(value=2.0)),
+        ),
+        dimension=dimension,
+    )
+
+
+def _wave_f_emissions(context: LawContext) -> list[LawEmission]:
+    velocity = _plane_rigid_velocity_profile(context)
+    if velocity is not None:
+        speed_squared_dimension = velocity.speed_b.dimension.plus(velocity.speed_b.dimension)
+        assert speed_squared_dimension is not None
+        return [
+            _emit(
+                context,
+                "planar_rigid_velocity_x",
+                Equality(
+                    left=velocity.v_bx.expression,
+                    right=Subtract(
+                        left=velocity.v_ax.expression,
+                        right=Multiply(
+                            factors=(velocity.omega.expression, velocity.r_y.expression),
+                            dimension=velocity.v_bx.dimension,
+                        ),
+                        dimension=velocity.v_bx.dimension,
+                    ),
+                ),
+                (velocity.v_bx, velocity.v_ax, velocity.omega, velocity.r_y),
+                constraint_ids=(velocity.relation_id,),
+            ),
+            _emit(
+                context,
+                "planar_rigid_velocity_y",
+                Equality(
+                    left=velocity.v_by.expression,
+                    right=Add(
+                        terms=(
+                            velocity.v_ay.expression,
+                            Multiply(
+                                factors=(velocity.omega.expression, velocity.r_x.expression),
+                                dimension=velocity.v_by.dimension,
+                            ),
+                        ),
+                        dimension=velocity.v_by.dimension,
+                    ),
+                ),
+                (velocity.v_by, velocity.v_ay, velocity.omega, velocity.r_x),
+                constraint_ids=(velocity.relation_id,),
+            ),
+            _emit(
+                context,
+                "planar_velocity_magnitude",
+                Equality(
+                    left=Power(base=velocity.speed_b.expression, exponent=LiteralNode(value=2.0)),
+                    right=_square_sum(velocity.v_bx, velocity.v_by, speed_squared_dimension),
+                ),
+                (velocity.speed_b, velocity.v_bx, velocity.v_by),
+                constraint_ids=(velocity.relation_id,),
+            ),
+            _emit(
+                context,
+                "translational_speed_nonnegative",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=velocity.speed_b.expression,
+                    right=LiteralNode(value=0.0, dimension=velocity.speed_b.dimension),
+                ),
+                (velocity.speed_b,),
+                constraint_ids=(velocity.relation_id,),
+            ),
+        ]
+
+    acceleration = _plane_rigid_acceleration_profile(context)
+    if acceleration is not None:
+        magnitude_squared_dimension = acceleration.magnitude_b.dimension.plus(acceleration.magnitude_b.dimension)
+        assert magnitude_squared_dimension is not None
+        omega_squared = Power(base=acceleration.omega.expression, exponent=LiteralNode(value=2.0))
+        return [
+            _emit(
+                context,
+                "planar_rigid_acceleration_x",
+                Equality(
+                    left=acceleration.a_bx.expression,
+                    right=Add(
+                        terms=(
+                            acceleration.a_ax.expression,
+                            Negate(
+                                operand=Multiply(
+                                    factors=(acceleration.alpha.expression, acceleration.r_y.expression),
+                                    dimension=acceleration.a_bx.dimension,
+                                ),
+                                dimension=acceleration.a_bx.dimension,
+                            ),
+                            Negate(
+                                operand=Multiply(
+                                    factors=(omega_squared, acceleration.r_x.expression),
+                                    dimension=acceleration.a_bx.dimension,
+                                ),
+                                dimension=acceleration.a_bx.dimension,
+                            ),
+                        ),
+                        dimension=acceleration.a_bx.dimension,
+                    ),
+                ),
+                (
+                    acceleration.a_bx, acceleration.a_ax, acceleration.alpha,
+                    acceleration.omega, acceleration.r_x, acceleration.r_y,
+                ),
+                constraint_ids=(acceleration.relation_id,),
+            ),
+            _emit(
+                context,
+                "planar_rigid_acceleration_y",
+                Equality(
+                    left=acceleration.a_by.expression,
+                    right=Add(
+                        terms=(
+                            acceleration.a_ay.expression,
+                            Multiply(
+                                factors=(acceleration.alpha.expression, acceleration.r_x.expression),
+                                dimension=acceleration.a_by.dimension,
+                            ),
+                            Negate(
+                                operand=Multiply(
+                                    factors=(omega_squared, acceleration.r_y.expression),
+                                    dimension=acceleration.a_by.dimension,
+                                ),
+                                dimension=acceleration.a_by.dimension,
+                            ),
+                        ),
+                        dimension=acceleration.a_by.dimension,
+                    ),
+                ),
+                (
+                    acceleration.a_by, acceleration.a_ay, acceleration.alpha,
+                    acceleration.omega, acceleration.r_x, acceleration.r_y,
+                ),
+                constraint_ids=(acceleration.relation_id,),
+            ),
+            _emit(
+                context,
+                "planar_acceleration_magnitude",
+                Equality(
+                    left=Power(base=acceleration.magnitude_b.expression, exponent=LiteralNode(value=2.0)),
+                    right=_square_sum(acceleration.a_bx, acceleration.a_by, magnitude_squared_dimension),
+                ),
+                (acceleration.magnitude_b, acceleration.a_bx, acceleration.a_by),
+                constraint_ids=(acceleration.relation_id,),
+            ),
+            _emit(
+                context,
+                "acceleration_magnitude_nonnegative",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=acceleration.magnitude_b.expression,
+                    right=LiteralNode(value=0.0, dimension=acceleration.magnitude_b.dimension),
+                ),
+                (acceleration.magnitude_b,),
+                constraint_ids=(acceleration.relation_id,),
+            ),
+        ]
+
+    polar = _polar_kinematics_profile(context)
+    if polar is not None:
+        velocity_squared_dimension = polar.speed.dimension.plus(polar.speed.dimension)
+        acceleration_squared_dimension = polar.acceleration_magnitude.dimension.plus(polar.acceleration_magnitude.dimension)
+        assert velocity_squared_dimension is not None and acceleration_squared_dimension is not None
+        omega_squared = Power(base=polar.omega.expression, exponent=LiteralNode(value=2.0))
+        return [
+            _emit(
+                context,
+                "polar_velocity_radial",
+                Equality(left=polar.velocity_radial.expression, right=polar.radial_rate.expression),
+                (polar.velocity_radial, polar.radial_rate),
+                constraint_ids=(polar.relation_id,),
+            ),
+            _emit(
+                context,
+                "polar_velocity_transverse",
+                Equality(
+                    left=polar.velocity_transverse.expression,
+                    right=Multiply(
+                        factors=(polar.radius.expression, polar.omega.expression),
+                        dimension=polar.velocity_transverse.dimension,
+                    ),
+                ),
+                (polar.velocity_transverse, polar.radius, polar.omega),
+                constraint_ids=(polar.relation_id,),
+            ),
+            _emit(
+                context,
+                "planar_velocity_magnitude",
+                Equality(
+                    left=Power(base=polar.speed.expression, exponent=LiteralNode(value=2.0)),
+                    right=_square_sum(
+                        polar.velocity_radial,
+                        polar.velocity_transverse,
+                        velocity_squared_dimension,
+                    ),
+                ),
+                (polar.speed, polar.velocity_radial, polar.velocity_transverse),
+                constraint_ids=(polar.relation_id,),
+            ),
+            _emit(
+                context,
+                "polar_acceleration_radial",
+                Equality(
+                    left=polar.acceleration_radial.expression,
+                    right=Subtract(
+                        left=polar.radial_acceleration.expression,
+                        right=Multiply(
+                            factors=(polar.radius.expression, omega_squared),
+                            dimension=polar.acceleration_radial.dimension,
+                        ),
+                        dimension=polar.acceleration_radial.dimension,
+                    ),
+                ),
+                (
+                    polar.acceleration_radial, polar.radial_acceleration,
+                    polar.radius, polar.omega,
+                ),
+                constraint_ids=(polar.relation_id,),
+            ),
+            _emit(
+                context,
+                "polar_acceleration_transverse",
+                Equality(
+                    left=polar.acceleration_transverse.expression,
+                    right=Add(
+                        terms=(
+                            Multiply(
+                                factors=(polar.radius.expression, polar.alpha.expression),
+                                dimension=polar.acceleration_transverse.dimension,
+                            ),
+                            Multiply(
+                                factors=(
+                                    LiteralNode(value=2.0),
+                                    polar.radial_rate.expression,
+                                    polar.omega.expression,
+                                ),
+                                dimension=polar.acceleration_transverse.dimension,
+                            ),
+                        ),
+                        dimension=polar.acceleration_transverse.dimension,
+                    ),
+                ),
+                (
+                    polar.acceleration_transverse, polar.radius, polar.alpha,
+                    polar.radial_rate, polar.omega,
+                ),
+                constraint_ids=(polar.relation_id,),
+            ),
+            _emit(
+                context,
+                "planar_acceleration_magnitude",
+                Equality(
+                    left=Power(base=polar.acceleration_magnitude.expression, exponent=LiteralNode(value=2.0)),
+                    right=_square_sum(
+                        polar.acceleration_radial,
+                        polar.acceleration_transverse,
+                        acceleration_squared_dimension,
+                    ),
+                ),
+                (
+                    polar.acceleration_magnitude,
+                    polar.acceleration_radial,
+                    polar.acceleration_transverse,
+                ),
+                constraint_ids=(polar.relation_id,),
+            ),
+            _emit(
+                context,
+                "translational_speed_nonnegative",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=polar.speed.expression,
+                    right=LiteralNode(value=0.0, dimension=polar.speed.dimension),
+                ),
+                (polar.speed,),
+                constraint_ids=(polar.relation_id,),
+            ),
+            _emit(
+                context,
+                "acceleration_magnitude_nonnegative",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=polar.acceleration_magnitude.expression,
+                    right=LiteralNode(value=0.0, dimension=polar.acceleration_magnitude.dimension),
+                ),
+                (polar.acceleration_magnitude,),
+                constraint_ids=(polar.relation_id,),
+            ),
+        ]
+
+    instant = _instant_center_profile(context)
+    if instant is not None:
+        return [
+            _emit(
+                context,
+                "rigid_instant_center_speed",
+                Equality(
+                    left=instant.target_speed.expression,
+                    right=Add(
+                        terms=(
+                            instant.center_speed.expression,
+                            Multiply(
+                                factors=(instant.omega.expression, instant.radius.expression),
+                                dimension=instant.target_speed.dimension,
+                            ),
+                        ),
+                        dimension=instant.target_speed.dimension,
+                    ),
+                ),
+                (
+                    instant.target_speed, instant.center_speed, instant.omega,
+                    instant.radius,
+                ),
+                assumption_ids=instant.authority_ids,
+                constraint_ids=(instant.relation_id, instant.state_id),
+            ),
+            _emit(
+                context,
+                "translational_speed_nonnegative",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=instant.target_speed.expression,
+                    right=LiteralNode(value=0.0, dimension=instant.target_speed.dimension),
+                ),
+                (instant.target_speed,),
+                constraint_ids=(instant.state_id,),
+            ),
+            _emit(
+                context,
+                "angular_speed_nonnegative",
+                Inequality(
+                    relation=InequalityRelation.ge,
+                    left=instant.omega.expression,
+                    right=LiteralNode(value=0.0, dimension=instant.omega.dimension),
+                ),
+                (instant.omega,),
+                assumption_ids=instant.authority_ids,
+            ),
+        ]
+    return []
+
 def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     vertical_circle = _vertical_circle_emissions(context)
     if vertical_circle:
@@ -9731,6 +10565,21 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
         return tuple(
             sorted(
                 curve_speed,
+                key=lambda item: (
+                    item.effective_cost,
+                    item.rule.law_id,
+                    item.entity_ids,
+                    item.interval_id or "",
+                    item.event_id or "",
+                    item.source_quantity_ids,
+                ),
+            )
+        )
+    wave_f = _wave_f_emissions(context)
+    if wave_f:
+        return tuple(
+            sorted(
+                wave_f,
                 key=lambda item: (
                     item.effective_cost,
                     item.rule.law_id,

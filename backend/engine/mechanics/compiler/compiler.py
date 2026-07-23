@@ -9426,6 +9426,274 @@ def _graph_fingerprint(
     return _digest(payload)
 
 
+
+@dataclass(frozen=True)
+class _WaveFContractProfile:
+    kind: str
+    query_quantity_id: str
+
+
+def _wave_f_contract(
+    ir: MechanicsProblemIRV1,
+    query: IRQuery,
+    approved_assumption_ids: Collection[str],
+) -> tuple[_WaveFContractProfile | None, CompilerIssue | None]:
+    """Close exact typed boundaries for the four remaining Stage 5 kinematics.
+
+    Recognition is structural only.  Diagnostic labels, source wording, Entry
+    numbers, expected answers, and legacy results never participate.
+    """
+
+    primitive_counts = {
+        primitive: sum(item.primitive is primitive for item in ir.entities)
+        for primitive in (EntityPrimitive.rigid_body, EntityPrimitive.particle, EntityPrimitive.reference_frame)
+    }
+    frame_types = {item.frame_type for item in ir.reference_frames}
+    displacement_xy = tuple(
+        item
+        for item in ir.quantities
+        if item.role is QuantityRole.displacement
+        and item.component in {QuantityComponent.x, QuantityComponent.y}
+    )
+    has_omega = any(item.role is QuantityRole.angular_velocity for item in ir.quantities)
+    has_alpha = any(item.role is QuantityRole.angular_acceleration for item in ir.quantities)
+    instant_states = tuple(
+        item
+        for item in ir.state_conditions
+        if item.kind.value == "motion" and item.state.value == "at_rest"
+    )
+    instant_assumptions = tuple(
+        item
+        for item in ir.assumptions
+        if item.kind == "instantaneous_center"
+        and item.disposition is AssumptionDisposition.approved
+        and item.assumption_id in set(approved_assumption_ids)
+    )
+
+    kind: str | None = None
+    if (
+        ReferenceFrameType.radial_transverse in frame_types
+        and primitive_counts[EntityPrimitive.particle] >= 1
+        and primitive_counts[EntityPrimitive.reference_frame] >= 1
+        and query.target.role in {QuantityRole.velocity, QuantityRole.speed, QuantityRole.acceleration}
+    ):
+        kind = "polar_kinematics"
+    elif (
+        primitive_counts[EntityPrimitive.rigid_body] >= 1
+        and instant_states
+        and instant_assumptions
+        and query.target.role in {QuantityRole.speed, QuantityRole.angular_velocity}
+    ):
+        kind = "instant_center_velocity"
+    elif (
+        primitive_counts[EntityPrimitive.rigid_body] >= 1
+        and ReferenceFrameType.cartesian_2d in frame_types
+        and len(displacement_xy) >= 2
+        and has_omega
+        and has_alpha
+        and query.target.role is QuantityRole.acceleration
+    ):
+        kind = "plane_rigid_body_acceleration"
+    elif (
+        primitive_counts[EntityPrimitive.rigid_body] >= 1
+        and ReferenceFrameType.cartesian_2d in frame_types
+        and len(displacement_xy) >= 2
+        and has_omega
+        and query.target.role in {QuantityRole.velocity, QuantityRole.speed}
+    ):
+        kind = "plane_rigid_body_velocity"
+    if kind is None:
+        return None, None
+
+    def failure(detail: str, referenced_id: str | None = None) -> CompilerIssue:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            f"Wave F typed topology {detail}",
+            f"queries.{query.query_id}",
+            referenced_id or query.query_id,
+        )
+
+    expected_entities = {
+        "polar_kinematics": {
+            EntityPrimitive.particle: 1,
+            EntityPrimitive.reference_frame: 1,
+            EntityPrimitive.rigid_body: 0,
+        },
+        "instant_center_velocity": {
+            EntityPrimitive.rigid_body: 1,
+            EntityPrimitive.particle: 0,
+            EntityPrimitive.reference_frame: 0,
+        },
+        "plane_rigid_body_acceleration": {
+            EntityPrimitive.rigid_body: 1,
+            EntityPrimitive.particle: 0,
+            EntityPrimitive.reference_frame: 0,
+        },
+        "plane_rigid_body_velocity": {
+            EntityPrimitive.rigid_body: 1,
+            EntityPrimitive.particle: 0,
+            EntityPrimitive.reference_frame: 0,
+        },
+    }[kind]
+    if (
+        any(primitive_counts[item] != count for item, count in expected_entities.items())
+        or len(ir.entities) != sum(expected_entities.values())
+        or any(not item.evidence_refs for item in ir.entities)
+    ):
+        return None, failure("requires the exact actor inventory and source evidence")
+
+    expected_frame = (
+        ReferenceFrameType.radial_transverse
+        if kind == "polar_kinematics"
+        else ReferenceFrameType.cartesian_2d
+    )
+    if (
+        len(ir.reference_frames) != 1
+        or ir.reference_frames[0].frame_type is not expected_frame
+        or not ir.reference_frames[0].evidence_refs
+        or len(ir.motion_intervals) != 1
+        or not ir.motion_intervals[0].evidence_refs
+        or ir.motion_intervals[0].frame_id != ir.reference_frames[0].frame_id
+        or ir.motion_intervals[0].start_event_id is not None
+        or ir.motion_intervals[0].end_event_id is not None
+        or ir.events
+    ):
+        return None, failure("requires one evidenced event-free interval in the exact frame")
+
+    expected_counts = {
+        "polar_kinematics": (11, 0, 1, 0, 0, 0),
+        "instant_center_velocity": (4, 2, 1, 0, 1, 1),
+        "plane_rigid_body_acceleration": (9, 2, 1, 0, 0, 0),
+        "plane_rigid_body_velocity": (8, 2, 1, 0, 0, 0),
+    }[kind]
+    quantity_count, point_count, geometry_count, interaction_count, state_count, assumption_count = expected_counts
+    if (
+        len(ir.quantities) != quantity_count
+        or len(ir.points) != point_count
+        or len(ir.geometry) != geometry_count
+        or len(ir.interactions) != interaction_count
+        or len(ir.state_conditions) != state_count
+        or len(ir.assumptions) != assumption_count
+        or any(not item.evidence_refs for item in ir.points)
+        or any(not item.evidence_refs for item in ir.geometry)
+        or any(not item.evidence_refs for item in ir.state_conditions)
+        or any(not item.evidence_refs for item in ir.assumptions)
+    ):
+        return None, failure("contains an inexact point, relation, state, or authority inventory")
+
+    target = next(
+        (
+            item
+            for item in ir.quantities
+            if item.quantity_id == query.target.target_quantity_id
+        ),
+        None,
+    )
+    if (
+        target is None
+        or target.si_value is not None
+        or target.symbol_id is None
+        or target.shape is not QuantityShape.scalar
+        or query.shape is not QuantityShape.scalar
+        or query.target.role is not target.role
+        or query.target.subject_id != target.subject_id
+        or query.target.point_id != target.point_id
+        or query.target.frame_id != target.frame_id
+        or query.target.interval_id != target.interval_id
+        or query.target.event_id != target.event_id
+        or query.target.component is not target.component
+        or query.target.direction != target.direction
+        or query.output_dimension != target.dimension
+        or not query.evidence_refs
+        or len(ir.queries) != 1
+    ):
+        return None, failure("requires one exact inferred scalar query binding")
+
+    if (
+        any(
+            item.shape is not QuantityShape.scalar
+            or item.symbol_id is None
+            or not item.evidence_refs
+            or item.frame_id != ir.reference_frames[0].frame_id
+            or item.interval_id != ir.motion_intervals[0].interval_id
+            or item.event_id is not None
+            for item in ir.quantities
+        )
+        or {item.symbol_id for item in ir.symbols}
+        != {item.symbol_id for item in ir.quantities if item.symbol_id is not None}
+        or ir.constraints
+        or ir.principle_hints
+        or ir.ambiguities
+        or ir.unsupported_features
+        or ir.figure_dependency.level.value != "none"
+        or ir.figure_dependency.missing_information
+        or ir.figure_dependency.evidence_refs
+    ):
+        return None, failure("contains extra client authority, symbols, or nonlocal scope")
+
+    if kind in {"polar_kinematics", "instant_center_velocity"}:
+        radii = tuple(item for item in ir.quantities if item.role is QuantityRole.radius)
+        if len(radii) != 1:
+            return None, failure("requires exactly one source-backed radius")
+        radius = radii[0]
+        if (
+            type(radius.si_value) is not float
+            or not math.isfinite(radius.si_value)
+            or radius.si_value <= 0.0
+        ):
+            return None, _issue(
+                CompilerIssueCode.invalid_domain,
+                "radius must be positive and finite",
+                f"quantities.{radius.quantity_id}.si_value",
+                radius.quantity_id,
+            )
+
+    if kind == "polar_kinematics":
+        if ir.assumptions or ir.state_conditions or ir.interactions or ir.points:
+            return None, failure("does not permit hidden zero-derivative assumptions")
+        required_components = {
+            (QuantityRole.velocity, QuantityComponent.radial),
+            (QuantityRole.velocity, QuantityComponent.transverse),
+            (QuantityRole.speed, QuantityComponent.magnitude),
+            (QuantityRole.acceleration, QuantityComponent.radial),
+            (QuantityRole.acceleration, QuantityComponent.transverse),
+            (QuantityRole.acceleration, QuantityComponent.magnitude),
+        }
+        particle_id = next(item.entity_id for item in ir.entities if item.primitive is EntityPrimitive.particle)
+        actual = {
+            (item.role, item.component)
+            for item in ir.quantities
+            if item.subject_id == particle_id and item.si_value is None
+        }
+        if actual != required_components:
+            return None, failure("requires every polar velocity/acceleration component and magnitude")
+    elif kind == "instant_center_velocity":
+        if len(instant_states) != 1 or len(instant_assumptions) != 1:
+            return None, failure("requires one approved instantaneous-center authority and zero-speed state")
+        speeds = tuple(item for item in ir.quantities if item.role is QuantityRole.speed)
+        angular = tuple(item for item in ir.quantities if item.role is QuantityRole.angular_velocity)
+        if (
+            len(speeds) != 2
+            or len(angular) != 1
+            or sum(item.si_value is None for item in (*speeds, *angular)) != 1
+            or target not in (*speeds, *angular)
+        ):
+            return None, failure("requires exactly one unknown speed or angular-speed magnitude")
+    else:
+        if ir.assumptions or ir.state_conditions or ir.interactions:
+            return None, failure("requires source quantities without hidden motion assumptions")
+        required_query_components = (
+            {QuantityComponent.x, QuantityComponent.y, QuantityComponent.magnitude}
+            if kind == "plane_rigid_body_acceleration"
+            else {QuantityComponent.x, QuantityComponent.y, QuantityComponent.magnitude}
+        )
+        if target.component not in required_query_components:
+            return None, failure("requires an x, y, or magnitude target")
+        if len(displacement_xy) != 2 or {item.component for item in displacement_xy} != {QuantityComponent.x, QuantityComponent.y}:
+            return None, failure("requires exact r_B/A Cartesian components")
+
+    return _WaveFContractProfile(kind=kind, query_quantity_id=target.quantity_id), None
+
 @dataclass(frozen=True)
 class _WaveEContractProfile:
     kind: str
@@ -9987,6 +10255,18 @@ class MechanicsCompiler:
                 else CompilerStatus.unsupported
             )
             return _failure(status, wave_e_issue)
+        wave_f_profile, wave_f_issue = _wave_f_contract(
+            safe_ir,
+            query,
+            authority.approved_assumption_ids,
+        )
+        if wave_f_issue is not None:
+            status = (
+                CompilerStatus.invalid
+                if wave_f_issue.code is CompilerIssueCode.invalid_domain
+                else CompilerStatus.unsupported
+            )
+            return _failure(status, wave_f_issue)
         specialization_issue = _structural_specialization_issue(safe_ir, query)
         if specialization_issue is not None:
             return _failure(CompilerStatus.unsupported, specialization_issue)
