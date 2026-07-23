@@ -25,7 +25,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend-fast:
+  backend_fast:
+    name: backend fast
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -47,7 +48,8 @@ jobs:
       - name: Run backend fast wrapper
         run: bash ../scripts/check_backend_fast.sh
 
-  backend-slow:
+  backend_slow:
+    name: backend slow
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -69,7 +71,8 @@ jobs:
       - name: Run complete backend slow wrapper
         run: bash ../scripts/check_backend_slow.sh
 
-  backend-quality:
+  backend_quality:
+    name: backend quality
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -110,7 +113,8 @@ jobs:
           --max-import-ms 5000
           --max-rss-mb 512
 
-  backend-performance:
+  backend_performance:
+    name: backend performance
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -194,6 +198,7 @@ jobs:
           --output "$RUNNER_TEMP/pr10-pooled-performance.json"
 
   frontend:
+    name: frontend
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -217,23 +222,24 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-  release-gate:
+  release_gate:
+    name: release gate
     if: always()
     needs:
-      - backend-fast
-      - backend-slow
-      - backend-quality
-      - backend-performance
+      - backend_fast
+      - backend_slow
+      - backend_quality
+      - backend_performance
       - frontend
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every release gate
         env:
-          FAST: ${{ needs.backend-fast.result }}
-          SLOW: ${{ needs.backend-slow.result }}
-          QUALITY: ${{ needs.backend-quality.result }}
-          PERFORMANCE: ${{ needs.backend-performance.result }}
+          FAST: ${{ needs.backend_fast.result }}
+          SLOW: ${{ needs.backend_slow.result }}
+          QUALITY: ${{ needs.backend_quality.result }}
+          PERFORMANCE: ${{ needs.backend_performance.result }}
           FRONTEND: ${{ needs.frontend.result }}
         run: |
           printf 'fast=%s slow=%s quality=%s performance=%s frontend=%s\n' \
