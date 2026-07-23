@@ -1,0 +1,71 @@
+name: Phase 56 Stage 6 multimodal
+
+on:
+  push:
+    branches:
+      - codex/phase56-generic-mechanics-engine
+  pull_request:
+    branches:
+      - codex/phase55-gpt-first-textbook-parser
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase56-stage6-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install 'Pillow>=10.4.0,<12.0.0'
+      - name: Compile backend
+        run: python -m compileall -q app engine tests
+      - name: Stage 6 focused contracts
+        run: python -m pytest -q tests/test_phase56_stage6*.py
+      - name: Full backend regression
+        run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Frontend tests
+        run: npm test --if-present
+        env:
+          CI: "true"
+      - name: Frontend lint
+        run: npm run lint --if-present
+      - name: Frontend production build
+        run: npm run build
