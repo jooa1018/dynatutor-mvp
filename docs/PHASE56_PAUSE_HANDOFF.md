@@ -1,5 +1,33 @@
 # Phase 56 Cross-Device Resume Handoff
 
+## Wave F product acceptance and Stage 5 completion — 2026-07-23 Asia/Seoul
+
+Wave F Entries 25, 26, 27, and 29 (`plane_rigid_body_acceleration`,
+`polar_kinematics`, `instant_center_velocity`, and
+`plane_rigid_body_velocity`) are accepted Generic typed migrations.
+The exact code-containing product head is `dddab1eb00fc13efe78a6be60fc5f2755906fc77`. DynaTutor
+release run #448 (`29986498873`) completed
+successfully with backend compile, fast, slow, benchmark, audit,
+frontend-marker, frontend tests/typecheck/build, warm/cold performance,
+and four-round pooled comparison gates all passing.
+
+Focused Wave F evidence is **55 passed** — **36 fast** and **19 slow**.
+Directly connected mechanics regression evidence is **741 passed, 1
+skipped**. The migration ledger now reports exactly **25 accepted / 0
+pending / 4 deferred** and its complete-coverage assertion passes.
+Stages 0–5 are complete; **Stage 6 is the next permitted phase**.
+
+PR #17 remains Draft, open, and unmerged on Draft PR #16. No merge,
+rebase, reset, force-push, main update, deployment, secret access, Live
+API/model call, sealed-corpus access, or textbook-PDF access occurred.
+Legacy output remains diagnostics-only and has no Generic routing,
+equation, candidate, verification, selection, repair, or fallback
+authority.
+
+The commit containing this section is the Stage 5 acceptance candidate;
+its exact-head release and Phase 55 regression runs must pass before
+beginning Stage 6 implementation.
+
 ## Wave E remote integration acceptance — 2026-07-23 Asia/Seoul
 
 Wave E Entries 20–22 (`spring_energy_speed`, `flat_curve_friction`, and

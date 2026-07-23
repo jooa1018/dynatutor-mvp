@@ -93,6 +93,10 @@ EXPECTED_ACCEPTED = {
     "spring_energy_speed",
     "flat_curve_friction",
     "banked_curve_no_friction",
+    "plane_rigid_body_acceleration",
+    "polar_kinematics",
+    "instant_center_velocity",
+    "plane_rigid_body_velocity",
 }
 
 EXPECTED_ACCEPTED_CHECKPOINTS = {
@@ -117,6 +121,10 @@ EXPECTED_ACCEPTED_CHECKPOINTS = {
     "spring_energy_speed": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
     "flat_curve_friction": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
     "banked_curve_no_friction": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
+    "plane_rigid_body_acceleration": "dddab1eb00fc13efe78a6be60fc5f2755906fc77",
+    "polar_kinematics": "dddab1eb00fc13efe78a6be60fc5f2755906fc77",
+    "instant_center_velocity": "dddab1eb00fc13efe78a6be60fc5f2755906fc77",
+    "plane_rigid_body_velocity": "dddab1eb00fc13efe78a6be60fc5f2755906fc77",
 }
 
 
@@ -174,16 +182,16 @@ def test_typed_inventory_is_bound_to_the_live_legacy_registry_order() -> None:
     assert tuple(solver.name for solver in SolverRegistry().solvers) == EXPECTED_INVENTORY
 
 
-def test_current_progress_is_29_classified_21_accepted_4_pending_4_deferred() -> None:
+def test_current_progress_is_29_classified_25_accepted_0_pending_4_deferred() -> None:
     progress = CURRENT_LEGACY_MIGRATION_PROGRESS
     assert progress.records == CURRENT_LEGACY_SOLVER_MIGRATION_RECORDS
     assert tuple(item.registry_index for item in progress.records) == tuple(range(1, 30))
     assert progress.inventory_count == 29
     assert progress.in_scope_count == 25
     assert progress.deferred_count == 4
-    assert progress.accepted_in_scope_count == 21
-    assert progress.pending_in_scope_count == 4
-    assert progress.in_scope_complete is False
+    assert progress.accepted_in_scope_count == 25
+    assert progress.pending_in_scope_count == 0
+    assert progress.in_scope_complete is True
     assert {
         item.solver_id.value
         for item in progress.records
@@ -262,7 +270,7 @@ def test_scope_contracts_are_frozen_extra_forbid_and_scalar_strict() -> None:
         "mis_scoped",
         "forged_accepted_count",
         "forged_pending_count",
-        "false_complete",
+        "forged_incomplete",
     ),
 )
 def test_progress_rejects_reordering_duplicates_scope_drift_and_forged_totals(
@@ -288,8 +296,8 @@ def test_progress_rejects_reordering_duplicates_scope_drift_and_forged_totals(
         progress_payload["accepted_in_scope_count"] = 22
     elif mutation == "forged_pending_count":
         progress_payload["pending_in_scope_count"] = 3
-    elif mutation == "false_complete":
-        progress_payload["in_scope_complete"] = True
+    elif mutation == "forged_incomplete":
+        progress_payload["in_scope_complete"] = False
     with pytest.raises(ValidationError):
         LegacyMigrationProgress.model_validate(progress_payload)
 
@@ -326,8 +334,10 @@ def test_deferred_row_cannot_be_accepted_or_contribute_to_progress() -> None:
     with pytest.raises(ValidationError, match="exact policy profile"):
         LegacySolverMigrationRecord.model_validate(forged)
 
-    with pytest.raises(ValueError, match="deferred records never count"):
+    assert (
         assert_legacy_migration_coverage_complete(CURRENT_LEGACY_MIGRATION_PROGRESS)
+        == CURRENT_LEGACY_MIGRATION_PROGRESS
+    )
 
 
 def test_coverage_gate_passes_exactly_when_all_25_in_scope_rows_are_accepted() -> None:

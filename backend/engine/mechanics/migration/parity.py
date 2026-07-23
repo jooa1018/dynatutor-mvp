@@ -499,6 +499,18 @@ _ACCEPTED_MIGRATION_CHECKPOINTS: dict[LegacySolverId, str] = {
     LegacySolverId.banked_curve_no_friction: (
         "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
     ),
+    LegacySolverId.plane_rigid_body_acceleration: (
+        "dddab1eb00fc13efe78a6be60fc5f2755906fc77"
+    ),
+    LegacySolverId.polar_kinematics: (
+        "dddab1eb00fc13efe78a6be60fc5f2755906fc77"
+    ),
+    LegacySolverId.instant_center_velocity: (
+        "dddab1eb00fc13efe78a6be60fc5f2755906fc77"
+    ),
+    LegacySolverId.plane_rigid_body_velocity: (
+        "dddab1eb00fc13efe78a6be60fc5f2755906fc77"
+    ),
 }
 
 
