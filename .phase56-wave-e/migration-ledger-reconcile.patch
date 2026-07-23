@@ -1,0 +1,152 @@
+diff --git a/backend/engine/mechanics/migration/parity.py b/backend/engine/mechanics/migration/parity.py
+index 2f8fad1..e339d1a 100644
+--- a/backend/engine/mechanics/migration/parity.py
++++ b/backend/engine/mechanics/migration/parity.py
+@@ -451,6 +451,54 @@ _ACCEPTED_MIGRATION_CHECKPOINTS: dict[LegacySolverId, str] = {
+     LegacySolverId.pulley_table_hanging: (
+         "7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e"
+     ),
++    LegacySolverId.pulley_incline_hanging: (
++        "8f18c710fc6d5d730fcceccfb30e3175c2613902"
++    ),
++    LegacySolverId.massive_pulley_atwood: (
++        "8f18c710fc6d5d730fcceccfb30e3175c2613902"
++    ),
++    LegacySolverId.pure_rolling_energy: (
++        "305c68d6e7173740d478fd41c11b4ae78a245469"
++    ),
++    LegacySolverId.rolling_energy_general: (
++        "305c68d6e7173740d478fd41c11b4ae78a245469"
++    ),
++    LegacySolverId.vertical_circle: (
++        "305c68d6e7173740d478fd41c11b4ae78a245469"
++    ),
++    LegacySolverId.collision_1d: (
++        "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d"
++    ),
++    LegacySolverId.constant_acceleration_1d: (
++        "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d"
++    ),
++    LegacySolverId.projectile_motion: (
++        "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d"
++    ),
++    LegacySolverId.constant_force_work: (
++        "34208235fabed97cc7a500668c13f5a4cf5a109d"
++    ),
++    LegacySolverId.fixed_axis_rotation: (
++        "34208235fabed97cc7a500668c13f5a4cf5a109d"
++    ),
++    LegacySolverId.horizontal_friction_force: (
++        "34208235fabed97cc7a500668c13f5a4cf5a109d"
++    ),
++    LegacySolverId.impulse_momentum: (
++        "34208235fabed97cc7a500668c13f5a4cf5a109d"
++    ),
++    LegacySolverId.work_energy_speed: (
++        "34208235fabed97cc7a500668c13f5a4cf5a109d"
++    ),
++    LegacySolverId.spring_energy_speed: (
++        "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
++    ),
++    LegacySolverId.flat_curve_friction: (
++        "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
++    ),
++    LegacySolverId.banked_curve_no_friction: (
++        "114b11d26ee1aa1e4107aa8eea9c66de9ea009af"
++    ),
+ }
+ 
+ 
+diff --git a/backend/tests/test_phase56_mechanics_migration_scope.py b/backend/tests/test_phase56_mechanics_migration_scope.py
+index 26c4bee..ec810c4 100644
+--- a/backend/tests/test_phase56_mechanics_migration_scope.py
++++ b/backend/tests/test_phase56_mechanics_migration_scope.py
+@@ -77,6 +77,46 @@ EXPECTED_ACCEPTED = {
+     "incline_with_friction",
+     "pulley_atwood",
+     "pulley_table_hanging",
++    "pulley_incline_hanging",
++    "massive_pulley_atwood",
++    "pure_rolling_energy",
++    "rolling_energy_general",
++    "vertical_circle",
++    "collision_1d",
++    "constant_acceleration_1d",
++    "projectile_motion",
++    "constant_force_work",
++    "fixed_axis_rotation",
++    "horizontal_friction_force",
++    "impulse_momentum",
++    "work_energy_speed",
++    "spring_energy_speed",
++    "flat_curve_friction",
++    "banked_curve_no_friction",
++}
++
++EXPECTED_ACCEPTED_CHECKPOINTS = {
++    "single_particle_newton": "8b7c5c4a6f1f972d479323f5a7179b4f177d3800",
++    "incline_no_friction": "5e49f2f267c4c8d75aec6e99e3714fc36f700257",
++    "incline_with_friction": "c134664cd863d33b50c7e5ae794af2ad61ed6524",
++    "pulley_atwood": "dedb4c7c773bf24bc27038b0d5d5f658e5d28ba9",
++    "pulley_table_hanging": "7fff1b83f42ed5f1ddf6046f456b2c9f924cb54e",
++    "pulley_incline_hanging": "8f18c710fc6d5d730fcceccfb30e3175c2613902",
++    "massive_pulley_atwood": "8f18c710fc6d5d730fcceccfb30e3175c2613902",
++    "pure_rolling_energy": "305c68d6e7173740d478fd41c11b4ae78a245469",
++    "rolling_energy_general": "305c68d6e7173740d478fd41c11b4ae78a245469",
++    "vertical_circle": "305c68d6e7173740d478fd41c11b4ae78a245469",
++    "collision_1d": "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d",
++    "constant_acceleration_1d": "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d",
++    "projectile_motion": "67f46e9c84a658d1d5a50b9dfcdce81f78f20d8d",
++    "constant_force_work": "34208235fabed97cc7a500668c13f5a4cf5a109d",
++    "fixed_axis_rotation": "34208235fabed97cc7a500668c13f5a4cf5a109d",
++    "horizontal_friction_force": "34208235fabed97cc7a500668c13f5a4cf5a109d",
++    "impulse_momentum": "34208235fabed97cc7a500668c13f5a4cf5a109d",
++    "work_energy_speed": "34208235fabed97cc7a500668c13f5a4cf5a109d",
++    "spring_energy_speed": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
++    "flat_curve_friction": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
++    "banked_curve_no_friction": "114b11d26ee1aa1e4107aa8eea9c66de9ea009af",
+ }
+ 
+ 
+@@ -134,21 +174,26 @@ def test_typed_inventory_is_bound_to_the_live_legacy_registry_order() -> None:
+     assert tuple(solver.name for solver in SolverRegistry().solvers) == EXPECTED_INVENTORY
+ 
+ 
+-def test_current_progress_is_29_classified_5_accepted_20_pending_4_deferred() -> None:
++def test_current_progress_is_29_classified_21_accepted_4_pending_4_deferred() -> None:
+     progress = CURRENT_LEGACY_MIGRATION_PROGRESS
+     assert progress.records == CURRENT_LEGACY_SOLVER_MIGRATION_RECORDS
+     assert tuple(item.registry_index for item in progress.records) == tuple(range(1, 30))
+     assert progress.inventory_count == 29
+     assert progress.in_scope_count == 25
+     assert progress.deferred_count == 4
+-    assert progress.accepted_in_scope_count == 5
+-    assert progress.pending_in_scope_count == 20
++    assert progress.accepted_in_scope_count == 21
++    assert progress.pending_in_scope_count == 4
+     assert progress.in_scope_complete is False
+     assert {
+         item.solver_id.value
+         for item in progress.records
+         if item.migration_state is LegacySolverMigrationState.ACCEPTED
+     } == EXPECTED_ACCEPTED
++    assert {
++        item.solver_id.value: item.accepted_checkpoint_hash
++        for item in progress.records
++        if item.migration_state is LegacySolverMigrationState.ACCEPTED
++    } == EXPECTED_ACCEPTED_CHECKPOINTS
+ 
+ 
+ def test_each_deferred_row_has_the_complete_typed_policy_profile() -> None:
+@@ -240,9 +285,9 @@ def test_progress_rejects_reordering_duplicates_scope_drift_and_forged_totals(
+             LegacySolverMigrationRecord.model_validate(record_payload)
+         return
+     elif mutation == "forged_accepted_count":
+-        progress_payload["accepted_in_scope_count"] = 6
++        progress_payload["accepted_in_scope_count"] = 22
+     elif mutation == "forged_pending_count":
+-        progress_payload["pending_in_scope_count"] = 19
++        progress_payload["pending_in_scope_count"] = 3
+     elif mutation == "false_complete":
+         progress_payload["in_scope_complete"] = True
+     with pytest.raises(ValidationError):
