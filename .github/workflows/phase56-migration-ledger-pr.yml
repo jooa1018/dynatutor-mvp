@@ -1,0 +1,73 @@
+name: Phase 56 migration ledger PR reconcile
+
+on:
+  pull_request:
+    branches:
+      - codex/phase56-generic-mechanics-engine
+    paths:
+      - ".phase56-wave-e/migration-ledger-reconcile.patch"
+      - ".github/workflows/phase56-migration-ledger-pr.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: phase56-migration-ledger-pr-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Apply ledger patch to exact product head
+        run: |
+          set -euo pipefail
+          git fetch --prune origin codex/phase56-generic-mechanics-engine
+          test "$(git rev-parse origin/codex/phase56-generic-mechanics-engine)" = "9c35b6abbb7c89ccdb9c7ff05cd4580f8fa9cf7c"
+          cp .phase56-wave-e/migration-ledger-reconcile.patch /tmp/ledger.patch
+          git switch --detach origin/codex/phase56-generic-mechanics-engine
+          git switch -c phase56-ledger-reconcile
+          git apply --check /tmp/ledger.patch
+          git apply /tmp/ledger.patch
+          git diff --check
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements-lock.txt
+      - name: Validate ledger and runtime boundaries
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONPATH: ${{ github.workspace }}/backend:${{ github.workspace }}/backend/tests
+        run: >-
+          python -m pytest -q -o addopts=
+          backend/tests/test_phase56_mechanics_migration_scope.py
+          backend/tests/test_phase56_mechanics_deferred_scope.py
+          backend/tests/test_phase56_mechanics_runtime_contract.py
+          backend/tests/test_phase56_mechanics_runtime_static.py
+      - name: Verify exact progress and push non-force
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from engine.mechanics.migration import CURRENT_LEGACY_MIGRATION_PROGRESS
+          progress = CURRENT_LEGACY_MIGRATION_PROGRESS
+          assert progress.accepted_in_scope_count == 21
+          assert progress.pending_in_scope_count == 4
+          assert progress.deferred_count == 4
+          assert progress.in_scope_complete is False
+          print(progress.model_dump_json())
+          PY
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add backend/engine/mechanics/migration/parity.py backend/tests/test_phase56_mechanics_migration_scope.py
+          git commit -m "fix(phase56): reconcile accepted migration ledger"
+          git push origin HEAD:codex/phase56-generic-mechanics-engine
