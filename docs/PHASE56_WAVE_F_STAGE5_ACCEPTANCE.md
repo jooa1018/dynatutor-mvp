@@ -6,7 +6,15 @@
 - Connected mechanics regression: **741 passed, 1 skipped**
 - Migration scope after reconciliation: **25 accepted / 0 pending / 4 deferred**
 - Stage status: **Stages 0–5 complete; Stage 6 next**
+- Stage 5 ledger/documentation candidate: `87fd9cf557bfdf735604ade39319f268c36abac1`
 
-The exact-head CI for the acceptance commit containing this document is
-pending. No product, test-selection, assertion, timeout, or performance
-threshold relaxation is introduced by the ledger/documentation update.
+The workflow-token push that created the ledger/documentation candidate produced
+`action_required` placeholders without executing jobs. This connector-authored,
+documentation-only commit is the explicit external trigger for the final exact-head
+DynaTutor release and Phase 55 regression validation. No product code, test
+selection, assertion, timeout, or performance threshold is changed.
+
+Stage 6 implementation may begin only after both final exact-head workflows complete
+successfully. PR #17 remains Draft, open, and unmerged on Draft PR #16; `main`,
+production, secrets, Live API/model access, sealed corpus data, and textbook PDF
+content remain untouched.
