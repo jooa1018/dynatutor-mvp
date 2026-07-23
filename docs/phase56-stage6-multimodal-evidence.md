@@ -1,71 +1,85 @@
 # Phase 56 Stage 6 — Source-grounded multimodal mechanics evidence
 
-## Scope
+## Accepted scope
 
-Stage 6 adds an optional image-evidence boundary to the existing text-first mechanics modeler. It does **not** grant the model equation selection, solver selection, root selection, verification, or final-answer authority. The deterministic mechanics runtime remains the only component allowed to perform those operations.
+Stage 6 is accepted at code candidate `58589ad49982871e7d617489b525e9b67428548a`. It adds a production-integrated text-plus-raster-image route without transferring equation, solver, root, candidate, verification, or final-answer authority to the model or browser.
 
-The text-only path remains unchanged. The new endpoint is additive:
+```text
+text + sanitized images
+→ one combined structured modeling envelope
+→ deterministic validation and authority audit
+→ deterministic evidence reconciliation
+→ confirmation/source-only correction when required
+→ opaque server revision
+→ Generic Mechanics IR authorization
+→ Equation Graph compiler
+→ deterministic solve
+→ independent verification
+→ verified answer or fail-closed terminal
+```
 
-`POST /api/mechanics/multimodal/evidence`
+Text-only `/solve` and `/diagnose` remain backward-compatible. A ready multimodal draft is never reinterpreted through the legacy text route.
 
-A deployment must explicitly inject `app.state.mechanics_multimodal_envelope_generator`. There is no implicit model provider, credential lookup, or live-network fallback in the repository.
+## Provider contract
 
-## Trust boundary
+- Explicit provider adapter only; disabled/unconfigured is a typed `503`.
+- One combined text-plus-all-images primary call.
+- No Phase 55 parser plus Mechanics modeler chain and no per-image fanout.
+- Fixed structured-output contract `MechanicsModelingEnvelopeV1`.
+- Bounded timeout/output, provider retries disabled, and at most one sanitized full repair in the modeler.
+- `store=False`; no prompt, raw provider response, source text, image bytes, or secrets are persisted.
+- Offline tests use deterministic fake providers. No external call was made in Stage 6.
 
-1. The browser enforces early count, media-type, and byte limits.
-2. The backend decodes base64 with strict validation.
-3. Pillow decodes the image under decompression-bomb and dimension limits.
-4. Animated inputs and declared/decoded format mismatches are rejected.
-5. EXIF orientation is applied, the pixels are copied into a fresh image, and the result is re-encoded as deterministic PNG.
-6. Only the sanitized PNG, its dimensions, and its SHA-256 digest may reach the injected interpretation adapter.
-7. Every figure observation must bind to the exact image id, index, dimensions, and sanitized digest.
-8. The envelope is revalidated against `MechanicsModelingEnvelopeV1` and recursively audited for forbidden answer or execution authority.
-9. Text/figure conflicts are reconciled deterministically. Confidence is never an automatic tie-breaker, and visual conventions are never silently promoted.
-10. A draft is withheld until every explicit conflict is confirmed with an exact conflict fingerprint and exact candidate fingerprint.
+## Image and request boundaries
 
-Original image bytes, filenames, EXIF metadata, problem text, labels, values, and draft content are excluded from telemetry. Metrics contain only bounded counts and a terminal label.
-
-## Limits
-
-| Limit | Value |
+| Boundary | Accepted value |
 |---|---:|
 | Images per request | 4 |
-| Bytes per image | 8 MiB |
-| Combined input bytes | 20 MiB |
+| Raw bytes per image | 8 MiB |
+| Decoded/sanitized total | 20 MiB |
+| Wire request ceiling | 30 MiB |
 | Source pixels | 16,000,000 |
 | Source edge | 4096 px |
-| Sanitized/model edge | 2048 px |
-| Accepted formats | PNG, JPEG, WebP |
-| Sanitized output | metadata-free PNG |
+| Model edge | 2048 px |
+| Input formats | PNG, JPEG, static WebP |
+| Provider image format | metadata-free RGB PNG |
 
-## Conflict policy
+The request-body middleware counts actual ASGI bytes before FastAPI form/JSON parsing, including chunked and missing-Content-Length requests. Conflicting or duplicate framing headers are rejected. Base64 expansion cannot bypass the wire limit.
 
-For a shared semantic target:
+Image processing verifies magic bytes and decoded format, rejects corrupt/animated/oversized/decompression-bomb inputs, applies EXIF orientation, removes metadata, flattens transparency onto white RGB pixels, re-encodes deterministically, hashes the sanitized result, and rejects duplicate sanitized content.
 
-- Identical eligible values collapse deterministically.
-- A figure convention is ignored unless explicitly confirmed; it never becomes a fact because of confidence.
-- Different explicit values create an immutable conflict fingerprint.
-- The response terminal is `confirmation_required`, and `draft` is `null`.
-- A follow-up confirmation must bind conflict id, conflict fingerprint, chosen source id, and chosen candidate fingerprint.
-- A stale or mismatched binding is blocked rather than guessed.
+## API
 
-## Corrections and revisions
+- `POST /api/mechanics/multimodal/evidence`
+- `GET /api/mechanics/multimodal/revisions/{revision_id}`
+- `POST /api/mechanics/multimodal/revisions/{revision_id}/confirm`
+- `POST /api/mechanics/multimodal/revisions/{revision_id}/correct`
+- `POST /api/mechanics/multimodal/revisions/{revision_id}/execute`
 
-Corrections are source-only, immutable revisions. Every request binds the base revision id and fingerprint. Operations that attempt to patch equation graphs, solvers, roots, verification, runtime delivery, or final answers are rejected. The full envelope is revalidated after every accepted source correction.
+The router is registered exactly once in `backend/app/main.py`. The prefix is protected by the existing personal-token authentication, rate limiter, pre-parse body limiter, and CORS policy. Production docs remain closed by default.
 
-## Synthetic validation
+## Evidence and correction policy
 
-Repository tests use only generated incline, pulley, and free-body diagrams. They do not read textbook PDFs, OCR corpora, held-out benchmark images, or live model responses. The synthetic manifest covers matching labels, explicit conflicts, directions, figure-only evidence, and visual-convention non-promotion.
+Text evidence and figure evidence remain distinct. Exact agreement may corroborate one semantic fact while preserving both source references. Explicit conflicts never use confidence or source order as a tie-breaker and block compilation until an exact fingerprinted choice is supplied.
 
-## Operational gates
+Supported source-only operations include evidence accept/reject, quantity value, unit, direction, entity binding, relation, alternative, user fact, fact removal, query, frame/axis, and assumption confirm/reject. Pydantic contracts and a recursive authority pre-scan reject direct equation graph, solver, backend, candidate, root, verification, final answer, or legacy-route patches.
 
-The permanent Stage 6 workflow performs:
+Every confirmation or correction creates an immutable child revision and reruns reconciliation, normalization, validation, authorization, compilation, deterministic solving, and independent verification. The in-memory store has bounded TTL and capacity and is isolated by a privacy-safe owner key.
 
-- backend compilation;
-- all `test_phase56_stage6*.py` contract, security, reconciliation, authority, telemetry, and synthetic tests;
-- existing backend regression tests;
-- frontend install, tests when configured, lint when configured, and production build;
-- a source audit banning OCR and implicit live model clients;
-- an audit that the temporary workspace-export workflow is absent.
+Idempotency keys are bound to canonical request fingerprints. Exact retries replay the same revision; the same key with different problem text, sanitized image identity, conflict choice, or correction payload receives typed `409 request_id_conflict`. The product router refuses a legacy non-collision-safe revision store.
 
-No threshold, timeout, assertion, or compatibility wrapper is weakened by this stage.
+## Student UI
+
+The official `HomeClient` solve screen renders `MechanicsMultimodalPanel` using the existing problem-text state. The client uses `NEXT_PUBLIC_DYNATUTOR_API_BASE`, the existing `x-dynatutor-token`, timeout/error helpers, and `ApiAuthError` token-modal flow.
+
+The UI supports image select/drag/drop/paste, preview/remove/replace, evidence regions, conflict choices, source-only correction forms, revision display, deterministic execution status, verification checks, and verified-result display. It does not expose an unverified answer. Keyboard labels, live status, alerts, responsive layout, and reduced-motion behavior are included.
+
+## Evaluation and acceptance
+
+- Synthetic-only deterministic raster manifest: 38 cases spanning core mechanics, conflicts, ambiguity, occlusion, prompt injection, compression/resolution/metadata and other metamorphic variants.
+- Evaluator metadata is never passed to runtime.
+- Source audit has exactly 2 tests and verifies no OCR/implicit client plus absence of the temporary mutating workflows.
+- Exact-head CI: release `30045176722`, Phase 55 `30045176496`, Stage 6 `30045176628`, all SUCCESS.
+- Final same-model read-only Checker: PASS, blocking findings 0.
+
+Stage 7 remains not started and the public corpus remains sealed.
