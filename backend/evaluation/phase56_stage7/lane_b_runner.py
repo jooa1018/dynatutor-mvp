@@ -1,0 +1,284 @@
+"""Lane B: run one projected Draft through the real deterministic pipeline.
+
+    MechanicsProblemDraftV1
+      → validate_draft
+      → normalize_draft
+      → authorize_validated_mechanics_ir
+      → MechanicsCompiler.compile
+      → solve_verified_equation_graph
+      → independent verification
+      → frozen RuntimeDomainSnapshotV1
+
+Each stage records its own terminal.  Exceptions are never collapsed into a
+single `runtime_failure`.  The snapshot carries no case identity, no gold, no
+corpus text, no full Draft or IR, and no raw exception — only opaque
+correlation, neutral terminal, fingerprints, counts, and bounded codes.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any
+
+from engine.mechanics.compiler import (
+    MechanicsCompiler,
+    authorize_validated_mechanics_ir,
+)
+from engine.mechanics.normalization import normalize_draft
+from engine.mechanics.pipeline import solve_verified_equation_graph
+from engine.mechanics.validation import validate_draft
+from engine.mechanics.verification.contracts import MechanicsSolveTerminal
+
+from evaluation.phase56_stage7.lane_b_draft_projection import (
+    DraftProjection,
+    DraftProjectionTerminal,
+)
+
+
+LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v1"
+
+_MAX_DIAGNOSTIC_CODES = 24
+
+
+class LaneBTerminal(str, Enum):
+    """Per-stage terminals; no stage collapses into another."""
+
+    projection_rejected = "projection_rejected"
+    needs_figure = "needs_figure"
+    needs_confirmation = "needs_confirmation"
+    insufficient_information = "insufficient_information"
+    validation_rejected = "validation_rejected"
+    normalization_rejected = "normalization_rejected"
+    authorization_failed = "authorization_failed"
+    compiler_unsupported = "compiler_unsupported"
+    compiler_failure = "compiler_failure"
+    solve_rejected = "solve_rejected"
+    verification_rejected = "verification_rejected"
+    solved = "solved"
+    verified_unsupported = "verified_unsupported"
+
+
+def _codes(items: Any, attribute: str = "code") -> tuple[str, ...]:
+    out: set[str] = set()
+    for item in items or ():
+        value = getattr(item, attribute, None)
+        out.add(str(getattr(value, "value", value)))
+    return tuple(sorted(out))[:_MAX_DIAGNOSTIC_CODES]
+
+
+def _text(value: object) -> str:
+    return str(getattr(value, "value", value))
+
+
+@dataclass(frozen=True, slots=True)
+class LaneBResult:
+    """Frozen, privacy-safe per-case runtime result."""
+
+    execution_token: str
+    terminal: LaneBTerminal
+    version: str = LANE_B_RUNNER_VERSION
+    validation_codes: tuple[str, ...] = ()
+    normalization_terminal: str | None = None
+    compiler_status: str | None = None
+    compiler_codes: tuple[str, ...] = ()
+    solve_terminal: str | None = None
+    solve_codes: tuple[str, ...] = ()
+    calculation_fingerprint: str | None = None
+    applied_law_ids: tuple[str, ...] = ()
+    equation_count: int = 0
+    candidate_count: int = 0
+    rejected_candidate_count: int = 0
+    verified_candidate_count: int = 0
+    verification_checks: tuple[tuple[str, str], ...] = ()
+    answer_value_si: float | None = None
+    answer_query_symbol_id: str | None = None
+    answer_unit: str | None = None
+    answer_dimension: tuple[tuple[str, int], ...] = ()
+    answer_shape: str | None = None
+    answer_component: str | None = None
+    answer_direction: str | None = None
+    query_subject_id: str | None = None
+    query_role: str | None = None
+    stage_exception: str | None = None
+
+    @property
+    def solved(self) -> bool:
+        return self.terminal is LaneBTerminal.solved
+
+
+def _query_projection(draft: Any) -> dict[str, Any]:
+    if not draft.queries:
+        return {}
+    query = draft.queries[0]
+    target = query.target
+    direction = getattr(target, "direction", None)
+    return {
+        "query_subject_id": target.subject_id,
+        "query_role": _text(target.role),
+        "answer_unit": query.output_unit,
+        "answer_dimension": tuple(
+            sorted(query.output_dimension.model_dump(exclude_defaults=True).items())
+        ),
+        "answer_shape": _text(query.shape),
+        "answer_component": _text(getattr(target, "component", None)),
+        "answer_direction": (
+            _text(getattr(direction, "direction", None)) if direction is not None else None
+        ),
+    }
+
+
+def run_lane_b_case(
+    projection: DraftProjection, *, execution_token: str
+) -> LaneBResult:
+    """Execute one projected Draft through the deterministic pipeline."""
+
+    if projection.terminal is DraftProjectionTerminal.needs_figure:
+        return LaneBResult(execution_token, LaneBTerminal.needs_figure)
+    if projection.terminal is DraftProjectionTerminal.insufficient_information:
+        return LaneBResult(execution_token, LaneBTerminal.insufficient_information)
+    if projection.terminal is not DraftProjectionTerminal.projected:
+        return LaneBResult(execution_token, LaneBTerminal.projection_rejected)
+
+    draft = projection.draft
+    text = projection.problem_text
+    approved = projection.approvable_assumption_ids
+    query_fields = _query_projection(draft)
+
+    validation = validate_draft(text, draft, approved_assumption_ids=approved)
+    validation_codes = _codes(validation.issues)
+    if not validation.accepted:
+        return LaneBResult(
+            execution_token,
+            LaneBTerminal.validation_rejected,
+            validation_codes=validation_codes,
+            **query_fields,
+        )
+
+    try:
+        normalization = normalize_draft(text, draft, approved_assumption_ids=approved)
+    except Exception as exc:
+        return LaneBResult(
+            execution_token,
+            LaneBTerminal.normalization_rejected,
+            validation_codes=validation_codes,
+            stage_exception=type(exc).__name__,
+            **query_fields,
+        )
+    normalization_terminal = _text(normalization.terminal)
+    if not normalization.accepted or normalization.ir is None:
+        return LaneBResult(
+            execution_token,
+            LaneBTerminal.normalization_rejected,
+            validation_codes=_codes(normalization.validation.issues),
+            normalization_terminal=normalization_terminal,
+            **query_fields,
+        )
+    fingerprint = normalization.calculation_fingerprint
+
+    try:
+        authorization = authorize_validated_mechanics_ir(normalization.ir)
+    except Exception as exc:
+        return LaneBResult(
+            execution_token,
+            LaneBTerminal.authorization_failed,
+            normalization_terminal=normalization_terminal,
+            calculation_fingerprint=fingerprint,
+            stage_exception=type(exc).__name__,
+            **query_fields,
+        )
+
+    try:
+        compiled = MechanicsCompiler().compile(
+            normalization.ir,
+            validated_ir_authorization=authorization,
+            approved_assumption_ids=approved,
+        )
+    except Exception as exc:
+        return LaneBResult(
+            execution_token,
+            LaneBTerminal.compiler_failure,
+            normalization_terminal=normalization_terminal,
+            calculation_fingerprint=fingerprint,
+            stage_exception=type(exc).__name__,
+            **query_fields,
+        )
+    compiler_codes = _codes(compiled.issues)
+    compiler_status = _text(compiled.status)
+    if not compiled.compilable or compiled.graph is None:
+        # A precise typed unsupported is a first-class outcome, not a failure.
+        terminal = (
+            LaneBTerminal.compiler_unsupported
+            if "unsupported" in compiler_status.casefold()
+            or any("unsupported" in code.casefold() for code in compiler_codes)
+            else LaneBTerminal.compiler_failure
+        )
+        return LaneBResult(
+            execution_token,
+            terminal,
+            normalization_terminal=normalization_terminal,
+            compiler_status=compiler_status,
+            compiler_codes=compiler_codes,
+            calculation_fingerprint=fingerprint,
+            **query_fields,
+        )
+
+    graph = compiled.graph
+    law_ids = tuple(sorted({item.law_id for item in graph.applications}))
+    try:
+        solved = solve_verified_equation_graph(graph)
+    except Exception as exc:
+        return LaneBResult(
+            execution_token,
+            LaneBTerminal.solve_rejected,
+            normalization_terminal=normalization_terminal,
+            compiler_status=compiler_status,
+            compiler_codes=compiler_codes,
+            calculation_fingerprint=fingerprint,
+            applied_law_ids=law_ids,
+            equation_count=len(graph.equations),
+            stage_exception=type(exc).__name__,
+            **query_fields,
+        )
+
+    common = dict(
+        normalization_terminal=normalization_terminal,
+        compiler_status=compiler_status,
+        compiler_codes=compiler_codes,
+        solve_terminal=_text(solved.terminal),
+        solve_codes=_codes(solved.diagnostics.entries),
+        calculation_fingerprint=fingerprint,
+        applied_law_ids=law_ids,
+        equation_count=len(graph.equations),
+        candidate_count=len(solved.candidate_set.candidates),
+        rejected_candidate_count=len(solved.rejections),
+        verified_candidate_count=len(solved.verified_candidates),
+        **query_fields,
+    )
+    if solved.terminal is not MechanicsSolveTerminal.solved:
+        return LaneBResult(execution_token, LaneBTerminal.solve_rejected, **common)
+    if len(solved.verified_candidates) != 1:
+        return LaneBResult(
+            execution_token, LaneBTerminal.verification_rejected, **common
+        )
+
+    verified = solved.verified_candidates[0]
+    checks = tuple(
+        (_text(item.kind), _text(item.status)) for item in verified.outcome.checks
+    )
+    return LaneBResult(
+        execution_token,
+        LaneBTerminal.solved,
+        verification_checks=checks,
+        answer_value_si=verified.query_value_si,
+        answer_query_symbol_id=verified.query_symbol_id,
+        **common,
+    )
+
+
+def deterministic_token(index: int, run_nonce: str = LANE_B_RUNNER_VERSION) -> str:
+    """Opaque per-execution token; no case identity contributes."""
+
+    material = f"{run_nonce}\0{index}".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()[:32]
