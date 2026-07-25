@@ -146,6 +146,25 @@ _FACT_ROLES: dict[str, tuple[str, dict[str, int]]] = {
     "work": ("work", _dim(mass=1, length=2, time=-2)),
 }
 
+# A `time` fact the corpus scopes to a whole segment is an *elapsed* time, and
+# the typed IR names that `duration`.  The distinction comes from the corpus's
+# own `temporal_role`, never from the sentence and never from a family.
+_INTERVAL_TEMPORAL_ROLES: frozenset[str] = frozenset({"interval", "during"})
+_ELAPSED_ROLES: dict[str, tuple[str, dict[str, int]]] = {
+    "time": ("duration", _dim(time=1)),
+}
+
+# 6-B/7. Closed corpus motion-model mapping.  A motion model is source-declared
+# segment structure, so the typed assumption it implies is a structural
+# derivation rather than an invention.  Only models whose kinematic meaning is
+# unambiguous appear here; anything else contributes no assumption and stays
+# precisely unsupported instead of being guessed.
+_MOTION_MODEL_ASSUMPTIONS: dict[str, str] = {
+    "constant_acceleration_1d": "constant_acceleration",
+    "constant_velocity_1d": "constant_velocity",
+    "projectile_free_flight": "constant_acceleration",
+}
+
 # corpus query output key -> (draft quantity role, output unit, dimension)
 _QUERY_ROLES: dict[str, tuple[str, str, dict[str, int]]] = {
     "acceleration": ("acceleration", "m/s^2", _dim(length=1, time=-2)),
@@ -361,6 +380,7 @@ class DraftProjectionReason(str, Enum):
     dangling_interval_reference = "dangling_interval_reference"
     dangling_event_reference = "dangling_event_reference"
     boundary_event_subject_not_in_interval = "boundary_event_subject_not_in_interval"
+    duplicate_motion_model_assumption = "duplicate_motion_model_assumption"
     duplicate_canonical_symbol = "duplicate_canonical_symbol"
     symbol_binding_not_reciprocal = "symbol_binding_not_reciprocal"
     unknown_symbol_collides_with_known = "unknown_symbol_collides_with_known"
@@ -859,6 +879,14 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         mapped = _FACT_ROLES.get(fact.semantic_key)
         if mapped is None:
             raise DraftProjectionError(DraftProjectionReason.unmapped_semantic_key)
+        elapsed = _ELAPSED_ROLES.get(fact.semantic_key)
+        if (
+            elapsed is not None
+            and fact.event_role is None
+            and fact.segment_role is not None
+            and (fact.temporal_role or "") in _INTERVAL_TEMPORAL_ROLES
+        ):
+            mapped = elapsed
         role, dimension = mapped
         if fact.subject_role not in entity_ids:
             raise DraftProjectionError(DraftProjectionReason.dangling_entity_reference)
@@ -1018,6 +1046,39 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             entry["proposed_unit"] = unit
         assumptions.append(entry)
         if disposition == "approved":
+            approved.append(assumption_id)
+
+    # A motion model the corpus declares on a segment is source-grounded
+    # structure, so the typed kinematic assumption it implies is authorised on
+    # the same footing as a quoted one.  It applies to that segment's own actors
+    # and to nothing else, and it carries no proposed value: it constrains how
+    # the interval behaves, it does not supply a number.
+    declared_assumption_ids = {entry["assumption_id"] for entry in assumptions}
+    for segment in gold.motion_segments:
+        kind = _MOTION_MODEL_ASSUMPTIONS.get(segment.motion_model or "")
+        if kind is None:
+            continue
+        for actor in sorted(segment.actor_roles):
+            assumption_id = f"asm_{kind}_{segment.role}_{actor}"
+            if assumption_id in declared_assumption_ids:
+                raise DraftProjectionError(
+                    DraftProjectionReason.duplicate_motion_model_assumption
+                )
+            declared_assumption_ids.add(assumption_id)
+            assumptions.append(
+                {
+                    "assumption_id": assumption_id,
+                    "kind": kind,
+                    "subject_id": actor,
+                    "interval_id": segment.role,
+                    "disposition": "approved",
+                    "reason": (
+                        "closed server policy: the source declares this segment's "
+                        "motion model"
+                    ),
+                    "evidence_refs": [],
+                }
+            )
             approved.append(assumption_id)
 
     # Every source-grounded quantity now owns one canonical symbol.  This runs
