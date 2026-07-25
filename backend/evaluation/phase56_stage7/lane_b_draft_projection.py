@@ -39,6 +39,12 @@ from engine.mechanics.contracts import (
     DRAFT_SCHEMA_VERSION,
     MechanicsProblemDraftV1,
 )
+from engine.textbook_parser.evidence_alignment import (
+    _normalized_number,
+    _unit_dimension,
+    quantity_occurrences,
+    quote_occurrences,
+)
 
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
@@ -219,6 +225,12 @@ _INTERACTION_KINDS: dict[str, str] = {
     "shares_acceleration_constraint": "other",
 }
 
+# Only a physical contact-type coupling can scope an environment property to a
+# moving actor's interval.  A rope, collision, or bookkeeping relation cannot.
+_ENVIRONMENT_LINK_RELATION_KINDS: frozenset[str] = frozenset(
+    {"contact_with", "slides_on", "rolls_on", "moves_in_slot", "rotates_about"}
+)
+
 _ASSUMPTION_PROPOSALS: dict[str, tuple[str, str, str]] = {
     "constant_gravity": ("gravity", "9.81", "m/s^2"),
     "starts_from_rest": ("velocity", "0", "m/s"),
@@ -226,10 +238,7 @@ _ASSUMPTION_PROPOSALS: dict[str, tuple[str, str, str]] = {
     "frictionless": ("coefficient_friction", "0", ""),
 }
 
-_NUMBER_TOKEN = re.compile(r"[-+]?\d[\d,]*(?:\.\d+)?(?:[eE][-+]?\d+)?")
 _WHITESPACE = re.compile(r"\s+")
-# A unit token as written: the adjacent run that is neither Hangul nor space.
-_UNIT_TOKEN = re.compile(r"[^\s가-힣ᄀ-ᇿ㄰-㆏]+")
 
 
 class DraftProjectionTerminal(str, Enum):
@@ -252,9 +261,13 @@ class DraftProjectionReason(str, Enum):
     unmapped_relation_kind = "unmapped_relation_kind"
     evidence_quote_not_found = "evidence_quote_not_found"
     evidence_value_not_in_quote = "evidence_value_not_in_quote"
+    evidence_quote_occurrence_ambiguous = "evidence_quote_occurrence_ambiguous"
+    evidence_quantity_occurrence_ambiguous = "evidence_quantity_occurrence_ambiguous"
+    evidence_unit_dimension_mismatch = "evidence_unit_dimension_mismatch"
     missing_evidence_for_explicit_value = "missing_evidence_for_explicit_value"
     environment_relation_ambiguous = "environment_relation_ambiguous"
     environment_relation_absent = "environment_relation_absent"
+    environment_relation_kind_not_contact = "environment_relation_kind_not_contact"
     environment_relation_cross_interval = "environment_relation_cross_interval"
     dangling_entity_reference = "dangling_entity_reference"
     dangling_interval_reference = "dangling_interval_reference"
@@ -294,60 +307,73 @@ def _normalize(value: str) -> str:
     return _WHITESPACE.sub(" ", value).strip()
 
 
-def _locate_quote(problem_text: str, quote: str, occurrence: int) -> tuple[int, int]:
-    """Find the exact quote span, tolerating only whitespace normalisation."""
+def _align_fact_evidence(
+    problem_text: str, fact: Any
+) -> tuple[tuple[int, int], tuple[int, int], str, str]:
+    """Align one corpus fact onto the source using Phase 55 evidence alignment.
 
-    start = -1
-    for _ in range(occurrence + 1):
-        start = problem_text.find(quote, start + 1)
-        if start < 0:
-            break
-    if start < 0:
-        start = problem_text.find(quote)
-    if start < 0:
-        # Fall back to a whitespace-normalised search so a quote that differs
-        # only in spacing is still located exactly once.
-        normalized_text = _normalize(problem_text)
-        normalized_quote = _normalize(quote)
-        if normalized_quote and normalized_text.count(normalized_quote) == 1:
-            head = normalized_text.index(normalized_quote)
-            approx = problem_text.find(normalized_quote[:8]) if len(normalized_quote) >= 8 else -1
-            if approx >= 0:
-                return approx, approx + len(normalized_quote)
-            return head, head + len(normalized_quote)
-        raise DraftProjectionError(DraftProjectionReason.evidence_quote_not_found)
-    return start, start + len(quote)
-
-
-def _locate_value(
-    problem_text: str, span: tuple[int, int], raw_value: str, raw_unit: str
-) -> tuple[int, int]:
-    """Span the numeric token and its adjacent unit token, absolutely placed.
-
-    The contract requires one complete numeric token plus one adjacent complete
-    unit token, so a dimensionless quantity spans the number alone while a
-    dimensioned one must also cover the unit that follows it.
+    Reuses the product ``quote_occurrences`` / ``quantity_occurrences`` grammar
+    rather than a second, looser parser.  The corpus records a canonical unit
+    name while the sentence writes a symbol or a Korean word, so the value/unit
+    pair that enters the Draft is the one *written in the source*, and the
+    corpus unit is only used to require dimensional agreement.
     """
 
-    window = problem_text[span[0] : span[1]]
-    for match in _NUMBER_TOKEN.finditer(window):
-        if match.group().replace(",", "") != raw_value.replace(",", ""):
-            continue
-        start = span[0] + match.start()
-        end = span[0] + match.end()
-        if not raw_unit:
-            return start, end
-        # The corpus records a canonical unit name while the sentence may write
-        # a symbol for it, so the span covers the adjacent unit token *as
-        # written* and canonical equivalence is left to the validator.
-        tail = window[match.end() :]
-        stripped = tail.lstrip()
-        gap = len(tail) - len(stripped)
-        unit_token = _UNIT_TOKEN.match(stripped)
-        if unit_token is None:
-            continue
-        return start, end + gap + unit_token.end()
-    raise DraftProjectionError(DraftProjectionReason.evidence_value_not_in_quote)
+    quote = fact.evidence_quote
+    occurrences = quote_occurrences(problem_text, quote)
+    if not occurrences:
+        raise DraftProjectionError(DraftProjectionReason.evidence_quote_not_found)
+    index = fact.occurrence_index
+    if not isinstance(index, int) or not 0 <= index < len(occurrences):
+        if len(occurrences) != 1:
+            raise DraftProjectionError(
+                DraftProjectionReason.evidence_quote_occurrence_ambiguous
+            )
+        index = 0
+    occurrence = occurrences[index]
+
+    candidates = [
+        item
+        for item in quantity_occurrences(quote)
+        if _normalized_number(item.raw_value) == _normalized_number(fact.raw_value)
+    ]
+    if not candidates:
+        raise DraftProjectionError(DraftProjectionReason.evidence_value_not_in_quote)
+
+    # The corpus unit is only a cross-check, and only when the shared alias
+    # table actually knows it.  An unknown corpus spelling must not reject a
+    # correctly written source unit: the Draft still declares an explicit
+    # dimension vector, and validate_draft enforces it independently.
+    declared_dimension = _unit_dimension(fact.raw_unit or "")
+    if fact.raw_unit and declared_dimension is not None:
+        dimensioned = [
+            item
+            for item in candidates
+            if _unit_dimension(item.raw_unit) == declared_dimension
+        ]
+        if not dimensioned:
+            raise DraftProjectionError(
+                DraftProjectionReason.evidence_unit_dimension_mismatch
+            )
+        pool = dimensioned
+    else:
+        pool = candidates
+
+    quantity_index = fact.quantity_occurrence_index
+    if not isinstance(quantity_index, int) or not 0 <= quantity_index < len(pool):
+        if len(pool) != 1:
+            raise DraftProjectionError(
+                DraftProjectionReason.evidence_quantity_occurrence_ambiguous
+            )
+        quantity_index = 0
+    quantity = pool[quantity_index]
+
+    quote_span = (occurrence.start, occurrence.end)
+    value_span = (
+        occurrence.start + quantity.start,
+        occurrence.start + quantity.end,
+    )
+    return quote_span, value_span, quantity.raw_value, quantity.raw_unit
 
 
 def _assert_whitelist(case: PublicCorpusCaseV1) -> None:
@@ -529,9 +555,8 @@ def _build_payload(
                 )
                 environment_scoped.append(f"qty_{fact.role}")
 
-        quote_span = _locate_quote(problem_text, fact.evidence_quote, fact.occurrence_index)
-        value_span = _locate_value(
-            problem_text, quote_span, fact.raw_value, fact.raw_unit or ""
+        quote_span, value_span, written_value, written_unit = _align_fact_evidence(
+            problem_text, fact
         )
         evidence_id = f"ev_{index}_{fact.role}"
         source_evidence.append(
@@ -539,7 +564,9 @@ def _build_payload(
                 "evidence_id": evidence_id,
                 "kind": "text",
                 "quote": problem_text[quote_span[0] : quote_span[1]],
-                "occurrence_index": 0,
+                "occurrence_index": fact.occurrence_index
+                if isinstance(fact.occurrence_index, int)
+                else 0,
                 "source_span": {"start": quote_span[0], "end": quote_span[1]},
                 "quantity_span": {"start": value_span[0], "end": value_span[1]},
             }
@@ -554,8 +581,8 @@ def _build_payload(
                 "shape": "scalar",
                 "dimension": dimension,
                 "provenance": "explicit_source",
-                "raw_value": fact.raw_value,
-                "raw_unit": fact.raw_unit or "",
+                "raw_value": written_value,
+                "raw_unit": written_unit,
                 "evidence_refs": [evidence_id],
             }
         )
@@ -685,6 +712,8 @@ def _interval_scoped_relations(
     index: dict[tuple[str, str], list[str]] = {}
     for relation in gold.relations:
         if relation.segment_role is None or relation.segment_role not in interval_ids:
+            continue
+        if relation.kind not in _ENVIRONMENT_LINK_RELATION_KINDS:
             continue
         participants = [p for p in relation.participant_roles if p in entity_ids]
         for first in participants:

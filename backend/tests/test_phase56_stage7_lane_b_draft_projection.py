@@ -391,3 +391,106 @@ def test_projected_draft_carries_no_answer_or_solver_authority() -> None:
         assert forbidden not in payload
     assert projection.draft.constraints == []
     assert projection.draft.principle_hints == []
+
+
+# --------------------------------------------------------------------------
+# Evidence alignment reuse and the privacy-safe failure matrix
+# --------------------------------------------------------------------------
+
+
+def test_written_unit_is_carried_into_the_draft_not_the_corpus_spelling() -> None:
+    """`raw_unit` is a raw source token, so the symbol written in the text wins."""
+
+    case = _case()
+    fact = case.gold.explicit_facts[1]
+    assert fact.raw_unit == "m/s^2"
+    text = case.problem_text.replace(f"{fact.raw_value} m/s^2", f"{fact.raw_value} m/s\u00b2")
+    rewritten = fact.model_copy(
+        update={"evidence_quote": f"\uac00\uc18d\ub3c4\ub294 {fact.raw_value} m/s\u00b2"}
+    )
+    projection = _project(
+        case.model_copy(
+            update={
+                "problem_text": text,
+                "gold": case.gold.model_copy(
+                    update={
+                        "explicit_facts": case.gold.explicit_facts[:1] + (rewritten,)
+                    }
+                ),
+            }
+        )
+    )
+    assert projection.terminal is DraftProjectionTerminal.projected
+    quantity = next(
+        item
+        for item in projection.draft.quantities
+        if item.quantity_id == "qty_acceleration"
+    )
+    assert quantity.raw_unit == "m/s\u00b2"
+
+
+def test_a_dimensionally_wrong_written_unit_is_rejected() -> None:
+    """A known declared unit must agree dimensionally with what the text says."""
+
+    case = _case()
+    fact = case.gold.explicit_facts[0]
+    text = case.problem_text.replace(f"{fact.raw_value} kg", f"{fact.raw_value} s")
+    rewritten = fact.model_copy(
+        update={"evidence_quote": f"\uc9c8\ub7c9\uc740 {fact.raw_value} s"}
+    )
+    projection = _project(
+        case.model_copy(
+            update={
+                "problem_text": text,
+                "gold": case.gold.model_copy(
+                    update={
+                        "explicit_facts": (rewritten,) + case.gold.explicit_facts[1:]
+                    }
+                ),
+            }
+        )
+    )
+    assert projection.terminal is DraftProjectionTerminal.projection_rejected
+    assert projection.sanitized_reason == (
+        DraftProjectionReason.evidence_unit_dimension_mismatch.value
+    )
+
+
+def test_environment_link_requires_a_contact_type_relation() -> None:
+    case = _with_environment_fact(_case())
+    roped = _with_gold(
+        case,
+        relations=(case.gold.relations[0].model_copy(update={"kind": "connected_by_rope"}),),
+    )
+    projection = _project(roped)
+    assert projection.terminal is DraftProjectionTerminal.projection_rejected
+    assert projection.sanitized_reason == (
+        DraftProjectionReason.environment_relation_absent.value
+    )
+
+
+def test_failure_matrix_is_privacy_safe_and_aggregate_only() -> None:
+    from engine.mechanics.validation import validate_draft
+    from evaluation.phase56_stage7.lane_b_failure_matrix import build_failure_matrix
+
+    case = _case()
+    matrix = build_failure_matrix([case], validate=validate_draft)
+    payload = matrix.as_dict()
+
+    assert payload["total_cases"] == 1
+    assert payload["terminal_counts"] == {"projected": 1}
+    assert payload["projection_rejection_counts"] == {}
+    assert payload["structure_counts"]["validate_draft_accepted"] == 1
+
+    import json
+
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert case.case_id not in serialized
+    assert (case.family or "") not in serialized or not case.family
+    assert case.problem_text[:12] not in serialized
+    assert case.problem_hash not in serialized
+    for forbidden in ("expected_answer", "future_expected_terminal", "reference_expression"):
+        assert forbidden not in serialized
+    # Index-stripped paths cannot identify an individual case.
+    for entry in payload["validator_code_path_counts"]:
+        assert ".N" in entry["path"] or entry["path"] == ""
