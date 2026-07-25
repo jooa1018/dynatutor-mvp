@@ -128,7 +128,10 @@ def build_case(
         "phase55_expected_terminal": "solver_gap",
         "future_expected_terminal": future_terminal,
         "figure_dependency": {"level": figure_level, "missing_information": []},
-        "entities": [{"role": "box", "kind": "block", "label": "상자"}],
+        "entities": [
+            {"role": "box", "kind": "block", "label": "상자"},
+            {"role": "surface", "kind": "surface", "label": "수평면"},
+        ],
         "motion_segments": [
             {
                 "role": "motion_1",
@@ -193,7 +196,7 @@ def build_case(
         "queries": [
             {
                 "role": "q1",
-                "output_key": "net_force",
+                "output_key": "force",
                 "subject_role": "box",
                 "segment_role": "motion_1",
                 "component": "magnitude",
