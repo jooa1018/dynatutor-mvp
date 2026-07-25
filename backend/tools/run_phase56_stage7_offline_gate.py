@@ -33,10 +33,17 @@ from evaluation.phase56_stage7.contracts import (  # noqa: E402
     STAGE7_EVALUATOR_VERSION,
     stage7_evaluation_contract,
 )
+from evaluation.phase56_stage7.corpus_integrity import (  # noqa: E402
+    read_public_corpus_archive,
+)
 from evaluation.phase56_stage7.corpus_preflight import (  # noqa: E402
     assert_corpus_modules_are_execution_free,
     assert_raw_corpus_is_not_committed,
+    load_public_cases,
     run_corpus_integrity_preflight,
+)
+from evaluation.phase56_stage7.lane_b_failure_matrix import (  # noqa: E402
+    build_pipeline_failure_matrix,
 )
 from evaluation.phase56_stage7.evaluator_adapter import (  # noqa: E402
     assert_gold_domain_has_no_execution_authority,
@@ -221,6 +228,44 @@ def _corpus_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutc
     )
 
 
+def _lane_b_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutcome]:
+    """Execute the real public-corpus Lane B pipeline and aggregate it safely.
+
+    The archive is only supplied to a local run; a remote corpus-independent run
+    reports ``NOT_RUN`` rather than claiming a pass it did not measure.
+    """
+
+    if archive_path is None:
+        return (
+            {"executed": False, "disposition": "NOT_RUN"},
+            GateOutcome(name="lane_b_public_100", result="NOT_RUN", detail="not_supplied"),
+        )
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        matrix = build_pipeline_failure_matrix((*public_dev, *public_adversarial))
+    except Exception as exc:  # only the exception type reaches the artifact
+        return (
+            {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__},
+            GateOutcome(
+                name="lane_b_public_100", result="FAIL", detail=type(exc).__name__
+            ),
+        )
+
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(matrix.as_dict())
+    solved = dict(matrix.terminal_counts).get("solved", 0)
+    section["solved"] = solved
+    return (
+        section,
+        GateOutcome(
+            name="lane_b_public_100",
+            result="PASS" if solved == matrix.executed_cases else "FAIL",
+            detail=None if solved == matrix.executed_cases else "unsolved_cases_remain",
+        ),
+    )
+
+
 def _resolve_archive_path() -> Path | None:
     raw = os.environ.get(PUBLIC_CORPUS_PATH_ENV, "").strip()
     if not raw:
@@ -234,11 +279,16 @@ def build_report() -> tuple[dict[str, Any], bool]:
 
     gates: list[GateOutcome] = []
     corpus_section: dict[str, Any]
+    archive_path = _resolve_archive_path()
     with block_external_network():
         gates.extend(_structural_gates())
         gates.append(_contract_preflight_gate())
-        corpus_section, corpus_gate = _corpus_section(_resolve_archive_path())
+        corpus_section, corpus_gate = _corpus_section(archive_path)
         gates.append(corpus_gate)
+        lane_b_section, lane_b_gate = _lane_b_section(
+            archive_path if corpus_gate.passed else None
+        )
+        gates.append(lane_b_gate)
 
     report: dict[str, Any] = {
         "schema": OFFLINE_GATE_SCHEMA,
@@ -253,6 +303,7 @@ def build_report() -> tuple[dict[str, Any], bool]:
             "provider_base_urls_absent": offline_evidence.provider_base_urls_absent,
         },
         "public_corpus": corpus_section,
+        "lane_b": lane_b_section,
         "gates": [
             {"name": gate.name, "result": gate.result, "detail": gate.detail}
             for gate in gates
@@ -267,6 +318,68 @@ def build_report() -> tuple[dict[str, Any], bool]:
     return report, passed
 
 
+def _strict_requirements(
+    report: dict[str, Any], *, require_corpus: bool, require_full: bool
+) -> list[GateOutcome]:
+    """Strict acceptance: an absent corpus or an unrun lane is never a pass."""
+
+    outcomes: list[GateOutcome] = []
+    corpus = report["public_corpus"]
+    lane_b = report["lane_b"]
+    contract = stage7_evaluation_contract()
+
+    def require(name: str, condition: bool, detail: str | None = None) -> None:
+        outcomes.append(
+            GateOutcome(
+                name=name,
+                result="PASS" if condition else "FAIL",
+                detail=None if condition else detail,
+            )
+        )
+
+    if require_corpus:
+        require("strict_corpus_supplied", bool(corpus.get("supplied")), "not_supplied")
+        require(
+            "strict_corpus_sha_match",
+            corpus.get("archive_sha256") == contract.corpus.expected_zip_sha256,
+            "sha_mismatch",
+        )
+        require("strict_public_dev_84", corpus.get("public_dev") == 84, "count_mismatch")
+        require(
+            "strict_public_adversarial_16",
+            corpus.get("public_adversarial") == 16,
+            "count_mismatch",
+        )
+        require("strict_public_total_100", corpus.get("public_total") == 100, "count_mismatch")
+
+    if require_full:
+        require("strict_lane_b_executed", bool(lane_b.get("executed")), "not_run")
+        require(
+            "strict_lane_b_100_executed",
+            lane_b.get("total_cases") == 100,
+            "case_count_mismatch",
+        )
+        terminals = lane_b.get("terminal_counts") or {}
+        require(
+            "strict_lane_b_all_solved",
+            bool(lane_b.get("executed"))
+            and terminals.get("solved", 0) == lane_b.get("executed_cases"),
+            "unsolved_cases_remain",
+        )
+        for lane in ("lane_c", "lane_d", "lane_e"):
+            require(f"strict_{lane}_pass", report.get(lane, {}).get("result") == "PASS", "not_run")
+        for name in (
+            "compositional_12",
+            "synthetic_38",
+            "metamorphic",
+            "physics_changing_controls",
+            "hard_safety",
+            "redaction",
+        ):
+            require(f"strict_{name}_pass", report.get(name, {}).get("result") == "PASS", "not_run")
+    return outcomes
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -275,17 +388,47 @@ def main() -> int:
         default=REPOSITORY_ROOT / "stage7_offline_gate_report.json",
         help="destination for the redacted aggregate artifact",
     )
+    parser.add_argument(
+        "--require-public-corpus",
+        action="store_true",
+        help="fail unless the authorised public archive was supplied and matched",
+    )
+    parser.add_argument(
+        "--require-full-stage7",
+        action="store_true",
+        help="fail unless every Stage 7 lane actually executed and passed",
+    )
     args = parser.parse_args()
 
     report, passed = build_report()
+    strict = _strict_requirements(
+        report,
+        require_corpus=args.require_public_corpus,
+        require_full=args.require_full_stage7,
+    )
+    if strict:
+        report["strict_gates"] = [
+            {"name": gate.name, "result": gate.result, "detail": gate.detail}
+            for gate in strict
+        ]
+        report["strict_mode"] = {
+            "require_public_corpus": args.require_public_corpus,
+            "require_full_stage7": args.require_full_stage7,
+        }
+        assert_privacy_safe_artifact(report)
+        passed = passed and all(gate.passed for gate in strict)
+
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
     print(json.dumps({"gates": report["gates"]}, ensure_ascii=False, indent=2))
+    if strict:
+        print(json.dumps({"strict_gates": report["strict_gates"]}, ensure_ascii=False, indent=2))
     print(f"STAGE7_OFFLINE_GATE={'PASS' if passed else 'FAIL'}")
     print(f"STAGE7_PUBLIC_CORPUS={report['public_corpus']['disposition']}")
+    print(f"STAGE7_LANE_B={report['lane_b']['disposition']}")
     return 0 if passed else 2
 
 

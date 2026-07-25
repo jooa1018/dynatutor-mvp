@@ -18,6 +18,7 @@ correlation, neutral terminal, fingerprints, counts, and bounded codes.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -40,6 +41,80 @@ from evaluation.phase56_stage7.lane_b_draft_projection import (
 LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v1"
 
 _MAX_DIAGNOSTIC_CODES = 24
+
+# A diagnostic path names *which typed field* failed.  Every other segment is a
+# record identity — an array index or an ID derived from a corpus role — so only
+# the closed field vocabulary below survives; everything else becomes `*`.  The
+# result aggregates a defect class without carrying corpus content.
+_PATH_INDEX = re.compile(r"^\d+$")
+_PATH_FIELDS: frozenset[str] = frozenset(
+    {
+        "assumption_policy_ref",
+        "assumptions",
+        "axes",
+        "component",
+        "constraints",
+        "correction_id",
+        "direction",
+        "end_event_id",
+        "entities",
+        "equations",
+        "events",
+        "evidence_refs",
+        "figure_dependency",
+        "frame_id",
+        "geometry",
+        "generalized_coordinate_symbol_ids",
+        "interactions",
+        "interval_id",
+        "interval_ids",
+        "ir",
+        "laws",
+        "motion_intervals",
+        "origin",
+        "parent_frame_id",
+        "participant_ids",
+        "point_id",
+        "point_ids",
+        "points",
+        "provenance",
+        "quantities",
+        "quantity_ids",
+        "queries",
+        "raw_unit",
+        "raw_value",
+        "reference_frames",
+        "role",
+        "shape",
+        "source_evidence",
+        "start_event_id",
+        "state_conditions",
+        "subject_id",
+        "subject_ids",
+        "symbol_id",
+        "symbols",
+        "target",
+        "target_quantity_id",
+        "unsupported_features",
+    }
+)
+
+
+def canonical_diagnostic_path(path: object) -> str:
+    """Reduce a diagnostic path to its typed-field shape, dropping identities."""
+
+    text = str(path or "")
+    if not text:
+        return ""
+    segments = []
+    for segment in text.split("."):
+        if segment in _PATH_FIELDS:
+            segments.append(segment)
+        elif _PATH_INDEX.fullmatch(segment):
+            segments.append("N")
+        else:
+            segments.append("*")
+    return ".".join(segments)
 
 
 class LaneBTerminal(str, Enum):
@@ -68,6 +143,21 @@ def _codes(items: Any, attribute: str = "code") -> tuple[str, ...]:
     return tuple(sorted(out))[:_MAX_DIAGNOSTIC_CODES]
 
 
+def _code_paths(items: Any) -> tuple[tuple[str, str], ...]:
+    """Pair each diagnostic code with its identity-stripped typed-field path."""
+
+    out: set[tuple[str, str]] = set()
+    for item in items or ():
+        code = getattr(item, "code", None)
+        out.add(
+            (
+                str(getattr(code, "value", code)),
+                canonical_diagnostic_path(getattr(item, "path", None)),
+            )
+        )
+    return tuple(sorted(out))[:_MAX_DIAGNOSTIC_CODES]
+
+
 def _text(value: object) -> str:
     return str(getattr(value, "value", value))
 
@@ -80,9 +170,11 @@ class LaneBResult:
     terminal: LaneBTerminal
     version: str = LANE_B_RUNNER_VERSION
     validation_codes: tuple[str, ...] = ()
+    validation_code_paths: tuple[tuple[str, str], ...] = ()
     normalization_terminal: str | None = None
     compiler_status: str | None = None
     compiler_codes: tuple[str, ...] = ()
+    compiler_code_paths: tuple[tuple[str, str], ...] = ()
     solve_terminal: str | None = None
     solve_codes: tuple[str, ...] = ()
     calculation_fingerprint: str | None = None
@@ -153,6 +245,7 @@ def run_lane_b_case(
             execution_token,
             LaneBTerminal.validation_rejected,
             validation_codes=validation_codes,
+            validation_code_paths=_code_paths(validation.issues),
             **query_fields,
         )
 
@@ -172,6 +265,7 @@ def run_lane_b_case(
             execution_token,
             LaneBTerminal.normalization_rejected,
             validation_codes=_codes(normalization.validation.issues),
+            validation_code_paths=_code_paths(normalization.validation.issues),
             normalization_terminal=normalization_terminal,
             **query_fields,
         )
@@ -205,6 +299,7 @@ def run_lane_b_case(
             **query_fields,
         )
     compiler_codes = _codes(compiled.issues)
+    compiler_code_paths = _code_paths(compiled.issues)
     compiler_status = _text(compiled.status)
     if not compiled.compilable or compiled.graph is None:
         # A precise typed unsupported is a first-class outcome, not a failure.
@@ -220,6 +315,7 @@ def run_lane_b_case(
             normalization_terminal=normalization_terminal,
             compiler_status=compiler_status,
             compiler_codes=compiler_codes,
+            compiler_code_paths=compiler_code_paths,
             calculation_fingerprint=fingerprint,
             **query_fields,
         )
@@ -235,6 +331,7 @@ def run_lane_b_case(
             normalization_terminal=normalization_terminal,
             compiler_status=compiler_status,
             compiler_codes=compiler_codes,
+            compiler_code_paths=compiler_code_paths,
             calculation_fingerprint=fingerprint,
             applied_law_ids=law_ids,
             equation_count=len(graph.equations),
@@ -246,6 +343,7 @@ def run_lane_b_case(
         normalization_terminal=normalization_terminal,
         compiler_status=compiler_status,
         compiler_codes=compiler_codes,
+        compiler_code_paths=compiler_code_paths,
         solve_terminal=_text(solved.terminal),
         solve_codes=_codes(solved.diagnostics.entries),
         calculation_fingerprint=fingerprint,

@@ -195,3 +195,98 @@ def test_gate_runner_refuses_to_run_with_live_credentials(
     monkeypatch.setenv("OPENAI_API_KEY", "sk-live-key-must-not-be-used")
     with pytest.raises(ExternalNetworkBlocked):
         gate_runner.build_report()
+
+
+# --------------------------------------------------------------------------
+# Strict acceptance mode
+# --------------------------------------------------------------------------
+
+
+def test_gate_runner_declares_the_strict_acceptance_flags() -> None:
+    source = RUNNER_PATH.read_text(encoding="utf-8")
+    assert "--require-public-corpus" in source
+    assert "--require-full-stage7" in source
+
+
+def test_strict_mode_refuses_an_absent_corpus(gate_runner) -> None:
+    report = {
+        "public_corpus": {"supplied": False, "disposition": "NOT_RUN"},
+        "lane_b": {"executed": False, "disposition": "NOT_RUN"},
+    }
+    outcomes = gate_runner._strict_requirements(
+        report, require_corpus=True, require_full=False
+    )
+    assert outcomes
+    assert not all(outcome.passed for outcome in outcomes)
+    failed = {outcome.name for outcome in outcomes if not outcome.passed}
+    assert "strict_corpus_supplied" in failed
+
+
+def test_strict_mode_refuses_a_lane_that_did_not_run(gate_runner) -> None:
+    report = {
+        "public_corpus": {"supplied": True, "disposition": "PASS"},
+        "lane_b": {
+            "executed": True,
+            "total_cases": 100,
+            "executed_cases": 98,
+            "terminal_counts": {"solved": 98, "needs_figure": 2},
+        },
+    }
+    outcomes = gate_runner._strict_requirements(
+        report, require_corpus=False, require_full=True
+    )
+    failed = {outcome.name for outcome in outcomes if not outcome.passed}
+    # Lane B is fully solved here, so only the lanes that never ran may fail.
+    assert "strict_lane_b_all_solved" not in failed
+    assert {
+        "strict_lane_c_pass",
+        "strict_lane_d_pass",
+        "strict_lane_e_pass",
+        "strict_compositional_12_pass",
+        "strict_synthetic_38_pass",
+        "strict_metamorphic_pass",
+        "strict_hard_safety_pass",
+    } <= failed
+
+
+def test_strict_mode_refuses_unsolved_lane_b_cases(gate_runner) -> None:
+    report = {
+        "public_corpus": {"supplied": True, "disposition": "PASS"},
+        "lane_b": {
+            "executed": True,
+            "total_cases": 100,
+            "executed_cases": 98,
+            "terminal_counts": {"compiler_failure": 82, "needs_figure": 2},
+        },
+    }
+    outcomes = gate_runner._strict_requirements(
+        report, require_corpus=False, require_full=True
+    )
+    failed = {outcome.name for outcome in outcomes if not outcome.passed}
+    assert "strict_lane_b_all_solved" in failed
+
+
+def test_strict_mode_requires_the_exact_corpus_sha_and_counts(gate_runner) -> None:
+    from evaluation.phase56_stage7.contracts import stage7_evaluation_contract
+
+    contract = stage7_evaluation_contract()
+    report = {
+        "public_corpus": {
+            "supplied": True,
+            "archive_sha256": contract.corpus.expected_zip_sha256,
+            "public_dev": 84,
+            "public_adversarial": 16,
+            "public_total": 100,
+        },
+        "lane_b": {"executed": False},
+    }
+    outcomes = gate_runner._strict_requirements(
+        report, require_corpus=True, require_full=False
+    )
+    assert all(outcome.passed for outcome in outcomes)
+
+    wrong = {**report, "public_corpus": {**report["public_corpus"], "public_dev": 83}}
+    outcomes = gate_runner._strict_requirements(
+        wrong, require_corpus=True, require_full=False
+    )
+    assert not all(outcome.passed for outcome in outcomes)

@@ -21,9 +21,35 @@ from evaluation.phase56_stage7.lane_b_draft_projection import (
     DraftProjectionTerminal,
     project_case_to_draft,
 )
+from evaluation.phase56_stage7.lane_b_runner import (
+    LANE_B_RUNNER_VERSION,
+    LaneBTerminal,
+    deterministic_token,
+    run_lane_b_case,
+)
 
 
 FAILURE_MATRIX_VERSION = "phase56-stage7-lane-b-failure-matrix-v1"
+PIPELINE_MATRIX_VERSION = "phase56-stage7-lane-b-pipeline-matrix-v1"
+
+# The closed Stage 7 failure taxonomy.  Every executed case lands in exactly one
+# bucket, so a failure is classified by the stage that owns it rather than
+# collapsed into a single runtime failure.
+_TAXONOMY: dict[str, str] = {
+    LaneBTerminal.projection_rejected.value: "PROJECTION_FAILURE",
+    LaneBTerminal.validation_rejected.value: "VALIDATION_FAILURE",
+    LaneBTerminal.normalization_rejected.value: "NORMALIZATION_FAILURE",
+    LaneBTerminal.authorization_failed.value: "AUTHORIZATION_FAILURE",
+    LaneBTerminal.compiler_failure.value: "COMPILER_FAILURE",
+    LaneBTerminal.compiler_unsupported.value: "COMPILER_UNSUPPORTED",
+    LaneBTerminal.solve_rejected.value: "SOLVER_FAILURE",
+    LaneBTerminal.verification_rejected.value: "VERIFICATION_FAILURE",
+    LaneBTerminal.solved.value: "SOLVED",
+    LaneBTerminal.verified_unsupported.value: "VERIFIED_UNSUPPORTED",
+    LaneBTerminal.needs_figure.value: "BLOCKED_NEEDS_FIGURE",
+    LaneBTerminal.needs_confirmation.value: "BLOCKED_NEEDS_CONFIRMATION",
+    LaneBTerminal.insufficient_information.value: "BLOCKED_INSUFFICIENT_INFORMATION",
+}
 
 _INDEX = re.compile(r"\.\d+")
 
@@ -59,6 +85,161 @@ class LaneBFailureMatrix:
             ],
             "structure_counts": dict(self.structure_counts),
         }
+
+
+@dataclass(frozen=True, slots=True)
+class LaneBPipelineMatrix:
+    """Privacy-safe aggregate of one real public-corpus pipeline execution.
+
+    Carries no case ID, family, split, problem text, expected terminal,
+    expected answer, source quote, full equation, or private metadata.  A
+    diagnostic path is reduced to its typed-field shape before aggregation, so
+    a defect *class* is visible while the record that produced it is not.
+    """
+
+    version: str
+    projection_version: str
+    runner_version: str
+    total_cases: int
+    executed_cases: int
+    terminal_counts: tuple[tuple[str, int], ...]
+    taxonomy_counts: tuple[tuple[str, int], ...]
+    compiler_status_counts: tuple[tuple[str, int], ...]
+    normalization_terminal_counts: tuple[tuple[str, int], ...]
+    solve_terminal_counts: tuple[tuple[str, int], ...]
+    stage_exception_counts: tuple[tuple[str, int], ...]
+    validation_code_path_counts: tuple[tuple[str, str, int], ...]
+    compiler_code_path_counts: tuple[tuple[str, str, int], ...]
+    solve_code_counts: tuple[tuple[str, int], ...]
+    law_id_counts: tuple[tuple[str, int], ...]
+    verification_check_counts: tuple[tuple[str, str, int], ...]
+    structure_counts: tuple[tuple[str, int], ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "projection_version": self.projection_version,
+            "runner_version": self.runner_version,
+            "total_cases": self.total_cases,
+            "executed_cases": self.executed_cases,
+            "terminal_counts": dict(self.terminal_counts),
+            "taxonomy_counts": dict(self.taxonomy_counts),
+            "compiler_status_counts": dict(self.compiler_status_counts),
+            "normalization_terminal_counts": dict(self.normalization_terminal_counts),
+            "solve_terminal_counts": dict(self.solve_terminal_counts),
+            "stage_exception_counts": dict(self.stage_exception_counts),
+            "validation_code_path_counts": [
+                {"code": code, "path": path, "count": count}
+                for code, path, count in self.validation_code_path_counts
+            ],
+            "compiler_code_path_counts": [
+                {"code": code, "path": path, "count": count}
+                for code, path, count in self.compiler_code_path_counts
+            ],
+            "solve_code_counts": dict(self.solve_code_counts),
+            "law_id_counts": dict(self.law_id_counts),
+            "verification_check_counts": [
+                {"kind": kind, "status": status, "count": count}
+                for kind, status, count in self.verification_check_counts
+            ],
+            "structure_counts": dict(self.structure_counts),
+        }
+
+
+def build_pipeline_failure_matrix(cases: Iterable[Any]) -> LaneBPipelineMatrix:
+    """Run the real Lane B pipeline and aggregate it privacy-safely.
+
+    The runtime never consults an expected terminal, an expected answer, a
+    family, a split, or a case ID; comparison against those belongs to the gold
+    domain after the runtime snapshot is frozen.
+    """
+
+    terminals: Counter[str] = Counter()
+    taxonomy: Counter[str] = Counter()
+    compiler_statuses: Counter[str] = Counter()
+    normalization_terminals: Counter[str] = Counter()
+    solve_terminals: Counter[str] = Counter()
+    exceptions: Counter[str] = Counter()
+    validation_paths: Counter[tuple[str, str]] = Counter()
+    compiler_paths: Counter[tuple[str, str]] = Counter()
+    solve_codes: Counter[str] = Counter()
+    law_ids: Counter[str] = Counter()
+    checks: Counter[tuple[str, str]] = Counter()
+    structures: Counter[str] = Counter()
+    total = 0
+    executed = 0
+
+    for index, case in enumerate(cases):
+        total += 1
+        projection = project_case_to_draft(case)
+        structures["segment_internal_events"] += len(
+            projection.segment_internal_event_ids
+        )
+        structures["environment_scoped_quantities"] += len(
+            projection.environment_scoped_quantity_ids
+        )
+        structures["approved_assumptions"] += len(projection.approvable_assumption_ids)
+        structures["known_symbols"] += len(projection.known_symbol_ids)
+        structures["unknown_symbols"] += len(projection.unknown_symbol_ids)
+        if projection.projected:
+            structures["projected"] += 1
+            executed += 1
+
+        result = run_lane_b_case(
+            projection, execution_token=deterministic_token(index)
+        )
+        terminals[result.terminal.value] += 1
+        taxonomy[_TAXONOMY.get(result.terminal.value, "UNCLASSIFIED")] += 1
+        if result.compiler_status is not None:
+            compiler_statuses[result.compiler_status] += 1
+        if result.normalization_terminal is not None:
+            normalization_terminals[result.normalization_terminal] += 1
+        if result.solve_terminal is not None:
+            solve_terminals[result.solve_terminal] += 1
+        if result.stage_exception is not None:
+            exceptions[result.stage_exception] += 1
+        for code, path in result.validation_code_paths:
+            validation_paths[(code, path)] += 1
+        for code, path in result.compiler_code_paths:
+            compiler_paths[(code, path)] += 1
+        for code in result.solve_codes:
+            solve_codes[code] += 1
+        for law_id in result.applied_law_ids:
+            law_ids[law_id] += 1
+        for kind, status in result.verification_checks:
+            checks[(kind, status)] += 1
+        structures["equations"] += result.equation_count
+        structures["candidates"] += result.candidate_count
+        structures["rejected_candidates"] += result.rejected_candidate_count
+        structures["verified_candidates"] += result.verified_candidate_count
+
+    return LaneBPipelineMatrix(
+        version=PIPELINE_MATRIX_VERSION,
+        projection_version=DRAFT_PROJECTION_VERSION,
+        runner_version=LANE_B_RUNNER_VERSION,
+        total_cases=total,
+        executed_cases=executed,
+        terminal_counts=tuple(sorted(terminals.items())),
+        taxonomy_counts=tuple(sorted(taxonomy.items())),
+        compiler_status_counts=tuple(sorted(compiler_statuses.items())),
+        normalization_terminal_counts=tuple(sorted(normalization_terminals.items())),
+        solve_terminal_counts=tuple(sorted(solve_terminals.items())),
+        stage_exception_counts=tuple(sorted(exceptions.items())),
+        validation_code_path_counts=tuple(
+            (code, path, count)
+            for (code, path), count in sorted(validation_paths.items())
+        ),
+        compiler_code_path_counts=tuple(
+            (code, path, count)
+            for (code, path), count in sorted(compiler_paths.items())
+        ),
+        solve_code_counts=tuple(sorted(solve_codes.items())),
+        law_id_counts=tuple(sorted(law_ids.items())),
+        verification_check_counts=tuple(
+            (kind, status, count) for (kind, status), count in sorted(checks.items())
+        ),
+        structure_counts=tuple(sorted(structures.items())),
+    )
 
 
 def build_failure_matrix(cases: Iterable[Any], *, validate) -> LaneBFailureMatrix:

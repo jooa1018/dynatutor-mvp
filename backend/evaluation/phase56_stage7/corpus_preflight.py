@@ -95,7 +95,7 @@ def _failure(
     )
 
 
-def _load_public_cases(
+def load_public_cases(
     inventory: SafeArchiveInventory,
 ) -> tuple[tuple[PublicCorpusCaseV1, ...], tuple[PublicCorpusCaseV1, ...]]:
     declared_schema = parse_schema_document(inventory.members["schema.json"])
@@ -124,7 +124,7 @@ def run_corpus_integrity_preflight(
         inventory = read_public_corpus_archive(
             archive_path, expected_sha256=expected_sha256
         )
-        public_dev, public_adversarial = _load_public_cases(inventory)
+        public_dev, public_adversarial = load_public_cases(inventory)
         semantic_evidence = verify_corpus_semantics(
             public_dev=public_dev, public_adversarial=public_adversarial
         )
