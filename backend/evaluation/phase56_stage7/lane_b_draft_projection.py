@@ -150,6 +150,21 @@ _FACT_ROLES: dict[str, tuple[str, dict[str, int]]] = {
 # the typed IR names that `duration`.  The distinction comes from the corpus's
 # own `temporal_role`, never from the sentence and never from a family.
 _INTERVAL_TEMPORAL_ROLES: frozenset[str] = frozenset({"interval", "during"})
+
+# A source that says *initial* or *final* has named an instant, not the whole
+# interval.  Collapsing both onto the bare interval would make "the speed it
+# started with" and "the speed it ended with" the same physical quantity, so the
+# stated endpoint is bound to the boundary the interval itself declares.  The
+# signal is the corpus's own temporal_role for a fact and its own output key for
+# a query; neither reads problem text, a family, or an expected answer.
+_ENDPOINT_TEMPORAL_ROLES: dict[str, str] = {
+    "initial": "start_event_id",
+    "final": "end_event_id",
+}
+_ENDPOINT_QUERY_KEYS: dict[str, str] = {
+    "initial_velocity": "start_event_id",
+    "final_velocity": "end_event_id",
+}
 _ELAPSED_ROLES: dict[str, tuple[str, dict[str, int]]] = {
     "time": ("duration", _dim(time=1)),
 }
@@ -810,6 +825,8 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             }
         )
 
+    intervals_by_id = {item["interval_id"]: item for item in intervals}
+
     # A boundary is declared from the *interval* side, and `interval_ids` is the
     # typed reciprocal of that declaration — not a general "this event happens
     # during that interval" field.  Indexing the declarations first keeps both
@@ -930,8 +947,14 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 DraftProjectionReason.missing_evidence_for_explicit_value
             )
 
+        fact_event_role = _stated_endpoint(
+            _ENDPOINT_TEMPORAL_ROLES.get(fact.temporal_role or ""),
+            fact.segment_role,
+            fact.event_role,
+            intervals_by_id,
+        )
         interval_id, event_id = _typed_scope(
-            fact.segment_role, fact.event_role, bounded_intervals_by_event
+            fact.segment_role, fact_event_role, bounded_intervals_by_event
         )
         if interval_id is not None:
             actors = actors_by_interval.get(interval_id, set())
@@ -1043,7 +1066,6 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
     approved: list[str] = []
     state_conditions: list[dict[str, Any]] = []
     boundary_unknowns: list[dict[str, Any]] = []
-    intervals_by_id = {item["interval_id"]: item for item in intervals}
     for assumption in gold.assumption_proposals:
         subject = assumption.subject_role or entities[0]["entity_id"]
         if subject not in entity_ids:
@@ -1171,8 +1193,14 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             )
         if query.event_role is not None and query.event_role not in event_ids:
             raise DraftProjectionError(DraftProjectionReason.dangling_event_reference)
+        query_event_role = _stated_endpoint(
+            _ENDPOINT_QUERY_KEYS.get(query.output_key),
+            query.segment_role,
+            query.event_role,
+            intervals_by_id,
+        )
         query_interval_id, query_event_id = _typed_scope(
-            query.segment_role, query.event_role, bounded_intervals_by_event
+            query.segment_role, query_event_role, bounded_intervals_by_event
         )
         # The query target is a quantity the source does *not* state.  It keeps
         # the full subject/interval/event/component identity of the question and
@@ -1259,6 +1287,27 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         known_symbol_ids=tuple(symbol["symbol_id"] for symbol in known_symbols),
         unknown_symbol_ids=tuple(symbol["symbol_id"] for symbol in unknown_symbols),
     )
+
+
+def _stated_endpoint(
+    boundary_field: str | None,
+    interval_id: str | None,
+    event_id: str | None,
+    intervals_by_id: Mapping[str, dict[str, Any]],
+) -> str | None:
+    """Resolve a stated initial/final endpoint to the interval's own boundary.
+
+    An explicit event in the source always wins; the endpoint is only filled in
+    where the source left it implicit and the interval actually declares that
+    boundary.  A boundary the source never declared is never invented.
+    """
+
+    if event_id is not None or boundary_field is None or interval_id is None:
+        return event_id
+    interval = intervals_by_id.get(interval_id)
+    if interval is None:
+        return None
+    return interval.get(boundary_field)
 
 
 def _rest_state_condition(
