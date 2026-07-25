@@ -623,11 +623,21 @@ def test_component_directions_also_set_the_component() -> None:
     assert quantity.direction.direction.value == "tangential"
 
 
-@pytest.mark.parametrize("absent", ("not_applicable", "unspecified"))
-def test_absent_direction_is_never_invented(absent: str) -> None:
-    quantity = _quantity(_directed(_case(), absent))
+def test_absent_direction_is_never_invented() -> None:
+    quantity = _quantity(_directed(_case(), "unspecified"))
     assert quantity.direction is None
     assert quantity.component.value == "unspecified"
+
+
+def test_a_direction_that_does_not_apply_names_the_magnitude() -> None:
+    # `not_applicable` is not an absent direction: the source is stating that
+    # this quantity has none, which is the same as saying it gave the
+    # magnitude.  `unspecified` above is the genuinely absent case and stays
+    # uncommitted.  The distinction matters because the typed laws pair a
+    # quantity only with another of the same component.
+    quantity = _quantity(_directed(_case(), "not_applicable"))
+    assert quantity.direction is None
+    assert quantity.component.value == "magnitude"
 
 
 def test_one_fact_direction_does_not_contaminate_another_quantity() -> None:

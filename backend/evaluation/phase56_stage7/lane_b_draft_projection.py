@@ -304,6 +304,59 @@ _DIRECTION_COMPONENTS: dict[str, str] = {
     "counterclockwise": "counterclockwise",
 }
 
+# A source that says a quantity's direction is *not applicable* has said which
+# component it stated: the magnitude.  That is a different statement from
+# `unspecified`, which says the direction exists but the source did not give it,
+# and which therefore stays uncommitted.  The distinction matters because the
+# typed laws pair a quantity only with another of the same component: an
+# uncommitted scalar and a magnitude are not interchangeable.
+_DIRECTIONLESS_COMPONENT = "magnitude"
+# The roles for which a component is part of the physical identity.  A role that
+# carries no component at all (mass, radius, duration, ...) is left untouched:
+# stamping a component on a scalar invariant would invent identity.
+_COMPONENT_ROLES: frozenset[str] = frozenset(
+    {
+        "acceleration",
+        "angular_acceleration",
+        "angular_momentum",
+        "angular_position",
+        "angular_velocity",
+        "displacement",
+        "force",
+        "impulse",
+        "moment",
+        "momentum",
+        "position",
+        "speed",
+        "torque",
+        "velocity",
+    }
+)
+
+# 7. A path length measured over a whole interval is that interval's
+# displacement magnitude exactly when the interval's own typed model forbids a
+# direction reversal inside it.  Two typed proofs are available, and nothing
+# else counts:
+#
+#   * an approved `constant_velocity` interval never reverses at all; and
+#   * an approved `constant_acceleration` interval that a boundary condition
+#     pins to rest at its start cannot reverse either, because v(t) = a*t keeps
+#     one sign for the whole interval.
+#
+# Absent one of those proofs the path length stays a `distance`, which no law
+# reads, so an interval that may double back fails closed instead of answering
+# with a displacement it cannot justify.
+_PATH_LENGTH_ROLE = "distance"
+_REVERSAL_FREE_ASSUMPTIONS: frozenset[str] = frozenset(
+    {"constant_velocity", "constant_acceleration"}
+)
+_REST_PINNED_ASSUMPTIONS: frozenset[str] = frozenset({"constant_acceleration"})
+# A path length carries no component of its own, but it is a magnitude by
+# construction, so an undirected one records that component and keeps it if it
+# later takes its typed home as a displacement.  A path length the source *did*
+# give a direction keeps that direction and never claims to be a magnitude.
+_MAGNITUDE_WHEN_DIRECTIONLESS: frozenset[str] = _COMPONENT_ROLES | {_PATH_LENGTH_ROLE}
+
 # 6-B. Closed relation split.  Topology and kinematic coupling are geometry;
 # only genuine force interactions are interactions.
 _GEOMETRY_KINDS: dict[str, str] = {
@@ -505,13 +558,17 @@ def _locate_quote(problem_text: str, quote: str | None) -> tuple[int, int] | Non
     return (occurrence.start, occurrence.end)
 
 
-def _direction_fields(direction: str | None) -> dict[str, Any]:
+def _direction_fields(direction: str | None, role: str) -> dict[str, Any]:
     """Carry a source-stated direction into the typed Draft fields.
 
     A quantity whose source states no direction receives none: the absence is
-    preserved rather than filled with a default.
+    preserved rather than filled with a default.  ``not_applicable`` is not that
+    absence — it is the source stating that this quantity has no direction, so
+    the component it named is the magnitude.
     """
 
+    if direction == "not_applicable" and role in _MAGNITUDE_WHEN_DIRECTIONLESS:
+        return {"component": _DIRECTIONLESS_COMPONENT}
     if direction is None or direction not in _SEMANTIC_DIRECTIONS:
         return {}
     fields: dict[str, Any] = {
@@ -521,6 +578,62 @@ def _direction_fields(direction: str | None) -> dict[str, Any]:
     if component is not None:
         fields["component"] = component
     return fields
+
+
+def _reversal_free_scopes(
+    assumptions: list[dict[str, Any]],
+    approved: set[str],
+    state_conditions: list[dict[str, Any]],
+) -> frozenset[tuple[str, str]]:
+    """The ``(subject, interval)`` scopes whose typed model forbids a reversal.
+
+    Derived from approved assumptions and boundary conditions only.  A family, a
+    case ID, an expected system type, an expected answer, and the problem text
+    have no say.
+    """
+
+    rest_at_start = {
+        (state["subject_id"], state["interval_id"])
+        for state in state_conditions
+        if state["kind"] == "initial"
+        and state["state"] == "at_rest"
+        and state["interval_id"] is not None
+    }
+    scopes: set[tuple[str, str]] = set()
+    for assumption in assumptions:
+        if assumption["assumption_id"] not in approved:
+            continue
+        kind = assumption["kind"]
+        interval_id = assumption["interval_id"]
+        if kind not in _REVERSAL_FREE_ASSUMPTIONS or interval_id is None:
+            continue
+        scope = (assumption["subject_id"], interval_id)
+        if kind in _REST_PINNED_ASSUMPTIONS and scope not in rest_at_start:
+            continue
+        scopes.add(scope)
+    return frozenset(scopes)
+
+
+def _retype_path_lengths(
+    quantities: list[dict[str, Any]],
+    reversal_free: frozenset[tuple[str, str]],
+) -> None:
+    """Retype a whole-interval path length as that interval's displacement.
+
+    Only a quantity the source scoped to a whole interval qualifies: one pinned
+    to an instant measures something else and is left alone.  The rewrite keeps
+    every other identity field — subject, interval, component, direction,
+    evidence — so the canonical symbol still names the same physical thing.
+    """
+
+    for item in quantities:
+        if item["role"] != _PATH_LENGTH_ROLE:
+            continue
+        if item.get("event_id") is not None or item.get("interval_id") is None:
+            continue
+        if (item["subject_id"], item["interval_id"]) not in reversal_free:
+            continue
+        item["role"] = "displacement"
 
 
 # The physical identity a symbol names.  A value, a raw unit, an evidence
@@ -1004,7 +1117,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "raw_value": written_value,
                 "raw_unit": written_unit,
                 "evidence_refs": [evidence_id],
-                **_direction_fields(fact.direction),
+                **_direction_fields(fact.direction, role),
             }
         )
 
@@ -1165,6 +1278,15 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 }
             )
             approved.append(assumption_id)
+
+    # The authorised assumptions and boundary conditions are settled, so the
+    # intervals that cannot reverse are now known and a whole-interval path
+    # length can take its typed home.  This runs before the symbols are bound so
+    # each quantity's canonical identity is computed from its final role.
+    _retype_path_lengths(
+        quantities,
+        _reversal_free_scopes(assumptions, set(approved), state_conditions),
+    )
 
     # Every source-grounded quantity now owns one canonical symbol.  This runs
     # before the queries so a query unknown can never take a known symbol's
@@ -1349,7 +1471,11 @@ def _rest_state_condition(
             "subject_id": subject_id,
             "interval_id": interval_id,
             "event_id": event_id,
-            "component": "unspecified",
+            # At rest the speed is zero and no direction applies, so the
+            # component the condition names is the magnitude — the same
+            # component an undirected source quantity carries, which is what
+            # lets an endpoint law pair the two.
+            "component": _DIRECTIONLESS_COMPONENT,
             "shape": "scalar",
             "dimension": dict(_VELOCITY_DIMENSION),
             "provenance": "unknown",

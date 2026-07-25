@@ -473,29 +473,34 @@ def _constant_acceleration_emissions(context: LawContext) -> list[LawEmission]:
                     and item.frame_id == start.frame_id
                     and item.point_id == start.point_id
                 )
-                if len(matching_ends) != 1 or len(matching_accelerations) != 1:
+                if len(matching_accelerations) != 1:
                     continue
-                end = matching_ends[0]
                 acceleration = matching_accelerations[0]
-                velocity_change = Add(
-                    terms=(
-                        start.expression,
-                        Multiply(
-                            factors=(acceleration.expression, duration.expression),
-                            dimension=end.dimension,
+                # The endpoint velocity equation needs both endpoints, but the
+                # position equation does not contain the final velocity at all.
+                # Requiring one anyway made a whole interval unsolvable whenever
+                # the question never mentioned where the motion ended up.
+                if len(matching_ends) == 1:
+                    end = matching_ends[0]
+                    velocity_change = Add(
+                        terms=(
+                            start.expression,
+                            Multiply(
+                                factors=(acceleration.expression, duration.expression),
+                                dimension=end.dimension,
+                            ),
                         ),
-                    ),
-                    dimension=end.dimension,
-                )
-                emitted.append(
-                    _emit(
-                        context,
-                        "particle_constant_acceleration_velocity",
-                        Equality(left=end.expression, right=velocity_change),
-                        (start, end, acceleration, duration),
-                        assumption_ids=assumptions,
+                        dimension=end.dimension,
                     )
-                )
+                    emitted.append(
+                        _emit(
+                            context,
+                            "particle_constant_acceleration_velocity",
+                            Equality(left=end.expression, right=velocity_change),
+                            (start, end, acceleration, duration),
+                            assumption_ids=assumptions,
+                        )
+                    )
                 displacements = tuple(
                     q
                     for q in _by_role(context, QuantityRole.displacement)

@@ -856,6 +856,216 @@ def _is_static_constant_acceleration_boundary_graph(graph: EquationGraph) -> boo
     }
 
 
+def _is_static_rest_boundary_constant_acceleration_graph(graph: EquationGraph) -> bool:
+    """Recognize the exact closed rest-start constant-acceleration graph.
+
+    A problem may state where the motion began without ever saying where it
+    ended up.  The typed shape is then one boundary condition pinning the start
+    velocity to rest and one displacement equation over the interval — a graph
+    whose single ``start`` label identifies a state boundary, not a timed root
+    event to be located.  Recognition is graph-only and exact, in the same way
+    as its siblings above: no problem text, metadata, family label, fixture ID,
+    or legacy output participates, and every structural near miss keeps ordinary
+    timed-event fail-closed behavior.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    state_law = "state_at_rest"
+    position_law = "particle_constant_acceleration_position"
+    expected_laws = {state_law, position_law}
+    if (
+        len(event_ids) != 1
+        or len(graph.constraints) != 1
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 2
+        or len(graph.applications) != 2
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or any(not isinstance(item.expression, Equality) for item in graph.equations)
+        or set(graph.selected_equation_ids)
+        != {item.equation_id for item in graph.equations}
+        or graph.rank.equality_count != 2
+        or graph.rank.inequality_count != 0
+        or graph.rank.unknown_count != 2
+        or graph.rank.structural_rank != 2
+        or graph.rank.underdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+    event_id = event_ids[0]
+
+    symbols_by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.point_id is not None or item.quantity_role is None:
+            return False
+        symbols_by_role.setdefault(item.quantity_role, []).append(item)
+    if set(symbols_by_role) != {
+        "acceleration",
+        "displacement",
+        "duration",
+        "velocity",
+    } or any(len(item) != 1 for item in symbols_by_role.values()):
+        return False
+    if len(graph.symbols) != 4:
+        return False
+
+    acceleration = symbols_by_role["acceleration"][0]
+    displacement = symbols_by_role["displacement"][0]
+    duration = symbols_by_role["duration"][0]
+    start_velocity = symbols_by_role["velocity"][0]
+    members = (acceleration, displacement, duration, start_velocity)
+    subjects = {item.subject_id for item in members}
+    intervals = {item.interval_id for item in members}
+    if (
+        len(subjects) != 1
+        or None in subjects
+        or len(intervals) != 1
+        or None in intervals
+        or acceleration.event_id is not None
+        or displacement.event_id is not None
+        or duration.event_id is not None
+        or start_velocity.event_id != event_id
+        # The interval carries the whole motion, so every member shares one
+        # frame.  That frame may be the problem's implicit one, which is why an
+        # absent frame is accepted here as long as it is absent for all of them.
+        or displacement.frame_id != acceleration.frame_id
+        or start_velocity.frame_id != acceleration.frame_id
+        or duration.frame_id not in {None, acceleration.frame_id}
+        # The rest boundary pins an unknown; a known start velocity would make
+        # the condition a redundant restatement rather than the closure.
+        or start_velocity.known_si_value is not None
+    ):
+        return False
+    subject_id = next(iter(subjects))
+    interval_id = next(iter(intervals))
+    frame_id = acceleration.frame_id
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    if any(
+        application.equation_ids != (equations_by_law[law_id].equation_id,)
+        or application.source_quantity_ids
+        != equations_by_law[law_id].source_quantity_ids
+        or application.assumption_ids != equations_by_law[law_id].assumption_ids
+        or application.constraint_ids != equations_by_law[law_id].constraint_ids
+        or application.generated_unknown_symbol_ids
+        or equations_by_law[law_id].generated_unknown_symbol_ids
+        or application.source_evidence_ids
+        != equations_by_law[law_id].source_evidence_ids
+        or application.complexity_cost != equations_by_law[law_id].complexity_cost
+        or application.scope != equations_by_law[law_id].scope
+        for law_id, application in applications_by_law.items()
+    ):
+        return False
+
+    state = equations_by_law[state_law]
+    position = equations_by_law[position_law]
+    constraint = graph.constraints[0]
+    if (
+        constraint.constraint_kind != "state_initial"
+        or constraint.equation_id != state.equation_id
+        or constraint.scope != state.scope
+        or state.constraint_ids != (constraint.constraint_id,)
+        or state.assumption_ids
+        or len(position.assumption_ids) != 1
+        or position.constraint_ids
+    ):
+        return False
+    for equation in (state, position):
+        if (
+            equation.scope.entity_ids != (subject_id,)
+            or equation.scope.point_ids
+            or equation.scope.frame_id != frame_id
+            or equation.scope.interval_id != interval_id
+            or equation.scope.event_id != event_id
+            or equation.scope.event_ids != (event_id,)
+        ):
+            return False
+
+    def ref(item: object) -> str:
+        return item.symbol.symbol_id
+
+    if state.source_quantity_ids != (start_velocity.quantity_id,) or (
+        position.source_quantity_ids
+        != tuple(sorted({
+            acceleration.quantity_id,
+            displacement.quantity_id,
+            duration.quantity_id,
+            start_velocity.quantity_id,
+        }))
+    ):
+        return False
+
+    state_expression = state.expression
+    if (
+        not isinstance(state_expression.left, SymbolRef)
+        or state_expression.left.symbol_id != ref(start_velocity)
+        or not isinstance(state_expression.right, LiteralNode)
+        or state_expression.right.value != 0.0
+    ):
+        return False
+
+    position_expression = position.expression
+    if (
+        not isinstance(position_expression.left, SymbolRef)
+        or position_expression.left.symbol_id != ref(displacement)
+        or not isinstance(position_expression.right, Add)
+        or len(position_expression.right.terms) != 2
+    ):
+        return False
+    position_products = tuple(
+        item
+        for item in position_expression.right.terms
+        if isinstance(item, Multiply)
+    )
+    if len(position_products) != 2:
+        return False
+    linear_products = tuple(
+        item
+        for item in position_products
+        if len(item.factors) == 2
+        and {
+            factor.symbol_id
+            for factor in item.factors
+            if isinstance(factor, SymbolRef)
+        } == {ref(start_velocity), ref(duration)}
+    )
+    quadratic_products = tuple(
+        item for item in position_products if item not in linear_products
+    )
+    if len(linear_products) != 1 or len(quadratic_products) != 1:
+        return False
+    quadratic = quadratic_products[0]
+    literals = tuple(
+        item for item in quadratic.factors if isinstance(item, LiteralNode)
+    )
+    acceleration_refs = tuple(
+        item
+        for item in quadratic.factors
+        if isinstance(item, SymbolRef) and item.symbol_id == ref(acceleration)
+    )
+    powers = tuple(item for item in quadratic.factors if isinstance(item, Power))
+    if (
+        len(quadratic.factors) != 3
+        or len(literals) != 1
+        or literals[0].value != 0.5
+        or len(acceleration_refs) != 1
+        or len(powers) != 1
+        or not isinstance(powers[0].base, SymbolRef)
+        or powers[0].base.symbol_id != ref(duration)
+        or not isinstance(powers[0].exponent, LiteralNode)
+        or powers[0].exponent.value != 2.0
+    ):
+        return False
+    return graph.query_symbol_id in {
+        ref(acceleration),
+        ref(displacement),
+        ref(duration),
+        ref(start_velocity),
+    }
+
+
 def _is_static_projectile_boundary_graph(graph: EquationGraph) -> bool:
     """Recognize one exact algebraic 2-D projectile endpoint graph.
 
@@ -2108,6 +2318,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
         if (
             _is_static_collision_boundary_graph(graph)
             or _is_static_constant_acceleration_boundary_graph(graph)
+            or _is_static_rest_boundary_constant_acceleration_graph(graph)
             or _is_static_projectile_boundary_graph(graph)
             or _is_static_constant_angular_acceleration_boundary_graph(graph)
             or _is_static_impulse_momentum_boundary_graph(graph)
