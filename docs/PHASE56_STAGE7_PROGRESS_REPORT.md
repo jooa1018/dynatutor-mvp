@@ -175,6 +175,40 @@ Both were traced to this sandbox, not to the code:
 CI installs `backend/requirements-lock.txt` and passed both tests at this exact
 head. No test or threshold was modified in response.
 
+After pinning `fastapi==0.128.2` and restoring the project interpreter on
+`PATH`, the local full backend regression reported **3203 passed, 1 skipped,
+430 deselected, 0 failed**. That run executed at documentation head
+`fdc884bf…`, whose `backend/` and `.github/` trees are byte-identical to the
+code candidate `a4995799…`.
+
+### Head accounting
+
+- Code candidate / tested head: `a4995799c097e0b36d5c60d671c40b1765b1993d`
+- Documentation head: `fdc884bf0ff9c4ac21de642014fb15623a4f9134` and later
+- No accepted head exists: Stage 7 is not accepted.
+
+CI evidence above belongs to `a4995799…` and must not be re-attributed to a
+later documentation-only head.
+
+## Read-only audit (same-model, not an independent Checker)
+
+Scope and result — blocking findings **0**:
+
+| Audited property | Result |
+|---|---|
+| Diff since `2512c66…` is additive | 11 files added; only `PHASE56_CLAUDE_CODE_HANDOFF.md` modified |
+| Frozen contract/runtime/gold/preflight/redaction modules and the 38-test preflight suite | untouched |
+| Case-ID / family / split / filename routing in new code | none; the sole `case_id` use is a gold-domain uniqueness cardinality check |
+| Expected-answer use | only inside the leak *detector* that proves its absence from runtime material |
+| Adapter payload to runtime | exactly token, input kind, problem text, options |
+| Network or provider imports in the evaluator package | only `socket` inside `network_guard`, which is the guard itself |
+| Threshold relaxation | no removed threshold or assertion lines |
+| Test deletion | none |
+| Raw corpus, private material, ZIP, or PDF committed | none |
+| Workflow push / commit / secret / self-mutation | none; `contents: read` only |
+| Report privacy in practice | exactly one 830-byte redacted artifact uploaded |
+| main / PR protection | main `00b3a60…` unchanged; PR #16 and #17 open, Draft, unmerged |
+
 ## Hard-safety and privacy status
 
 | Signal | Status |
