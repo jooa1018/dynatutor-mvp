@@ -14,14 +14,17 @@ read.  The whitelist is enforced in code and proven by tampering tests.
 
 Two corpus structures are preserved rather than flattened:
 
-* **Segment-internal event** — an event carries interval membership through
-  `Event.interval_ids` without being disguised as the interval's start or end
-  boundary, and a query keeps its subject, interval, and event bindings intact.
+* **Segment-internal event** — an event that occurs inside a segment without
+  bounding it is never promoted to that segment's start or end boundary.
+  `Event.interval_ids` is the typed reciprocal of an interval's own boundary
+  declaration, so a segment-internal event declares none, and the records that
+  reference it keep the event as their precise instant scope rather than
+  restating a boundary the source never declared.
 * **Relation-scoped timeless environment fact** — an environment entity is
   never promoted to an interval subject.  Its quantity keeps the environment
-  entity as `subject_id` and the target interval as `interval_id`, and is only
-  admitted when exactly one interval-scoped relation links it to a moving actor
-  of that interval.  Ambiguous or cross-interval links are rejected.
+  entity as `subject_id` and stays timeless, and is only admitted when exactly
+  one interval-scoped relation links it to a moving actor of the interval the
+  corpus scoped it to.  Ambiguous or cross-interval links are rejected.
 
 Values without exact source evidence never enter the Draft, so an ungrounded
 number fails closed as `invented_explicit_number` in `validate_draft`.
@@ -357,6 +360,7 @@ class DraftProjectionReason(str, Enum):
     dangling_entity_reference = "dangling_entity_reference"
     dangling_interval_reference = "dangling_interval_reference"
     dangling_event_reference = "dangling_event_reference"
+    boundary_event_subject_not_in_interval = "boundary_event_subject_not_in_interval"
     duplicate_canonical_symbol = "duplicate_canonical_symbol"
     symbol_binding_not_reciprocal = "symbol_binding_not_reciprocal"
     unknown_symbol_collides_with_known = "unknown_symbol_collides_with_known"
@@ -751,26 +755,32 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "interval_id": segment.role,
                 "order": segment.order,
                 "subject_ids": list(segment.actor_roles),
-                # Boundaries are only declared when the corpus materialises the
-                # event; a missing boundary stays absent rather than being
-                # invented from a mid-interval event.
-                "start_event_id": segment.start_event_role
-                if segment.start_event_role in event_ids
-                else None,
-                "end_event_id": segment.end_event_role
-                if segment.end_event_role in event_ids
-                else None,
+                "start_event_id": segment.start_event_role,
+                "end_event_id": segment.end_event_role,
                 "evidence_refs": [],
             }
         )
 
-    # Segment-internal events keep interval membership without being promoted
-    # to boundaries.
-    boundary_ids: set[str] = set()
+    # A boundary is declared from the *interval* side, and `interval_ids` is the
+    # typed reciprocal of that declaration — not a general "this event happens
+    # during that interval" field.  Indexing the declarations first keeps both
+    # directions derived from one source, so a shared boundary lists every
+    # interval it bounds and a segment-internal event lists none.
+    boundary_slots: dict[str, list[tuple[str, str]]] = {}
     for segment in gold.motion_segments:
-        for role in (segment.start_event_role, segment.end_event_role):
-            if role in event_ids:
-                boundary_ids.add(role)
+        for role, slot in (
+            (segment.start_event_role, "start"),
+            (segment.end_event_role, "finish"),
+        ):
+            if role is None:
+                continue
+            boundary_slots.setdefault(role, []).append((segment.role, slot))
+    for role, slots in boundary_slots.items():
+        for interval_id, _slot in slots:
+            if interval_id not in interval_ids:
+                raise DraftProjectionError(
+                    DraftProjectionReason.dangling_interval_reference
+                )
 
     events: list[dict[str, Any]] = []
     segment_internal: list[str] = []
@@ -783,15 +793,20 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 raise DraftProjectionError(
                     DraftProjectionReason.dangling_entity_reference
                 )
-        membership: list[str] = []
-        if event.segment_role is not None:
-            if event.segment_role not in interval_ids:
-                raise DraftProjectionError(
-                    DraftProjectionReason.dangling_interval_reference
-                )
-            membership.append(event.segment_role)
-            if event.role not in boundary_ids:
-                segment_internal.append(event.role)
+        if event.segment_role is not None and event.segment_role not in interval_ids:
+            raise DraftProjectionError(
+                DraftProjectionReason.dangling_interval_reference
+            )
+        membership = _bounded_intervals(
+            event.role,
+            event.subject_roles,
+            boundary_slots=boundary_slots,
+            actors_by_interval=actors_by_interval,
+        )
+        if event.segment_role is not None and not membership:
+            # The event occurs inside the segment without bounding it.  The
+            # occurrence is recorded; it is never restated as a boundary.
+            segment_internal.append(event.role)
         events.append(
             {
                 "event_id": event.role,
@@ -801,6 +816,39 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "evidence_refs": [],
             }
         )
+
+    # A boundary the corpus references but does not materialise as an event
+    # object is completed here.  The kind comes from the *slot* the reference
+    # occupies — start slot means start, end slot means finish — never from the
+    # role string, and the subjects are the declaring intervals' own actors.
+    for role in sorted(set(boundary_slots) - event_ids):
+        slots = boundary_slots[role]
+        subjects = set.intersection(
+            *(actors_by_interval[interval_id] for interval_id, _slot in slots)
+        )
+        if not subjects:
+            raise DraftProjectionError(
+                DraftProjectionReason.boundary_event_subject_not_in_interval
+            )
+        ordered_subjects = sorted(subjects)
+        events.append(
+            {
+                "event_id": role,
+                "kind": "finish" if any(slot == "finish" for _, slot in slots) else "start",
+                "subject_ids": ordered_subjects,
+                "interval_ids": _bounded_intervals(
+                    role,
+                    ordered_subjects,
+                    boundary_slots=boundary_slots,
+                    actors_by_interval=actors_by_interval,
+                ),
+                "evidence_refs": [],
+            }
+        )
+    event_ids = {item["event_id"] for item in events}
+    bounded_intervals_by_event = {
+        item["event_id"]: frozenset(item["interval_ids"]) for item in events
+    }
 
     source_evidence: list[dict[str, Any]] = []
     quantities: list[dict[str, Any]] = []
@@ -825,7 +873,9 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 DraftProjectionReason.missing_evidence_for_explicit_value
             )
 
-        interval_id = fact.segment_role
+        interval_id, event_id = _typed_scope(
+            fact.segment_role, fact.event_role, bounded_intervals_by_event
+        )
         if interval_id is not None:
             actors = actors_by_interval.get(interval_id, set())
             if fact.subject_role not in actors:
@@ -836,6 +886,12 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                     relations_by_pair=relations_by_pair,
                 )
                 environment_scoped.append(f"qty_{fact.role}")
+                # An environment property is timeless and its owner is
+                # deliberately not one of the interval's moving actors, so it
+                # cannot claim that interval as its own scope.  The verified
+                # relation above is what couples it to the actor's interval; the
+                # environment entity is never promoted to an interval subject.
+                interval_id = None
 
         alignment = _align_fact_evidence(problem_text, fact)
         quote_span = alignment.quote_span
@@ -861,7 +917,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "role": role,
                 "subject_id": fact.subject_role,
                 "interval_id": interval_id,
-                "event_id": fact.event_role,
+                "event_id": event_id,
                 "shape": "scalar",
                 "dimension": dimension,
                 "provenance": "explicit_source",
@@ -909,7 +965,11 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "interaction_id": f"rel_{relation.role}",
                 "kind": kind,
                 "participant_ids": list(relation.participant_roles),
-                "interval_id": relation.segment_role,
+                "interval_id": _interaction_interval(
+                    relation.segment_role,
+                    relation.participant_roles,
+                    actors_by_interval,
+                ),
                 "evidence_refs": [],
             }
         )
@@ -984,6 +1044,9 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             )
         if query.event_role is not None and query.event_role not in event_ids:
             raise DraftProjectionError(DraftProjectionReason.dangling_event_reference)
+        query_interval_id, query_event_id = _typed_scope(
+            query.segment_role, query.event_role, bounded_intervals_by_event
+        )
         # The query target is a quantity the source does *not* state.  It keeps
         # the full subject/interval/event/component identity of the question and
         # carries no value, no unit token, and no evidence: it is exactly the
@@ -993,8 +1056,8 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "quantity_id": f"qty_unknown_{query.role}",
                 "role": role,
                 "subject_id": query.subject_role,
-                "interval_id": query.segment_role,
-                "event_id": query.event_role,
+                "interval_id": query_interval_id,
+                "event_id": query_event_id,
                 "component": query.component or "unspecified",
                 "shape": "scalar",
                 "dimension": dimension,
@@ -1011,8 +1074,8 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "target": {
                     "role": role,
                     "subject_id": query.subject_role,
-                    "interval_id": query.segment_role,
-                    "event_id": query.event_role,
+                    "interval_id": query_interval_id,
+                    "event_id": query_event_id,
                     "component": query.component or "unspecified",
                     "target_quantity_id": f"qty_unknown_{query.role}",
                 },
@@ -1069,6 +1132,75 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         known_symbol_ids=tuple(symbol["symbol_id"] for symbol in known_symbols),
         unknown_symbol_ids=tuple(symbol["symbol_id"] for symbol in unknown_symbols),
     )
+
+
+def _bounded_intervals(
+    event_role: str,
+    subject_roles: Any,
+    *,
+    boundary_slots: Mapping[str, list[tuple[str, str]]],
+    actors_by_interval: Mapping[str, set[str]],
+) -> list[str]:
+    """List every interval this event bounds, reciprocally and in order.
+
+    An interval may only name an event as its boundary when the event's own
+    subjects are among that interval's actors; otherwise the declaration is
+    rejected rather than quietly widened.
+    """
+
+    subjects = set(subject_roles)
+    bounded: list[str] = []
+    for interval_id, _slot in boundary_slots.get(event_role, ()):
+        if not subjects <= actors_by_interval[interval_id]:
+            raise DraftProjectionError(
+                DraftProjectionReason.boundary_event_subject_not_in_interval
+            )
+        if interval_id not in bounded:
+            bounded.append(interval_id)
+    return bounded
+
+
+def _interaction_interval(
+    interval_id: str | None,
+    participant_roles: Any,
+    actors_by_interval: Mapping[str, set[str]],
+) -> str | None:
+    """Scope an interaction to an interval only when the IR admits it.
+
+    The typed contract requires every participant of an interval-scoped
+    interaction to be a subject of that interval.  A coupling to a static
+    environment entity therefore stays timeless — which is what it physically
+    is — instead of promoting the environment entity to a moving actor.
+    """
+
+    if interval_id is None:
+        return None
+    if set(participant_roles) <= actors_by_interval.get(interval_id, set()):
+        return interval_id
+    return None
+
+
+def _typed_scope(
+    interval_id: str | None,
+    event_id: str | None,
+    bounded_intervals_by_event: Mapping[str, frozenset[str]],
+) -> tuple[str | None, str | None]:
+    """Reduce a corpus (segment, event) pair to the scope the IR can express.
+
+    The typed IR admits an interval *and* an event on one record only when the
+    event bounds that interval; that is the same reciprocity the compiler
+    enforces.  When the event is segment-internal, the event is the precise
+    scope on its own — restating the segment would claim a boundary the source
+    never declared, and dropping the event would lose the instant.
+    """
+
+    if event_id is None:
+        return interval_id, None
+    if interval_id is not None and interval_id in bounded_intervals_by_event.get(
+        event_id, frozenset()
+    ):
+        return interval_id, event_id
+    return None, event_id
 
 
 def _interval_scoped_relations(

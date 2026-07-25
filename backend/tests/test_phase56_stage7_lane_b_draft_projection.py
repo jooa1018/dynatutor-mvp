@@ -161,20 +161,94 @@ def _with_segment_internal_event(case: PublicCorpusCaseV1) -> PublicCorpusCaseV1
     return _with_gold(case, events=events, queries=(query,))
 
 
-def test_blocker_a_event_keeps_interval_membership_without_faking_a_boundary() -> None:
+def test_blocker_a_event_keeps_its_instant_without_faking_a_boundary() -> None:
     projection = _project(_with_segment_internal_event(_case()))
     assert projection.terminal is DraftProjectionTerminal.projected
     draft = projection.draft
     interval = draft.motion_intervals[0]
     mid = next(event for event in draft.events if event.event_id == "instant")
-    assert interval.interval_id in mid.interval_ids
+    # `interval_ids` is the typed reciprocal of an interval's own boundary
+    # declaration.  A segment-internal event bounds nothing, so it declares
+    # nothing, and the interval never adopts it as an endpoint.
+    assert mid.interval_ids == []
     assert interval.start_event_id != "instant"
     assert interval.end_event_id != "instant"
     assert "instant" in projection.segment_internal_event_ids
+    # The query keeps the instant itself as its precise scope; it does not
+    # restate a segment boundary the source never declared.
     target = draft.queries[0].target
-    assert target.interval_id == interval.interval_id
     assert target.event_id == "instant"
+    assert target.interval_id is None
     assert target.subject_id == "box"
+
+
+def test_blocker_a_boundary_event_keeps_reciprocal_interval_membership() -> None:
+    projection = _project(_with_segment_internal_event(_case()))
+    draft = projection.draft
+    interval = draft.motion_intervals[0]
+    boundary = next(event for event in draft.events if event.event_id == "start")
+    assert interval.start_event_id == "start"
+    assert interval.interval_id in boundary.interval_ids
+    assert set(boundary.subject_ids) <= set(interval.subject_ids)
+
+
+def test_blocker_a_a_shared_boundary_declares_both_intervals() -> None:
+    case = _case()
+    second = case.gold.motion_segments[0].model_copy(
+        update={"role": "motion_2", "order": 2, "start_event_role": "handover"}
+    )
+    shared = _with_gold(
+        case,
+        motion_segments=(
+            case.gold.motion_segments[0].model_copy(
+                update={"end_event_role": "handover"}
+            ),
+            second,
+        ),
+    )
+    projection = _project(shared)
+    assert projection.terminal is DraftProjectionTerminal.projected
+    handover = next(
+        event for event in projection.draft.events if event.event_id == "handover"
+    )
+    assert set(handover.interval_ids) == {"motion_1", "motion_2"}
+
+
+def test_blocker_a_a_declared_boundary_is_materialised_from_its_slot() -> None:
+    case = _case()
+    declared = _with_gold(
+        case,
+        motion_segments=(
+            case.gold.motion_segments[0].model_copy(
+                update={"end_event_role": "arrival"}
+            ),
+        ),
+    )
+    projection = _project(declared)
+    assert projection.terminal is DraftProjectionTerminal.projected
+    interval = projection.draft.motion_intervals[0]
+    assert interval.end_event_id == "arrival"
+    arrival = next(
+        event for event in projection.draft.events if event.event_id == "arrival"
+    )
+    # The kind comes from the slot the reference occupies, never from the role
+    # string, and the subjects are the declaring interval's own actors.
+    assert arrival.kind.value == "finish"
+    assert arrival.subject_ids == ["box"]
+    assert arrival.interval_ids == ["motion_1"]
+
+
+def test_blocker_a_a_boundary_outside_its_interval_subjects_fails_closed() -> None:
+    case = _case()
+    foreign = _with_gold(
+        case,
+        events=(case.gold.events[0].model_copy(update={"subject_roles": ["surface"]}),),
+    )
+    projection = _project(foreign)
+    assert projection.terminal is DraftProjectionTerminal.projection_rejected
+    assert projection.sanitized_reason == (
+        DraftProjectionReason.boundary_event_subject_not_in_interval.value
+    )
 
 
 def test_blocker_a_dangling_query_event_is_rejected() -> None:
@@ -220,8 +294,16 @@ def test_blocker_b_environment_entity_is_never_promoted_to_an_interval_subject()
     assert "surface" not in interval.subject_ids
     scoped = next(item for item in draft.quantities if item.quantity_id == "qty_mu")
     assert scoped.subject_id == "surface"
-    assert scoped.interval_id == interval.interval_id
+    # The environment property is timeless: it keeps its own owner and never
+    # claims an interval whose actors it is deliberately not among.  The
+    # verified interval-scoped relation is what couples it to the actor.
+    assert scoped.interval_id is None
     assert "qty_mu" in projection.environment_scoped_quantity_ids
+    contact = next(
+        item for item in draft.interactions if item.interaction_id == "rel_contact"
+    )
+    assert set(contact.participant_ids) == {"box", "surface"}
+    assert contact.interval_id is None
 
 
 def test_blocker_b_requires_an_interval_scoped_relation() -> None:
