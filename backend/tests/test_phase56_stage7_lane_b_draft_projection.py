@@ -494,3 +494,251 @@ def test_failure_matrix_is_privacy_safe_and_aggregate_only() -> None:
     # Index-stripped paths cannot identify an individual case.
     for entry in payload["validator_code_path_counts"]:
         assert ".N" in entry["path"] or entry["path"] == ""
+
+
+# --------------------------------------------------------------------------
+# 6-A direction/component preservation
+# --------------------------------------------------------------------------
+
+
+def _directed(case: PublicCorpusCaseV1, direction: str) -> PublicCorpusCaseV1:
+    fact = case.gold.explicit_facts[1].model_copy(update={"direction": direction})
+    return _with_gold(
+        case, explicit_facts=case.gold.explicit_facts[:1] + (fact,)
+    )
+
+
+def _quantity(case: PublicCorpusCaseV1, quantity_id: str = "qty_acceleration"):
+    draft = _project(case).draft
+    return next(item for item in draft.quantities if item.quantity_id == quantity_id)
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    (("left", "right"), ("clockwise", "counterclockwise"), ("upward", "downward")),
+)
+def test_opposite_directions_produce_different_drafts(first: str, second: str) -> None:
+    case = _case()
+    assert _project(_directed(case, first)).draft != _project(_directed(case, second)).draft
+
+
+def test_direction_is_carried_into_the_typed_direction_field() -> None:
+    quantity = _quantity(_directed(_case(), "downward"))
+    assert quantity.direction is not None
+    assert quantity.direction.kind == "semantic"
+    assert quantity.direction.direction.value == "downward"
+
+
+def test_component_directions_also_set_the_component() -> None:
+    quantity = _quantity(_directed(_case(), "tangential"))
+    assert quantity.component.value == "tangential"
+    assert quantity.direction.direction.value == "tangential"
+
+
+@pytest.mark.parametrize("absent", ("not_applicable", "unspecified"))
+def test_absent_direction_is_never_invented(absent: str) -> None:
+    quantity = _quantity(_directed(_case(), absent))
+    assert quantity.direction is None
+    assert quantity.component.value == "unspecified"
+
+
+def test_one_fact_direction_does_not_contaminate_another_quantity() -> None:
+    case = _directed(_case(), "left")
+    mass = _quantity(case, "qty_mass")
+    assert mass.direction is None
+
+
+# --------------------------------------------------------------------------
+# 6-B typed geometry / interaction split
+# --------------------------------------------------------------------------
+
+
+def _relation(case: PublicCorpusCaseV1, kind: str) -> PublicCorpusCaseV1:
+    return _with_gold(
+        case, relations=(case.gold.relations[0].model_copy(update={"kind": kind}),)
+    )
+
+
+@pytest.mark.parametrize(
+    ("kind", "geometry_kind"),
+    (
+        ("connected_by_rope", "topology_connects"),
+        ("passes_over_pulley", "wraps"),
+        ("rolls_on", "tangent"),
+        ("point_on_body", "lies_on"),
+        ("rotates_about", "coincident"),
+        ("moves_in_slot", "lies_on"),
+    ),
+)
+def test_topological_relations_become_typed_geometry(kind: str, geometry_kind: str) -> None:
+    draft = _project(_relation(_case(), kind)).draft
+    assert draft.interactions == []
+    assert len(draft.geometry) == 1
+    assert draft.geometry[0].kind.value == geometry_kind
+    assert draft.geometry[0].participant_ids == ["box", "surface"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "interaction_kind"),
+    (
+        ("attached_to_spring", "spring"),
+        ("contact_with", "contact"),
+        ("collides_with", "collision"),
+    ),
+)
+def test_force_relations_stay_interactions(kind: str, interaction_kind: str) -> None:
+    draft = _project(_relation(_case(), kind)).draft
+    assert draft.geometry == []
+    assert draft.interactions[0].kind.value == interaction_kind
+
+
+def test_participant_order_and_pulley_role_are_preserved() -> None:
+    case = _case()
+    pulley = case.gold.entities[1].model_copy(update={"role": "pulley", "kind": "pulley"})
+    relation = case.gold.relations[0].model_copy(
+        update={"kind": "passes_over_pulley", "participant_roles": ("pulley", "box")}
+    )
+    draft = _project(
+        _with_gold(
+            case, entities=(case.gold.entities[0], pulley), relations=(relation,)
+        )
+    ).draft
+    assert draft.geometry[0].participant_ids == ["pulley", "box"]
+    assert next(e for e in draft.entities if e.entity_id == "pulley").primitive.value == (
+        "pulley"
+    )
+
+
+@pytest.mark.parametrize(
+    "kind", ("shares_velocity_constraint", "shares_acceleration_constraint")
+)
+def test_relations_without_a_typed_contract_fail_closed(kind: str) -> None:
+    projection = _project(_relation(_case(), kind))
+    assert projection.terminal is DraftProjectionTerminal.projection_rejected
+    assert projection.sanitized_reason == (
+        DraftProjectionReason.relation_kind_has_no_typed_contract.value
+    )
+
+
+def test_relation_order_does_not_change_draft_content() -> None:
+    case = _case()
+    second = case.gold.relations[0].model_copy(
+        update={"role": "contact_b", "kind": "slides_on"}
+    )
+    forward = _project(_with_gold(case, relations=(case.gold.relations[0], second))).draft
+    reverse = _project(_with_gold(case, relations=(second, case.gold.relations[0]))).draft
+    assert {item.relation_id for item in forward.geometry} == {
+        item.relation_id for item in reverse.geometry
+    }
+    assert {item.interaction_id for item in forward.interactions} == {
+        item.interaction_id for item in reverse.interactions
+    }
+
+
+# --------------------------------------------------------------------------
+# 6-C closed assumption policy
+# --------------------------------------------------------------------------
+
+
+def _assumed(case: PublicCorpusCaseV1, **updates) -> PublicCorpusCaseV1:
+    from evaluation.phase56_stage7.corpus_records import CorpusAssumptionV1
+
+    base = {
+        "role": "grav",
+        "kind": "constant_gravity",
+        "subject_role": "box",
+        "segment_role": "motion_1",
+        "supporting_quote": None,
+        "server_value_only": True,
+    }
+    base.update(updates)
+    return _with_gold(case, assumption_proposals=(CorpusAssumptionV1(**base),))
+
+
+def test_server_default_assumption_is_approved() -> None:
+    projection = _project(_assumed(_case()))
+    assert projection.approvable_assumption_ids == ("asm_grav",)
+
+
+def test_ungrounded_assumption_requires_confirmation_and_is_not_approved() -> None:
+    projection = _project(_assumed(_case(), kind="frictionless", role="fr"))
+    assert projection.approvable_assumption_ids == ()
+    assert projection.draft.assumptions[0].disposition.value == "proposed"
+
+
+def test_source_grounded_assumption_is_approved() -> None:
+    case = _case()
+    quote = case.problem_text[:14]
+    projection = _project(
+        _assumed(case, kind="starts_from_rest", role="rest", supporting_quote=quote)
+    )
+    assert projection.approvable_assumption_ids == ("asm_rest",)
+
+
+def test_assumption_quote_absent_from_the_source_is_not_approved() -> None:
+    projection = _project(
+        _assumed(
+            _case(),
+            kind="starts_from_rest",
+            role="rest",
+            supporting_quote="이 문장은 문제에 없다",
+        )
+    )
+    assert projection.approvable_assumption_ids == ()
+
+
+def test_a_competing_explicit_fact_outranks_the_assumption() -> None:
+    case = _case()
+    # Restate the acceleration fact as an explicit final velocity so that a
+    # rest assumption on the same role is contested by the source.
+    velocity_fact = case.gold.explicit_facts[1].model_copy(
+        update={"role": "vfinal", "semantic_key": "final_velocity"}
+    )
+    contested = _with_gold(
+        case, explicit_facts=case.gold.explicit_facts[:1] + (velocity_fact,)
+    )
+    projection = _project(
+        _assumed(
+            contested,
+            kind="ends_at_rest",
+            role="rest",
+            supporting_quote=case.problem_text[:14],
+        )
+    )
+    assert projection.approvable_assumption_ids == ()
+    assert projection.draft.assumptions[0].disposition.value == "rejected"
+
+
+def test_unsupported_assumption_kind_is_rejected_not_approved() -> None:
+    projection = _project(
+        _assumed(_case(), kind="direction_choice", role="dir", supporting_quote="x")
+    )
+    assert projection.approvable_assumption_ids == ()
+    assert projection.draft.assumptions[0].disposition.value == "rejected"
+
+
+def test_assumption_keeps_its_authored_subject_and_interval() -> None:
+    projection = _project(_assumed(_case()))
+    assumption = projection.draft.assumptions[0]
+    assert assumption.subject_id == "box"
+    assert assumption.interval_id == "motion_1"
+
+
+# --------------------------------------------------------------------------
+# 6-D resolved evidence indices
+# --------------------------------------------------------------------------
+
+
+def test_recorded_occurrence_index_is_the_resolved_one() -> None:
+    case = _case()
+    fact = case.gold.explicit_facts[0].model_copy(update={"occurrence_index": 7})
+    projection = _project(
+        _with_gold(case, explicit_facts=(fact,) + case.gold.explicit_facts[1:])
+    )
+    assert projection.terminal is DraftProjectionTerminal.projected
+    evidence = projection.draft.source_evidence[0]
+    # The corpus index was out of range for a single occurrence; alignment
+    # resolved it to 0 and the Draft records the resolved value.
+    assert evidence.occurrence_index == 0
+    text = projection.problem_text
+    assert text[evidence.source_span.start : evidence.source_span.end] == evidence.quote

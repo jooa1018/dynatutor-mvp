@@ -30,6 +30,7 @@ number fails closed as `invented_explicit_number` in `validate_draft`.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping
@@ -227,9 +228,80 @@ _INTERACTION_KINDS: dict[str, str] = {
 
 # Only a physical contact-type coupling can scope an environment property to a
 # moving actor's interval.  A rope, collision, or bookkeeping relation cannot.
+# 6-A. Closed corpus-direction mapping.  Direction is only carried when the
+# source states one: it is never inferred from problem-text keywords, from the
+# sign of a number, from a family default, from an expected answer, or from a
+# system type.  ``not_applicable`` and ``unspecified`` stay absent.
+_SEMANTIC_DIRECTIONS: frozenset[str] = frozenset(
+    {
+        "positive",
+        "negative",
+        "upward",
+        "downward",
+        "left",
+        "right",
+        "clockwise",
+        "counterclockwise",
+        "along_motion",
+        "opposite_motion",
+        "radial",
+        "tangential",
+    }
+)
+# A direction that is also a component of a vector quantity.
+_DIRECTION_COMPONENTS: dict[str, str] = {
+    "radial": "radial",
+    "tangential": "tangential",
+    "clockwise": "clockwise",
+    "counterclockwise": "counterclockwise",
+}
+
+# 6-B. Closed relation split.  Topology and kinematic coupling are geometry;
+# only genuine force interactions are interactions.
+_GEOMETRY_KINDS: dict[str, str] = {
+    "connected_by_rope": "topology_connects",
+    "passes_over_pulley": "wraps",
+    "slides_on": "lies_on",
+    "rolls_on": "tangent",
+    "fixed_to": "attached",
+    "hinged_at": "coincident",
+    "point_on_body": "lies_on",
+    "moves_in_slot": "lies_on",
+    "moves_relative_to": "topology_connects",
+    "rotates_about": "coincident",
+}
+_INTERACTION_ONLY_KINDS: dict[str, str] = {
+    "attached_to_spring": "spring",
+    "contact_with": "contact",
+    "collides_with": "collision",
+}
+# No typed constraint contract covers these, so they are reported as a precise
+# projection-neutral diagnostic instead of being forced into a generic `other`.
+_UNMAPPED_RELATION_KINDS: frozenset[str] = frozenset(
+    {"shares_velocity_constraint", "shares_acceleration_constraint"}
+)
+
 _ENVIRONMENT_LINK_RELATION_KINDS: frozenset[str] = frozenset(
     {"contact_with", "slides_on", "rolls_on", "moves_in_slot", "rotates_about"}
 )
+
+# The closed set of assumption kinds this evaluator may authorise at all.
+_CLOSED_ASSUMPTION_KINDS: frozenset[str] = frozenset(
+    {
+        "constant_gravity",
+        "starts_from_rest",
+        "ends_at_rest",
+        "frictionless",
+        "no_air_resistance",
+        "massless_rope",
+        "inextensible_rope",
+        "massless_pulley",
+        "pure_rolling",
+    }
+)
+
+# Kinds whose value is a server default rather than a reader-visible choice.
+_SERVER_DEFAULT_ASSUMPTIONS: frozenset[str] = frozenset({"constant_gravity"})
 
 _ASSUMPTION_PROPOSALS: dict[str, tuple[str, str, str]] = {
     "constant_gravity": ("gravity", "9.81", "m/s^2"),
@@ -259,6 +331,8 @@ class DraftProjectionReason(str, Enum):
     unmapped_entity_kind = "unmapped_entity_kind"
     unmapped_event_kind = "unmapped_event_kind"
     unmapped_relation_kind = "unmapped_relation_kind"
+    relation_kind_has_no_typed_contract = "relation_kind_has_no_typed_contract"
+    assumption_not_authorized = "assumption_not_authorized"
     evidence_quote_not_found = "evidence_quote_not_found"
     evidence_value_not_in_quote = "evidence_value_not_in_quote"
     evidence_quote_occurrence_ambiguous = "evidence_quote_occurrence_ambiguous"
@@ -307,9 +381,77 @@ def _normalize(value: str) -> str:
     return _WHITESPACE.sub(" ", value).strip()
 
 
-def _align_fact_evidence(
-    problem_text: str, fact: Any
-) -> tuple[tuple[int, int], tuple[int, int], str, str]:
+_ASSUMPTION_REASONS: dict[str, str] = {
+    "approved": "closed server policy: source-grounded, uncontested, exact value",
+    "visible": "server-valued default made visible to the reader",
+    "proposed": "reader confirmation required before this assumption may close",
+    "rejected": "no closed server policy authorises this assumption",
+}
+
+
+def _authorize_assumption(
+    *,
+    assumption: Any,
+    problem_text: str,
+    proposal: tuple[str, str, str] | None,
+    explicit_roles: "Counter[str]",
+) -> tuple[str, str]:
+    """Classify one corpus assumption under a closed evaluator-only policy.
+
+    Approval requires a closed kind plus either an explicitly permitted server
+    default or a supporting quote that actually occurs in the source.  A
+    competing explicit fact for the same role outranks the assumption.  A
+    structural idealisation carries no proposed value; it is still authorised
+    on the same grounds, it simply contributes no quantity.  Anything
+    ungrounded stays `proposed`, which means reader confirmation is required
+    and the assumption may not close the graph.
+    """
+
+    assumption_id = f"asm_{assumption.role}"
+    if assumption.kind not in _CLOSED_ASSUMPTION_KINDS:
+        return ("rejected", assumption_id)
+    if proposal is not None and explicit_roles.get(proposal[0], 0) > 0:
+        # An explicit source fact outranks the assumption for this role.
+        return ("rejected", assumption_id)
+    if assumption.kind in _SERVER_DEFAULT_ASSUMPTIONS:
+        return ("approved", assumption_id)
+    quote = assumption.supporting_quote
+    if quote and quote in problem_text:
+        return ("approved", assumption_id)
+    return ("proposed", assumption_id)
+
+
+def _direction_fields(direction: str | None) -> dict[str, Any]:
+    """Carry a source-stated direction into the typed Draft fields.
+
+    A quantity whose source states no direction receives none: the absence is
+    preserved rather than filled with a default.
+    """
+
+    if direction is None or direction not in _SEMANTIC_DIRECTIONS:
+        return {}
+    fields: dict[str, Any] = {
+        "direction": {"kind": "semantic", "direction": direction}
+    }
+    component = _DIRECTION_COMPONENTS.get(direction)
+    if component is not None:
+        fields["component"] = component
+    return fields
+
+
+@dataclass(frozen=True, slots=True)
+class _FactAlignment:
+    """Immutable alignment result; the resolved indices are authoritative."""
+
+    quote_span: tuple[int, int]
+    quantity_span: tuple[int, int]
+    written_value: str
+    written_unit: str
+    resolved_quote_index: int
+    resolved_quantity_index: int
+
+
+def _align_fact_evidence(problem_text: str, fact: Any) -> _FactAlignment:
     """Align one corpus fact onto the source using Phase 55 evidence alignment.
 
     Reuses the product ``quote_occurrences`` / ``quantity_occurrences`` grammar
@@ -368,12 +510,17 @@ def _align_fact_evidence(
         quantity_index = 0
     quantity = pool[quantity_index]
 
-    quote_span = (occurrence.start, occurrence.end)
-    value_span = (
-        occurrence.start + quantity.start,
-        occurrence.start + quantity.end,
+    return _FactAlignment(
+        quote_span=(occurrence.start, occurrence.end),
+        quantity_span=(
+            occurrence.start + quantity.start,
+            occurrence.start + quantity.end,
+        ),
+        written_value=quantity.raw_value,
+        written_unit=quantity.raw_unit,
+        resolved_quote_index=index,
+        resolved_quantity_index=quantity_index,
     )
-    return quote_span, value_span, quantity.raw_value, quantity.raw_unit
 
 
 def _assert_whitelist(case: PublicCorpusCaseV1) -> None:
@@ -555,18 +702,20 @@ def _build_payload(
                 )
                 environment_scoped.append(f"qty_{fact.role}")
 
-        quote_span, value_span, written_value, written_unit = _align_fact_evidence(
-            problem_text, fact
-        )
+        alignment = _align_fact_evidence(problem_text, fact)
+        quote_span = alignment.quote_span
+        value_span = alignment.quantity_span
+        written_value = alignment.written_value
+        written_unit = alignment.written_unit
         evidence_id = f"ev_{index}_{fact.role}"
         source_evidence.append(
             {
                 "evidence_id": evidence_id,
                 "kind": "text",
                 "quote": problem_text[quote_span[0] : quote_span[1]],
-                "occurrence_index": fact.occurrence_index
-                if isinstance(fact.occurrence_index, int)
-                else 0,
+                # The resolved index is recorded, never the original one that
+                # alignment may have had to correct.
+                "occurrence_index": alignment.resolved_quote_index,
                 "source_span": {"start": quote_span[0], "end": quote_span[1]},
                 "quantity_span": {"start": value_span[0], "end": value_span[1]},
             }
@@ -584,14 +733,17 @@ def _build_payload(
                 "raw_value": written_value,
                 "raw_unit": written_unit,
                 "evidence_refs": [evidence_id],
+                **_direction_fields(fact.direction),
             }
         )
 
     interactions: list[dict[str, Any]] = []
+    geometry: list[dict[str, Any]] = []
     for relation in gold.relations:
-        kind = _INTERACTION_KINDS.get(relation.kind)
-        if kind is None:
-            raise DraftProjectionError(DraftProjectionReason.unmapped_relation_kind)
+        if relation.kind in _UNMAPPED_RELATION_KINDS:
+            raise DraftProjectionError(
+                DraftProjectionReason.relation_kind_has_no_typed_contract
+            )
         for participant in relation.participant_roles:
             if participant not in entity_ids:
                 raise DraftProjectionError(
@@ -601,6 +753,22 @@ def _build_payload(
             raise DraftProjectionError(
                 DraftProjectionReason.dangling_interval_reference
             )
+        # Participant order and role are preserved exactly as authored, so a
+        # pulley stays the pulley and a rope topology keeps its endpoints.
+        if relation.kind in _GEOMETRY_KINDS:
+            geometry.append(
+                {
+                    "relation_id": f"geo_{relation.role}",
+                    "kind": _GEOMETRY_KINDS[relation.kind],
+                    "participant_ids": list(relation.participant_roles),
+                    "interval_id": relation.segment_role,
+                    "evidence_refs": [],
+                }
+            )
+            continue
+        kind = _INTERACTION_ONLY_KINDS.get(relation.kind)
+        if kind is None:
+            raise DraftProjectionError(DraftProjectionReason.unmapped_relation_kind)
         interactions.append(
             {
                 "interaction_id": f"rel_{relation.role}",
@@ -611,29 +779,51 @@ def _build_payload(
             }
         )
 
+    # 6-C. An assumption is authorised only by the closed policy below.  The
+    # mere presence of a corpus proposal never approves it.
+    explicit_roles_by_subject: dict[str, Counter[str]] = {}
+    for item in quantities:
+        explicit_roles_by_subject.setdefault(item["subject_id"], Counter())[
+            item["role"]
+        ] += 1
+
     assumptions: list[dict[str, Any]] = []
+    approved: list[str] = []
     for assumption in gold.assumption_proposals:
         subject = assumption.subject_role or entities[0]["entity_id"]
         if subject not in entity_ids:
             raise DraftProjectionError(DraftProjectionReason.dangling_entity_reference)
+        interval_id = (
+            assumption.segment_role if assumption.segment_role in interval_ids else None
+        )
+        if assumption.segment_role is not None and interval_id is None:
+            raise DraftProjectionError(
+                DraftProjectionReason.dangling_interval_reference
+            )
         proposal = _ASSUMPTION_PROPOSALS.get(assumption.kind)
+        disposition, assumption_id = _authorize_assumption(
+            assumption=assumption,
+            problem_text=problem_text,
+            proposal=proposal,
+            explicit_roles=explicit_roles_by_subject.get(subject, Counter()),
+        )
         entry: dict[str, Any] = {
-            "assumption_id": f"asm_{assumption.role}",
+            "assumption_id": assumption_id,
             "kind": assumption.kind,
             "subject_id": subject,
-            "interval_id": assumption.segment_role
-            if assumption.segment_role in interval_ids
-            else None,
-            "disposition": "proposed",
-            "reason": "server-valued assumption implied by the accepted kind",
+            "interval_id": interval_id,
+            "disposition": disposition,
+            "reason": _ASSUMPTION_REASONS[disposition],
             "evidence_refs": [],
         }
-        if proposal is not None:
+        if proposal is not None and disposition != "rejected":
             role, value, unit = proposal
             entry["proposed_role"] = role
             entry["proposed_value"] = value
             entry["proposed_unit"] = unit
         assumptions.append(entry)
+        if disposition == "approved":
+            approved.append(assumption_id)
 
     queries: list[dict[str, Any]] = []
     for query in gold.queries:
@@ -681,7 +871,7 @@ def _build_payload(
         "events": events,
         "quantities": quantities,
         "symbols": [],
-        "geometry": [],
+        "geometry": geometry,
         "interactions": interactions,
         "constraints": [],
         "state_conditions": [],
@@ -700,7 +890,7 @@ def _build_payload(
         payload,
         tuple(environment_scoped),
         tuple(segment_internal),
-        tuple(item["assumption_id"] for item in assumptions),
+        tuple(approved),
     )
 
 
