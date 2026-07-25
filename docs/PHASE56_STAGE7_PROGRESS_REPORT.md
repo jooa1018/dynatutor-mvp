@@ -1,6 +1,81 @@
 # Phase 56 Stage 7 progress report
 
-Disposition: **`STAGE_7_IN_PROGRESS / BLOCKED_ON_PUBLIC_CORPUS_AVAILABILITY`**
+Disposition: **`STAGE_7_IN_PROGRESS / CORPUS_PREFLIGHT_PASSED / LANE_B_NOT_STARTED`**
+
+## Public corpus integrity preflight — PASS
+
+The authorised archive was supplied to the evaluator from a path outside the
+repository. It was never copied into the worktree and never committed.
+
+| Evidence | Observed |
+|---|---|
+| Gate exit code | `0` |
+| Archive SHA-256 | `cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef` |
+| Matches frozen contract SHA | yes |
+| `public_dev` / `public_adversarial` / total | `84` / `16` / `100` |
+| Scope-adjusted distribution | `81 / 12 / 2 / 2 / 2 / 1` |
+| Distinct families | `29` (= 25 accepted + 4 deferred) |
+| Deferred family counts | 3 each across the frozen four |
+| Facts individually quote-verified | `277` |
+| runtime / compiler / solver / provider calls | `0 / 0 / 0 / 0` |
+| External model calls · private access · cost | `0` · `0` · `$0` |
+| Redaction | PASS — artifact written only after the contract check |
+
+**Corpus integrity PASS is not Stage 7 PASS.** The public 100 has not been
+executed through the engine; Lane B remains not started.
+
+### Two fail-closed rejections that the binding caught
+
+Both were real mismatches between the hypothesised and actual archive, and both
+were rejected rather than silently mis-bound:
+
+1. The archive nests every member under a single bundle directory
+   `dynatutor_beer12_ko_corpus_v1_public/` and ships four members the original
+   allowlist did not name.
+2. Gold is nested under `gold`, evidence quotes are per fact, reference answers
+   live in `gold.answers[]`, and unsupported-other is spelled `solver_gap`.
+
+One genuine corpus property forced a contract-preserving change: 12
+dimensionless facts carry `raw_unit: ""`, which is a real unit value rather than
+a missing field, so it is preserved instead of rejected.
+
+The corpus `manifest.json` describes the whole 128-case bundle, so it names
+files this public subset does not ship. Declared entries are verified where
+present, and a declared *forbidden* member must stay absent. The
+private-without-text manifest passed its keys-only audit and is quarantined:
+its case IDs, hashes, families, and terminals inform no implementation,
+routing, prompt, or metric.
+
+## Lane B design (validated route, not yet implemented)
+
+The corpus gold ontology aligns closely with the Phase 55 parse contract, so
+Lane B does not need a new Draft builder:
+
+```text
+corpus gold structure
+  → TextbookProblemParseV1   (source-grounded structural projection)
+  → validate_parse
+  → adapt_validated_phase55  → MechanicsProblemDraftV1
+  → normalize_draft → authorize → MechanicsCompiler → solve_verified_equation_graph
+```
+
+Field correspondence is close to one-to-one for entities, motion segments,
+events, explicit facts, relations, queries, and assumption proposals.
+
+**Open design constraint that must be resolved before implementing.**
+`TextbookProblemParseV1` requires at least one `InterpretationCandidate`, which
+carries a `ParserSystemType`. The corpus exposes `gold.expected_system_type`,
+but §6 and §8 forbid passing an expected system type into the runtime domain,
+and `system_type` has no calculation, routing, law, or solver authority. The
+candidate's system type must therefore be derived **structurally** from the
+query output key and relation kinds, never copied from gold. `adapt_validated_phase55`
+already treats it as diagnostics-only, which is consistent with that rule.
+
+## Superseded blocker note
+
+An earlier revision of this report recorded the corpus as unavailable in the
+evaluator environment. That blocker is resolved; the preflight evidence above
+replaces it. The corpus-independent sections below remain accurate.
 
 Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
