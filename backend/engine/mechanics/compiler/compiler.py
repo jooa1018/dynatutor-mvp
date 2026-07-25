@@ -563,6 +563,37 @@ def _structural_specialization_issue(
             f"queries.{query.query_id}.target.frame_id",
             frame.frame_id,
         )
+    # A declared observer entity states that the problem is posed relative to
+    # something that moves.  When the question's own quantity is bound to a
+    # typed frame, the catalogue can still work in that frame — the polar and
+    # plane-rigid laws do exactly that, and they stay supported.  When it is
+    # bound to no frame at all, the observer is the only frame the source
+    # offers, and every law profile rejects a frame that translates with an
+    # entity or rotates about a point, so no reusable law can relate a kinematic
+    # quantity across it.  Saying so is the precise answer; letting the graph
+    # fall through to "underdetermined" would report a missing equation when
+    # what is missing is a whole model.
+    observer = next(
+        (
+            item
+            for item in ir.entities
+            if item.primitive is EntityPrimitive.reference_frame
+        ),
+        None,
+    )
+    if observer is not None and frame is None and query.target.role in {
+        QuantityRole.position,
+        QuantityRole.displacement,
+        QuantityRole.velocity,
+        QuantityRole.speed,
+        QuantityRole.acceleration,
+    }:
+        return _issue(
+            CompilerIssueCode.requires_specialized_model,
+            "motion stated relative to a declared observer frame requires a specialized mechanics model",
+            f"queries.{query.query_id}.target.role",
+            observer.entity_id,
+        )
     return None
 
 
