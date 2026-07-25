@@ -18,6 +18,7 @@ from evaluation.phase56_stage7.contracts import (
 from evaluation.phase56_stage7.corpus_integrity import (
     ArchiveEntryEvidence,
     CorpusIntegrityError,
+    FORBIDDEN_ARCHIVE_MEMBERS,
     PRIVATE_MANIFEST_MEMBER,
     SafeArchiveInventory,
     read_public_corpus_archive,
@@ -97,16 +98,16 @@ def _failure(
 def _load_public_cases(
     inventory: SafeArchiveInventory,
 ) -> tuple[tuple[PublicCorpusCaseV1, ...], tuple[PublicCorpusCaseV1, ...]]:
-    declared_fields = parse_schema_document(inventory.members["schema.json"])
+    declared_schema = parse_schema_document(inventory.members["schema.json"])
     public_dev = parse_public_jsonl(
         inventory.members["public_dev.jsonl"],
         split=PublicSplit.public_dev,
-        declared_schema_fields=declared_fields,
+        declared_schema=declared_schema,
     )
     public_adversarial = parse_public_jsonl(
         inventory.members["public_adversarial.jsonl"],
         split=PublicSplit.public_adversarial,
-        declared_schema_fields=declared_fields,
+        declared_schema=declared_schema,
     )
     return public_dev, public_adversarial
 
@@ -143,6 +144,7 @@ def run_corpus_integrity_preflight(
                 manifest,
                 entry_sha256_by_name=entry_sha_by_name,
                 split_counts=split_counts,
+                forbidden_member_names=FORBIDDEN_ARCHIVE_MEMBERS,
             )
         report = inventory.members.get("validation_report.json")
         if report is not None:

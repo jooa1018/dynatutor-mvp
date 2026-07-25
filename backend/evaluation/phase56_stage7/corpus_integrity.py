@@ -47,6 +47,10 @@ REQUIRED_ARCHIVE_MEMBERS: tuple[str, ...] = (
 OPTIONAL_READABLE_ARCHIVE_MEMBERS: tuple[str, ...] = (
     "manifest.json",
     "validation_report.json",
+    "corpus_summary.json",
+    "taxonomy.json",
+    "coverage_map.md",
+    "preview.md",
     "README.md",
     "LICENSE",
     "LICENSE.txt",
@@ -239,10 +243,25 @@ def _assert_entry_name_is_safe(index: int, name: str) -> None:
         raise _fail(CorpusIntegrityReason.parent_traversal_entry_path, entry_index=index)
     if any(component in ("", ".") for component in components):
         raise _fail(CorpusIntegrityReason.entry_name_not_portable, entry_index=index)
-    # The authorised corpus is flat; a nested directory can only widen the
-    # traversal surface without adding evaluator value.
-    if len(components) != 1:
+    # At most one bundle directory is tolerated.  Deeper nesting adds traversal
+    # surface without adding evaluator value.
+    if len(components) > 2:
         raise _fail(CorpusIntegrityReason.unexpected_entry_name, entry_index=index)
+
+
+def _resolve_archive_root(names: tuple[str, ...]) -> str:
+    """Return the single bundle directory prefix, or an empty string if flat.
+
+    A mixed layout — some members at the top level and some under a directory,
+    or more than one directory — is rejected: it would make the effective
+    member name ambiguous.
+    """
+
+    roots = {name.split("/")[0] if "/" in name else "" for name in names}
+    if len(roots) != 1:
+        raise _fail(CorpusIntegrityReason.unexpected_entry_name)
+    root = roots.pop()
+    return f"{root}/" if root else ""
 
 
 def _assert_entry_type_is_regular(index: int, info: zipfile.ZipInfo) -> None:
@@ -350,8 +369,15 @@ def read_public_corpus_archive(
             raise _fail(CorpusIntegrityReason.entry_count_limit_exceeded)
 
         for index, info in enumerate(infos):
-            name = info.filename
-            _assert_entry_name_is_safe(index, name)
+            _assert_entry_name_is_safe(index, info.filename)
+        root_prefix = _resolve_archive_root(tuple(info.filename for info in infos))
+
+        for index, info in enumerate(infos):
+            # Names are validated raw before the bundle prefix is removed, so
+            # stripping can never turn an unsafe path into a safe-looking one.
+            name = info.filename[len(root_prefix) :]
+            if not name:
+                raise _fail(CorpusIntegrityReason.directory_entry, entry_index=index)
             _assert_entry_type_is_regular(index, info)
 
             if name in seen_names:

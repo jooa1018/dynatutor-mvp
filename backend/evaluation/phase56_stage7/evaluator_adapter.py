@@ -150,17 +150,21 @@ def assert_runtime_material_is_gold_free(
     gold_tokens: list[str] = [
         case.case_id,
         case.split.value,
-        case.family,
-        case.problem_sha256,
+        case.problem_hash,
+        case.gold.parse_status,
+        case.gold.future_expected_terminal,
+        case.gold.phase55_expected_terminal,
     ]
-    if case.chapter is not None:
-        gold_tokens.append(case.chapter)
-    if case.declared_terminal is not None:
-        gold_tokens.append(case.declared_terminal)
-    if case.reference_answer is not None:
-        gold_tokens.append(repr(case.reference_answer.value))
-        if case.reference_answer.unit is not None:
-            gold_tokens.append(case.reference_answer.unit)
+    if case.family is not None:
+        gold_tokens.append(case.family)
+    if case.gold.expected_system_type is not None:
+        gold_tokens.append(case.gold.expected_system_type)
+    for answer in case.gold.answers:
+        gold_tokens.append(repr(answer.numeric))
+        if answer.unit is not None:
+            gold_tokens.append(answer.unit)
+        if answer.reference_expression is not None:
+            gold_tokens.append(answer.reference_expression)
 
     for token in gold_tokens:
         if not token:

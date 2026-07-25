@@ -18,11 +18,7 @@ from evaluation.phase56_stage7.contracts import (
     Stage7ExpectedTerminal,
     Stage7RuntimeTerminal,
 )
-from evaluation.phase56_stage7.corpus_records import (
-    CorpusFactV1,
-    CorpusReferenceAnswerV1,
-    PublicCorpusCaseV1,
-)
+from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 from evaluation.phase56_stage7.evaluator_adapter import (
     ExecutionTokenIssuer,
     GoldIsolationViolation,
@@ -49,34 +45,27 @@ from evaluation.phase56_stage7.runtime_domain import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
-PROBLEM_TEXT = (
-    "수평면 위의 물체에서 질량은 2.0 kg 이고 가속도는 3.0 m/s^2 이다. 알짜힘을 구하시오."
-)
-PROBLEM_SHA256 = hashlib.sha256(PROBLEM_TEXT.encode("utf-8")).hexdigest()
+from support.phase56_stage7_corpus_fixtures import build_case
+
+
+def _corpus_case(**overrides) -> PublicCorpusCaseV1:
+    record = build_case(
+        index=1,
+        split="public_dev",
+        family="single_particle_newton",
+        future_terminal="accepted",
+        with_answer=True,
+    )
+    record["split"] = PublicSplit.public_dev
+    record.update(overrides)
+    return PublicCorpusCaseV1(**record)
+
+
+PROBLEM_TEXT = _corpus_case().problem_text
 
 
 def _options() -> RuntimeOptionsV1:
     return RuntimeOptionsV1(mechanics_mode=RuntimeEvaluationMode.required)
-
-
-def _corpus_case(**overrides) -> PublicCorpusCaseV1:
-    base = {
-        "case_id": "public_dev-0001",
-        "split": PublicSplit.public_dev,
-        "family": "newton_second_law",
-        "problem_text": PROBLEM_TEXT,
-        "problem_sha256": PROBLEM_SHA256,
-        "evidence_quotes": ("질량은 2.0 kg", "가속도는 3.0 m/s^2"),
-        "facts": (
-            CorpusFactV1(role="mass", value=2.0, unit="kg"),
-            CorpusFactV1(role="acceleration", value=3.0, unit="m/s^2"),
-        ),
-        "reference_answer": CorpusReferenceAnswerV1(value=6.0, unit="N"),
-        "declared_terminal": "accepted",
-        "chapter": "ch12",
-    }
-    base.update(overrides)
-    return PublicCorpusCaseV1(**base)
 
 
 def _deterministic_runtime(runtime_input) -> RuntimeDomainSnapshotV1:
@@ -196,9 +185,9 @@ def test_case_id_routing_cannot_change_a_deterministic_result() -> None:
     (
         ("family", "spring_mass_vibration"),
         ("split", PublicSplit.public_adversarial),
-        ("chapter", "ch99"),
-        ("declared_terminal", "needs_figure"),
-        ("problem_sha256", "f" * 64),
+        ("difficulty", 5),
+        ("tags", ("routing-bait",)),
+        ("problem_hash", "f" * 64),
     ),
 )
 def test_family_split_chapter_and_terminal_routing_cannot_reach_runtime(
@@ -220,10 +209,18 @@ def test_expected_answer_lookup_cannot_reach_runtime_or_cache() -> None:
     baseline = to_runtime_input(
         _corpus_case(), execution_token=token, options=_options()
     )
+    leaky = _corpus_case()
+    rewritten_gold = leaky.gold.model_copy(
+        update={
+            "answers": (
+                leaky.gold.answers[0].model_copy(
+                    update={"numeric": 999999.5, "unit": "kg"}
+                ),
+            )
+        }
+    )
     rewritten = to_runtime_input(
-        _corpus_case(
-            reference_answer=CorpusReferenceAnswerV1(value=999999.5, unit="kg")
-        ),
+        leaky.model_copy(update={"gold": rewritten_gold}),
         execution_token=token,
         options=_options(),
     )
@@ -237,8 +234,8 @@ def test_adapter_emits_no_gold_token_into_runtime_material() -> None:
     runtime_input = to_runtime_input(case, execution_token=token, options=_options())
     assert_runtime_material_is_gold_free(runtime_input, case)
     serialized = runtime_input.model_dump_json()
-    for leaked in ("public_dev-0001", "newton_second_law", "ch12", PROBLEM_SHA256):
-        assert leaked not in serialized
+    for leaked in (case.case_id, case.family or "", case.problem_hash, "m*a"):
+        assert leaked and leaked not in serialized
 
 
 def test_filename_and_path_routing_is_not_expressible() -> None:
@@ -277,13 +274,11 @@ def test_cache_identity_excludes_the_opaque_token_but_covers_real_input() -> Non
     assert first.execution_token != second.execution_token
     assert first.cache_sha256() == second.cache_sha256()
 
+    altered = PROBLEM_TEXT.replace("알짜힘", "가속도")
     changed_text = to_runtime_input(
         _corpus_case(
-            problem_text=PROBLEM_TEXT.replace("3.0 m/s^2", "4.0 m/s^2"),
-            problem_sha256=hashlib.sha256(
-                PROBLEM_TEXT.replace("3.0 m/s^2", "4.0 m/s^2").encode("utf-8")
-            ).hexdigest(),
-            evidence_quotes=("질량은 2.0 kg", "가속도는 4.0 m/s^2"),
+            problem_text=altered,
+            problem_hash=hashlib.sha256(altered.encode("utf-8")).hexdigest(),
         ),
         execution_token=issuer.issue(2),
         options=_options(),

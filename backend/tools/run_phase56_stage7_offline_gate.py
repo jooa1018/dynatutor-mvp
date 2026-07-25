@@ -204,6 +204,15 @@ def _corpus_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutc
                     evidence.distribution.insufficient_information
                 ),
             },
+            "family_count": evidence.family_count,
+            "checked_fact_count": evidence.checked_fact_count,
+            "deferred_family_counts": dict(evidence.deferred_family_counts),
+            "runtime_calls": result.ledger.runtime_calls,
+            "compiler_calls": result.ledger.compiler_calls,
+            "solver_calls": result.ledger.solver_calls,
+            "model_or_provider_calls": result.ledger.model_or_provider_calls,
+            "measured_cost_usd": result.ledger.measured_cost_usd,
+            "zero_execution": result.ledger.zero_execution,
             "entry_sha256": {
                 entry.name: entry.sha256 for entry in result.entry_evidence
             },

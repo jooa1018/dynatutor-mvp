@@ -1,14 +1,13 @@
 """Stage 7 public corpus schema binding and normalised record parsing.
 
-The corpus is an external artifact whose exact key spelling is not part of this
-repository.  Rather than guessing a single key name, each normalised field
-declares an ordered alias set that must resolve *unambiguously* and *identically*
-for every record, and every resolved alias must also be declared by the
-archive's own ``schema.json``.  Any drift, ambiguity, or undeclared key fails
-closed instead of silently binding the wrong column.
+Records are bound to the corpus's own frozen `dynatutor-ko-corpus-v1.0` schema.
+The binding is cross-checked against the archive's `schema.json` on every run:
+if the corpus ever renames or drops a required field, parsing fails closed
+instead of silently binding the wrong column.
 
-Nothing here reaches the runtime domain: normalised records stay in the gold /
-scoring domain and are consumed only by the scorer and the integrity checks.
+Nothing here reaches the runtime domain.  Normalised records stay in the gold /
+scoring domain.  `reference_expression` is retained verbatim for provenance and
+is **never** evaluated.
 """
 
 from __future__ import annotations
@@ -18,30 +17,48 @@ import math
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Mapping
+from typing import Annotated, Any, Mapping
 
-from pydantic import Field, StringConstraints, ValidationError
-from typing import Annotated
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
-from evaluation.phase56_stage7.contracts import (
-    FrozenStrictModel,
-    Sha256,
-    Stage7FailureKind,
-)
+from evaluation.phase56_stage7.contracts import Sha256, Stage7FailureKind
 from evaluation.phase56_stage7.gold_domain import PublicSplit
 
 
-RECORD_BINDING_VERSION = "phase56-stage7-public-record-binding-v1"
+RECORD_BINDING_VERSION = "phase56-stage7-public-record-binding-v2"
+CORPUS_SCHEMA_VERSION = "dynatutor-ko-corpus-v1.0"
 
-_PRIVATE_KEY_MARKERS: tuple[str, ...] = (
-    "private",
-    "heldout",
-    "held_out",
-    "donotshare",
-    "do_not_share",
-)
+_PRIVATE_SPLIT_LABEL = "private_heldout"
 _MAX_RECORDS_PER_SPLIT = 512
 _MAX_JSONL_LINE_CHARS = 200_000
+
+REQUIRED_CASE_FIELDS: tuple[str, ...] = (
+    "schema_version",
+    "case_id",
+    "split",
+    "language",
+    "problem_text",
+    "problem_hash",
+    "source_provenance",
+    "gold",
+    "difficulty",
+    "tags",
+)
+REQUIRED_GOLD_FIELDS: tuple[str, ...] = (
+    "parse_status",
+    "expected_system_type",
+    "phase55_expected_terminal",
+    "future_expected_terminal",
+    "figure_dependency",
+    "entities",
+    "motion_segments",
+    "events",
+    "explicit_facts",
+    "relations",
+    "assumption_proposals",
+    "queries",
+    "answers",
+)
 
 
 class CorpusRecordReason(str, Enum):
@@ -53,14 +70,16 @@ class CorpusRecordReason(str, Enum):
     jsonl_line_too_long = "jsonl_line_too_long"
     record_limit_exceeded = "record_limit_exceeded"
     schema_declaration_unrecognized = "schema_declaration_unrecognized"
+    schema_version_mismatch = "schema_version_mismatch"
     undeclared_bound_field = "undeclared_bound_field"
     missing_required_field = "missing_required_field"
-    ambiguous_field_binding = "ambiguous_field_binding"
-    inconsistent_field_binding = "inconsistent_field_binding"
+    missing_required_gold_field = "missing_required_gold_field"
     invalid_field_type = "invalid_field_type"
-    private_marker_in_public_record = "private_marker_in_public_record"
-    private_manifest_not_keys_only = "private_manifest_not_keys_only"
+    non_finite_number = "non_finite_number"
+    private_split_in_public_file = "private_split_in_public_file"
     unknown_split_label = "unknown_split_label"
+    split_file_mismatch = "split_file_mismatch"
+    non_korean_language = "non_korean_language"
 
 
 class CorpusRecordError(Exception):
@@ -76,8 +95,7 @@ class CorpusRecordError(Exception):
     ) -> None:
         detail = reason.value
         if field is not None:
-            # ``field`` is always an evaluator-declared normalised field name,
-            # never a corpus-supplied string.
+            # ``field`` is always an evaluator-declared name, never corpus text.
             detail = f"{detail}[field:{field}]"
         if record_index is not None:
             detail = f"{detail}[record:{record_index}]"
@@ -92,275 +110,251 @@ class CorpusRecordError(Exception):
         return str(self)
 
 
-@dataclass(frozen=True, slots=True)
-class FieldBinding:
-    normalized_field: str
-    aliases: tuple[str, ...]
-    required: bool
+class CorpusModel(BaseModel):
+    """Frozen gold-domain record model.
+
+    Unlike the runtime contracts this is not ``strict``: the corpus stores some
+    numeric answers as JSON integers, and rejecting an integral answer would be
+    a harness defect rather than a corpus defect.  Unknown keys are still
+    forbidden so a silent schema drift cannot pass unnoticed.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-PUBLIC_CASE_FIELD_BINDINGS: tuple[FieldBinding, ...] = (
-    FieldBinding("case_id", ("case_id", "id", "caseId"), True),
-    FieldBinding("split", ("split", "public_split", "subset"), True),
-    FieldBinding("family", ("family", "corpus_family", "category"), True),
-    FieldBinding("problem_text", ("problem_text", "problem", "question", "text"), True),
-    FieldBinding(
-        "problem_sha256",
-        ("problem_sha256", "problem_hash", "text_sha256", "problem_text_sha256"),
-        True,
-    ),
-    FieldBinding(
-        "evidence_quotes",
-        ("evidence_quotes", "evidence", "source_quotes", "quotes"),
-        True,
-    ),
-    FieldBinding("facts", ("facts", "explicit_facts", "given_facts"), True),
-    FieldBinding(
-        "reference_answer",
-        ("reference_answer", "answer", "expected_answer", "final_answer"),
-        False,
-    ),
-    FieldBinding(
-        "declared_terminal",
-        ("expected_terminal", "terminal", "future_expected_terminal", "outcome"),
-        False,
-    ),
-    FieldBinding("chapter", ("chapter", "section", "unit_chapter"), False),
-)
-
-_FACT_VALUE_ALIASES: tuple[str, ...] = ("value", "quantity", "magnitude", "number")
-_FACT_UNIT_ALIASES: tuple[str, ...] = ("unit", "units", "unit_symbol")
-_FACT_ROLE_ALIASES: tuple[str, ...] = (
-    "semantic_role",
-    "role",
-    "key",
-    "name",
-    "semantic_key",
-)
-_ANSWER_VALUE_ALIASES: tuple[str, ...] = ("value", "magnitude", "number", "answer")
-_ANSWER_UNIT_ALIASES: tuple[str, ...] = ("unit", "units", "unit_symbol")
-
-BoundedText = Annotated[str, StringConstraints(min_length=1, max_length=50_000)]
-BoundedToken = Annotated[str, StringConstraints(min_length=1, max_length=128)]
+Role = Annotated[str, StringConstraints(min_length=1, max_length=128)]
+ShortText = Annotated[str, StringConstraints(min_length=1, max_length=512)]
+ProblemText = Annotated[str, StringConstraints(min_length=10, max_length=50_000)]
+# A dimensionless corpus quantity carries an empty unit string; that is a real
+# unit value, not a missing field, so it is preserved rather than rejected.
+UnitText = Annotated[str, StringConstraints(max_length=64)]
 
 
-class CorpusFactV1(FrozenStrictModel):
-    role: BoundedToken
-    value: float | None = Field(default=None, allow_inf_nan=False)
-    unit: Annotated[str, StringConstraints(min_length=1, max_length=48)] | None = None
+class CorpusEntityV1(CorpusModel):
+    role: Role
+    kind: ShortText
+    label: ShortText | None = None
 
 
-class CorpusReferenceAnswerV1(FrozenStrictModel):
-    value: float = Field(allow_inf_nan=False)
-    unit: Annotated[str, StringConstraints(min_length=1, max_length=48)] | None = None
+class CorpusSegmentV1(CorpusModel):
+    role: Role
+    order: int
+    actor_roles: tuple[Role, ...] = ()
+    motion_model: ShortText | None = None
+    relevance: ShortText | None = None
+    start_event_role: Role | None = None
+    end_event_role: Role | None = None
 
 
-class PublicCorpusCaseV1(FrozenStrictModel):
+class CorpusEventV1(CorpusModel):
+    role: Role
+    kind: ShortText
+    subject_roles: tuple[Role, ...] = ()
+    segment_role: Role | None = None
+    evidence_quote: ShortText | None = None
+
+
+class CorpusFactV1(CorpusModel):
+    role: Role
+    semantic_key: ShortText
+    raw_value: ShortText
+    raw_unit: UnitText | None = None
+    evidence_quote: ShortText | None = None
+    subject_role: Role | None = None
+    segment_role: Role | None = None
+    event_role: Role | None = None
+    temporal_role: ShortText | None = None
+    direction: ShortText | None = None
+    relevance: ShortText | None = None
+    occurrence_index: int = 0
+    quantity_occurrence_index: int = 0
+
+    @property
+    def numeric_value(self) -> float | None:
+        try:
+            value = float(self.raw_value.replace(",", ""))
+        except ValueError:
+            return None
+        return value if math.isfinite(value) else None
+
+
+class CorpusRelationV1(CorpusModel):
+    role: Role
+    kind: ShortText
+    participant_roles: tuple[Role, ...] = ()
+    segment_role: Role | None = None
+
+
+class CorpusAssumptionV1(CorpusModel):
+    role: Role
+    kind: ShortText
+    subject_role: Role | None = None
+    segment_role: Role | None = None
+    supporting_quote: ShortText | None = None
+    server_value_only: bool = False
+
+
+class CorpusQueryV1(CorpusModel):
+    role: Role
+    output_key: ShortText
+    subject_role: Role | None = None
+    segment_role: Role | None = None
+    component: ShortText | None = None
+    event_role: Role | None = None
+
+
+class CorpusAnswerV1(CorpusModel):
+    query_role: Role
+    numeric: float
+    unit: ShortText | None = None
+    tolerance_abs: float = 0.0
+    reference_expression: ShortText | None = None
+    sign_convention: ShortText | None = None
+
+
+class CorpusFigureDependencyV1(CorpusModel):
+    level: ShortText
+    missing_information: tuple[ShortText, ...] = ()
+
+
+class CorpusGoldV1(CorpusModel):
+    parse_status: ShortText
+    expected_system_type: ShortText | None = None
+    phase55_expected_terminal: ShortText
+    future_expected_terminal: ShortText
+    figure_dependency: CorpusFigureDependencyV1
+    entities: tuple[CorpusEntityV1, ...] = Field(default=(), max_length=256)
+    motion_segments: tuple[CorpusSegmentV1, ...] = Field(default=(), max_length=256)
+    events: tuple[CorpusEventV1, ...] = Field(default=(), max_length=256)
+    explicit_facts: tuple[CorpusFactV1, ...] = Field(default=(), max_length=1024)
+    relations: tuple[CorpusRelationV1, ...] = Field(default=(), max_length=1024)
+    assumption_proposals: tuple[CorpusAssumptionV1, ...] = Field(
+        default=(), max_length=256
+    )
+    queries: tuple[CorpusQueryV1, ...] = Field(default=(), max_length=64)
+    answers: tuple[CorpusAnswerV1, ...] = Field(default=(), max_length=64)
+    expected_failure_codes: tuple[ShortText, ...] = ()
+
+
+class CorpusProvenanceV1(BaseModel):
+    """Provenance is declared ``additionalProperties: true`` by the corpus."""
+
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    basis: ShortText
+    title: ShortText
+    edition: int
+    chapter: int
+    section: ShortText
+    independently_authored: bool
+    original_problem_text_copied: bool
+    original_numbers_reused: bool
+    original_figures_reused: bool
+
+
+class PublicCorpusCaseV1(CorpusModel):
     """Normalised, gold-domain-only view of one public corpus case."""
 
     binding_version: str = RECORD_BINDING_VERSION
-    case_id: BoundedToken
+    schema_version: ShortText
+    case_id: Role
     split: PublicSplit
-    family: BoundedToken
-    problem_text: BoundedText
-    problem_sha256: Sha256
-    evidence_quotes: tuple[BoundedText, ...] = Field(max_length=64)
-    facts: tuple[CorpusFactV1, ...] = Field(default=(), max_length=128)
-    reference_answer: CorpusReferenceAnswerV1 | None = None
-    declared_terminal: BoundedToken | None = None
-    chapter: BoundedToken | None = None
+    language: ShortText
+    problem_text: ProblemText
+    problem_hash: Sha256
+    source_provenance: CorpusProvenanceV1
+    gold: CorpusGoldV1
+    family: Role | None = None
+    difficulty: int = 1
+    tags: tuple[ShortText, ...] = ()
+    notes: tuple[ShortText, ...] = ()
+
+    @property
+    def chapter(self) -> int:
+        return self.source_provenance.chapter
+
+    @property
+    def reference_answers(self) -> tuple[CorpusAnswerV1, ...]:
+        return self.gold.answers
 
 
-def _declared_schema_field_names(schema_document: Any) -> frozenset[str]:
-    """Extract declared field names from the archive's own schema document."""
-
-    if not isinstance(schema_document, Mapping):
-        raise CorpusRecordError(CorpusRecordReason.schema_declaration_unrecognized)
-    properties = schema_document.get("properties")
-    if isinstance(properties, Mapping) and properties:
-        return frozenset(str(key) for key in properties)
-    fields = schema_document.get("fields")
-    if isinstance(fields, (list, tuple)) and fields:
-        names: set[str] = set()
-        for entry in fields:
-            if isinstance(entry, str):
-                names.add(entry)
-            elif isinstance(entry, Mapping) and isinstance(entry.get("name"), str):
-                names.add(str(entry["name"]))
-        if names:
-            return frozenset(names)
-    raise CorpusRecordError(CorpusRecordReason.schema_declaration_unrecognized)
+@dataclass(frozen=True, slots=True)
+class DeclaredSchema:
+    version: str
+    case_fields: frozenset[str]
+    gold_fields: frozenset[str]
 
 
-def parse_schema_document(schema_bytes: bytes) -> frozenset[str]:
+def _object_property_names(node: Any) -> frozenset[str]:
+    if isinstance(node, Mapping):
+        properties = node.get("properties")
+        if isinstance(properties, Mapping) and properties:
+            return frozenset(str(key) for key in properties)
+    return frozenset()
+
+
+def parse_schema_document(schema_bytes: bytes) -> DeclaredSchema:
+    """Read the archive's own schema declaration and confirm the binding fits."""
+
     try:
         document = json.loads(schema_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise CorpusRecordError(CorpusRecordReason.invalid_json) from exc
-    return _declared_schema_field_names(document)
+    if not isinstance(document, Mapping):
+        raise CorpusRecordError(CorpusRecordReason.schema_declaration_unrecognized)
 
+    case_fields = _object_property_names(document)
+    if not case_fields:
+        raise CorpusRecordError(CorpusRecordReason.schema_declaration_unrecognized)
+    gold_fields = _object_property_names(document["properties"].get("gold"))
+    if not gold_fields:
+        raise CorpusRecordError(CorpusRecordReason.schema_declaration_unrecognized)
 
-def _assert_no_private_markers(record: Mapping[str, Any], index: int) -> None:
-    for key in record:
-        folded = re.sub(r"[^a-z0-9]", "", str(key).casefold())
-        if any(marker.replace("_", "") in folded for marker in _PRIVATE_KEY_MARKERS):
-            raise CorpusRecordError(
-                CorpusRecordReason.private_marker_in_public_record,
-                record_index=index,
-            )
+    declared_version = document["properties"].get("schema_version", {})
+    version = (
+        declared_version.get("const")
+        if isinstance(declared_version, Mapping)
+        else None
+    )
+    if version != CORPUS_SCHEMA_VERSION:
+        raise CorpusRecordError(CorpusRecordReason.schema_version_mismatch)
 
-
-def _resolve_alias(
-    record: Mapping[str, Any], binding: FieldBinding, index: int
-) -> str | None:
-    present = [alias for alias in binding.aliases if alias in record]
-    if len(present) > 1:
+    missing_case = set(REQUIRED_CASE_FIELDS) - case_fields
+    if missing_case:
         raise CorpusRecordError(
-            CorpusRecordReason.ambiguous_field_binding,
-            field=binding.normalized_field,
-            record_index=index,
+            CorpusRecordReason.undeclared_bound_field,
+            field=sorted(missing_case)[0],
         )
-    if not present:
-        if binding.required:
-            raise CorpusRecordError(
-                CorpusRecordReason.missing_required_field,
-                field=binding.normalized_field,
-                record_index=index,
-            )
-        return None
-    return present[0]
-
-
-def _require_str(value: Any, *, field: str, index: int) -> str:
-    """Require a genuine string; stringifying ``None`` would fabricate a value."""
-
-    if not isinstance(value, str):
+    missing_gold = set(REQUIRED_GOLD_FIELDS) - gold_fields
+    if missing_gold:
         raise CorpusRecordError(
-            CorpusRecordReason.invalid_field_type, field=field, record_index=index
+            CorpusRecordReason.undeclared_bound_field,
+            field=sorted(missing_gold)[0],
         )
-    return value
-
-
-def _pick(mapping: Mapping[str, Any], aliases: tuple[str, ...]) -> Any:
-    for alias in aliases:
-        if alias in mapping:
-            return mapping[alias]
-    return None
-
-
-def _coerce_quotes(value: Any, index: int) -> tuple[str, ...]:
-    if isinstance(value, str):
-        return (value,)
-    if isinstance(value, (list, tuple)):
-        quotes: list[str] = []
-        for item in value:
-            if isinstance(item, str):
-                quotes.append(item)
-            elif isinstance(item, Mapping):
-                text = _pick(item, ("quote", "text", "span", "source_text"))
-                if not isinstance(text, str):
-                    raise CorpusRecordError(
-                        CorpusRecordReason.invalid_field_type,
-                        field="evidence_quotes",
-                        record_index=index,
-                    )
-                quotes.append(text)
-            else:
-                raise CorpusRecordError(
-                    CorpusRecordReason.invalid_field_type,
-                    field="evidence_quotes",
-                    record_index=index,
-                )
-        return tuple(quotes)
-    raise CorpusRecordError(
-        CorpusRecordReason.invalid_field_type,
-        field="evidence_quotes",
-        record_index=index,
+    return DeclaredSchema(
+        version=version, case_fields=case_fields, gold_fields=gold_fields
     )
 
 
-def _coerce_number(value: Any, *, field: str, index: int) -> float | None:
-    if isinstance(value, bool) or value is None:
-        return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-        if not math.isfinite(number):
-            # JSON accepts NaN/Infinity by default; a non-finite corpus number
-            # must fail closed rather than silently degrade to "absent".
-            raise CorpusRecordError(
-                CorpusRecordReason.invalid_field_type, field=field, record_index=index
-            )
-        return number
-    return None
+def _assert_finite_numbers(node: Any, index: int, depth: int = 0) -> None:
+    """JSON accepts NaN/Infinity by default; a non-finite corpus number fails."""
 
-
-def _coerce_facts(value: Any, index: int) -> tuple[CorpusFactV1, ...]:
-    if value is None:
-        return ()
-    if not isinstance(value, (list, tuple)):
+    if depth > 32:
         raise CorpusRecordError(
-            CorpusRecordReason.invalid_field_type, field="facts", record_index=index
+            CorpusRecordReason.invalid_field_type, record_index=index
         )
-    facts: list[CorpusFactV1] = []
-    for item in value:
-        if not isinstance(item, Mapping):
-            raise CorpusRecordError(
-                CorpusRecordReason.invalid_field_type, field="facts", record_index=index
-            )
-        role = _pick(item, _FACT_ROLE_ALIASES)
-        if not isinstance(role, str) or not role:
-            raise CorpusRecordError(
-                CorpusRecordReason.invalid_field_type, field="facts", record_index=index
-            )
-        unit = _pick(item, _FACT_UNIT_ALIASES)
-        try:
-            facts.append(
-                CorpusFactV1(
-                    role=role,
-                    value=_coerce_number(
-                        _pick(item, _FACT_VALUE_ALIASES), field="facts", index=index
-                    ),
-                    unit=unit if isinstance(unit, str) and unit else None,
-                )
-            )
-        except ValidationError as exc:
-            raise CorpusRecordError(
-                CorpusRecordReason.invalid_field_type, field="facts", record_index=index
-            ) from exc
-    return tuple(facts)
-
-
-def _coerce_reference_answer(value: Any, index: int) -> CorpusReferenceAnswerV1 | None:
-    if value is None:
-        return None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        number = _coerce_number(value, field="reference_answer", index=index)
-        if number is None:
-            raise CorpusRecordError(
-                CorpusRecordReason.invalid_field_type,
-                field="reference_answer",
-                record_index=index,
-            )
-        return CorpusReferenceAnswerV1(value=number)
-    if isinstance(value, Mapping):
-        number = _coerce_number(
-            _pick(value, _ANSWER_VALUE_ALIASES), field="reference_answer", index=index
+    if isinstance(node, bool):
+        return
+    if isinstance(node, float) and not math.isfinite(node):
+        raise CorpusRecordError(
+            CorpusRecordReason.non_finite_number, record_index=index
         )
-        if number is None:
-            # A structured answer without a finite numeric value describes a
-            # non-numeric outcome; it is not a reference answer.
-            return None
-        unit = _pick(value, _ANSWER_UNIT_ALIASES)
-        return CorpusReferenceAnswerV1(
-            value=number, unit=unit if isinstance(unit, str) and unit else None
-        )
-    if isinstance(value, str):
-        return None
-    raise CorpusRecordError(
-        CorpusRecordReason.invalid_field_type,
-        field="reference_answer",
-        record_index=index,
-    )
+    if isinstance(node, Mapping):
+        for child in node.values():
+            _assert_finite_numbers(child, index, depth + 1)
+    elif isinstance(node, (list, tuple)):
+        for child in node:
+            _assert_finite_numbers(child, index, depth + 1)
 
 
 def _coerce_split(value: Any, expected: PublicSplit, index: int) -> PublicSplit:
@@ -369,11 +363,15 @@ def _coerce_split(value: Any, expected: PublicSplit, index: int) -> PublicSplit:
             CorpusRecordReason.invalid_field_type, field="split", record_index=index
         )
     normalized = value.strip().casefold().replace("-", "_")
+    if normalized == _PRIVATE_SPLIT_LABEL:
+        raise CorpusRecordError(
+            CorpusRecordReason.private_split_in_public_file, record_index=index
+        )
     for split in PublicSplit:
         if normalized == split.value:
             if split is not expected:
                 raise CorpusRecordError(
-                    CorpusRecordReason.unknown_split_label, record_index=index
+                    CorpusRecordReason.split_file_mismatch, record_index=index
                 )
             return split
     raise CorpusRecordError(CorpusRecordReason.unknown_split_label, record_index=index)
@@ -383,20 +381,17 @@ def parse_public_jsonl(
     payload: bytes,
     *,
     split: PublicSplit,
-    declared_schema_fields: frozenset[str],
+    declared_schema: DeclaredSchema,
 ) -> tuple[PublicCorpusCaseV1, ...]:
     """Parse one authorised public split into normalised gold-domain cases."""
 
-    text = payload.decode("utf-8")
-    lines = text.split("\n")
+    lines = payload.decode("utf-8").split("\n")
     if lines and lines[-1] == "":
         lines.pop()
     if len(lines) > _MAX_RECORDS_PER_SPLIT:
         raise CorpusRecordError(CorpusRecordReason.record_limit_exceeded)
 
-    resolved_binding: dict[str, str | None] = {}
     cases: list[PublicCorpusCaseV1] = []
-
     for index, line in enumerate(lines):
         if len(line) > _MAX_JSONL_LINE_CHARS:
             raise CorpusRecordError(
@@ -416,61 +411,46 @@ def parse_public_jsonl(
             raise CorpusRecordError(
                 CorpusRecordReason.record_not_object, record_index=index
             )
-        _assert_no_private_markers(record, index)
+        _assert_finite_numbers(record, index)
 
-        values: dict[str, Any] = {}
-        for binding in PUBLIC_CASE_FIELD_BINDINGS:
-            alias = _resolve_alias(record, binding, index)
-            if alias is not None:
-                # Optional fields legitimately appear on only some records, so
-                # consistency is enforced across the records that carry them.
-                previous = resolved_binding.get(binding.normalized_field)
-                if previous is not None and previous != alias:
-                    raise CorpusRecordError(
-                        CorpusRecordReason.inconsistent_field_binding,
-                        field=binding.normalized_field,
-                        record_index=index,
-                    )
-                resolved_binding[binding.normalized_field] = alias
-                if alias not in declared_schema_fields:
-                    raise CorpusRecordError(
-                        CorpusRecordReason.undeclared_bound_field,
-                        field=binding.normalized_field,
-                        record_index=index,
-                    )
-            values[binding.normalized_field] = (
-                record[alias] if alias is not None else None
-            )
-
-        declared_terminal = values["declared_terminal"]
-        chapter = values["chapter"]
-        try:
-            case = PublicCorpusCaseV1(
-                case_id=_require_str(values["case_id"], field="case_id", index=index),
-                split=_coerce_split(values["split"], split, index),
-                family=_require_str(values["family"], field="family", index=index),
-                problem_text=_require_str(
-                    values["problem_text"], field="problem_text", index=index
-                ),
-                problem_sha256=_require_str(
-                    values["problem_sha256"], field="problem_sha256", index=index
+        for field in REQUIRED_CASE_FIELDS:
+            if field not in record:
+                raise CorpusRecordError(
+                    CorpusRecordReason.missing_required_field,
+                    field=field,
+                    record_index=index,
                 )
-                .strip()
-                .casefold(),
-                evidence_quotes=_coerce_quotes(values["evidence_quotes"], index),
-                facts=_coerce_facts(values["facts"], index),
-                reference_answer=_coerce_reference_answer(
-                    values["reference_answer"], index
-                ),
-                declared_terminal=str(declared_terminal)
-                if isinstance(declared_terminal, str) and declared_terminal
-                else None,
-                chapter=str(chapter) if isinstance(chapter, str) and chapter else None,
+        gold = record["gold"]
+        if not isinstance(gold, Mapping):
+            raise CorpusRecordError(
+                CorpusRecordReason.invalid_field_type, field="gold", record_index=index
             )
+        for field in REQUIRED_GOLD_FIELDS:
+            if field not in gold:
+                raise CorpusRecordError(
+                    CorpusRecordReason.missing_required_gold_field,
+                    field=field,
+                    record_index=index,
+                )
+        if record["schema_version"] != declared_schema.version:
+            raise CorpusRecordError(
+                CorpusRecordReason.schema_version_mismatch, record_index=index
+            )
+        if record["language"] != "ko":
+            raise CorpusRecordError(
+                CorpusRecordReason.non_korean_language, record_index=index
+            )
+
+        payload_fields = dict(record)
+        payload_fields["split"] = _coerce_split(record["split"], split, index)
+        try:
+            cases.append(PublicCorpusCaseV1(**payload_fields))
         except ValidationError as exc:
             raise CorpusRecordError(
                 CorpusRecordReason.invalid_field_type, record_index=index
             ) from exc
-        cases.append(case)
-
     return tuple(cases)
+
+
+def normalized_problem_key(problem_text: str) -> str:
+    return re.sub(r"\s+", " ", problem_text).strip()
