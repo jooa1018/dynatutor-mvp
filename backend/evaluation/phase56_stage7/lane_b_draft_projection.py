@@ -336,6 +336,18 @@ _CLOSED_ASSUMPTION_KINDS: frozenset[str] = frozenset(
 # Kinds whose value is a server default rather than a reader-visible choice.
 _SERVER_DEFAULT_ASSUMPTIONS: frozenset[str] = frozenset({"constant_gravity"})
 
+# A rest assumption is a *boundary condition*, not a supplied number.  The typed
+# IR expresses it as a StateCondition at the interval boundary the corpus names,
+# which pins that instant's own unknown velocity to zero through the reusable
+# `state_at_rest` law.  Nothing is fabricated as a known value: the constraint
+# carries the authority and the solver derives the number.
+_REST_STATE_CONDITIONS: dict[str, tuple[str, str]] = {
+    # corpus assumption kind -> (typed state kind, interval boundary slot)
+    "starts_from_rest": ("initial", "start_event_id"),
+    "ends_at_rest": ("final", "end_event_id"),
+}
+_VELOCITY_DIMENSION: dict[str, int] = _dim(length=1, time=-1)
+
 _ASSUMPTION_PROPOSALS: dict[str, tuple[str, str, str]] = {
     "constant_gravity": ("gravity", "9.81", "m/s^2"),
     "starts_from_rest": ("velocity", "0", "m/s"),
@@ -459,6 +471,23 @@ def _authorize_assumption(
     if quote and quote in problem_text:
         return ("approved", assumption_id)
     return ("proposed", assumption_id)
+
+
+def _locate_quote(problem_text: str, quote: str | None) -> tuple[int, int] | None:
+    """Resolve one supporting quote to its exact, unambiguous source span.
+
+    Reuses the same Phase 55 occurrence grammar the fact path uses.  An absent
+    or ambiguous quote yields no span, and the caller then emits no evidence and
+    no state condition rather than guessing which occurrence was meant.
+    """
+
+    if not quote:
+        return None
+    occurrences = quote_occurrences(problem_text, quote)
+    if len(occurrences) != 1:
+        return None
+    occurrence = occurrences[0]
+    return (occurrence.start, occurrence.end)
 
 
 def _direction_fields(direction: str | None) -> dict[str, Any]:
@@ -1012,6 +1041,9 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
 
     assumptions: list[dict[str, Any]] = []
     approved: list[str] = []
+    state_conditions: list[dict[str, Any]] = []
+    boundary_unknowns: list[dict[str, Any]] = []
+    intervals_by_id = {item["interval_id"]: item for item in intervals}
     for assumption in gold.assumption_proposals:
         subject = assumption.subject_role or entities[0]["entity_id"]
         if subject not in entity_ids:
@@ -1044,9 +1076,40 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             entry["proposed_role"] = role
             entry["proposed_value"] = value
             entry["proposed_unit"] = unit
+        # An approved assumption that a source quote grounds records that quote
+        # as real evidence, so anything it later authorises is traceable to the
+        # sentence that licensed it.
+        quote_span = (
+            _locate_quote(problem_text, assumption.supporting_quote)
+            if disposition == "approved"
+            else None
+        )
+        if quote_span is not None:
+            evidence_id = f"ev_asm_{assumption.role}"
+            source_evidence.append(
+                {
+                    "evidence_id": evidence_id,
+                    "kind": "text",
+                    "quote": problem_text[quote_span[0] : quote_span[1]],
+                    "occurrence_index": 0,
+                    "source_span": {"start": quote_span[0], "end": quote_span[1]},
+                }
+            )
+            entry["evidence_refs"] = [evidence_id]
         assumptions.append(entry)
         if disposition == "approved":
             approved.append(assumption_id)
+            state_condition = _rest_state_condition(
+                kind=assumption.kind,
+                assumption_id=assumption_id,
+                subject_id=subject,
+                interval_id=interval_id,
+                intervals_by_id=intervals_by_id,
+                evidence_refs=entry["evidence_refs"],
+            )
+            if state_condition is not None:
+                state_conditions.append(state_condition["state"])
+                boundary_unknowns.append(state_condition["quantity"])
 
     # A motion model the corpus declares on a segment is source-grounded
     # structure, so the typed kinematic assumption it implies is authorised on
@@ -1089,7 +1152,10 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
     known_symbol_ids = frozenset(symbol["symbol_id"] for symbol in known_symbols)
 
     queries: list[dict[str, Any]] = []
-    unknown_quantities: list[dict[str, Any]] = []
+    # Boundary-condition unknowns are bound in the same pool as the query
+    # unknown, so a rest boundary that lands on the question's own identity
+    # collides and fails closed instead of silently answering it.
+    unknown_quantities: list[dict[str, Any]] = list(boundary_unknowns)
     for query in gold.queries:
         mapped_query = _QUERY_ROLES.get(query.output_key)
         if mapped_query is None:
@@ -1173,7 +1239,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         "geometry": geometry,
         "interactions": interactions,
         "constraints": [],
-        "state_conditions": [],
+        "state_conditions": state_conditions,
         "queries": queries,
         "principle_hints": [],
         "assumptions": assumptions,
@@ -1193,6 +1259,64 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         known_symbol_ids=tuple(symbol["symbol_id"] for symbol in known_symbols),
         unknown_symbol_ids=tuple(symbol["symbol_id"] for symbol in unknown_symbols),
     )
+
+
+def _rest_state_condition(
+    *,
+    kind: str,
+    assumption_id: str,
+    subject_id: str,
+    interval_id: str | None,
+    intervals_by_id: Mapping[str, dict[str, Any]],
+    evidence_refs: list[str],
+) -> dict[str, dict[str, Any]] | None:
+    """Express an approved rest assumption as a typed boundary constraint.
+
+    The assumption names an instant — the start or the end of the interval the
+    corpus scoped it to — so the typed IR states it as a `StateCondition` at
+    that boundary over that instant's own unknown velocity.  Nothing becomes a
+    known value: the constraint is what pins the unknown to zero, and the solver
+    derives it.
+
+    Returns nothing, rather than guessing, when the assumption has no interval,
+    no source evidence, or a boundary the corpus never declared.
+    """
+
+    mapped = _REST_STATE_CONDITIONS.get(kind)
+    if mapped is None or interval_id is None or not evidence_refs:
+        return None
+    state_kind, boundary_field = mapped
+    interval = intervals_by_id.get(interval_id)
+    if interval is None or subject_id not in interval["subject_ids"]:
+        return None
+    event_id = interval.get(boundary_field)
+    if event_id is None:
+        return None
+    quantity_id = f"qty_rest_{assumption_id}"
+    return {
+        "quantity": {
+            "quantity_id": quantity_id,
+            "role": "velocity",
+            "subject_id": subject_id,
+            "interval_id": interval_id,
+            "event_id": event_id,
+            "component": "unspecified",
+            "shape": "scalar",
+            "dimension": dict(_VELOCITY_DIMENSION),
+            "provenance": "unknown",
+            "evidence_refs": [],
+        },
+        "state": {
+            "state_condition_id": f"st_{assumption_id}",
+            "kind": state_kind,
+            "state": "at_rest",
+            "subject_id": subject_id,
+            "interval_id": interval_id,
+            "event_id": event_id,
+            "quantity_ids": [quantity_id],
+            "evidence_refs": list(evidence_refs),
+        },
+    }
 
 
 def _bounded_intervals(
