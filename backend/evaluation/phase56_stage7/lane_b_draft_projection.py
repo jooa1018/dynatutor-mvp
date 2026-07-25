@@ -25,10 +25,21 @@ Two corpus structures are preserved rather than flattened:
 
 Values without exact source evidence never enter the Draft, so an ungrounded
 number fails closed as `invented_explicit_number` in `validate_draft`.
+
+Every quantity carries a typed `SymbolDefinition` whose identity is the
+*canonical physical identity* of that quantity — role, subject, point, frame,
+interval, event, component, direction, shape, and dimension — and never its
+value, its corpus ID, its position in an array, or anything from the gold
+domain.  `quantity.symbol_id` and `symbol.quantity_id` are reciprocated and
+one-to-one, so the Equation Graph can bind a symbol per quantity.  The query
+target additionally receives its own *unknown* symbol, separate from every
+known symbol, which is what the graph has to solve for.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -346,6 +357,9 @@ class DraftProjectionReason(str, Enum):
     dangling_entity_reference = "dangling_entity_reference"
     dangling_interval_reference = "dangling_interval_reference"
     dangling_event_reference = "dangling_event_reference"
+    duplicate_canonical_symbol = "duplicate_canonical_symbol"
+    symbol_binding_not_reciprocal = "symbol_binding_not_reciprocal"
+    unknown_symbol_collides_with_known = "unknown_symbol_collides_with_known"
     draft_contract_rejected = "draft_contract_rejected"
 
 
@@ -371,6 +385,8 @@ class DraftProjection:
     environment_scoped_quantity_ids: tuple[str, ...] = ()
     segment_internal_event_ids: tuple[str, ...] = ()
     approvable_assumption_ids: tuple[str, ...] = ()
+    known_symbol_ids: tuple[str, ...] = ()
+    unknown_symbol_ids: tuple[str, ...] = ()
 
     @property
     def projected(self) -> bool:
@@ -437,6 +453,117 @@ def _direction_fields(direction: str | None) -> dict[str, Any]:
     if component is not None:
         fields["component"] = component
     return fields
+
+
+# The physical identity a symbol names.  A value, a raw unit, an evidence
+# reference, a corpus ID, an array position, and every gold member are excluded
+# by construction: two quantities that describe the same physical thing must
+# collide here, and two that describe different things must not.
+_SYMBOL_IDENTITY_FIELDS: tuple[str, ...] = (
+    "role",
+    "subject_id",
+    "point_id",
+    "frame_id",
+    "interval_id",
+    "event_id",
+    "component",
+    "direction",
+    "shape",
+    "dimension",
+)
+
+# Draft shapes that the scalar/vector math AST symbol table can express.
+_SYMBOL_SHAPES: dict[str, str] = {"scalar": "scalar", "vector": "vector"}
+
+
+def _canonical_symbol_identity(item: Mapping[str, Any]) -> str:
+    """Serialise one quantity's physical identity canonically and totally."""
+
+    payload: dict[str, Any] = {}
+    for name in _SYMBOL_IDENTITY_FIELDS:
+        value = item.get(name)
+        if name == "component" and value is None:
+            value = "unspecified"
+        if name == "dimension":
+            value = dict(sorted((value or {}).items()))
+        payload[name] = value
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _canonical_symbol_id(identity: str) -> str:
+    """Derive a stable symbol ID from physical identity alone."""
+
+    return "sym_" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+
+
+def _symbol_for(item: Mapping[str, Any], symbol_id: str) -> dict[str, Any]:
+    shape = _SYMBOL_SHAPES.get(str(item.get("shape")))
+    if shape is None:
+        # A tensor quantity cannot enter the scalar/vector symbol table; it is
+        # rejected here rather than silently narrowed to a scalar.
+        raise DraftProjectionError(DraftProjectionReason.symbol_binding_not_reciprocal)
+    return {
+        "symbol_id": symbol_id,
+        "quantity_id": item["quantity_id"],
+        "dimension": dict(item["dimension"]),
+        "shape": shape,
+    }
+
+
+def _bind_reciprocal_symbols(quantities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Give every quantity exactly one canonical symbol, both ways.
+
+    A second quantity claiming the same canonical physical identity is a
+    collision, not a merge: it is rejected so that two different source facts
+    can never be silently fused into one graph unknown.
+    """
+
+    symbols: list[dict[str, Any]] = []
+    claimed_by_symbol: dict[str, str] = {}
+    claimed_by_quantity: dict[str, str] = {}
+    for item in quantities:
+        symbol_id = _canonical_symbol_id(_canonical_symbol_identity(item))
+        if symbol_id in claimed_by_symbol:
+            raise DraftProjectionError(
+                DraftProjectionReason.duplicate_canonical_symbol
+            )
+        quantity_id = item["quantity_id"]
+        if quantity_id in claimed_by_quantity:
+            raise DraftProjectionError(
+                DraftProjectionReason.duplicate_canonical_symbol
+            )
+        claimed_by_symbol[symbol_id] = quantity_id
+        claimed_by_quantity[quantity_id] = symbol_id
+        item["symbol_id"] = symbol_id
+        symbols.append(_symbol_for(item, symbol_id))
+    return symbols
+
+
+def _assert_symbols_are_reciprocal(
+    quantities: list[dict[str, Any]], symbols: list[dict[str, Any]]
+) -> None:
+    """Fail closed unless the binding is reciprocal, one-to-one, and typed."""
+
+    by_symbol = {symbol["symbol_id"]: symbol for symbol in symbols}
+    if len(by_symbol) != len(symbols):
+        raise DraftProjectionError(DraftProjectionReason.duplicate_canonical_symbol)
+    if len({symbol["quantity_id"] for symbol in symbols}) != len(symbols):
+        raise DraftProjectionError(DraftProjectionReason.duplicate_canonical_symbol)
+    if len(quantities) != len(symbols):
+        raise DraftProjectionError(
+            DraftProjectionReason.symbol_binding_not_reciprocal
+        )
+    for item in quantities:
+        symbol = by_symbol.get(item.get("symbol_id") or "")
+        if (
+            symbol is None
+            or symbol["quantity_id"] != item["quantity_id"]
+            or symbol["dimension"] != item["dimension"]
+            or symbol["shape"] != _SYMBOL_SHAPES.get(str(item.get("shape")))
+        ):
+            raise DraftProjectionError(
+                DraftProjectionReason.symbol_binding_not_reciprocal
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,9 +675,7 @@ def project_case_to_draft(case: PublicCorpusCaseV1) -> DraftProjection:
         )
 
     try:
-        payload, environment_ids, internal_events, assumption_ids = _build_payload(
-            gold, problem_text
-        )
+        projected = _build_payload(gold, problem_text)
     except DraftProjectionError as exc:
         return DraftProjection(
             terminal=DraftProjectionTerminal.projection_rejected,
@@ -559,7 +684,7 @@ def project_case_to_draft(case: PublicCorpusCaseV1) -> DraftProjection:
         )
 
     try:
-        draft = MechanicsProblemDraftV1.model_validate(payload)
+        draft = MechanicsProblemDraftV1.model_validate(projected.payload)
     except Exception as exc:
         return DraftProjection(
             terminal=DraftProjectionTerminal.projection_rejected,
@@ -574,15 +699,25 @@ def project_case_to_draft(case: PublicCorpusCaseV1) -> DraftProjection:
         terminal=DraftProjectionTerminal.projected,
         problem_text=problem_text,
         draft=draft,
-        environment_scoped_quantity_ids=environment_ids,
-        segment_internal_event_ids=internal_events,
-        approvable_assumption_ids=assumption_ids,
+        environment_scoped_quantity_ids=projected.environment_scoped_quantity_ids,
+        segment_internal_event_ids=projected.segment_internal_event_ids,
+        approvable_assumption_ids=projected.approvable_assumption_ids,
+        known_symbol_ids=projected.known_symbol_ids,
+        unknown_symbol_ids=projected.unknown_symbol_ids,
     )
 
 
-def _build_payload(
-    gold: Any, problem_text: str
-) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+@dataclass(frozen=True, slots=True)
+class _PayloadProjection:
+    payload: dict[str, Any]
+    environment_scoped_quantity_ids: tuple[str, ...]
+    segment_internal_event_ids: tuple[str, ...]
+    approvable_assumption_ids: tuple[str, ...]
+    known_symbol_ids: tuple[str, ...]
+    unknown_symbol_ids: tuple[str, ...]
+
+
+def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
     entity_ids = {entity.role for entity in gold.entities}
     interval_ids = {segment.role for segment in gold.motion_segments}
     event_ids = {event.role for event in gold.events}
@@ -825,7 +960,15 @@ def _build_payload(
         if disposition == "approved":
             approved.append(assumption_id)
 
+    # Every source-grounded quantity now owns one canonical symbol.  This runs
+    # before the queries so a query unknown can never take a known symbol's
+    # identity.
+    known_symbols = _bind_reciprocal_symbols(quantities)
+    _assert_symbols_are_reciprocal(quantities, known_symbols)
+    known_symbol_ids = frozenset(symbol["symbol_id"] for symbol in known_symbols)
+
     queries: list[dict[str, Any]] = []
+    unknown_quantities: list[dict[str, Any]] = []
     for query in gold.queries:
         mapped_query = _QUERY_ROLES.get(query.output_key)
         if mapped_query is None:
@@ -841,6 +984,24 @@ def _build_payload(
             )
         if query.event_role is not None and query.event_role not in event_ids:
             raise DraftProjectionError(DraftProjectionReason.dangling_event_reference)
+        # The query target is a quantity the source does *not* state.  It keeps
+        # the full subject/interval/event/component identity of the question and
+        # carries no value, no unit token, and no evidence: it is exactly the
+        # unknown the Equation Graph has to determine.
+        unknown_quantities.append(
+            {
+                "quantity_id": f"qty_unknown_{query.role}",
+                "role": role,
+                "subject_id": query.subject_role,
+                "interval_id": query.segment_role,
+                "event_id": query.event_role,
+                "component": query.component or "unspecified",
+                "shape": "scalar",
+                "dimension": dimension,
+                "provenance": "unknown",
+                "evidence_refs": [],
+            }
+        )
         queries.append(
             {
                 "query_id": f"qry_{query.role}",
@@ -853,10 +1014,24 @@ def _build_payload(
                     "interval_id": query.segment_role,
                     "event_id": query.event_role,
                     "component": query.component or "unspecified",
+                    "target_quantity_id": f"qty_unknown_{query.role}",
                 },
                 "evidence_refs": [],
             }
         )
+
+    unknown_symbols = _bind_reciprocal_symbols(unknown_quantities)
+    _assert_symbols_are_reciprocal(unknown_quantities, unknown_symbols)
+    unknown_symbol_ids = frozenset(symbol["symbol_id"] for symbol in unknown_symbols)
+    # An unknown that lands on a known symbol's identity would mean the source
+    # already states the answer; it is rejected rather than silently reused.
+    if known_symbol_ids & unknown_symbol_ids:
+        raise DraftProjectionError(
+            DraftProjectionReason.unknown_symbol_collides_with_known
+        )
+    quantities.extend(unknown_quantities)
+    symbols = [*known_symbols, *unknown_symbols]
+    _assert_symbols_are_reciprocal(quantities, symbols)
 
     payload = {
         "schema": DRAFT_SCHEMA_NAME,
@@ -870,7 +1045,7 @@ def _build_payload(
         "motion_intervals": intervals,
         "events": events,
         "quantities": quantities,
-        "symbols": [],
+        "symbols": symbols,
         "geometry": geometry,
         "interactions": interactions,
         "constraints": [],
@@ -886,11 +1061,13 @@ def _build_payload(
         },
         "unsupported_features": [],
     }
-    return (
-        payload,
-        tuple(environment_scoped),
-        tuple(segment_internal),
-        tuple(approved),
+    return _PayloadProjection(
+        payload=payload,
+        environment_scoped_quantity_ids=tuple(environment_scoped),
+        segment_internal_event_ids=tuple(segment_internal),
+        approvable_assumption_ids=tuple(approved),
+        known_symbol_ids=tuple(symbol["symbol_id"] for symbol in known_symbols),
+        unknown_symbol_ids=tuple(symbol["symbol_id"] for symbol in unknown_symbols),
     )
 
 

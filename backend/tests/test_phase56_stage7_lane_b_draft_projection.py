@@ -284,7 +284,13 @@ def test_every_explicit_quantity_span_covers_its_value_and_unit() -> None:
     projection = _project(_case())
     text = projection.problem_text
     evidence = {item.evidence_id: item for item in projection.draft.source_evidence}
-    for quantity in projection.draft.quantities:
+    explicit = [
+        item
+        for item in projection.draft.quantities
+        if item.provenance.value == "explicit_source"
+    ]
+    assert explicit
+    for quantity in explicit:
         assert quantity.evidence_refs
         item = evidence[quantity.evidence_refs[0]]
         assert text[item.source_span.start : item.source_span.end] == item.quote
