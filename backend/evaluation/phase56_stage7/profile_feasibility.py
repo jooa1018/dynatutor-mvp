@@ -1,29 +1,30 @@
-"""Full-pipeline profile feasibility: what each candidate is actually worth.
+"""Profile-isolated feasibility: each (profile, context) measured on its own.
 
-The complete-profile census counts how close each profile's *plan* is to
-closing; those numbers are structure counts, not verified-solve yield, and
-choosing the next package by them would be choosing by prediction.  This
-instrument classifies every applicable (profile, context) pair by what the
-**real pipeline** does today — the same projection, authority, transactional
-closure, event-boundary derivation, validation, normalization, authorization,
-compilation, solve, and verification the runner executes, with nothing
-simulated.
+The previous revision of this instrument ran ``close_projected_draft`` once
+per context, credited the declaration-order first-wins winner, and stamped
+every other applicable profile ``profile_transaction_not_formable``.  Under
+that scheme an unbuilt profile's "verified yield 0" was a definition, not a
+measurement, and a second formable profile in the same context could never
+be observed at all.
 
-Two verdicts are recorded per profile, both counts-only:
+This revision measures.  For every applicable (profile, context) pair the
+selected profile is planned and applied **independently against the pristine
+projected Draft** — ``run_lane_b_case_with_selected_profile`` runs the
+identical gate/authority/derivation/validation/normalization/authorization/
+compilation/solve/verification chain the lane runner executes, with only the
+closure step pinned to the one selected profile.  First-wins never enters;
+declaration order never enters (planning resolves the profile by identity);
+and a profile with no built transaction is recorded ``profile_not_implemented``
+— *not measured* — never as a zero yield it never earned.
 
-* the **feasibility class** of each applicable context under the closed
-  eleven-way vocabulary below — a context counts toward a profile's deep
-  classes only when that profile's own transaction actually applied, so an
-  unbuilt profile's population honestly reads
-  ``profile_transaction_not_formable`` instead of borrowing the pipeline's
-  progress; and
-* the population's **as-is terminal** distribution — how far those contexts
-  already get regardless of profile — which is the texture that separates a
-  population parked one wall from the end from one that dies at projection.
+``compiler_unsupported_reachable`` is granted only on an exact typed
+compiler issue code from the closed precise-unsupported whitelist; anything
+else lands in the explicit ``harness_unclassified`` residual rather than
+being silently promoted to "precise".
 
 No case ID, family, split, text, expected terminal, expected answer, or gold
 content enters the matrix; rows carry profile IDs from the closed enum,
-bounded class names, and counts.  Nothing here is wired to the product path.
+bounded status names, and counts.  Nothing here is wired to the product path.
 """
 
 from __future__ import annotations
@@ -31,18 +32,19 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
+
+from engine.mechanics.compiler.contracts import CompilerIssueCode
 
 from evaluation.phase56_stage7.complete_profile import (
     PlanDisposition,
     ProfileId,
-    plan_every_profile,
+    plan_complete_profile,
 )
 from evaluation.phase56_stage7.complete_profile_application import (
-    close_projected_draft,
-)
-from evaluation.phase56_stage7.lane_b_authority import (
-    build_lane_b_authority_bundle,
+    ApplicationOutcome,
+    ProfileApplication,
+    profile_has_transaction,
 )
 from evaluation.phase56_stage7.lane_b_draft_projection import (
     project_case_to_draft,
@@ -51,86 +53,160 @@ from evaluation.phase56_stage7.lane_b_runner import (
     LaneBResult,
     LaneBTerminal,
     deterministic_token,
-    run_lane_b_case,
+    run_lane_b_case_with_selected_profile,
 )
 
-PROFILE_FEASIBILITY_VERSION = "phase56-stage7-profile-feasibility-v1"
+PROFILE_FEASIBILITY_VERSION = "phase56-stage7-profile-feasibility-v2-isolated"
+
+# The exact typed compiler issue codes that prove a *precise* unsupported —
+# a refusal the engine states with its own vocabulary, not a substring of a
+# status word.  Nothing outside this closed set may be reported as
+# `compiler_unsupported_reachable`.
+PRECISE_UNSUPPORTED_ISSUE_CODES: frozenset[CompilerIssueCode] = frozenset(
+    {
+        CompilerIssueCode.requires_specialized_model,
+        CompilerIssueCode.consistency_inconclusive,
+    }
+)
 
 
-class FeasibilityClass(str, Enum):
-    """Where one applicable (profile, context) pair stops, full pipeline."""
+class ProfileFeasibilityStatus(str, Enum):
+    """What one independent (profile, context) run measured, closed."""
 
-    profile_transaction_not_formable = "profile_transaction_not_formable"
+    profile_not_implemented = "profile_not_implemented"
+    profile_plan_not_formable = "profile_plan_not_formable"
+    profile_transaction_rejected = "profile_transaction_rejected"
     validation_blocked = "validation_blocked"
     normalization_blocked = "normalization_blocked"
     authorization_blocked = "authorization_blocked"
     compiler_no_equation = "compiler_no_equation"
     compiler_underdetermined = "compiler_underdetermined"
+    compiler_unsupported_reachable = "compiler_unsupported_reachable"
     solver_rejected = "solver_rejected"
     verification_rejected = "verification_rejected"
     verified_solve_reachable = "verified_solve_reachable"
     verified_deferred_reachable = "verified_deferred_reachable"
-    precise_unsupported_reachable = "precise_unsupported_reachable"
+    # The explicit residual: an outcome the taxonomy cannot honestly name —
+    # a stage exception, an unexpected compiler status, an imprecise
+    # unsupported.  Never silently merged into a neighbouring class.
+    harness_unclassified = "harness_unclassified"
 
 
-# Neutral engine gates — a figure dependency, a reader confirmation, missing
-# information — stop the pipeline at the validation stage, so they classify
-# as `validation_blocked`; the as-is terminal table keeps the exact terminal.
-_TERMINAL_CLASSES: dict[LaneBTerminal, FeasibilityClass] = {
-    LaneBTerminal.needs_figure: FeasibilityClass.validation_blocked,
-    LaneBTerminal.needs_confirmation: FeasibilityClass.validation_blocked,
-    LaneBTerminal.insufficient_information: FeasibilityClass.validation_blocked,
-    LaneBTerminal.validation_rejected: FeasibilityClass.validation_blocked,
-    LaneBTerminal.normalization_rejected: FeasibilityClass.normalization_blocked,
-    LaneBTerminal.authorization_failed: FeasibilityClass.authorization_blocked,
-    LaneBTerminal.compiler_unsupported: (
-        FeasibilityClass.precise_unsupported_reachable
-    ),
-    LaneBTerminal.verified_unsupported: (
-        FeasibilityClass.verified_deferred_reachable
-    ),
-    LaneBTerminal.solve_rejected: FeasibilityClass.solver_rejected,
-    LaneBTerminal.verification_rejected: FeasibilityClass.verification_rejected,
-    LaneBTerminal.solved: FeasibilityClass.verified_solve_reachable,
-}
+# Statuses that are bookkeeping, not measurement: the pipeline never ran for
+# them, so no yield claim of any kind may be derived from their counts.
+NOT_MEASURED_STATUSES: frozenset[ProfileFeasibilityStatus] = frozenset(
+    {ProfileFeasibilityStatus.profile_not_implemented}
+)
+
+_BLOCKED_VALIDATION_TERMINALS: frozenset[LaneBTerminal] = frozenset(
+    {
+        LaneBTerminal.needs_figure,
+        LaneBTerminal.needs_confirmation,
+        LaneBTerminal.insufficient_information,
+        LaneBTerminal.validation_rejected,
+    }
+)
 
 
-def classify_lane_result(result: LaneBResult) -> FeasibilityClass:
-    """The closed class one real pipeline run lands in.
+def _classify_measured_result(result: LaneBResult) -> ProfileFeasibilityStatus:
+    """Map one applied-profile lane result onto the closed status set."""
 
-    ``compiler_failure`` splits on the blocked graph's own equation count:
-    zero equations in the query's component means no law wrote about the
-    queried unknown at all, which is a different wall from an equation set
-    that exists and does not close.
+    terminal = result.terminal
+    if terminal in _BLOCKED_VALIDATION_TERMINALS:
+        return ProfileFeasibilityStatus.validation_blocked
+    if terminal is LaneBTerminal.normalization_rejected:
+        return ProfileFeasibilityStatus.normalization_blocked
+    if terminal is LaneBTerminal.authorization_failed:
+        return ProfileFeasibilityStatus.authorization_blocked
+    if terminal is LaneBTerminal.verified_unsupported:
+        return ProfileFeasibilityStatus.verified_deferred_reachable
+    if terminal is LaneBTerminal.compiler_unsupported:
+        # Precise means the exact typed code, never a substring.
+        if any(
+            code == precise.value
+            for code in result.compiler_codes
+            for precise in PRECISE_UNSUPPORTED_ISSUE_CODES
+        ):
+            return ProfileFeasibilityStatus.compiler_unsupported_reachable
+        return ProfileFeasibilityStatus.harness_unclassified
+    if terminal is LaneBTerminal.compiler_failure:
+        if result.stage_exception is not None:
+            # A crash is not "no law wrote about the unknown".
+            return ProfileFeasibilityStatus.harness_unclassified
+        if result.compiler_status == "underdetermined":
+            if result.equation_count == 0:
+                return ProfileFeasibilityStatus.compiler_no_equation
+            return ProfileFeasibilityStatus.compiler_underdetermined
+        return ProfileFeasibilityStatus.harness_unclassified
+    if terminal is LaneBTerminal.solve_rejected:
+        return ProfileFeasibilityStatus.solver_rejected
+    if terminal is LaneBTerminal.verification_rejected:
+        return ProfileFeasibilityStatus.verification_rejected
+    if terminal is LaneBTerminal.solved:
+        return ProfileFeasibilityStatus.verified_solve_reachable
+    return ProfileFeasibilityStatus.harness_unclassified
+
+
+def classify_selected_profile_outcome(
+    profile_id: ProfileId,
+    application: ProfileApplication | None,
+    result: LaneBResult | None,
+) -> ProfileFeasibilityStatus:
+    """Classify one independent selected-profile run, fail-closed.
+
+    ``profile_not_implemented`` is decided from the transaction registry
+    alone and short-circuits — no run happened, so nothing pipeline-shaped
+    may be claimed.  An application that did not apply is the profile's own
+    plan/transaction verdict; only an applied transaction's lane result is
+    read further.
     """
 
-    mapped = _TERMINAL_CLASSES.get(result.terminal)
-    if mapped is not None:
-        return mapped
-    if result.terminal is LaneBTerminal.compiler_failure:
-        if result.equation_count == 0:
-            return FeasibilityClass.compiler_no_equation
-        return FeasibilityClass.compiler_underdetermined
-    # A projection-stage terminal reaching this classifier is a harness error;
-    # fail closed to the shallowest class rather than inventing progress.
-    return FeasibilityClass.profile_transaction_not_formable
+    if not profile_has_transaction(profile_id):
+        return ProfileFeasibilityStatus.profile_not_implemented
+    if application is None or result is None:
+        return ProfileFeasibilityStatus.harness_unclassified
+    if application.outcome is ApplicationOutcome.not_applied:
+        return ProfileFeasibilityStatus.profile_plan_not_formable
+    if application.outcome is ApplicationOutcome.rejected:
+        return ProfileFeasibilityStatus.profile_transaction_rejected
+    return _classify_measured_result(result)
 
 
 @dataclass(frozen=True, slots=True)
 class ProfileFeasibilityRow:
-    """One profile's measured full-pipeline feasibility, counts only."""
+    """One profile's isolated measurement across every applicable context."""
 
-    profile_id: str
+    profile_id: ProfileId
+    implemented: bool
     applicable_contexts: int
-    class_counts: tuple[tuple[str, int], ...]
-    as_is_terminal_counts: tuple[tuple[str, int], ...]
+    measured_contexts: int
+    not_measured_contexts: int
+    status_counts: dict[str, int]
+
+    def __post_init__(self) -> None:
+        if not self.implemented:
+            expected = (
+                {
+                    ProfileFeasibilityStatus.profile_not_implemented.value: (
+                        self.applicable_contexts
+                    )
+                }
+                if self.applicable_contexts
+                else {}
+            )
+            if self.status_counts != expected or self.measured_contexts != 0:
+                raise ValueError(
+                    "an unimplemented profile carries no measured cell at all"
+                )
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "profile_id": self.profile_id,
+            "profile_id": self.profile_id.value,
+            "implemented": self.implemented,
             "applicable_contexts": self.applicable_contexts,
-            "class_counts": dict(self.class_counts),
-            "as_is_terminal_counts": dict(self.as_is_terminal_counts),
+            "measured_contexts": self.measured_contexts,
+            "not_measured_contexts": self.not_measured_contexts,
+            "status_counts": dict(sorted(self.status_counts.items())),
         }
 
 
@@ -148,19 +224,30 @@ class ProfileFeasibilityMatrix:
         }
 
 
-def measure_profile_feasibility(cases: Iterable[Any]) -> ProfileFeasibilityMatrix:
-    """Classify every applicable (profile, context) pair through the real lane.
+def measure_profile_feasibility(
+    cases: Iterable[Any],
+    *,
+    profile_order: Sequence[ProfileId] = tuple(ProfileId),
+) -> ProfileFeasibilityMatrix:
+    """Measure every applicable (profile, context) pair independently.
 
-    One pipeline run per context; the run's class is credited to the profile
-    whose transaction actually applied, and every other applicable profile
-    for that context counts ``profile_transaction_not_formable``.  Planning
-    and closure are the runner's own stages re-executed deterministically, so
-    the credit assignment can never disagree with what the lane really did.
+    ``profile_order`` exists so the order-invariance controls can permute it;
+    the measurement itself must be — and is asserted by test to be —
+    independent of it, because every selected run starts from the pristine
+    projected Draft and resolves its profile by identity.
     """
 
-    class_counts: dict[str, Counter[str]] = {}
-    terminal_counts: dict[str, Counter[str]] = {}
-    applicable: Counter[str] = Counter()
+    if set(profile_order) != set(ProfileId) or len(profile_order) != len(
+        tuple(ProfileId)
+    ):
+        raise ValueError("profile_order must be a permutation of the closed enum")
+
+    applicable: Counter[ProfileId] = Counter()
+    measured: Counter[ProfileId] = Counter()
+    not_measured: Counter[ProfileId] = Counter()
+    status_counts: dict[ProfileId, Counter[str]] = {
+        profile_id: Counter() for profile_id in ProfileId
+    }
     context_count = 0
 
     for index, case in enumerate(cases):
@@ -168,51 +255,45 @@ def measure_profile_feasibility(cases: Iterable[Any]) -> ProfileFeasibilityMatri
         if not projection.projected:
             continue
         context_count += 1
-        plans = plan_every_profile(
-            projection.draft,
-            approved_assumption_ids=projection.approvable_assumption_ids,
-        )
-        applied_profile: ProfileId | None = None
-        try:
-            bundle = build_lane_b_authority_bundle(projection)
-            application = close_projected_draft(
+        for profile_id in profile_order:
+            plan = plan_complete_profile(
+                profile_id,
                 projection.draft,
-                approved_assumption_ids=bundle.approved_assumption_ids,
-                authorized_assumptions=bundle.authorization_map(),
+                approved_assumption_ids=projection.approvable_assumption_ids,
             )
-            if application.applied:
-                applied_profile = application.profile_id
-        except Exception:
-            applied_profile = None
-        result = run_lane_b_case(
-            projection, execution_token=deterministic_token(index)
-        )
-        run_class = classify_lane_result(result)
-        for plan in plans:
             if plan.disposition is PlanDisposition.not_applicable:
                 continue
-            profile_key = plan.profile_id.value
-            applicable[profile_key] += 1
-            terminal_counts.setdefault(profile_key, Counter())[
-                result.terminal.value
-            ] += 1
-            landed = (
-                run_class
-                if applied_profile is plan.profile_id
-                else FeasibilityClass.profile_transaction_not_formable
+            applicable[profile_id] += 1
+            if not profile_has_transaction(profile_id):
+                not_measured[profile_id] += 1
+                status_counts[profile_id][
+                    ProfileFeasibilityStatus.profile_not_implemented.value
+                ] += 1
+                continue
+            application, result = run_lane_b_case_with_selected_profile(
+                projection,
+                profile_id,
+                execution_token=deterministic_token(
+                    index, run_nonce=profile_id.value
+                ),
             )
-            class_counts.setdefault(profile_key, Counter())[landed.value] += 1
+            status = classify_selected_profile_outcome(
+                profile_id, application, result
+            )
+            measured[profile_id] += 1
+            status_counts[profile_id][status.value] += 1
 
     rows = tuple(
         ProfileFeasibilityRow(
-            profile_id=profile_key,
-            applicable_contexts=applicable[profile_key],
-            class_counts=tuple(sorted(class_counts[profile_key].items())),
-            as_is_terminal_counts=tuple(
-                sorted(terminal_counts[profile_key].items())
-            ),
+            profile_id=profile_id,
+            implemented=profile_has_transaction(profile_id),
+            applicable_contexts=applicable[profile_id],
+            measured_contexts=measured[profile_id],
+            not_measured_contexts=not_measured[profile_id],
+            status_counts=dict(status_counts[profile_id]),
         )
-        for profile_key in sorted(applicable)
+        for profile_id in sorted(ProfileId, key=lambda item: item.value)
+        if applicable[profile_id]
     )
     return ProfileFeasibilityMatrix(
         version=PROFILE_FEASIBILITY_VERSION,
@@ -222,10 +303,12 @@ def measure_profile_feasibility(cases: Iterable[Any]) -> ProfileFeasibilityMatri
 
 
 __all__ = [
+    "NOT_MEASURED_STATUSES",
+    "PRECISE_UNSUPPORTED_ISSUE_CODES",
     "PROFILE_FEASIBILITY_VERSION",
-    "FeasibilityClass",
     "ProfileFeasibilityMatrix",
     "ProfileFeasibilityRow",
-    "classify_lane_result",
+    "ProfileFeasibilityStatus",
+    "classify_selected_profile_outcome",
     "measure_profile_feasibility",
 ]

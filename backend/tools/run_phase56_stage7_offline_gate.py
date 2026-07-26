@@ -440,14 +440,17 @@ def _resolve_archive_path() -> Path | None:
 
 
 def _profile_feasibility_section(archive_path: Path | None) -> dict[str, Any]:
-    """Classify every applicable (profile, context) pair through the real lane.
+    """Measure every applicable (profile, context) pair independently.
 
-    Diagnostic, never a gate.  The census counts plan structure; this section
-    records what the full pipeline does with each profile's population today,
-    under a closed eleven-way class vocabulary, so the next package is chosen
-    by measured feasibility rather than by a structure count.
+    Diagnostic, never a gate.  Each selected profile is planned and applied
+    against the pristine projected Draft and run through the full lane on
+    its own — no first-wins, no declaration-order credit — under the closed
+    isolated status vocabulary; an unimplemented profile reads
+    ``profile_not_implemented`` (not measured), never a yield zero it never
+    earned.  The next package is chosen by this measured feasibility rather
+    than by a structure count.
 
-    Counts only.  Rows carry closed profile IDs, bounded class names, and
+    Counts only.  Rows carry closed profile IDs, bounded status names, and
     integers; no identity or content field exists on the record.
     """
 

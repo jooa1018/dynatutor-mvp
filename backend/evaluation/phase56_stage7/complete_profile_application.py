@@ -811,6 +811,59 @@ def apply_complete_profile(
     )
 
 
+# The authoritative statement of which profiles have a built transaction.
+# An unbuilt profile can be *measured* by the census, but it cannot be
+# applied, and any instrument reporting on it must say "not implemented"
+# rather than crediting a zero it never earned.
+IMPLEMENTED_PROFILE_IDS: frozenset[ProfileId] = frozenset(_TRANSACTIONS)
+
+
+def profile_has_transaction(profile_id: ProfileId) -> bool:
+    """True when this profile's transaction is actually built."""
+
+    return profile_id in _TRANSACTIONS
+
+
+def apply_selected_profile(
+    draft: MechanicsProblemDraftV1,
+    profile_id: ProfileId,
+    *,
+    approved_assumption_ids: tuple[str, ...] = (),
+    authorized_assumptions: Mapping[str, AssumptionAuthorization] | None = None,
+) -> ProfileApplication:
+    """Plan and apply exactly one selected profile against the pristine Draft.
+
+    The isolation instrument's primitive: no declaration-order walk, no
+    first-wins, no reuse of another profile's outcome.  The plan is computed
+    by `plan_complete_profile` — which resolves the profile by identity and
+    never reads the declaration table — and the application is the same
+    all-or-nothing `apply_complete_profile` the closure uses, spending the
+    same issued authority and never minting one.
+    """
+
+    from evaluation.phase56_stage7.complete_profile import plan_complete_profile
+
+    authority = TransactionAuthority(
+        approved_assumption_ids=frozenset(approved_assumption_ids),
+        authorized_assumptions=(
+            MappingProxyType(dict(authorized_assumptions))
+            if authorized_assumptions is not None
+            else MappingProxyType({})
+        ),
+    )
+    plan = plan_complete_profile(
+        profile_id, draft, approved_assumption_ids=approved_assumption_ids
+    )
+    if plan.disposition is PlanDisposition.not_applicable:
+        return ProfileApplication(
+            ApplicationOutcome.not_applied,
+            draft,
+            profile_id,
+            sanitized_reason="profile_not_applicable",
+        )
+    return apply_complete_profile(plan, draft, authority)
+
+
 def close_projected_draft(
     draft: MechanicsProblemDraftV1,
     *,
@@ -862,10 +915,13 @@ __all__ = [
     "VERTICAL_ACCELERATION_QUANTITY_ID",
     "VERTICAL_ACCELERATION_SYMBOL_ID",
     "close_projected_draft",
+    "IMPLEMENTED_PROFILE_IDS",
     "OBSERVER_FRAME_ID",
     "WORLD_FRAME_ID",
     "ApplicationOutcome",
     "ProfileApplication",
     "TransactionAuthority",
     "apply_complete_profile",
+    "apply_selected_profile",
+    "profile_has_transaction",
 ]

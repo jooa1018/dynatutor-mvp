@@ -650,52 +650,82 @@ overlap.
 Ranked by **measured** yield. Ownership has been removed from this list because
 the measurement in §4 put its yield at zero.
 
-### 6a. The full-pipeline feasibility matrix (measured, counts only)
+### 6a. The profile-isolated feasibility matrix (measured, counts only)
 
-The census's per-profile populations are structure counts, not verified-solve
-yield, so the next package is no longer chosen from them.  A feasibility
-instrument (`evaluation/phase56_stage7/profile_feasibility.py`, a
-`profile_feasibility` section of the offline gate) classifies every
-applicable (profile, context) pair by what the **real pipeline** does today,
-under a closed eleven-way vocabulary; a profile's deep classes are reachable
-only through its own applied transaction, so an unbuilt profile's population
-honestly reads `profile_transaction_not_formable` instead of borrowing the
-pipeline's progress.  Every class is proven producible by positive controls
-(each classifier branch unit-covered; the applied free-flight transaction
-reaches a deep class end to end), so the zeros below are measurements, not
-blind spots.
+**Superseded instrument note.**  This section's previous revision ran the
+first-wins closure once per context, credited the declaration-order winner,
+and stamped every other applicable profile
+`profile_transaction_not_formable` — so an unbuilt profile's "verified
+yield 0" was a definition, and the claim "every class is proven producible
+by positive controls" rested on hand-constructed LaneBResult objects, not
+on pipeline paths.  Both statements are retracted.  Two corrections to the
+old prose while retracting it: `compiler_underdetermined` (equations > 0)
+had never actually been observed — every underdetermined component carried
+0 equations — and the lane does reach 6 verified solves, all in contexts
+with **no** applicable profile, which the old table never said.
+
+The corrected instrument (`profile_feasibility.py` v2-isolated) plans and
+applies **each selected profile independently against the pristine
+projected Draft** and runs the full lane from there
+(`run_lane_b_case_with_selected_profile`); declaration order enters
+nowhere, first-wins enters nowhere, and an unimplemented profile is
+`profile_not_implemented` — *not measured* — never a yield zero it never
+earned.  `compiler_unsupported_reachable` requires an exact typed compiler
+issue code from the closed precise whitelist
+(`requires_specialized_model`, `consistency_inconclusive`); everything
+unnameable lands in an explicit `harness_unclassified` residual.
 
 Measured at this head over the 97 projected contexts:
 
-| Profile | applicable | formable-and-applied | deep class reached | as-is population texture |
-|---|---:|---:|---|---|
-| `free_flight_gravity` | 8 | 2 | `compiler_no_equation` ×2 | 2 underdetermined, 6 unsupported |
-| `relative_translating_frame` | 9 | 3 | `verified_deferred_reachable` ×3 | 6 underdetermined, 3 deferred |
-| `rigid_fixed_axis` | 13 | 0 | — | 13 underdetermined |
-| `horizontal_contact` | 10 | 0 | — | 6 underdetermined, 3 deferred, 1 confirmation |
-| `explicit_resultant_force` | 9 | 0 | — | 6 underdetermined, 2 confirmation, 1 unsupported |
-| `work_energy` | 6 | 0 | — | 6 underdetermined |
-| `rolling_energy` | 6 | 0 | — | 6 underdetermined |
-| `fixed_pulley` | 6 | 0 | — | 6 unsupported (aggregate wall, §4) |
-| `incline_hanging_pulley` | 6 | 0 | — | 6 unsupported (aggregate wall, §4) |
-| `collision_restitution` | 4 | 0 | — | 4 unsupported (declared capability) |
-| `impulse_momentum` | 4 | 0 | — | 4 underdetermined |
-| `incline_contact` | 3 | 0 | — | 3 underdetermined |
-| `spring_vibration_deferred` | 3 | 0 | — | 3 deferred (as designed) |
+| Profile | implemented | applicable | measured | isolated statuses |
+|---|---|---:|---:|---|
+| `free_flight_gravity` | yes | 8 | 8 | `compiler_no_equation` ×2, `profile_plan_not_formable` ×6 |
+| `impulse_momentum` | yes | 4 | 4 | `profile_plan_not_formable` ×4 |
+| `relative_translating_frame` | yes | 9 | 9 | `verified_deferred_reachable` ×3, `profile_plan_not_formable` ×6 |
+| `rigid_fixed_axis` | no | 13 | 0 | `profile_not_implemented` ×13 (not measured) |
+| `horizontal_contact` | no | 10 | 0 | `profile_not_implemented` ×10 (not measured) |
+| `explicit_resultant_force` | no | 9 | 0 | `profile_not_implemented` ×9 (not measured) |
+| `fixed_pulley` | no | 6 | 0 | `profile_not_implemented` ×6 (not measured) |
+| `incline_hanging_pulley` | no | 6 | 0 | `profile_not_implemented` ×6 (not measured) |
+| `work_energy` | no | 6 | 0 | `profile_not_implemented` ×6 (not measured) |
+| `rolling_energy` | no | 6 | 0 | `profile_not_implemented` ×6 (not measured) |
+| `collision_restitution` | no | 4 | 0 | `profile_not_implemented` ×4 (not measured) |
+| `incline_contact` | no | 3 | 0 | `profile_not_implemented` ×3 (not measured) |
+| `spring_vibration_deferred` | no | 3 | 0 | `profile_not_implemented` ×3 (not measured) |
 
-The verified solve/deferred yield of every **unbuilt** candidate measures
-exactly zero, which is the point: no census count is treated as a promise.
-The only deep classes in the matrix flow through the two transactions that
-exist — free flight (whose two contexts stop at walls §4b/§5a trace to the
-corpus contract itself) and the deferral-only relative frame (three exact
-deferrals, as designed).  Among unbuilt candidates the as-is texture ranks
-the *investigation* order — a population parked at `underdetermined` is one
-structural wall from the compiler's rank test, while `unsupported`
-populations name declared engine capability gaps that are compiler/solver
-contract changes — but each candidate still requires its own free-flight
-style package (planner proof, transactional closure, engine-level negative
-controls, measured yield) before any solve is claimed, and the measured
-yield of that package is what admits it, not this table.
+Positive controls are real end-to-end selected-profile paths for every
+status an implemented profile can reach at this head:
+`verified_deferred_reachable`, `compiler_no_equation`, `solver_rejected`
+(the synthetic apex-time fixture: applied free flight, 3 equations, the
+solver's static-boundary waiver gap), `profile_transaction_rejected`,
+`profile_plan_not_formable`, and the `profile_not_implemented` distinction
+inside one context (a pulley-overlap fixture where free flight measures
+and fixed-pulley is honestly unmeasured).  Declaration-order permutation,
+enum-order permutation, case-order reversal, and identity tampering all
+leave the matrix byte-identical; a fixture where the closure applies
+nothing still measures each profile's own verdict.
+
+Four statuses have **no** applied-profile end-to-end producer at this
+head, with the reasons themselves measured rather than assumed:
+`verified_solve_reachable` and `verification_rejected` are blocked by the
+recorded solver static-boundary waiver gap (the apex-time graph compiles
+3 equations and the solver refuses the extremum-endpoint plan);
+`compiler_underdetermined` because every current law chain emits whole or
+not at all, so a pruned component is closed or empty; and
+`compiler_unsupported_reachable` because no implemented profile's exact
+shape coexists with a specialized-model refusal.  They are unit-covered at
+the classifier and stay honestly unproduced until the profile work closes
+those gaps — closing the solver waiver for the extremum-endpoint
+constant-acceleration shape is the single highest-yield next step this
+matrix identifies: it is the only place an applied transaction already
+delivers compiler equations to the solver's door.
+
+No implemented profile currently demonstrates the full chain — candidate
+transaction applied, compiler equations, deterministic solve, independent
+verification, wrong solve 0 — so **no profile qualifies yet as the next
+implementation candidate under the measured-yield rule**, and in
+particular `rigid_fixed_axis`'s 13-context population is a census count,
+not a measured claim of any kind.
 
 1. **A frame-and-binding derivation shared across profiles** — every one of the
    97 contexts lacks a frame, and `frame_alone_unlocks = 0` says it only pays off

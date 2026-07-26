@@ -255,29 +255,42 @@ def _query_projection(draft: Any) -> dict[str, Any]:
     }
 
 
-def run_lane_b_case(
-    projection: DraftProjection, *, execution_token: str
-) -> LaneBResult:
-    """Execute one projected Draft through the deterministic pipeline."""
-
+def _projection_gate(
+    projection: DraftProjection, execution_token: str
+) -> LaneBResult | None:
     if projection.terminal is DraftProjectionTerminal.needs_figure:
         return LaneBResult(execution_token, LaneBTerminal.needs_figure)
     if projection.terminal is DraftProjectionTerminal.insufficient_information:
         return LaneBResult(execution_token, LaneBTerminal.insufficient_information)
     if projection.terminal is not DraftProjectionTerminal.projected:
         return LaneBResult(execution_token, LaneBTerminal.projection_rejected)
+    return None
 
-    text = projection.problem_text
-    # The authority stage: built from the projected Draft, bound to it by
-    # fingerprint, and verified before anything reads it.  It runs outside the
-    # complete-profile transaction below, so closure can consume authority but
-    # never mint it.
+
+def _verified_authority(projection: DraftProjection):
+    """The authority stage: built, fingerprint-bound, and verified before use."""
+
+    bundle = build_lane_b_authority_bundle(projection)
+    if not verify_lane_b_authority_bundle(bundle, projection.draft):
+        raise LaneBAuthorityError(
+            "the authority bundle does not verify against its own draft"
+        )
+    return bundle
+
+
+def run_lane_b_case(
+    projection: DraftProjection, *, execution_token: str
+) -> LaneBResult:
+    """Execute one projected Draft through the deterministic pipeline."""
+
+    gated = _projection_gate(projection, execution_token)
+    if gated is not None:
+        return gated
+
+    # The authority stage runs outside the complete-profile transaction below,
+    # so closure can consume authority but never mint it.
     try:
-        bundle = build_lane_b_authority_bundle(projection)
-        if not verify_lane_b_authority_bundle(bundle, projection.draft):
-            raise LaneBAuthorityError(
-                "the authority bundle does not verify against its own draft"
-            )
+        bundle = _verified_authority(projection)
     except Exception as exc:
         return LaneBResult(
             execution_token,
@@ -296,6 +309,72 @@ def run_lane_b_case(
         approved_assumption_ids=approved,
         authorized_assumptions=authority_map,
     ).draft
+    return _run_lane_b_from_closed_draft(
+        text=projection.problem_text,
+        draft=draft,
+        execution_token=execution_token,
+        approved=approved,
+        authority_map=authority_map,
+    )
+
+
+def run_lane_b_case_with_selected_profile(
+    projection: DraftProjection,
+    profile_id: "ProfileId",
+    *,
+    execution_token: str,
+) -> tuple["ProfileApplication | None", LaneBResult]:
+    """Evaluator-only: plan/apply exactly one selected profile, then the lane.
+
+    The isolation instrument's runner: identical gates, identical authority,
+    identical stage chain — the only difference from `run_lane_b_case` is
+    that the closure step considers the one selected profile instead of the
+    declaration-order walk, always against the pristine projected Draft.
+    Returns the application alongside the lane result so the caller can
+    classify plan/transaction outcomes without re-deriving them.
+    """
+
+    from evaluation.phase56_stage7.complete_profile_application import (
+        apply_selected_profile,
+    )
+
+    gated = _projection_gate(projection, execution_token)
+    if gated is not None:
+        return None, gated
+
+    try:
+        bundle = _verified_authority(projection)
+    except Exception as exc:
+        return None, LaneBResult(
+            execution_token,
+            LaneBTerminal.authorization_failed,
+            stage_exception=type(exc).__name__,
+        )
+    approved = bundle.approved_assumption_ids
+    authority_map = bundle.authorization_map()
+    application = apply_selected_profile(
+        projection.draft,
+        profile_id,
+        approved_assumption_ids=approved,
+        authorized_assumptions=authority_map,
+    )
+    return application, _run_lane_b_from_closed_draft(
+        text=projection.problem_text,
+        draft=application.draft,
+        execution_token=execution_token,
+        approved=approved,
+        authority_map=authority_map,
+    )
+
+
+def _run_lane_b_from_closed_draft(
+    *,
+    text: str,
+    draft: Any,
+    execution_token: str,
+    approved: tuple[str, ...],
+    authority_map: Any,
+) -> LaneBResult:
     # Event boundary derivation follows closure and is transactional in the
     # same way: the whole package of typed boundary unknowns is created, or
     # the Draft above is kept exactly.  It creates existence, never values —
