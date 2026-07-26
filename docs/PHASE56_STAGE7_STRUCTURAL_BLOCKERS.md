@@ -509,6 +509,56 @@ question from one about a signed component, and silently converting one into the
 other hands the solver a sign the source never gave — a hazard already closed by
 a regression test in the closure layer.
 
+### 5a. `CORPUS_CONTRACT_MISMATCH` (AUDITED, NOT IMPLEMENTED): the magnitude-with-angle launch
+
+The remaining free-flight context states its launch as a speed magnitude and
+an angle, and the causal audit ran **before** any implementation, as
+required.  Measured on the real projected context (counts and typed shapes
+only):
+
+- exactly one stated velocity magnitude and exactly one stated angle, same
+  subject, same interval, same launch event — the uniqueness and scope
+  prerequisites hold;
+- the angle's unit is `°` — degrees are unambiguous;
+- the angle quantity carries **no typed reference axis**: component
+  `unspecified`, no direction binding, no frame, no geometry relation
+  referencing it (the context's geometry is empty), and no principle hint;
+- the corpus's own closed vocabulary has no construct that could state the
+  reference: the semantic key is the bare `angle`, and no relation kind in
+  the corpus contract names an axis, a horizontal, or an angle-between
+  construct the projection could type.
+
+Whether `theta` is measured from the horizontal or the vertical is therefore
+not provable from source structure, and the rule is absolute: without that
+proof, `v_x = v·cos(theta)` / `v_y = v·sin(theta)` may not be built — the
+wrong choice silently swaps sine and cosine and produces a confident wrong
+answer, which is exactly the hazard the hard-safety gate forbids.
+
+**Verdict: `CORPUS_CONTRACT_MISMATCH` — no closed decomposition rule is
+implementable against the current corpus contract, and none was
+implemented.**  Closing this wall requires a corpus-contract extension (a
+typed angle reference — for example an `angle_from_axis` relation naming the
+axis entity or frame axis, with orientation), which is an upstream contract
+decision, not an evaluator or engine patch.
+
+The refused state is pinned by 8 controls in
+`test_phase56_stage7_angle_decomposition_refusal.py`: the engine catalog
+carries no decomposition law (asserted by name markers, so a future rule
+must revisit this audit and its tests), the unproven shape emits no
+component equation under the original form or the attack variants (another
+subject's angle; answer removal and answer tampering change nothing), two
+competing angles at one physical identity fail closed at projection
+(`duplicate_canonical_symbol`), the full lane stays a typed blocked terminal
+with no stage exception, and the stated magnitude keeps its directionless
+component end to end — no negative magnitude, no invented sign, no quadrant
+choice anywhere.
+
+Also measured while auditing: the same context's `highest_point` event is
+typed but **segment-internal** (see §4b), so its apex instant additionally
+needs a sub-interval contract decision before any endpoint law could use it.
+The two free-flight walls therefore both end at the corpus contract, and the
+free-flight residual work inside the current contract is complete.
+
 The engine does carry the bridge laws — `planar_acceleration_magnitude` and
 `acceleration_magnitude_nonnegative` — and the diagnosis shows both blocked on
 43 contexts each, with `missing_frame` on 21 of them. So the magnitude route is
