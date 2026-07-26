@@ -47,10 +47,13 @@ from evaluation.phase56_stage7.blocked_law_diagnosis import (
     BLOCKED_LAW_DIAGNOSIS_VERSION,
     CounterfactualOutcome,
     UnmetPrerequisite,
+    _INCREMENTAL_EMITTERS,
+    _TEMPLATE_EMITTERS,
     _with_frame,
     counterfactual_outcome,
     diagnose_blocked_laws,
     first_unmet_prerequisite,
+    measure_emitter_family_reach,
 )
 from evaluation.phase56_stage7.redaction import assert_privacy_safe_artifact
 
@@ -403,3 +406,65 @@ def test_no_production_module_imports_the_diagnosis() -> None:
 )
 def test_a_diagnosed_law_is_a_real_catalogue_law(law_id: str) -> None:
     assert law_id in _RULES
+
+
+# --------------------------------------------------------------------------
+# Emission family reach
+# --------------------------------------------------------------------------
+
+
+def test_every_named_emission_family_exists_in_the_catalogue_module() -> None:
+    """A renamed or removed emitter must fail here, not report a silent zero."""
+
+    from engine.mechanics.laws import core
+
+    for name in (*_TEMPLATE_EMITTERS, *_INCREMENTAL_EMITTERS):
+        assert callable(getattr(core, name, None)), name
+
+
+def test_the_named_families_cover_what_apply_core_laws_dispatches_to() -> None:
+    """Every emission call in ``apply_core_laws`` is a family this measures.
+
+    Read from the function's own source, so a family added to the dispatch and
+    not to the list fails rather than going unmeasured.
+    """
+
+    import inspect
+    import re
+
+    from engine.mechanics.laws import core
+
+    source = inspect.getsource(core.apply_core_laws)
+    dispatched = set(re.findall(r"_[a-z0-9_]+_emissions", source))
+    named = set(_TEMPLATE_EMITTERS) | set(_INCREMENTAL_EMITTERS)
+    # ``_derivative_emissions`` is parameterised by role rather than being a
+    # family of its own, so it is dispatched under several laws at once.
+    assert dispatched - named - {"_derivative_emissions"} == set()
+
+
+def test_a_context_that_matches_a_family_reports_it_as_live() -> None:
+    framed = _with_frame(
+        _polar_context(frame_id=None),
+        ReferenceFrameType.radial_transverse,
+        (AxisName.radial, AxisName.transverse),
+        scope_quantities=True,
+    )
+    families, silent = measure_emitter_family_reach([framed])
+    live = {item.family for item in families if item.contexts_fired}
+    assert "_wave_f_emissions" in live
+    assert silent == 0
+
+
+def test_a_context_no_family_matches_is_counted_as_silent() -> None:
+    families, silent = measure_emitter_family_reach([_polar_context(frame_id=None)])
+    assert silent == 1
+    assert all(item.contexts_fired == 0 for item in families)
+
+
+def test_family_reach_is_reported_as_counts_only() -> None:
+    payload = diagnose_blocked_laws([_polar_context(frame_id=None)]).as_dict()
+    assert payload["silent_contexts"] == 1
+    assert payload["dead_emitter_families"] == len(payload["emitter_families"])
+    for family in payload["emitter_families"]:
+        assert set(family) == {"family", "kind", "contexts_fired"}
+        assert family["kind"] in {"template", "incremental"}

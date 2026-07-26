@@ -445,6 +445,101 @@ def counterfactual_outcome(
     return CounterfactualOutcome.frame_does_not_close_the_law
 
 
+# The emission functions ``apply_core_laws`` dispatches to, in its own order.
+# The first five are whole-context templates that return early when they match;
+# the rest each contribute independently.  A per-law diagnosis says which law is
+# blocked, which turns out to be the wrong question when a whole family is
+# unreachable — a family that never fires cannot be unblocked one law at a time.
+# A test asserts every name here exists, so a renamed or removed emitter fails
+# rather than silently reporting zero.
+_TEMPLATE_EMITTERS: tuple[str, ...] = (
+    "_vertical_circle_emissions",
+    "_rolling_energy_emissions",
+    "_spring_energy_speed_emissions",
+    "_curve_speed_emissions",
+    "_wave_f_emissions",
+)
+
+_INCREMENTAL_EMITTERS: tuple[str, ...] = (
+    "_constant_velocity_emissions",
+    "_constant_acceleration_emissions",
+    "_projectile_boundary_emissions",
+    "_constant_angular_acceleration_emissions",
+    "_chain_kinematics_emissions",
+    "_incline_gravity_contact_emissions",
+    "_horizontal_fixed_contact_emissions",
+    "_horizontal_surface_contact_emissions",
+    "_incline_hanging_rope_emissions",
+    "_massive_pulley_atwood_emissions",
+    "_newton_emissions",
+    "_primitive_interaction_emissions",
+    "_work_energy_emissions",
+    "_momentum_emissions",
+    "_rigid_emissions",
+    "_topology_constraint_emissions",
+    "_vibration_emissions",
+)
+
+
+def _emitter(name: str):
+    from engine.mechanics.laws import core
+
+    return getattr(core, name)
+
+
+def _family_fires(context: LawContext, name: str) -> bool:
+    try:
+        return bool(_emitter(name)(context))
+    except Exception:
+        return False
+
+
+@dataclass(frozen=True, slots=True)
+class EmitterFamilyReach:
+    """How many real contexts each emission family fires on."""
+
+    family: str
+    kind: str
+    contexts_fired: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "family": self.family,
+            "kind": self.kind,
+            "contexts_fired": self.contexts_fired,
+        }
+
+
+def measure_emitter_family_reach(
+    contexts: Iterable[LawContext],
+) -> tuple[tuple[EmitterFamilyReach, ...], int]:
+    """Measure which emission families are alive, and how many contexts are dead.
+
+    Returns the per-family counts and the number of contexts for which
+    ``apply_core_laws`` produces nothing at all.  A dead family is a package
+    candidate in a way a blocked law is not: it names a whole body of physics the
+    projection currently cannot reach.
+    """
+
+    materialised = tuple(contexts)
+    reach = [
+        EmitterFamilyReach(
+            family=name,
+            kind=kind,
+            contexts_fired=sum(
+                1 for context in materialised if _family_fires(context, name)
+            ),
+        )
+        for kind, names in (
+            ("template", _TEMPLATE_EMITTERS),
+            ("incremental", _INCREMENTAL_EMITTERS),
+        )
+        for name in names
+    ]
+    silent = sum(1 for context in materialised if not apply_core_laws(context))
+    return tuple(reach), silent
+
+
 @dataclass(frozen=True, slots=True)
 class BlockedLawDiagnosis:
     """One blocked law's measured diagnosis over every context that blocks it."""
@@ -482,6 +577,8 @@ class BlockedLawDiagnosisReport:
     laws: tuple[BlockedLawDiagnosis, ...]
     unmet_totals: tuple[tuple[str, int], ...]
     counterfactual_totals: tuple[tuple[str, int], ...]
+    emitter_families: tuple[EmitterFamilyReach, ...] = ()
+    silent_contexts: int = 0
 
     @property
     def frame_alone_unlocks(self) -> int:
@@ -505,8 +602,20 @@ class BlockedLawDiagnosisReport:
             "unmet_totals": dict(self.unmet_totals),
             "counterfactual_totals": dict(self.counterfactual_totals),
             "frame_alone_unlocks": self.frame_alone_unlocks,
+            "silent_contexts": self.silent_contexts,
+            "live_emitter_families": self.live_emitter_families,
+            "dead_emitter_families": self.dead_emitter_families,
+            "emitter_families": [item.as_dict() for item in self.emitter_families],
             "laws": [item.as_dict() for item in self.laws],
         }
+
+    @property
+    def live_emitter_families(self) -> int:
+        return sum(1 for item in self.emitter_families if item.contexts_fired)
+
+    @property
+    def dead_emitter_families(self) -> int:
+        return sum(1 for item in self.emitter_families if not item.contexts_fired)
 
 
 def diagnose_blocked_laws(
@@ -562,6 +671,7 @@ def diagnose_blocked_laws(
         unmet_totals.update(unmet)
         counterfactual_totals.update(outcomes)
 
+    families, silent = measure_emitter_family_reach(materialised)
     return BlockedLawDiagnosisReport(
         version=BLOCKED_LAW_DIAGNOSIS_VERSION,
         context_count=len(materialised),
@@ -569,6 +679,8 @@ def diagnose_blocked_laws(
         laws=tuple(sorted(diagnoses, key=lambda item: (-item.blocked_contexts, item.law_id))),
         unmet_totals=tuple(sorted(unmet_totals.items())),
         counterfactual_totals=tuple(sorted(counterfactual_totals.items())),
+        emitter_families=families,
+        silent_contexts=silent,
     )
 
 
@@ -577,8 +689,10 @@ __all__ = [
     "BlockedLawDiagnosis",
     "BlockedLawDiagnosisReport",
     "CounterfactualOutcome",
+    "EmitterFamilyReach",
     "UnmetPrerequisite",
     "counterfactual_outcome",
     "diagnose_blocked_laws",
     "first_unmet_prerequisite",
+    "measure_emitter_family_reach",
 ]
