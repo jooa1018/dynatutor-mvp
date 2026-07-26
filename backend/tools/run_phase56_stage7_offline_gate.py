@@ -57,6 +57,9 @@ from evaluation.phase56_stage7.lane_b_structural_blockers import (  # noqa: E402
     build_structural_blocker_census,
     census_as_dict,
 )
+from evaluation.phase56_stage7.profile_feasibility import (  # noqa: E402
+    measure_profile_feasibility,
+)
 from evaluation.phase56_stage7.query_readout_ownership import (  # noqa: E402
     diagnose_query_readout_ownership,
     diagnosis_as_dict,
@@ -436,6 +439,31 @@ def _resolve_archive_path() -> Path | None:
     return Path(raw).expanduser()
 
 
+def _profile_feasibility_section(archive_path: Path | None) -> dict[str, Any]:
+    """Classify every applicable (profile, context) pair through the real lane.
+
+    Diagnostic, never a gate.  The census counts plan structure; this section
+    records what the full pipeline does with each profile's population today,
+    under a closed eleven-way class vocabulary, so the next package is chosen
+    by measured feasibility rather than by a structure count.
+
+    Counts only.  Rows carry closed profile IDs, bounded class names, and
+    integers; no identity or content field exists on the record.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        matrix = measure_profile_feasibility((*public_dev, *public_adversarial))
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(matrix.as_dict())
+    return section
+
+
 def build_report() -> tuple[dict[str, Any], bool]:
     contract = stage7_evaluation_contract()
     offline_evidence = assert_offline_environment()
@@ -464,6 +492,9 @@ def build_report() -> tuple[dict[str, Any], bool]:
         ownership_section = _query_readout_ownership_section(
             archive_path if corpus_gate.passed else None
         )
+        feasibility_section = _profile_feasibility_section(
+            archive_path if corpus_gate.passed else None
+        )
 
     report: dict[str, Any] = {
         "schema": OFFLINE_GATE_SCHEMA,
@@ -483,6 +514,7 @@ def build_report() -> tuple[dict[str, Any], bool]:
         "complete_profile_census": census_section,
         "structural_blockers": blocker_section,
         "query_readout_ownership": ownership_section,
+        "profile_feasibility": feasibility_section,
         "gates": [
             {"name": gate.name, "result": gate.result, "detail": gate.detail}
             for gate in gates

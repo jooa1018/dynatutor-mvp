@@ -571,6 +571,53 @@ overlap.
 Ranked by **measured** yield. Ownership has been removed from this list because
 the measurement in §4 put its yield at zero.
 
+### 6a. The full-pipeline feasibility matrix (measured, counts only)
+
+The census's per-profile populations are structure counts, not verified-solve
+yield, so the next package is no longer chosen from them.  A feasibility
+instrument (`evaluation/phase56_stage7/profile_feasibility.py`, a
+`profile_feasibility` section of the offline gate) classifies every
+applicable (profile, context) pair by what the **real pipeline** does today,
+under a closed eleven-way vocabulary; a profile's deep classes are reachable
+only through its own applied transaction, so an unbuilt profile's population
+honestly reads `profile_transaction_not_formable` instead of borrowing the
+pipeline's progress.  Every class is proven producible by positive controls
+(each classifier branch unit-covered; the applied free-flight transaction
+reaches a deep class end to end), so the zeros below are measurements, not
+blind spots.
+
+Measured at this head over the 97 projected contexts:
+
+| Profile | applicable | formable-and-applied | deep class reached | as-is population texture |
+|---|---:|---:|---|---|
+| `free_flight_gravity` | 8 | 2 | `compiler_no_equation` ×2 | 2 underdetermined, 6 unsupported |
+| `relative_translating_frame` | 9 | 3 | `verified_deferred_reachable` ×3 | 6 underdetermined, 3 deferred |
+| `rigid_fixed_axis` | 13 | 0 | — | 13 underdetermined |
+| `horizontal_contact` | 10 | 0 | — | 6 underdetermined, 3 deferred, 1 confirmation |
+| `explicit_resultant_force` | 9 | 0 | — | 6 underdetermined, 2 confirmation, 1 unsupported |
+| `work_energy` | 6 | 0 | — | 6 underdetermined |
+| `rolling_energy` | 6 | 0 | — | 6 underdetermined |
+| `fixed_pulley` | 6 | 0 | — | 6 unsupported (aggregate wall, §4) |
+| `incline_hanging_pulley` | 6 | 0 | — | 6 unsupported (aggregate wall, §4) |
+| `collision_restitution` | 4 | 0 | — | 4 unsupported (declared capability) |
+| `impulse_momentum` | 4 | 0 | — | 4 underdetermined |
+| `incline_contact` | 3 | 0 | — | 3 underdetermined |
+| `spring_vibration_deferred` | 3 | 0 | — | 3 deferred (as designed) |
+
+The verified solve/deferred yield of every **unbuilt** candidate measures
+exactly zero, which is the point: no census count is treated as a promise.
+The only deep classes in the matrix flow through the two transactions that
+exist — free flight (whose two contexts stop at walls §4b/§5a trace to the
+corpus contract itself) and the deferral-only relative frame (three exact
+deferrals, as designed).  Among unbuilt candidates the as-is texture ranks
+the *investigation* order — a population parked at `underdetermined` is one
+structural wall from the compiler's rank test, while `unsupported`
+populations name declared engine capability gaps that are compiler/solver
+contract changes — but each candidate still requires its own free-flight
+style package (planner proof, transactional closure, engine-level negative
+controls, measured yield) before any solve is claimed, and the measured
+yield of that package is what admits it, not this table.
+
 1. **A frame-and-binding derivation shared across profiles** — every one of the
    97 contexts lacks a frame, and `frame_alone_unlocks = 0` says it only pays off
    bundled with the rest of a profile's structure. This is the only item with a
