@@ -221,6 +221,62 @@ Note that `contexts_with_events = 97 of 97`: the `not context.events` condition
 alone puts this recogniser out of reach for *every* context in the corpus, not
 only the pulley ones.
 
+## 4b. What the profiles planning `complete` are actually worth
+
+The census reports 8 contexts planning `complete` across three profiles. That is
+again a count, and again it is not the reachable population:
+
+| Profile | complete | Query subject | Reachable? |
+|---|---:|---|---|
+| `free_flight_gravity` | 2 | `particle` | yes |
+| `fixed_pulley` | 3 | `system` | no — `binding_not_formable` (§4) |
+| `incline_hanging_pulley` | 3 | `system` | no — `binding_not_formable` (§4) |
+
+**The measured ceiling for the next profile package is 2 contexts, not 8.** Six
+of the eight ask for a readout on an aggregate nothing relates to its members,
+so no transaction can deliver them regardless of how the profile recogniser is
+generalised. Generalising the Atwood recogniser — over a query-relevant connected
+subgraph, tolerating unrelated events, accepting a `rigid_body` as a
+translational body — was audited against these six and would move none of them,
+because the wall is the readout's owner and not the recogniser's shape.
+
+### `ENGINE_CONTRACT_BLOCKER`: `server_default` provenance is unreachable from Lane B
+
+A prototype `free_flight_gravity` closure was built and run against the two
+reachable contexts to measure the profile rather than assume it. Both are
+rejected at validation, with one issue:
+
+```
+provenance_violation  quantities.N
+server_default requires both explicit approval and one exact immutable
+assumption authorization
+```
+
+The profile's gravitational field strength is the closed server default its
+approved `constant_gravity` authority already carries — the assumption states
+`proposed_role: gravity`, `proposed_value: "9.81"`, `proposed_unit: "m/s^2"`,
+with a matching subject and interval, so no value would be invented. But a
+`server_default` quantity additionally requires an `AssumptionAuthorization`
+entry in the `authorized_assumptions` map passed *into* `validate_draft`, and
+that map is out-of-band: `normalize_draft` only forwards whatever it is handed,
+and the only callers that build one are `modeler.py`, `phase55_adapter.py`, and
+`compiler.py`. **Lane B passes none**, so no evaluator-only Draft transaction can
+introduce a `server_default` quantity at all.
+
+Two ways out, and both are contract decisions that need their own review rather
+than a silent choice inside a closure transaction:
+
+1. Let the evaluator derive an `AssumptionAuthorization` from an approved
+   assumption's own `proposed_role` / `proposed_value` / `proposed_unit`. Nothing
+   is invented — the authority states all three — but it moves who may author an
+   authorization, which is the boundary the closure layer exists to respect.
+2. Leave the boundary alone, in which case `free_flight_gravity` cannot supply
+   gravity and its reachable population is 0 rather than 2.
+
+Until that is decided, the profile stays unbuilt. Note that either way the
+frozen distribution is unaffected in scale: the decision is worth at most 2 of
+the 75 contexts between here and the target.
+
 ## 5. `CORPUS_CONTRACT_MISMATCH`: magnitude questions and signed axes
 
 63 of 97 questions ask for a `magnitude`. The closure applier deliberately
@@ -249,9 +305,10 @@ the measurement in §4 put its yield at zero.
 2. **Interactions** — 75 of 97 contexts carry none, so every free-body law has
    no force to sum whatever else is supplied. Like the frame, this is a
    per-profile transactional creation, not a standalone fix.
-3. **Enabling the profiles whose plans already say `complete`** — 8 contexts
-   across `free_flight_gravity` (2), `fixed_pulley` (3), and
-   `incline_hanging_pulley` (3), each behind item 1 or 2 or both.
+3. **Enabling the profiles whose plans already say `complete`** — measured
+   reachable population **2**, not 8 (§4b). The six pulley contexts ask for a
+   readout on an aggregate nothing relates to its members, and the two reachable
+   ones are behind the `server_default` authorization decision in §4b.
 4. **The 39 contexts whose plans report `unsupported`** — these name declared
    engine capability gaps (`_catalogue_has_no_capability`,
    `_event_scoped_solve_plan`, `_relative_acceleration_capability`) and are
