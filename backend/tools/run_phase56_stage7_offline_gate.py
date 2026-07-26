@@ -702,9 +702,20 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
     if not (frontend / "node_modules").exists():
         if not run_step("install", ["npm", "ci"], timeout_s=1800):
             return {"result": "NOT_RUN", "executed": False, "steps": steps, "reason": "install_unavailable"}
-    ok = True
+    # The lint toolchain is installed exactly as the permanent workflows'
+    # own lint step does (they pin it outside package.json on purpose).
+    lint_ready = run_step(
+        "lint_toolchain",
+        [
+            "npm", "install", "--no-save", "--no-package-lock",
+            "--ignore-scripts", "--no-audit", "--no-fund",
+            "eslint@9.39.5", "eslint-config-next@15.5.18",
+        ],
+        timeout_s=1800,
+    )
+    ok = lint_ready
     for name, command in (
-        ("tests", ["npm", "test", "--", "--run"]),
+        ("tests", ["npm", "test"]),
         ("lint", ["npm", "run", "lint"]),
         ("typecheck", ["npm", "run", "typecheck"]),
         ("build", ["npm", "run", "build"]),
@@ -784,8 +795,13 @@ def _hard_safety_section(
     executed = bool(lane_b.get("executed"))
     answer_scoring = lane_b.get("answer_scoring", {})
     wrong_solves = answer_scoring.get("wrong")
+    # Safety derives from the isolation/integrity gates; the public-100
+    # solved-distribution gate is the yield target, not a safety signal —
+    # an honestly blocked case is safe, a wrongly solved one is not.
     structural_pass = all(
-        gate.result in ("PASS", "NOT_RUN") for gate in gates
+        gate.result in ("PASS", "NOT_RUN")
+        for gate in gates
+        if gate.name != "lane_b_public_100"
     )
     # The catalog itself is frozen in the evaluation contract; the artifact
     # carries counts only, because several signal *names* are themselves
