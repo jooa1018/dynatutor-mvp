@@ -407,6 +407,41 @@ map.  The public distribution is still unchanged — the measured full-pipeline
 yield of the profile is zero solved, for reasons §4b records — and that is
 the honest outcome of running the real path rather than predicting it.
 
+### Residual safety audit of the two stages above (closed)
+
+Two residual gaps were audited in the authority stage and the transaction
+layer after they landed, and both are closed:
+
+1. **The bundle's competing-stated-fact check was role-global.**  A stated
+   gravity fact for *any* subject anywhere in the Draft refused the
+   `constant_gravity` authorization for every subject.  The check is now
+   scoped to the physical identity of the value policy's role — same subject,
+   overlapping interval or event scope — with event reach proven from the
+   typed structure (`Event.interval_ids` plus the interval's own boundary
+   declarations).  A stated fact for another subject, another interval, or an
+   event provably attached only elsewhere refuses nothing; an unscoped stated
+   fact, a dangling event reference, or an attachment-free event still fails
+   closed.  Component and frame deliberately do not separate competitors for
+   the gravity policy, whose role is a magnitude invariant.  The public
+   distribution is unchanged by this scoping — no reachable context was
+   waiting on it — which is the measured result, not an assumption.
+
+2. **The transaction ID collision domain covered four namespaces.**  The
+   free-flight precheck collided generated IDs against quantities, symbols,
+   interactions, and frames only; a generated ID equal to an authored entity,
+   event, constraint, assumption, or any of the other Draft namespaces would
+   have spliced the created records into the existing reference space.  All
+   three enabled transactions now collide their generated IDs against every
+   ID-bearing namespace of the Draft contract — 18 namespaces, one domain —
+   before anything is built, and a hit abandons the transaction whole with
+   the caller keeping the exact Draft it passed in.
+
+Both closures are attack-covered in `test_phase56_stage7_lane_b_authority.py`
+(identity scoping, order/rename invariance, fail-closed event scopes) and
+`test_phase56_stage7_free_flight_closure.py` /
+`test_phase56_stage7_profile_application.py` (per-namespace collisions,
+multi-namespace collisions, byte-identical refusal end to end).
+
 ## 5. `CORPUS_CONTRACT_MISMATCH`: magnitude questions and signed axes
 
 63 of 97 questions ask for a `magnitude`. The closure applier deliberately

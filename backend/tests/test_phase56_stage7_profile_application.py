@@ -632,3 +632,56 @@ def test_a_relative_magnitude_question_is_never_rewritten_either():
     assert result.outcome is ApplicationOutcome.rejected
     assert result.draft.queries[0].target.component.value == "magnitude"
     assert result.draft.reference_frames == []
+
+
+# --------------------------------------------------------------------------
+# Generated IDs collide against every Draft namespace, in every transaction
+# --------------------------------------------------------------------------
+
+
+def test_an_impulse_frame_id_colliding_outside_its_own_namespace_abandons():
+    """The derived frame ID against an authored *entity* ID, not a frame."""
+
+    draft = _draft()
+    tampered = draft.model_copy(
+        update={
+            "entities": [
+                *draft.entities,
+                draft.entities[0].model_copy(
+                    update={"entity_id": DERIVED_FRAME_ID}
+                ),
+            ]
+        }
+    )
+    result = apply_complete_profile(_complete_plan(tampered), tampered)
+    assert result.outcome is ApplicationOutcome.rejected
+    assert result.draft is tampered
+    assert result.draft.reference_frames == []
+    assert result.created_record_ids == ()
+
+
+def test_a_relative_frame_id_colliding_outside_its_own_namespace_abandons():
+    """The observer frame ID against an authored *event* ID, not a frame."""
+
+    projection = _relative_projection()
+    draft = projection.draft
+    tampered = draft.model_copy(
+        update={
+            "events": [
+                *draft.events,
+                draft.events[0].model_copy(
+                    update={"event_id": OBSERVER_FRAME_ID}
+                ),
+            ]
+        }
+    )
+    plan = plan_complete_profile(
+        ProfileId.relative_translating_frame,
+        tampered,
+        approved_assumption_ids=projection.approvable_assumption_ids,
+    )
+    result = apply_complete_profile(plan, tampered)
+    assert result.outcome is ApplicationOutcome.rejected
+    assert result.draft is tampered
+    assert result.draft.reference_frames == []
+    assert result.created_record_ids == ()

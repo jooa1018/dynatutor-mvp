@@ -28,7 +28,12 @@ Everything else fails closed and is recorded as a bounded refusal code:
 an unapproved or out-of-set assumption, an incomplete proposal, an unresolved
 subject or interval, a proposal that deviates from the closed policy, a value
 or unit outside the bounded grammar, duplicate or competing assumptions for
-one physical identity, and any competing stated fact for the policy's role.
+one physical identity, and a competing stated fact **at the same physical
+identity** — the policy's role for the same subject over an overlapping
+interval or event scope.  A stated fact for another subject, or for another
+interval of this subject, or at an event provably attached only elsewhere,
+occupies a different physical identity and refuses nothing; a stated fact
+whose scope cannot be proven separate fails closed and still blocks.
 An event-scoped default is structurally impossible here — the authorization
 record has no event field, and the engine itself refuses any event-scoped
 ``server_default`` quantity.
@@ -98,8 +103,8 @@ class LaneBAuthorityError(Exception):
 
 
 # Provenances that already state a number for a role.  A server default must
-# never stand beside one of these for the same role: the stated fact wins and
-# the authorization is simply not issued.
+# never stand beside one of these at the same physical identity: the stated
+# fact wins and the authorization is simply not issued.
 _STATED_PROVENANCES: frozenset[str] = frozenset(
     {"explicit_source", "user_correction", "server_default"}
 )
@@ -107,6 +112,72 @@ _STATED_PROVENANCES: frozenset[str] = frozenset(
 
 def _enum_value(value: object) -> object:
     return getattr(value, "value", value)
+
+
+def _event_interval_reach(
+    draft: MechanicsProblemDraftV1,
+) -> Mapping[str, frozenset[str]]:
+    """Which intervals each event provably touches: membership plus boundary.
+
+    ``Event.interval_ids`` is the event's own declared membership; an interval
+    whose ``start_event_id``/``end_event_id`` names the event touches it from
+    the interval side.  Both are typed source structure — nothing here reads
+    raw text.
+    """
+
+    reach: dict[str, set[str]] = {
+        event.event_id: set(event.interval_ids) for event in draft.events
+    }
+    for interval in draft.motion_intervals:
+        for boundary in (interval.start_event_id, interval.end_event_id):
+            if boundary is not None and boundary in reach:
+                reach[boundary].add(interval.interval_id)
+    return {event_id: frozenset(items) for event_id, items in reach.items()}
+
+
+def _stated_fact_competes(
+    quantity: object,
+    *,
+    role: str,
+    subject_id: str,
+    interval_id: str | None,
+    event_interval_reach: Mapping[str, frozenset[str]],
+) -> bool:
+    """Whether one stated quantity occupies the authorization's physical identity.
+
+    The identity of the closed gravity policy is (role, subject, interval/event
+    scope).  Component and frame deliberately do not separate competitors: the
+    role is a magnitude invariant, so a stated gravity in any dress still
+    states this subject's gravity here.  A role whose physical identity did
+    include a component would need its own scope rule before it could enter
+    the policy table.
+
+    Scope that cannot be proven separate fails closed: an authorization bound
+    to no interval claims every interval, an unscoped stated fact states its
+    value for every interval, and a dangling or attachment-free event
+    reference proves no separation.
+    """
+
+    if str(_enum_value(quantity.role)) != role:
+        return False
+    if quantity.subject_id != subject_id:
+        return False
+    if interval_id is None:
+        return True
+    if quantity.interval_id == interval_id:
+        return True
+    event_id = quantity.event_id
+    if event_id is not None:
+        reach = event_interval_reach.get(event_id)
+        if reach is None:
+            return True
+        if interval_id in reach:
+            return True
+        if reach:
+            # The event provably belongs to other intervals only.
+            return False
+        return quantity.interval_id is None
+    return quantity.interval_id is None
 
 
 def draft_fingerprint(draft: MechanicsProblemDraftV1) -> str:
@@ -198,14 +269,18 @@ def build_lane_b_authority_bundle(
     entity_ids = frozenset(item.entity_id for item in draft.entities)
     interval_ids = frozenset(item.interval_id for item in draft.motion_intervals)
 
-    # Roles for which the Draft already states a number, from any provenance
-    # that carries one.  A server default never competes with a stated fact.
-    stated_roles = frozenset(
-        str(_enum_value(quantity.role))
+    # Quantities for which the Draft already states a number, from any
+    # provenance that carries one.  A server default never stands beside a
+    # stated fact *at the same physical identity* — judged per candidate below
+    # against the candidate's own subject and interval/event scope, never
+    # against the role alone.
+    stated_quantities = tuple(
+        quantity
         for quantity in draft.quantities
         if _enum_value(quantity.provenance) in _STATED_PROVENANCES
         and quantity.raw_value is not None
     )
+    event_reach = _event_interval_reach(draft)
 
     candidates = tuple(
         item for item in approved_records if item.kind in _AUTHORITY_VALUE_POLICY
@@ -258,7 +333,16 @@ def build_lane_b_authority_bundle(
             or policy_role not in {role.value for role in QuantityRole}
         ):
             refusal = AuthorityRefusal.role_not_in_closed_mapping
-        elif policy_role in stated_roles:
+        elif any(
+            _stated_fact_competes(
+                quantity,
+                role=policy_role,
+                subject_id=item.subject_id,
+                interval_id=item.interval_id,
+                event_interval_reach=event_reach,
+            )
+            for quantity in stated_quantities
+        ):
             refusal = AuthorityRefusal.competing_stated_fact
 
         if refusal is not None:

@@ -312,6 +312,189 @@ def test_a_stated_gravity_fact_blocks_the_server_default():
 
 
 # --------------------------------------------------------------------------
+# Competing stated facts are judged at the physical identity, not the role
+# --------------------------------------------------------------------------
+#
+# The assumption under authorization is `asm_g`: gravity for subject `box`
+# over interval `motion_1`.  A stated gravity fact occupies that identity only
+# when its own subject and interval/event scope land on it; a stated gravity
+# for another body, or for another interval of this body, licenses no refusal.
+
+
+def _with_gravity_fact(projection: DraftProjection, **update) -> DraftProjection:
+    """Restate the fixture's mass fact as a stated gravity fact, re-scoped."""
+
+    draft = projection.draft
+    tampered = draft.model_copy(
+        update={
+            "quantities": [
+                item.model_copy(update={"role": "gravity", **update})
+                if item.quantity_id == "qty_mass"
+                else item
+                for item in draft.quantities
+            ]
+        }
+    )
+    return dataclasses.replace(projection, draft=tampered)
+
+
+def _with_second_interval(projection: DraftProjection) -> DraftProjection:
+    """Add a second interval `motion_2` with its own event `ev_two`."""
+
+    draft = projection.draft
+    second_interval = draft.motion_intervals[0].model_copy(
+        update={
+            "interval_id": "motion_2",
+            "order": 2,
+            "start_event_id": None,
+            "end_event_id": None,
+        }
+    )
+    second_event = draft.events[0].model_copy(
+        update={
+            "event_id": "ev_two",
+            "kind": "finish",
+            "interval_ids": ["motion_2"],
+        }
+    )
+    tampered = draft.model_copy(
+        update={
+            "motion_intervals": [*draft.motion_intervals, second_interval],
+            "events": [*draft.events, second_event],
+        }
+    )
+    return dataclasses.replace(projection, draft=tampered)
+
+
+def _expect_authorized(projection: DraftProjection) -> None:
+    bundle = build_lane_b_authority_bundle(projection)
+    assert bundle.refusals == ()
+    assert [key for key, _ in bundle.authorized_assumptions] == ["asm_g"]
+
+
+def _expect_refused(projection: DraftProjection) -> None:
+    bundle = build_lane_b_authority_bundle(projection)
+    assert bundle.authorized_assumptions == ()
+    assert bundle.refusals == (
+        ("asm_g", AuthorityRefusal.competing_stated_fact.value),
+    )
+
+
+def test_a_same_role_fact_on_another_subject_does_not_block():
+    """Another body's stated gravity says nothing about this subject's."""
+
+    _expect_authorized(_with_gravity_fact(_projection(), subject_id="surface"))
+
+
+def test_a_same_role_fact_in_another_interval_does_not_block():
+    """This body's stated gravity elsewhere in time says nothing about here."""
+
+    projection = _with_second_interval(_projection())
+    _expect_authorized(_with_gravity_fact(projection, interval_id="motion_2"))
+
+
+@pytest.mark.parametrize(
+    "provenance", ["explicit_source", "user_correction", "server_default"]
+)
+def test_a_stated_fact_at_the_same_identity_blocks_for_every_stated_provenance(
+    provenance,
+):
+    """Same subject, same interval: every number-bearing provenance outranks."""
+
+    _expect_refused(_with_gravity_fact(_projection(), provenance=provenance))
+
+
+def test_an_event_scoped_fact_touching_the_authorized_interval_blocks():
+    """An event on this interval's boundary is this interval's own instant."""
+
+    _expect_refused(
+        _with_gravity_fact(_projection(), interval_id=None, event_id="start")
+    )
+
+
+def test_an_event_scoped_fact_provably_attached_elsewhere_does_not_block():
+    """An event that belongs only to another interval separates cleanly."""
+
+    projection = _with_second_interval(_projection())
+    _expect_authorized(
+        _with_gravity_fact(projection, interval_id=None, event_id="ev_two")
+    )
+
+
+def test_an_unprovable_event_scope_fails_closed():
+    """No attachment, or a dangling event reference, proves no separation."""
+
+    projection = _with_second_interval(_projection())
+    draft = projection.draft
+    floating_event = draft.events[0].model_copy(
+        update={"event_id": "ev_float", "kind": "other", "interval_ids": []}
+    )
+    with_floating = dataclasses.replace(
+        projection,
+        draft=draft.model_copy(update={"events": [*draft.events, floating_event]}),
+    )
+    _expect_refused(
+        _with_gravity_fact(with_floating, interval_id=None, event_id="ev_float")
+    )
+    _expect_refused(
+        _with_gravity_fact(projection, interval_id=None, event_id="ev_ghost")
+    )
+
+
+def test_an_interval_free_stated_fact_still_blocks():
+    """A fact scoped to no interval states the value for every interval."""
+
+    _expect_refused(
+        _with_gravity_fact(_projection(), interval_id=None, event_id=None)
+    )
+
+
+def test_competing_fact_scoping_is_array_order_invariant():
+    projection = _with_gravity_fact(_projection(), subject_id="surface")
+    draft = projection.draft
+    reversed_quantities = dataclasses.replace(
+        projection,
+        draft=draft.model_copy(
+            update={"quantities": list(reversed(draft.quantities))}
+        ),
+    )
+    bundle = build_lane_b_authority_bundle(projection)
+    reordered = build_lane_b_authority_bundle(reversed_quantities)
+    assert bundle.authorized_assumptions == reordered.authorized_assumptions
+    assert bundle.refusals == reordered.refusals
+
+
+def test_competing_fact_scoping_is_id_rename_invariant():
+    """Consistently renaming the other subject changes no outcome."""
+
+    def rename(projection: DraftProjection, old: str, new: str) -> DraftProjection:
+        draft = projection.draft
+        tampered = draft.model_copy(
+            update={
+                "entities": [
+                    item.model_copy(update={"entity_id": new})
+                    if item.entity_id == old
+                    else item
+                    for item in draft.entities
+                ],
+                "quantities": [
+                    item.model_copy(update={"subject_id": new})
+                    if item.subject_id == old
+                    else item
+                    for item in draft.quantities
+                ],
+            }
+        )
+        return dataclasses.replace(projection, draft=tampered)
+
+    blocked = _with_gravity_fact(_projection())
+    allowed = _with_gravity_fact(_projection(), subject_id="surface")
+    for original, expect in ((blocked, _expect_refused), (allowed, _expect_authorized)):
+        expect(original)
+        expect(rename(original, "surface", "plate_renamed"))
+
+
+# --------------------------------------------------------------------------
 # Binding: this bundle, this Draft, this revision — nothing else
 # --------------------------------------------------------------------------
 

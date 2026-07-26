@@ -22,7 +22,9 @@ answer at any point in the pipeline under test.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 
 import pytest
 
@@ -43,7 +45,9 @@ from evaluation.phase56_stage7.complete_profile import (
 from evaluation.phase56_stage7.complete_profile_application import (
     GRAVITY_INTERACTION_ID,
     GRAVITY_QUANTITY_ID,
+    GRAVITY_SYMBOL_ID,
     VERTICAL_ACCELERATION_QUANTITY_ID,
+    VERTICAL_ACCELERATION_SYMBOL_ID,
     WORLD_FRAME_ID,
     TransactionAuthority,
     _free_flight_gravity_transaction,
@@ -384,6 +388,144 @@ def test_an_id_collision_abandons_the_transaction():
         }
     )
     assert _free_flight_gravity_transaction(payload, authority) is None
+
+
+# One authored record per Draft namespace, each carrying a generated ID.  Any
+# of them alone must abandon the whole transaction before anything is built:
+# the collision domain is every namespace of the Draft, not just the four the
+# created records happen to enter.
+_TRIVIAL_RELATION = {
+    "op": "equality",
+    "left": {"op": "literal", "value": 1.0},
+    "right": {"op": "literal", "value": 1.0},
+}
+_NAMESPACE_COLLISIONS: dict[str, dict] = {
+    "source_assets": {
+        "asset_id": GRAVITY_QUANTITY_ID,
+        "kind": "image",
+        "content_sha256": "0" * 64,
+        "media_type": "image/png",
+    },
+    "source_evidence": {
+        "kind": "text",
+        "evidence_id": GRAVITY_SYMBOL_ID,
+        "quote": "fixture quote",
+        "source_span": {"start": 0, "end": 5},
+        "occurrence_index": 0,
+    },
+    "entities": {
+        "entity_id": GRAVITY_QUANTITY_ID,
+        "primitive": "particle",
+    },
+    "points": {
+        "point_id": VERTICAL_ACCELERATION_QUANTITY_ID,
+        "role": "reference",
+    },
+    "motion_intervals": {
+        "interval_id": VERTICAL_ACCELERATION_SYMBOL_ID,
+        "order": 2,
+        "subject_ids": ["stone"],
+    },
+    "events": {
+        "event_id": WORLD_FRAME_ID,
+        "kind": "other",
+    },
+    "geometry": {
+        "relation_id": GRAVITY_INTERACTION_ID,
+        "kind": "distance",
+        "participant_ids": ["stone"],
+    },
+    "constraints": {
+        "constraint_id": GRAVITY_INTERACTION_ID,
+        "kind": "other",
+        "expression": _TRIVIAL_RELATION,
+    },
+    "state_conditions": {
+        "state_condition_id": GRAVITY_QUANTITY_ID,
+        "kind": "motion",
+        "state": "unknown",
+        "subject_id": "stone",
+    },
+    "queries": {
+        "query_id": VERTICAL_ACCELERATION_QUANTITY_ID,
+        "target": {"role": "time", "subject_id": "stone"},
+        "output_unit": "s",
+        "output_dimension": {"time": 1},
+        "shape": "scalar",
+    },
+    "principle_hints": {
+        "hint_id": GRAVITY_SYMBOL_ID,
+        "principle": "kinematics",
+    },
+    "assumptions": {
+        "assumption_id": GRAVITY_SYMBOL_ID,
+        "kind": "fixture_marker",
+        "subject_id": "stone",
+        "disposition": "visible",
+        "reason": "independently authored namespace-collision fixture record",
+    },
+    "ambiguities": {
+        "ambiguity_id": WORLD_FRAME_ID,
+        "kind": "other",
+        "description": "independently authored namespace-collision fixture record",
+        "blocking": False,
+    },
+    "unsupported_features": {
+        "feature_code": GRAVITY_INTERACTION_ID,
+        "description": "independently authored namespace-collision fixture record",
+    },
+}
+
+
+@pytest.mark.parametrize("namespace", sorted(_NAMESPACE_COLLISIONS))
+def test_a_generated_id_colliding_with_any_namespace_abandons_everything(
+    namespace,
+):
+    """Entity, event, constraint, assumption — every namespace is a wall."""
+
+    projection = _projection()
+    payload, authority = _payload_and_authority(projection)
+    payload[namespace] = [*payload[namespace], dict(_NAMESPACE_COLLISIONS[namespace])]
+    snapshot = json.dumps(payload, sort_keys=True, ensure_ascii=False)
+    assert _free_flight_gravity_transaction(payload, authority) is None
+    # Zero partial creation: the refused payload is byte-identical.
+    assert json.dumps(payload, sort_keys=True, ensure_ascii=False) == snapshot
+
+
+def test_simultaneous_collisions_across_namespaces_change_nothing():
+    projection = _projection()
+    payload, authority = _payload_and_authority(projection)
+    for namespace in ("entities", "events", "constraints", "assumptions"):
+        payload[namespace] = [
+            *payload[namespace],
+            dict(_NAMESPACE_COLLISIONS[namespace]),
+        ]
+    assert _free_flight_gravity_transaction(payload, authority) is None
+
+
+def test_a_namespace_collision_leaves_the_draft_byte_identical_end_to_end():
+    """Through `close_projected_draft`: no partial record, same exact Draft."""
+
+    projection = _projection()
+    draft = projection.draft
+    colliding_entity = draft.entities[0].model_copy(
+        update={"entity_id": GRAVITY_QUANTITY_ID}
+    )
+    tampered = draft.model_copy(
+        update={"entities": [*draft.entities, colliding_entity]}
+    )
+    projection = dataclasses.replace(projection, draft=tampered)
+    before = tampered.model_dump_json()
+    bundle = build_lane_b_authority_bundle(projection)
+    result = close_projected_draft(
+        tampered,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+    assert not result.applied
+    assert result.created_record_ids == ()
+    assert result.draft is tampered
+    assert result.draft.model_dump_json() == before
 
 
 # --------------------------------------------------------------------------

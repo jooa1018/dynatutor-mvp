@@ -49,7 +49,7 @@ from evaluation.phase56_stage7.complete_profile import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v2"
+    "phase56-stage7-complete-profile-application-v3"
 )
 
 
@@ -108,6 +108,47 @@ OBSERVER_FRAME_ID = "frm_closure_observer"
 # exactly as the source wrote it.
 _DIRECTIONLESS_COMPONENT = "magnitude"
 _SIGNED_AXIS_COMPONENTS: frozenset[str] = frozenset({"x", "y", "z"})
+
+# Every ID-bearing namespace of the Draft contract, as (field, id_field) pairs.
+# A transaction's generated IDs must be fresh across ALL of them: Draft
+# references resolve by bare identifier, so a generated ID that echoes an
+# authored ID in *any* namespace — an entity, an event, a constraint, an
+# assumption — would splice the created records into the Draft's existing
+# reference space instead of standing beside it.  The collision precheck runs
+# before anything is built, and a hit abandons the transaction whole: the
+# caller keeps the exact Draft it passed in.
+_DRAFT_ID_NAMESPACES: tuple[tuple[str, str], ...] = (
+    ("source_assets", "asset_id"),
+    ("source_evidence", "evidence_id"),
+    ("entities", "entity_id"),
+    ("points", "point_id"),
+    ("reference_frames", "frame_id"),
+    ("motion_intervals", "interval_id"),
+    ("events", "event_id"),
+    ("symbols", "symbol_id"),
+    ("quantities", "quantity_id"),
+    ("geometry", "relation_id"),
+    ("interactions", "interaction_id"),
+    ("constraints", "constraint_id"),
+    ("state_conditions", "state_condition_id"),
+    ("queries", "query_id"),
+    ("principle_hints", "hint_id"),
+    ("assumptions", "assumption_id"),
+    ("ambiguities", "ambiguity_id"),
+    ("unsupported_features", "feature_code"),
+)
+
+
+def _authored_draft_ids(payload: Mapping[str, Any]) -> frozenset[str]:
+    """Every authored ID in every Draft namespace, as one collision domain."""
+
+    ids: set[str] = set()
+    for field_name, id_field in _DRAFT_ID_NAMESPACES:
+        for item in payload[field_name]:
+            value = item.get(id_field)
+            if value is not None:
+                ids.add(value)
+    return frozenset(ids)
 
 
 def _query_axis_conflicts(query: dict[str, Any], axis: str) -> bool:
@@ -193,6 +234,8 @@ def _impulse_momentum_transaction(
     if axis is None:
         return None
     if _query_axis_conflicts(query, axis):
+        return None
+    if DERIVED_FRAME_ID in _authored_draft_ids(payload):
         return None
 
     frame = {
@@ -301,6 +344,8 @@ def _relative_translating_frame_transaction(
     if _axis_binding(payload["quantities"], observer_id) not in {None, axis}:
         return None
     if _query_axis_conflicts(query, axis):
+        return None
+    if _authored_draft_ids(payload) & {WORLD_FRAME_ID, OBSERVER_FRAME_ID}:
         return None
 
     world = {
@@ -522,13 +567,8 @@ def _free_flight_gravity_transaction(
         if item["kind"] == "gravity":
             return None
 
-    # Created IDs must be fresh across every namespace they enter.
-    existing_ids = (
-        {item["quantity_id"] for item in payload["quantities"]}
-        | {item["symbol_id"] for item in payload["symbols"]}
-        | {item["interaction_id"] for item in payload["interactions"]}
-        | {item["frame_id"] for item in payload["reference_frames"]}
-    )
+    # Created IDs must be fresh across the whole Draft, not just the four
+    # namespaces the created records enter.
     created_ids = {
         GRAVITY_QUANTITY_ID,
         GRAVITY_SYMBOL_ID,
@@ -537,7 +577,7 @@ def _free_flight_gravity_transaction(
         VERTICAL_ACCELERATION_SYMBOL_ID,
         WORLD_FRAME_ID,
     }
-    if existing_ids & created_ids:
+    if _authored_draft_ids(payload) & created_ids:
         return None
 
     # Gravity fixes the vertical.  Stated directions on the subject may only
