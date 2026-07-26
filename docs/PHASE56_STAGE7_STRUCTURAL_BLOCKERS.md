@@ -377,16 +377,84 @@ first to establish precisely:
 - The time-question context's end boundary is typed `reaches_condition` —
   the corpus did not type it as an extremum — and no source fact values the
   condition, so the wall recorded above stands exactly as stated.  Its
-  remaining gap is also structural on the query side: the question projects
-  as a `time`-role unknown while the algebraic endpoint laws consume a
-  `duration`-role quantity, so even a pinned end velocity would leave the
-  query symbol outside the equation component.
+  query-side gap — the question projecting as a `time`-role unknown while
+  the algebraic endpoint laws consume a `duration`-role quantity — is
+  **RESOLVED** by the elapsed-duration query binding (see the
+  session-candidate hardening below); the context's remaining walls are the
+  boundary-value gap above plus the typed records below.
 - The angle context's `highest_point` event **is** typed — and is
   segment-internal (the interval runs launch → landing; the apex is
   mid-interval, and the question asks the height at that internal instant).
-  The no-promotion control refuses it correctly; closing it needs a
-  sub-interval contract decision on top of the §5 magnitude-with-angle
-  decomposition, and neither is invented here.
+  The sub-interval contract decision has since been **made** — typed
+  occurrence scope, below — so this context's remaining wall is exactly the
+  §5 magnitude-with-angle decomposition, nothing else.
+
+### The session-candidate hardening on top (Packages A–C, measured)
+
+Three packages landed after the free-flight measurement, each verified
+against the public 100 with a byte-identical distribution
+(6 solved / 6 deferred / 2 + 2 + 1 blocked / 67 underdetermined /
+16 unsupported, wrong solve 0) — pure contract hardening with no measured
+regression and no reinterpreted target:
+
+- **Event semantic authority (projection v3).**  A numeric-licensing event
+  kind (`highest_point`, `lowest_point`, `turnaround`, `comes_to_rest`) no
+  longer licenses its zero on the corpus label alone.  The corpus event's
+  own `evidence_quote` is resolved to the exact, unique span of the problem
+  text, recorded as `source_evidence`, and linked through
+  `Event.evidence_refs`; missing, unresolvable, or ambiguous quotes fail
+  closed (event preserved, licence withheld, gap reported per event over a
+  closed vocabulary).  The engine law and the evaluator derivation now
+  consume one shared eligibility contract
+  (`engine/mechanics/laws/event_boundary.py`) instead of two hand-held
+  copies, plus a bounded candidate-iff-consumption equivalence matrix.
+  All ten licensing events in the public corpus carry exact unique quotes,
+  so the gate costs zero measured engagement.
+- **Typed occurrence scope (projection v4, the sub-interval decision).**
+  `Event.occurs_in_interval_ids` (append-only) states that an instant lies
+  strictly inside an interval; bounded and occupied are disjoint by
+  contract validator, the Draft validator refuses forged interiority and
+  foreign-subject occupancy, and the compiler holds the inverse
+  reciprocity while its scope checks accept boundary-or-occupancy as an
+  event's reach — 63 facts and 25 query targets regain their interval
+  scope.  The physics unlocked is interior-extremum-only (Fermat), gated on
+  Package A authority, a closed non-degenerate span, no impulsive
+  structure, a unique *inertial* gravity frame, and exactly one candidate
+  unknown.  The production Phase 55 adapter's segment-membership-as-
+  boundary conflation is closed by the same package.
+- **Elapsed-duration query binding (projection v5).**  A `time` question
+  whose segment's interval declares both boundaries, distinct, and whose
+  `event_role` is either absent or exactly that interval's own end, is the
+  interval's elapsed duration — the same relational object the
+  constant-acceleration laws multiply and the same rule the fact side
+  already applied.  The rebind changes role/unit/dimension/event-scope
+  only; start-event questions, interior instants, one-sided or degenerate
+  spans, foreign intervals, and every `period` question decline and keep
+  the plain `time` binding.  No epoch exists anywhere in the contract, so
+  no `t0` can be invented.
+
+The remaining typed gaps for the two public time contexts, recorded
+exactly:
+
+- `CORPUS_CONTRACT_MISMATCH` — **no query-side temporal role.**  The corpus
+  query record carries no `temporal_role`, so an absolute-instant time
+  question is unstatable and distinguishable from an elapsed one only
+  through `event_role`.  Sufficient for the public 100; an explicit
+  `queries[].temporal_role` mirroring `explicit_facts[].temporal_role`
+  would make the proof direct instead of inferred from absence.
+- `CORPUS_CONTRACT_MISMATCH` — **no root-selection authority.**  The
+  flight-time question's gold is the positive root; the engine can only
+  exclude the launch root via `elapsed_time_positive`, which is gated on a
+  `strictly_positive_duration` authority the corpus assumption vocabulary
+  cannot express.
+- `ENGINE_CONTRACT` gap — **no solver waiver for the extremum/rest-endpoint
+  constant-acceleration shape.**  Measured live on a synthetic fixture:
+  with the duration binding the graph closes (`event_vertical_extremum_velocity`
+  + `particle_constant_acceleration_velocity` + `uniform_gravity_acceleration`,
+  3 equations) and the solver's static-boundary waiver vocabulary refuses
+  the event-scoped plan (`solve_rejected`, answer `None`).  Closing it is a
+  reviewed solver-contract decision for the profile work, not a projection
+  side effect.
 
 25 positive/negative controls in
 `test_phase56_stage7_event_boundary_semantics.py` hold the package: the

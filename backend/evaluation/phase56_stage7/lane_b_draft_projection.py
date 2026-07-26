@@ -67,7 +67,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v4"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v5"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -170,6 +170,16 @@ _ENDPOINT_QUERY_KEYS: dict[str, str] = {
 }
 _ELAPSED_ROLES: dict[str, tuple[str, dict[str, int]]] = {
     "time": ("duration", _dim(time=1)),
+}
+# The query-side mirror of `_ELAPSED_ROLES`.  A `time` question is an elapsed
+# duration exactly when the typed structure proves it: the queried segment's
+# interval declares both boundaries, they are distinct physical events, and
+# the question names either no event or precisely that interval's own end.
+# The duration is defined *relationally* by the two boundary events — no
+# epoch, no invented t0 — which is the same object the constant-acceleration
+# laws multiply and the same rule the fact side already applies.
+_ELAPSED_QUERY_KEYS: dict[str, tuple[str, str, dict[str, int]]] = {
+    "time": ("duration", "s", _dim(time=1)),
 }
 
 # 6-B/7. Closed corpus motion-model mapping.  A motion model is source-declared
@@ -1493,15 +1503,28 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             )
         if query.event_role is not None and query.event_role not in event_ids:
             raise DraftProjectionError(DraftProjectionReason.dangling_event_reference)
-        query_event_role = _stated_endpoint(
-            _ENDPOINT_QUERY_KEYS.get(query.output_key),
-            query.segment_role,
-            query.event_role,
-            intervals_by_id,
-        )
-        query_interval_id, query_event_id = _typed_scope(
-            query.segment_role, query_event_role, interval_reach_by_event
-        )
+        elapsed_binding = _elapsed_duration_binding(query, intervals_by_id)
+        if elapsed_binding is not None:
+            # The proven elapsed-duration question: the unknown is the
+            # interval's own duration, scoped to the interval alone.  The two
+            # boundary identities stay carried by the interval record itself
+            # — an event-scoped duration is a shape the solver contract
+            # rejects, and restating the end event here would claim an
+            # absolute instant no source states.  Only the role, unit,
+            # dimension, and event scope change; subject and component are
+            # the question's own.
+            role, unit, dimension = elapsed_binding
+            query_interval_id, query_event_id = query.segment_role, None
+        else:
+            query_event_role = _stated_endpoint(
+                _ENDPOINT_QUERY_KEYS.get(query.output_key),
+                query.segment_role,
+                query.event_role,
+                intervals_by_id,
+            )
+            query_interval_id, query_event_id = _typed_scope(
+                query.segment_role, query_event_role, interval_reach_by_event
+            )
         # The query target is a quantity the source does *not* state.  It keeps
         # the full subject/interval/event/component identity of the question and
         # carries no value, no unit token, and no evidence: it is exactly the
@@ -1723,6 +1746,39 @@ def _interaction_interval(
     if set(participant_roles) <= actors_by_interval.get(interval_id, set()):
         return interval_id
     return None
+
+
+def _elapsed_duration_binding(
+    query: Any, intervals_by_id: Mapping[str, dict[str, Any]]
+) -> tuple[str, str, dict[str, int]] | None:
+    """Prove a query's elapsed-duration semantics from typed fields, or decline.
+
+    The proof reads exactly four typed inputs: the query's own output key,
+    its segment, its event, and the queried interval's declared boundaries.
+    It holds when the interval declares both boundaries, they are distinct
+    physical events, and the question names either no event or precisely the
+    interval's own end — the elapsed time from start to end.  Everything
+    else declines and keeps the plain time binding: a start-event question
+    would need an epoch no source states, a segment-internal instant would
+    need a sub-interval the source never declared, a one-sided or degenerate
+    span has nothing to elapse over, and a `period` is a property of a
+    regime, never an interval's duration.  No raw text, family, or expected
+    answer participates.
+    """
+
+    mapped = _ELAPSED_QUERY_KEYS.get(query.output_key)
+    if mapped is None or query.segment_role is None:
+        return None
+    interval = intervals_by_id.get(query.segment_role)
+    if interval is None:
+        return None
+    start_event = interval.get("start_event_id")
+    end_event = interval.get("end_event_id")
+    if start_event is None or end_event is None or start_event == end_event:
+        return None
+    if query.event_role not in (None, end_event):
+        return None
+    return mapped
 
 
 def _typed_scope(
