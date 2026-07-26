@@ -10920,4 +10920,20 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     )
 
 
-__all__ = ["CORE_LAW_CATALOG", "apply_core_laws", "core_law_catalog"]
+def free_body_primitive_names() -> tuple[str, ...]:
+    """The entity primitives that carry their own free body.
+
+    A reader that needs to know which entities a free-body law will ever write
+    an equation for should ask here rather than re-declaring the set, so that
+    widening or narrowing it shows up at every reader at once.
+    """
+
+    return tuple(sorted(item.value for item in _FREE_BODY_PRIMITIVES))
+
+
+__all__ = [
+    "CORE_LAW_CATALOG",
+    "apply_core_laws",
+    "core_law_catalog",
+    "free_body_primitive_names",
+]

@@ -53,6 +53,10 @@ from evaluation.phase56_stage7.complete_profile import (  # noqa: E402
 from evaluation.phase56_stage7.lane_b_draft_projection import (  # noqa: E402
     project_case_to_draft,
 )
+from evaluation.phase56_stage7.lane_b_structural_blockers import (  # noqa: E402
+    build_structural_blocker_census,
+    census_as_dict,
+)
 from evaluation.phase56_stage7.lane_b_failure_matrix import (  # noqa: E402
     build_pipeline_failure_matrix,
 )
@@ -351,6 +355,37 @@ def _complete_profile_census_section(archive_path: Path | None) -> dict[str, Any
     return section
 
 
+def _structural_blocker_section(archive_path: Path | None) -> dict[str, Any]:
+    """Count the typed structure the sources do not state at all.
+
+    Diagnostic, never a gate.  The complete-profile census measures how close a
+    profile is to closing; this measures what is absent from every context
+    regardless of profile, which is what separates a planner gap that a closed
+    derivation can fill from a blocker no transaction can remove without
+    restating what the source says.
+
+    Counts only.  The record has no field that could hold identity or content.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        drafts = []
+        for case in (*public_dev, *public_adversarial):
+            projection = project_case_to_draft(case)
+            if not projection.projected:
+                continue
+            drafts.append(projection.draft)
+        census = build_structural_blocker_census(drafts)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(census_as_dict(census))
+    return section
+
+
 def _resolve_archive_path() -> Path | None:
     raw = os.environ.get(PUBLIC_CORPUS_PATH_ENV, "").strip()
     if not raw:
@@ -380,6 +415,9 @@ def build_report() -> tuple[dict[str, Any], bool]:
         census_section = _complete_profile_census_section(
             archive_path if corpus_gate.passed else None
         )
+        blocker_section = _structural_blocker_section(
+            archive_path if corpus_gate.passed else None
+        )
 
     report: dict[str, Any] = {
         "schema": OFFLINE_GATE_SCHEMA,
@@ -397,6 +435,7 @@ def build_report() -> tuple[dict[str, Any], bool]:
         "lane_b": lane_b_section,
         "blocked_law_diagnosis": diagnosis_section,
         "complete_profile_census": census_section,
+        "structural_blockers": blocker_section,
         "gates": [
             {"name": gate.name, "result": gate.result, "detail": gate.detail}
             for gate in gates
