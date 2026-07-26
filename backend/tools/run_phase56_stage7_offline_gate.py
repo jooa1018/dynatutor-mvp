@@ -45,6 +45,11 @@ from evaluation.phase56_stage7.corpus_preflight import (  # noqa: E402
 from evaluation.phase56_stage7.blocked_law_diagnosis import (  # noqa: E402
     diagnose_blocked_laws,
 )
+from evaluation.phase56_stage7.complete_profile import (  # noqa: E402
+    build_complete_profile_census,
+    draft_structure_fingerprint,
+    plan_every_profile,
+)
 from evaluation.phase56_stage7.lane_b_draft_projection import (  # noqa: E402
     project_case_to_draft,
 )
@@ -306,6 +311,46 @@ def _blocked_law_diagnosis_section(archive_path: Path | None) -> dict[str, Any]:
     return section
 
 
+def _complete_profile_census_section(archive_path: Path | None) -> dict[str, Any]:
+    """Measure how close each bounded profile is to closing, over every context.
+
+    Diagnostic, never a gate.  Its purpose is to decide *which* profile to build
+    next from a measurement rather than from a family label: a profile with a
+    nonzero complete population is one the source structure already reaches, and
+    everything else is reported as the precise reason it does not.
+
+    The section is counts only.  No case ID, family, split, problem text,
+    expected answer, expected terminal, or gold graph can appear in it — the
+    census records have no field that could hold one.  Planning is verified to
+    have left every Draft byte-identical before the counts are accepted.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        plan_sets = []
+        for case in (*public_dev, *public_adversarial):
+            projection = project_case_to_draft(case)
+            if not projection.projected:
+                continue
+            before = draft_structure_fingerprint(projection.draft)
+            plans = plan_every_profile(
+                projection.draft,
+                approved_assumption_ids=projection.approvable_assumption_ids,
+            )
+            if draft_structure_fingerprint(projection.draft) != before:
+                raise RuntimeError("complete-profile planning mutated a Draft")
+            plan_sets.append(plans)
+        census = build_complete_profile_census(plan_sets)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(census.as_dict())
+    return section
+
+
 def _resolve_archive_path() -> Path | None:
     raw = os.environ.get(PUBLIC_CORPUS_PATH_ENV, "").strip()
     if not raw:
@@ -332,6 +377,9 @@ def build_report() -> tuple[dict[str, Any], bool]:
         diagnosis_section = _blocked_law_diagnosis_section(
             archive_path if corpus_gate.passed else None
         )
+        census_section = _complete_profile_census_section(
+            archive_path if corpus_gate.passed else None
+        )
 
     report: dict[str, Any] = {
         "schema": OFFLINE_GATE_SCHEMA,
@@ -348,6 +396,7 @@ def build_report() -> tuple[dict[str, Any], bool]:
         "public_corpus": corpus_section,
         "lane_b": lane_b_section,
         "blocked_law_diagnosis": diagnosis_section,
+        "complete_profile_census": census_section,
         "gates": [
             {"name": gate.name, "result": gate.result, "detail": gate.detail}
             for gate in gates
