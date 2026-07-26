@@ -587,6 +587,15 @@ def _projectile_boundary_emissions(context: LawContext) -> list[LawEmission]:
         gravity, acceleration = gravities[0], accelerations[0]
         if gravity.dimension != acceleration.dimension:
             continue
+        # The binding's provenance: a server-valued gravity has no source
+        # span to quote, so the equation cites the approved constant-gravity
+        # authorization that licensed the value instead.  A source-stated
+        # gravity keeps its own evidence trail through the bound quantities.
+        assumptions = context.approved_assumptions(
+            "constant_gravity",
+            acceleration.subject_id,
+            acceleration.interval_id,
+        )
         emitted.append(
             _emit(
                 context,
@@ -599,6 +608,7 @@ def _projectile_boundary_emissions(context: LawContext) -> list[LawEmission]:
                     ),
                 ),
                 (acceleration, gravity),
+                assumption_ids=assumptions,
                 extra_entity_ids=tuple(interaction.participant_ids),
             )
         )

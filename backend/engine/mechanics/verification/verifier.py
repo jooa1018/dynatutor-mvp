@@ -246,7 +246,21 @@ def _source_evidence(plan: SolvePlan, candidate: SolverCandidate) -> _CheckDecis
                 for source in constraint.source_evidence_ids
             ),
         }
-        if not sources:
+        # Provenance may also be an approved-assumption citation: a
+        # server-valued binding (uniform gravity under the authorized
+        # `constant_gravity` default) has no source span to quote, and its
+        # licence is the two-key assumption authorization the compiler
+        # already verified.  An equation citing neither a source span nor an
+        # assumption remains exactly as unverifiable as before and fails.
+        cited_assumptions = {
+            *equation.assumption_ids,
+            *(
+                assumption_id
+                for application in applications_by_equation.get(equation_id, ())
+                for assumption_id in application.assumption_ids
+            ),
+        }
+        if not sources and not cited_assumptions:
             return _CheckDecision(VerificationCheckStatus.failed)
     if any(
         not condition.source_evidence_ids

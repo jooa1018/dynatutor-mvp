@@ -447,14 +447,26 @@ exactly:
   exclude the launch root via `elapsed_time_positive`, which is gated on a
   `strictly_positive_duration` authority the corpus assumption vocabulary
   cannot express.
-- `ENGINE_CONTRACT` gap — **no solver waiver for the extremum/rest-endpoint
-  constant-acceleration shape.**  Measured live on a synthetic fixture:
-  with the duration binding the graph closes (`event_vertical_extremum_velocity`
-  + `particle_constant_acceleration_velocity` + `uniform_gravity_acceleration`,
-  3 equations) and the solver's static-boundary waiver vocabulary refuses
-  the event-scoped plan (`solve_rejected`, answer `None`).  Closing it is a
-  reviewed solver-contract decision for the profile work, not a projection
-  side effect.
+- `ENGINE_CONTRACT` gap (**RESOLVED**) — **the solver waiver for the
+  evidenced-extremum constant-acceleration shape.**  First measured live on
+  a synthetic fixture: the duration binding closed the graph
+  (`event_vertical_extremum_velocity` +
+  `particle_constant_acceleration_velocity` +
+  `uniform_gravity_acceleration`, 3 equations) and the solver's
+  static-boundary waiver vocabulary refused the event-scoped plan.  The
+  waiver has since landed as its own reviewed solver-contract decision
+  (`_is_static_extremum_boundary_constant_acceleration_graph`, exact in
+  the same way as its siblings, with nine structural near-miss controls),
+  together with two provenance completions it surfaced: the uniform-gravity
+  emission now cites the approved `constant_gravity` authorization that
+  licensed its server value, and the independent verifier's
+  provenance-presence rule accepts an approved-assumption citation exactly
+  where a source span cannot exist (an equation citing neither still
+  fails).  The synthetic fixture now solves end to end — one candidate,
+  independently verified, `t = v0/g` — and the public 100 is byte-identical
+  before and after, which is the honest shape of a capability the corpus
+  cannot yet reach: the two public free-flight contexts stay behind their
+  own recorded walls above.
 
 25 positive/negative controls in
 `test_phase56_stage7_event_boundary_semantics.py` hold the package: the
@@ -705,27 +717,28 @@ enum-order permutation, case-order reversal, and identity tampering all
 leave the matrix byte-identical; a fixture where the closure applies
 nothing still measures each profile's own verdict.
 
-Four statuses have **no** applied-profile end-to-end producer at this
-head, with the reasons themselves measured rather than assumed:
-`verified_solve_reachable` and `verification_rejected` are blocked by the
-recorded solver static-boundary waiver gap (the apex-time graph compiles
-3 equations and the solver refuses the extremum-endpoint plan);
-`compiler_underdetermined` because every current law chain emits whole or
-not at all, so a pruned component is closed or empty; and
-`compiler_unsupported_reachable` because no implemented profile's exact
-shape coexists with a specialized-model refusal.  They are unit-covered at
-the classifier and stay honestly unproduced until the profile work closes
-those gaps — closing the solver waiver for the extremum-endpoint
-constant-acceleration shape is the single highest-yield next step this
-matrix identifies: it is the only place an applied transaction already
-delivers compiler equations to the solver's door.
+`verified_solve_reachable` has since gained its real producer: the solver
+waiver identified above landed (see §4b), and the evidenced-extremum
+fixture now demonstrates the full chain — selected free-flight transaction
+applied, three compiler equations, deterministic single-root solve,
+independent verification with every check passed, wrong solve 0 — with the
+public 100 byte-identical before and after.  `free_flight_gravity` is
+therefore the first profile to qualify under the measured-yield rule, and
+its measured corpus yield remains exactly its two recorded source-stated
+walls.
 
-No implemented profile currently demonstrates the full chain — candidate
-transaction applied, compiler equations, deterministic solve, independent
-verification, wrong solve 0 — so **no profile qualifies yet as the next
-implementation candidate under the measured-yield rule**, and in
-particular `rigid_fixed_axis`'s 13-context population is a census count,
-not a measured claim of any kind.
+Four statuses still have **no** applied-profile end-to-end producer at
+this head, with the reasons themselves measured rather than assumed:
+`solver_rejected` (the extremum waiver closed the one shape that used to
+stop at the solver's door, and no implemented profile produces another
+solver-reaching graph), `verification_rejected` (no admitted shape yields
+a candidate the verifier then refuses), `compiler_underdetermined`
+(every current law chain emits whole or not at all, so a pruned component
+is closed or empty), and `compiler_unsupported_reachable` (no implemented
+profile's exact shape coexists with a specialized-model refusal).  They
+are unit-covered at the classifier and stay honestly unproduced.
+`rigid_fixed_axis`'s 13-context population remains a census count, not a
+measured claim of any kind.
 
 1. **A frame-and-binding derivation shared across profiles** — every one of the
    97 contexts lacks a frame, and `frame_alone_unlocks = 0` says it only pays off

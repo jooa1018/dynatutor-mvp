@@ -210,29 +210,26 @@ def test_the_elapsed_query_vocabulary_is_exactly_time():
 # --------------------------------------------------------------------------
 
 
-def test_the_rebound_question_still_terminates_typed_and_answerless():
-    """The rebind connects the question to the equations and nothing more.
+def test_the_rebound_question_terminates_at_the_verified_solve():
+    """The rebind connects the question to the equations — and nothing more.
 
-    With the duration binding the graph now closes — the apex zero, the
+    With the duration binding the graph closes — the apex zero, the
     constant-acceleration velocity law, and the gravity binding meet the
-    query symbol — but the solver's static-boundary waiver vocabulary does
-    not yet cover the extremum-endpoint shape, so the lane terminates at a
-    typed `solve_rejected` with no answer, no exception, and no silent
-    solve.  Closing that waiver is a separately recorded engine-contract
-    decision, not a side effect this package is allowed to smuggle in.
+    query symbol — and, since the solver's static extremum-boundary waiver
+    landed as its own reviewed engine-contract decision, the lane now
+    terminates at the verified solve: exactly one candidate, independently
+    verified, with the fixture's own physics as the answer.  Nothing here
+    is silent — the exhaustive solve controls live in
+    ``test_phase56_stage7_extremum_boundary_solve.py``.
     """
 
     projection = _project(_record(queries=[_query(event_role="top")]))
     result = run_lane_b_case(projection, execution_token="e" * 32)
-    assert result.terminal in {
-        LaneBTerminal.compiler_failure,
-        LaneBTerminal.compiler_unsupported,
-        LaneBTerminal.needs_confirmation,
-        LaneBTerminal.solve_rejected,
-    }
+    assert result.terminal is LaneBTerminal.solved
     assert result.stage_exception is None
-    assert result.answer_value_si is None
-    assert result.verified_candidate_count == 0
+    assert result.verified_candidate_count == 1
+    assert result.answer_value_si is not None
+    assert abs(result.answer_value_si - 9.0 / 9.81) < 1.0e-9
 
 
 def test_gold_tampering_never_changes_the_duration_binding():

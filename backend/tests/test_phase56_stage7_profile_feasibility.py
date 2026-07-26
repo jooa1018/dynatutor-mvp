@@ -12,20 +12,23 @@ compiler issue codes of the closed precise-unsupported whitelist.
 
 Positive controls are real end-to-end paths (projection → authority →
 selected transaction → event derivation → validation → normalization → IR
-authorization → compiler → solver) for every status class an implemented
-profile can reach at this head: ``verified_deferred_reachable``,
-``compiler_no_equation``, ``solver_rejected``,
+authorization → compiler → solver → independent verification) for every
+status class an implemented profile can reach at this head:
+``verified_solve_reachable`` (the evidenced-extremum shape, solved and
+verified — see ``test_phase56_stage7_extremum_boundary_solve.py``),
+``verified_deferred_reachable``, ``compiler_no_equation``,
 ``profile_transaction_rejected``, ``profile_plan_not_formable``, and the
 ``profile_not_implemented`` distinction.  The classes no implemented
-profile can currently reach — ``verified_solve_reachable`` and
-``verification_rejected`` (blocked by the recorded solver static-boundary
-waiver gap), ``compiler_underdetermined`` (every current law chain emits
-whole or not at all, so a pruned component is closed or empty), and
-``compiler_unsupported_reachable`` (no implemented profile's shape coexists
-with a specialized-model refusal) — are covered at the classifier level
-only and are documented as such; hand-constructed LaneBResult objects are
-used **only** to unit-cover the decision tree, never to claim a pipeline
-path exists.
+profile can currently reach — ``verification_rejected`` and
+``solver_rejected`` (the extremum waiver closed the one shape that used to
+stop at the solver's door, and no implemented profile produces another
+solver-reaching graph), ``compiler_underdetermined`` (every current law
+chain emits whole or not at all, so a pruned component is closed or
+empty), and ``compiler_unsupported_reachable`` (no implemented profile's
+shape coexists with a specialized-model refusal) — are covered at the
+classifier level only and are documented as such; hand-constructed
+LaneBResult objects are used **only** to unit-cover the decision tree,
+never to claim a pipeline path exists.
 
 Fixtures are independently authored.  Nothing reads a case ID, family,
 split, expected terminal, or expected answer in any path under test.
@@ -616,13 +619,14 @@ def _applied_application(profile_id):
 def test_the_decision_tree_is_exact(terminal, kwargs, expected):
     """Unit coverage of every branch.  Not a pipeline-path claim.
 
-    ``verified_solve_reachable``, ``verification_rejected``,
+    ``verification_rejected``, ``solver_rejected``,
     ``compiler_underdetermined``, and ``compiler_unsupported_reachable``
-    have no applied-profile end-to-end producer at this head — the solver
-    static-boundary waiver gap, the all-or-nothing law chains, and the
-    shape-exclusive transactions are the measured reasons, recorded in the
-    structural-blockers report — so their coverage here is exactly this
-    decision-tree unit test until the profile work closes those gaps.
+    have no applied-profile end-to-end producer at this head — the
+    extremum waiver closed the one solver-refused shape, the remaining law
+    chains emit whole or not at all, and the shape-exclusive transactions
+    are the measured reasons, recorded in the structural-blockers report —
+    so their coverage here is exactly this decision-tree unit test until
+    further profile work produces them.
     """
 
     status = classify_selected_profile_outcome(
@@ -668,20 +672,30 @@ def test_plan_and_transaction_verdicts_come_from_the_application():
 # --------------------------------------------------------------------------
 
 
-def test_the_applied_free_flight_time_question_reaches_the_solver():
+def test_the_applied_free_flight_time_question_solves_and_verifies():
+    """The first applied-profile verified solve, measured end to end.
+
+    The full chain — selected free-flight transaction, evidenced apex
+    derivation, the elapsed-duration query binding, the static extremum
+    solver waiver, and independent verification — delivers exactly one
+    verified candidate.  The exhaustive controls live in
+    ``test_phase56_stage7_extremum_boundary_solve.py``.
+    """
+
     application, result, status = _selected(
         _throw_case(), ProfileId.free_flight_gravity
     )
     assert application.outcome is ApplicationOutcome.applied
-    assert result.terminal is LaneBTerminal.solve_rejected
+    assert result.terminal is LaneBTerminal.solved
     assert result.equation_count == 3
     assert set(result.applied_law_ids) == {
         "event_vertical_extremum_velocity",
         "particle_constant_acceleration_velocity",
         "uniform_gravity_acceleration",
     }
-    assert result.answer_value_si is None
-    assert status is ProfileFeasibilityStatus.solver_rejected
+    assert result.verified_candidate_count == 1
+    assert result.answer_value_si is not None
+    assert status is ProfileFeasibilityStatus.verified_solve_reachable
 
 
 def test_the_applied_free_flight_height_question_measures_no_equation():

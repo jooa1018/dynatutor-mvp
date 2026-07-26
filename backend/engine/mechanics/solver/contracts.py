@@ -1066,6 +1066,249 @@ def _is_static_rest_boundary_constant_acceleration_graph(graph: EquationGraph) -
     }
 
 
+def _is_static_extremum_boundary_constant_acceleration_graph(
+    graph: EquationGraph,
+) -> bool:
+    """Recognize the exact evidenced-extremum constant-acceleration graph.
+
+    A source that types a trajectory's vertical extremum — and proves it with
+    its own linked evidence — has stated a boundary condition: the vertical
+    velocity component is zero at that instant.  With the launch velocity
+    known, the uniform-gravity binding, and the interval's elapsed duration
+    as the unknown chain, the typed shape is three equalities over three
+    unknowns with a single linear root: ``v_top = 0``, ``a = -g``,
+    ``v_top = v_start + a·t``.  The two events are state boundaries — the
+    start of the flight and the extremum instant — not timed roots to be
+    located, which is exactly the distinction this waiver family exists to
+    state.
+
+    Recognition is graph-only and exact, in the same way as its siblings: no
+    problem text, metadata, family label, fixture ID, or legacy output
+    participates; the extremum equation must carry non-empty source evidence
+    (the typed authority trail the emission law itself requires); and every
+    structural near miss keeps ordinary timed-event fail-closed behavior.
+    """
+
+    extremum_law = "event_vertical_extremum_velocity"
+    velocity_law = "particle_constant_acceleration_velocity"
+    gravity_law = "uniform_gravity_acceleration"
+    expected_laws = {extremum_law, velocity_law, gravity_law}
+    event_ids = _graph_event_ids(graph)
+    if (
+        len(event_ids) != 2
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 3
+        or len(graph.applications) != 3
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or any(not isinstance(item.expression, Equality) for item in graph.equations)
+        or set(graph.selected_equation_ids)
+        != {item.equation_id for item in graph.equations}
+        or graph.rank.equality_count != 3
+        or graph.rank.inequality_count != 0
+        or graph.rank.unknown_count != 3
+        or graph.rank.structural_rank != 3
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    symbols_by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.point_id is not None or item.quantity_role is None:
+            return False
+        symbols_by_role.setdefault(item.quantity_role, []).append(item)
+    if set(symbols_by_role) != {
+        "acceleration",
+        "duration",
+        "gravity",
+        "velocity",
+    } or len(graph.symbols) != 5:
+        return False
+    if (
+        len(symbols_by_role["acceleration"]) != 1
+        or len(symbols_by_role["duration"]) != 1
+        or len(symbols_by_role["gravity"]) != 1
+        or len(symbols_by_role["velocity"]) != 2
+    ):
+        return False
+
+    acceleration = symbols_by_role["acceleration"][0]
+    duration = symbols_by_role["duration"][0]
+    gravity = symbols_by_role["gravity"][0]
+    start_candidates = [
+        item
+        for item in symbols_by_role["velocity"]
+        if item.known_si_value is not None
+    ]
+    extremum_candidates = [
+        item
+        for item in symbols_by_role["velocity"]
+        if item.known_si_value is None
+    ]
+    if len(start_candidates) != 1 or len(extremum_candidates) != 1:
+        return False
+    start_velocity = start_candidates[0]
+    extremum_velocity = extremum_candidates[0]
+
+    members = (acceleration, duration, start_velocity, extremum_velocity)
+    subjects = {item.subject_id for item in members}
+    intervals = {item.interval_id for item in members}
+    if (
+        len(subjects) != 1
+        or None in subjects
+        or len(intervals) != 1
+        or None in intervals
+        or acceleration.event_id is not None
+        or duration.event_id is not None
+        or gravity.event_id is not None
+        or start_velocity.event_id is None
+        or extremum_velocity.event_id is None
+        or start_velocity.event_id == extremum_velocity.event_id
+        or set(event_ids)
+        != {start_velocity.event_id, extremum_velocity.event_id}
+        or acceleration.frame_id is None
+        or start_velocity.frame_id != acceleration.frame_id
+        or extremum_velocity.frame_id != acceleration.frame_id
+        or duration.frame_id not in {None, acceleration.frame_id}
+        or gravity.frame_id not in {None, acceleration.frame_id}
+        # The knowns and unknowns are fixed by the shape: the start velocity
+        # and gravity are stated, everything else is the unknown chain.
+        or acceleration.known_si_value is not None
+        or duration.known_si_value is not None
+        or gravity.known_si_value is None
+        or gravity.subject_id != next(iter(subjects))
+        or gravity.interval_id != next(iter(intervals))
+    ):
+        return False
+    subject_id = next(iter(subjects))
+    interval_id = next(iter(intervals))
+    frame_id = acceleration.frame_id
+    extremum_event_id = extremum_velocity.event_id
+    start_event_id = start_velocity.event_id
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    if any(
+        application.equation_ids != (equations_by_law[law_id].equation_id,)
+        or application.source_quantity_ids
+        != equations_by_law[law_id].source_quantity_ids
+        or application.assumption_ids != equations_by_law[law_id].assumption_ids
+        or application.constraint_ids != equations_by_law[law_id].constraint_ids
+        or application.generated_unknown_symbol_ids
+        or equations_by_law[law_id].generated_unknown_symbol_ids
+        or application.source_evidence_ids
+        != equations_by_law[law_id].source_evidence_ids
+        or application.complexity_cost != equations_by_law[law_id].complexity_cost
+        or application.scope != equations_by_law[law_id].scope
+        for law_id, application in applications_by_law.items()
+    ):
+        return False
+
+    extremum = equations_by_law[extremum_law]
+    velocity = equations_by_law[velocity_law]
+    gravity_equation = equations_by_law[gravity_law]
+    if (
+        # The extremum's licence is its own typed evidence trail; an
+        # unevidenced boundary zero is not this shape.
+        not extremum.source_evidence_ids
+        or extremum.assumption_ids
+        or extremum.constraint_ids
+        or extremum.scope.entity_ids != (subject_id,)
+        or extremum.scope.point_ids
+        or extremum.scope.frame_id != frame_id
+        or extremum.scope.interval_id != interval_id
+        or extremum.scope.event_id != extremum_event_id
+        or extremum.scope.event_ids != (extremum_event_id,)
+        or len(velocity.assumption_ids) != 1
+        or velocity.constraint_ids
+        or velocity.scope.entity_ids != (subject_id,)
+        or velocity.scope.point_ids
+        or velocity.scope.frame_id != frame_id
+        or velocity.scope.interval_id != interval_id
+        or velocity.scope.event_id is not None
+        or velocity.scope.event_ids
+        != tuple(sorted((start_event_id, extremum_event_id)))
+        # The gravity binding's provenance is exactly its one approved
+        # constant-gravity authorization — a server-valued gravity has no
+        # source span to quote.
+        or len(gravity_equation.assumption_ids) != 1
+        or gravity_equation.constraint_ids
+        or gravity_equation.scope.entity_ids != (subject_id,)
+        or gravity_equation.scope.point_ids
+        or gravity_equation.scope.frame_id != frame_id
+        or gravity_equation.scope.interval_id != interval_id
+        or gravity_equation.scope.event_id is not None
+        or gravity_equation.scope.event_ids
+    ):
+        return False
+
+    def ref(item: object) -> str:
+        return item.symbol.symbol_id
+
+    if extremum.source_quantity_ids != (extremum_velocity.quantity_id,) or (
+        gravity_equation.source_quantity_ids
+        != tuple(sorted({acceleration.quantity_id, gravity.quantity_id}))
+    ):
+        return False
+
+    extremum_expression = extremum.expression
+    if (
+        not isinstance(extremum_expression.left, SymbolRef)
+        or extremum_expression.left.symbol_id != ref(extremum_velocity)
+        or not isinstance(extremum_expression.right, LiteralNode)
+        or extremum_expression.right.value != 0.0
+    ):
+        return False
+
+    gravity_expression = gravity_equation.expression
+    if (
+        not isinstance(gravity_expression.left, SymbolRef)
+        or gravity_expression.left.symbol_id != ref(acceleration)
+        or not isinstance(gravity_expression.right, Negate)
+        or not isinstance(gravity_expression.right.operand, SymbolRef)
+        or gravity_expression.right.operand.symbol_id != ref(gravity)
+    ):
+        return False
+
+    velocity_expression = velocity.expression
+    if (
+        not isinstance(velocity_expression.left, SymbolRef)
+        or velocity_expression.left.symbol_id != ref(extremum_velocity)
+        or not isinstance(velocity_expression.right, Add)
+        or len(velocity_expression.right.terms) != 2
+    ):
+        return False
+    start_refs = tuple(
+        item
+        for item in velocity_expression.right.terms
+        if isinstance(item, SymbolRef) and item.symbol_id == ref(start_velocity)
+    )
+    products = tuple(
+        item
+        for item in velocity_expression.right.terms
+        if isinstance(item, Multiply)
+    )
+    if len(start_refs) != 1 or len(products) != 1:
+        return False
+    product = products[0]
+    if len(product.factors) != 2 or {
+        factor.symbol_id
+        for factor in product.factors
+        if isinstance(factor, SymbolRef)
+    } != {ref(acceleration), ref(duration)}:
+        return False
+
+    return graph.query_symbol_id in {
+        ref(acceleration),
+        ref(duration),
+        ref(extremum_velocity),
+    }
+
+
 def _is_static_projectile_boundary_graph(graph: EquationGraph) -> bool:
     """Recognize one exact algebraic 2-D projectile endpoint graph.
 
@@ -2319,6 +2562,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
             _is_static_collision_boundary_graph(graph)
             or _is_static_constant_acceleration_boundary_graph(graph)
             or _is_static_rest_boundary_constant_acceleration_graph(graph)
+            or _is_static_extremum_boundary_constant_acceleration_graph(graph)
             or _is_static_projectile_boundary_graph(graph)
             or _is_static_constant_angular_acceleration_boundary_graph(graph)
             or _is_static_impulse_momentum_boundary_graph(graph)
