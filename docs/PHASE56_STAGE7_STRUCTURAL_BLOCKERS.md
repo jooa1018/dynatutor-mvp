@@ -14,7 +14,7 @@ redacted artifact.
 | Measurement | Module | Tests |
 |---|---|---|
 | Structural blocker census | `evaluation/phase56_stage7/lane_b_structural_blockers.py` | `test_phase56_stage7_structural_blockers.py` (15) |
-| Causal ownership diagnosis | `evaluation/phase56_stage7/query_readout_ownership.py` | `test_phase56_stage7_query_readout_ownership.py` (19) |
+| Causal ownership diagnosis | `evaluation/phase56_stage7/query_readout_ownership.py` | `test_phase56_stage7_query_readout_ownership.py` (33) |
 
 **A count is not a cause.** The census counts properties of contexts; the
 diagnosis tests whether a property is what actually stops the answer. §4 is the
@@ -113,54 +113,99 @@ wrong.** A context can carry a non-free-body query subject and be blocked severa
 layers earlier, in which case binding the readout to a carrier changes nothing.
 
 `evaluation/phase56_stage7/query_readout_ownership.py` settles it by experiment.
-For each such context it adds **only** a typed query-readout binding — the source
-Draft is not modified, no entity primitive is rewritten, nothing is added to the
-free-body set — and asks the real `apply_core_laws` whether the queried unknown
-is now written about. When it is not, the frame rung of the blocked-law ladder is
-added on top.
+For each such context it adds a typed query-readout binding appropriate to the
+subject's primitive — the source Draft is not modified, no entity primitive is
+rewritten, nothing is added to the free-body set — and asks the real
+`apply_core_laws` whether the queried unknown is now written about. Three rungs
+are measured separately, each reported under its own name:
+
+1. the binding alone;
+2. the binding plus a frame;
+3. the binding plus a minimal complete profile — frame, axes, component
+   topology, **and** a gravity interaction owning a force on each free body,
+   because 75 of 97 contexts carry no interaction and a frame alone can never
+   reach a free-body law.
+
+Each primitive gets the binding its readout actually needs. A point keeps its
+identity and gains an owner plus a `point_id` and a typed point record; a joint
+is bound only for the readout its role names; and an aggregate is bound to a
+**proven member set**, never by picking a member.
 
 | Outcome | `system` | `point` | `joint` |
 |---|---:|---:|---:|
-| binding alone unlocks | 0 | 0 | 0 |
-| binding plus profile required | 0 | 0 | 0 |
-| binding does not close | 0 | 12 | 3 |
-| binding not formable | 12 | 0 | 0 |
+| single-carrier binding alone unlocks | 0 | 0 | 0 |
+| aggregate multi-carrier binding unlocks | 0 | — | — |
+| point-scoped binding unlocks | — | 0 | — |
+| joint-scoped binding unlocks | — | — | 0 |
+| binding plus frame unlocks | 0 | 0 | 0 |
+| binding plus complete profile unlocks | 0 | 0 | 0 |
+| binding does not close | 12 | 12 | 3 |
+| binding not formable | 0 | 0 | 0 |
+| binding ambiguous | 0 | 0 | 0 |
 | law not semantically applicable | 0 | 0 | 3 |
 
-**`causally_blocked_on_ownership = 0`.** Building an aggregate, point, or joint
-ownership capability would unlock **nothing** as the corpus stands.
+**`causally_blocked_on_ownership = 0`** across all three rungs.
+
+### A correction to the previous revision of this section
+
+An earlier revision reported `system` as **12 `binding_not_formable`** and said
+no membership was provable. That was an artefact of a weaker instrument, and it
+is wrong in an interesting way.
+
+The aggregate proof does hold: `topology_connects` and `wraps` name both bodies
+together, and an approved `inextensible_rope` authority covers the interval, so
+the member set is `{member, member}` with one common magnitude. What was missing
+was that the members carry no readout of the queried role for the aggregate to
+be the common magnitude *of* — `aggregate_refusal_counts` records
+`member_readout_missing` on **12 of 12**. Supplying those readouts as unknowns,
+which is exactly what a profile does, forms the binding on all twelve.
+
+So the aggregate binding **is formable**, is formed, and still does not close.
+That is a stronger result than the previous one, reached with a stronger
+instrument, and it says nothing was hiding behind the earlier refusal.
 
 **The zeros are load-bearing only because the instrument is shown to detect an
 unlock when there is one.** `backend/tests/test_phase56_stage7_query_readout_ownership.py`
-carries a positive control per primitive: a context complete in every respect
-except that its readout sits on a `point`, a `joint`, or a `system`, each of
-which classifies as `*_binding_alone_unlocks`. The same three shapes were also
-reproduced against real projected contexts before the zeros were accepted.
+(33 tests) carries a positive control per binding shape, not merely per
+primitive:
+
+- a **multi-member aggregate**: two bodies on one inextensible rope over a
+  pulley, moving in opposite directions with one common magnitude, and a system
+  question about that magnitude — which classifies as
+  `aggregate_multi_carrier_binding_unlocks`, with negative controls proving that
+  unconstrained members, members without a rope topology, a member missing the
+  queried readout, an unrelated co-subject, and a **signed** system query all
+  fail closed, and that renaming every entity changes nothing;
+- a **point-scoped** binding that keeps the point entity, its primitive, and its
+  geometry, and adds an owner, a `point_id`, and a typed point record;
+- a **joint-scoped** binding that separates the pin's own kinematics — one
+  motion whichever body you read it from, so two connected bodies are *not*
+  ambiguous — from a one-sided reaction, which is ambiguous without a stated
+  side.
+
+The three primitive shapes were also reproduced against real projected contexts
+before any zero was accepted.
 
 ### What each group is really blocked on
 
-- **`system` (12) — `binding_not_formable`.** No typed record names the system
-  alongside a body: `aggregate_contexts_with_membership_relation` is **0 of 12**.
-  This is a property of the corpus, not of the projection — over the 13
-  system-subject public cases, **0** have any `gold.relations` entry whose
-  `participant_roles` include the system entity. What exists instead is
-  co-scoping: all 12 share a motion interval with their bodies, and sharing an
-  interval says the records describe the same stretch of motion, not that the
-  aggregate is made of them.
-
-  Whether co-scoping should count as membership is a contract question, and it
-  was answered with a measurement rather than an argument:
-  `aggregate_co_subject_route_unique_carrier` is **0 of 12**. Every one of these
-  is a two-body system, so even if an interval's subject list were accepted as
-  membership, the route names two carriers and cannot form a binding either.
-  `aggregate_co_subject_route_unlocks` is **0**. **The contract question does not
-  need to be settled**, because deciding it either way buys nothing.
-- **`point` (12) — `binding_does_not_close`.** Here the binding *is* formable: each
-  has exactly one carrier via a `lies_on` relation. It was formed, and neither it
-  nor it-plus-a-frame produced a law that writes about the queried readout.
-  Ownership is not the wall for these. Note also
-  `contexts_with_typed_point_record = 0`: the projection produces no `IRPoint` at
-  all, so the rigid-point laws have no point to be about.
+- **`system` (12) — `binding_does_not_close`.** The aggregate binding is
+  formable on all twelve once member readouts exist, and forming it changes
+  nothing at any rung. Note what is *not* the blocker here: no `gold.relations`
+  entry names the system entity directly (0 of 13 system-subject public cases),
+  but membership does not have to come from such a record — the rope topology
+  names the members together, and that is what the common-magnitude proof rests
+  on. The separate question of whether interval co-scoping should count as
+  membership therefore never arises, and its own measurement confirms it would
+  buy nothing: `aggregate_co_subject_route_unique_carrier` is **0 of 12**,
+  because every one is a two-body system and that route names two carriers.
+- **`point` (12) — `binding_does_not_close`.** Each has exactly one owner via a
+  `lies_on` relation. The scoped binding was formed — owner, `point_id`, and a
+  typed point record, with the point entity and its geometry left intact — and
+  neither it, nor it plus a frame, nor it plus a complete profile produced a law
+  that writes about the queried readout. Note also
+  `contexts_with_typed_point_record = 0` in the source: the projection produces
+  no `IRPoint` at all, so the rigid-point laws have no point to be about until
+  something creates one.
 - **`joint` (6).** Three are `binding_does_not_close` and three are
   `law_not_semantically_applicable` — for the latter the source declares no
   free-body entity anywhere, so no law in the catalogue is about them.
@@ -317,11 +362,14 @@ the measurement in §4 put its yield at zero.
    whether the prerequisite is genuinely absent from the source or is derivable
    from a closed vocabulary the planner does not yet read.
 
-**Not on this list: query-readout ownership.** It is measured at zero unlocks and
-is not built. If items 1 and 2 land, re-run the ownership diagnostic before
-reconsidering it — the `point` group's `binding_does_not_close` verdict was
-reached against an engine with no frames and no typed points, and that verdict
-could change once those exist.
+**Not on this list: query-readout ownership.** It is measured at zero unlocks
+across all three rungs — binding alone, binding plus frame, and binding plus a
+minimal complete profile — with multi-carrier aggregate, point-scoped, and
+joint-scoped bindings all exercised by passing positive controls. It is not
+built. If items 1 and 2 land, re-run the diagnostic before reconsidering it: the
+verdicts were reached against an engine whose contexts have no frames, no
+interactions, and no typed points, and the minimal complete profile measured
+here is a counterfactual approximation of a real one, not a substitute for it.
 
 ## 7. What this document is not
 

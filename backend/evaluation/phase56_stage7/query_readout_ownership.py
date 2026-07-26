@@ -35,9 +35,17 @@ from enum import Enum
 from typing import Any, Iterable, Sequence
 
 from engine.mechanics.contracts import (
+    AssumptionDisposition,
+    Entity as IREntity,
     EntityPrimitive,
     GeometryRelationKind,
+    Interaction as IRInteraction,
     InteractionKind,
+    Point as IRPoint,
+    PointRole,
+    QuantityComponent,
+    QuantityRole,
+    QuantityShape,
 )
 from engine.mechanics.laws.base import BoundQuantity, LawContext
 from engine.mechanics.laws.core import (
@@ -45,6 +53,7 @@ from engine.mechanics.laws.core import (
     apply_core_laws,
     free_body_primitive_names,
 )
+from engine.mechanics.math_ast import DimensionVector, SymbolRef
 
 from evaluation.phase56_stage7.blocked_law_diagnosis import (
     context_with_counterfactual_frame,
@@ -76,6 +85,13 @@ class ReadoutBindingKind(str, Enum):
 class OwnershipCausalOutcome(str, Enum):
     """What the counterfactual actually showed.
 
+    Each name states exactly which counterfactual produced it, because an
+    outcome named after a stronger counterfactual than the one that ran is a
+    measurement error waiting to be quoted.  An earlier revision of this module
+    named the frame rung `binding_plus_profile_required` while only ever adding
+    a frame; the rung is now named for the frame, and a real complete-profile
+    rung exists beside it.
+
     `binding_not_formable` is the honest outcome for a context where no carrier
     is provable from typed structure at all.  It is deliberately *not* folded
     into `binding_does_not_close`: those are contexts where a binding was formed
@@ -84,20 +100,32 @@ class OwnershipCausalOutcome(str, Enum):
     prevent.
     """
 
-    aggregate_binding_alone_unlocks = "aggregate_binding_alone_unlocks"
-    point_binding_alone_unlocks = "point_binding_alone_unlocks"
-    joint_binding_alone_unlocks = "joint_binding_alone_unlocks"
-    binding_plus_profile_required = "binding_plus_profile_required"
-    binding_does_not_close = "binding_does_not_close"
-    binding_ambiguous = "binding_ambiguous"
+    # A single carrier, bound by subject alone.
+    single_carrier_binding_alone_unlocks = "single_carrier_binding_alone_unlocks"
+    # A carrier *set* whose members typed structure proves share one magnitude.
+    aggregate_multi_carrier_binding_unlocks = "aggregate_multi_carrier_binding_unlocks"
+    # The point kept as a point: owner body, `point_id`, and its geometry.
+    point_scoped_binding_unlocks = "point_scoped_binding_unlocks"
+    # The joint kept as a joint, with the requested readout identified.
+    joint_scoped_binding_unlocks = "joint_scoped_binding_unlocks"
+    # The binding plus a frame — and nothing else.  Named for what it is.
+    binding_plus_frame_unlocks = "binding_plus_frame_unlocks"
+    # The binding plus the profile structure a law actually needs.
+    binding_plus_complete_profile_unlocks = "binding_plus_complete_profile_unlocks"
     binding_not_formable = "binding_not_formable"
+    binding_ambiguous = "binding_ambiguous"
+    binding_does_not_close = "binding_does_not_close"
     law_not_semantically_applicable = "law_not_semantically_applicable"
 
 
-_UNLOCK_OUTCOME: dict[EntityPrimitive, OwnershipCausalOutcome] = {
-    EntityPrimitive.system: OwnershipCausalOutcome.aggregate_binding_alone_unlocks,
-    EntityPrimitive.point: OwnershipCausalOutcome.point_binding_alone_unlocks,
-    EntityPrimitive.joint: OwnershipCausalOutcome.joint_binding_alone_unlocks,
+# Which "binding alone" outcome each subject primitive reports.  A `system` is
+# never reported through the single-carrier outcome even when only one member is
+# provable: an aggregate readout is an aggregate readout, and collapsing it to
+# the single-carrier name would hide that the aggregate path was what ran.
+_SCOPED_UNLOCK_OUTCOME: dict[EntityPrimitive, OwnershipCausalOutcome] = {
+    EntityPrimitive.system: OwnershipCausalOutcome.aggregate_multi_carrier_binding_unlocks,
+    EntityPrimitive.point: OwnershipCausalOutcome.point_scoped_binding_unlocks,
+    EntityPrimitive.joint: OwnershipCausalOutcome.joint_scoped_binding_unlocks,
 }
 
 # Geometry that can name the body a point belongs to.  `lies_on` is the kind the
@@ -134,6 +162,57 @@ _AGGREGATE_OWNERSHIP_GEOMETRY: frozenset[GeometryRelationKind] = frozenset(
         GeometryRelationKind.lies_on,
     }
 )
+# Geometry that names members of one rope topology together.  This is the
+# relation an aggregate common-magnitude proof rests on, so it is deliberately
+# narrower than `_AGGREGATE_OWNERSHIP_GEOMETRY`: `lies_on` states support, not
+# a shared inextensible path.
+_ROPE_TOPOLOGY_GEOMETRY: frozenset[GeometryRelationKind] = frozenset(
+    {GeometryRelationKind.topology_connects, GeometryRelationKind.wraps}
+)
+_INEXTENSIBLE_ROPE_AUTHORITY = "inextensible_rope"
+
+# Roles whose joint readout is a kinematic property of the joint point itself.
+# Two bodies meeting at one pin share these exactly, so two connected bodies are
+# not an ambiguity for them.
+_JOINT_POINT_KINEMATIC_ROLES: frozenset[QuantityRole] = frozenset(
+    {
+        QuantityRole.position,
+        QuantityRole.displacement,
+        QuantityRole.velocity,
+        QuantityRole.speed,
+        QuantityRole.acceleration,
+    }
+)
+# Roles that are a force one body exerts on another *through* the joint.  These
+# have a side, and a side the source has not stated is a real ambiguity.
+_JOINT_REACTION_ROLES: frozenset[QuantityRole] = frozenset(
+    {QuantityRole.force, QuantityRole.moment, QuantityRole.torque}
+)
+
+# Identifiers for the evaluator-only counterfactual structures.  They exist for
+# the duration of one classification and are discarded with it.
+_CF_PREFIX = "cfown"
+_CF_EVIDENCE_ID = f"{_CF_PREFIX}_evidence"
+_CF_FIELD_ENTITY_ID = f"{_CF_PREFIX}_field"
+_FORCE_DIMENSION = DimensionVector(mass=1, length=1, time=-2)
+
+
+def joint_readout_kind(
+    context: LawContext, quantity: BoundQuantity
+) -> ReadoutBindingKind | None:
+    """Which joint readout the question is actually asking for.
+
+    A joint carries two different kinds of answer and they do not have the same
+    ambiguity.  The pin's own motion is one motion whichever body you read it
+    from; the reaction through the pin is one body's action on another and has a
+    side.  Returning `None` means the role names neither, and nothing is bound.
+    """
+
+    if quantity.role in _JOINT_POINT_KINEMATIC_ROLES:
+        return ReadoutBindingKind.joint_point_readout
+    if quantity.role in _JOINT_REACTION_ROLES:
+        return ReadoutBindingKind.joint_reaction_readout
+    return None
 
 
 class OwnershipCausalDiagnosis(FrozenStrictModel):
@@ -157,6 +236,10 @@ class OwnershipCausalDiagnosis(FrozenStrictModel):
     aggregate_co_subject_route_unlocks: int = 0
     aggregate_co_subject_route_unique_carrier: int = 0
     contexts_with_typed_point_record: int = 0
+    # Why an aggregate proof refused, when it did.  Recorded because "not
+    # formable" has several causes with entirely different remedies, and a bare
+    # total hides which one is actually operating.
+    aggregate_refusal_counts: tuple[tuple[str, int], ...] = ()
     free_body_primitives: tuple[str, ...] = ()
 
     @property
@@ -164,10 +247,12 @@ class OwnershipCausalDiagnosis(FrozenStrictModel):
         """Contexts where a formable binding is what actually moves the engine."""
 
         unlocking = {
-            OwnershipCausalOutcome.aggregate_binding_alone_unlocks.value,
-            OwnershipCausalOutcome.point_binding_alone_unlocks.value,
-            OwnershipCausalOutcome.joint_binding_alone_unlocks.value,
-            OwnershipCausalOutcome.binding_plus_profile_required.value,
+            OwnershipCausalOutcome.single_carrier_binding_alone_unlocks.value,
+            OwnershipCausalOutcome.aggregate_multi_carrier_binding_unlocks.value,
+            OwnershipCausalOutcome.point_scoped_binding_unlocks.value,
+            OwnershipCausalOutcome.joint_scoped_binding_unlocks.value,
+            OwnershipCausalOutcome.binding_plus_frame_unlocks.value,
+            OwnershipCausalOutcome.binding_plus_complete_profile_unlocks.value,
         }
         return sum(count for key, count in self.outcome_counts if key in unlocking)
 
@@ -328,6 +413,252 @@ def _any_law_applies(context: LawContext) -> bool:
     )
 
 
+def aggregate_common_magnitude_carriers(
+    context: LawContext, subject_id: str, quantity: BoundQuantity
+) -> tuple[frozenset[str], str | None]:
+    """The member set whose readouts an aggregate query is the common magnitude of.
+
+    An aggregate readout is not "pick a member".  It is only well posed when
+    typed structure proves every member shares one magnitude, and here that
+    proof is exactly the one an inextensible rope over a pulley makes:
+
+    * a rope topology names the members together;
+    * an approved `inextensible_rope` authority holds over the query's interval;
+    * every named member is a free body with its own readout of the queried role
+      in that interval; and
+    * the question asks for a **magnitude**.
+
+    The magnitude requirement is not a formality.  Two bodies on opposite sides
+    of a pulley accelerate in opposite directions, so a signed system readout
+    does not exist to be bound: fabricating one would hand the solver a sign no
+    member has.  A signed query therefore fails closed.
+
+    Returns `(members, refusal)` — an empty set with a bounded refusal code when
+    the proof does not hold.
+    """
+
+    if quantity.component is not QuantityComponent.magnitude:
+        return frozenset(), "signed_component_has_no_common_readout"
+
+    bodies = _free_body_entity_ids(context)
+    members: set[str] = set()
+    for relation in context.geometry:
+        if relation.kind not in _ROPE_TOPOLOGY_GEOMETRY:
+            continue
+        named = set(relation.participant_ids) & bodies
+        if len(named) >= 2:
+            members |= named
+    if len(members) < 2:
+        # One member is not an aggregate, and none is not a member set.
+        return frozenset(), "no_multi_member_topology"
+
+    inextensible = any(
+        assumption.kind == _INEXTENSIBLE_ROPE_AUTHORITY
+        and assumption.disposition is AssumptionDisposition.approved
+        and assumption.assumption_id in context.approved_assumption_ids
+        and assumption.interval_id in (None, quantity.interval_id)
+        for assumption in context.assumptions
+    )
+    if not inextensible:
+        # Unconstrained members share nothing; their magnitudes are independent.
+        return frozenset(), "members_not_magnitude_constrained"
+
+    # Every member must actually carry the readout being asked for, in scope.
+    carried = {
+        member
+        for member in members
+        if any(
+            item.subject_id == member
+            and item.role is quantity.role
+            and item.interval_id == quantity.interval_id
+            and item.event_id == quantity.event_id
+            for item in context.quantities
+        )
+    }
+    if carried != members:
+        return frozenset(), "member_readout_missing"
+    return frozenset(members), None
+
+
+def _bind_point_scoped_readout(
+    context: LawContext,
+    quantity: BoundQuantity,
+    owner_id: str,
+    *,
+    role: PointRole = PointRole.material,
+) -> LawContext:
+    """The readout as the owner body's, *at the point the source named*.
+
+    The point entity survives untouched and keeps its geometry; what changes is
+    that the quantity now says whose point it is.  Rewriting the point into a
+    body would be a different counterfactual measuring a different claim.
+    """
+
+    rebound = tuple(
+        replace(item, subject_id=owner_id, point_id=quantity.subject_id)
+        if item.quantity_id == quantity.quantity_id
+        else item
+        for item in context.quantities
+    )
+    points = context.points
+    if not any(item.point_id == quantity.subject_id for item in points):
+        points = (
+            *points,
+            IRPoint(
+                point_id=quantity.subject_id,
+                role=role,
+                owner_entity_id=owner_id,
+                frame_id=quantity.frame_id,
+                evidence_refs=(_CF_EVIDENCE_ID,),
+            ),
+        )
+    return replace(context, quantities=rebound, points=points)
+
+
+def _with_member_readouts(
+    context: LawContext, quantity: BoundQuantity
+) -> LawContext:
+    """Give every free body a readout of the queried role, as an unknown.
+
+    An aggregate readout cannot be proven when its members carry nothing to be
+    the common magnitude *of*, and on this corpus that is the usual refusal.
+    Whether a profile that supplies those readouts would then close the
+    aggregate is a separate question from whether the source states them, so it
+    gets its own rung rather than being assumed either way.
+
+    Values stay unknown; only existence is supplied.
+    """
+
+    quantities = list(context.quantities)
+    existing = {
+        (item.subject_id, item.role, item.interval_id, item.event_id)
+        for item in context.quantities
+    }
+    for index, body in enumerate(sorted(_free_body_entity_ids(context))):
+        key = (body, quantity.role, quantity.interval_id, quantity.event_id)
+        if key in existing:
+            continue
+        symbol_id = f"{_CF_PREFIX}_member_sym_{index}"
+        quantities.append(
+            BoundQuantity(
+                quantity_id=f"{_CF_PREFIX}_member_{index}",
+                symbol_id=symbol_id,
+                role=quantity.role,
+                subject_id=body,
+                point_id=None,
+                frame_id=quantity.frame_id,
+                interval_id=quantity.interval_id,
+                event_id=quantity.event_id,
+                component=QuantityComponent.y,
+                shape=quantity.shape,
+                dimension=quantity.dimension,
+                expression=SymbolRef(
+                    symbol_id=symbol_id, dimension=quantity.dimension
+                ),
+                evidence_ids=(_CF_EVIDENCE_ID,),
+                direction_sign=1 if index % 2 == 0 else -1,
+            )
+        )
+    return replace(context, quantities=tuple(quantities))
+
+
+def _context_with_minimal_complete_profile(context: LawContext) -> LawContext:
+    """Frame, axes, component topology — **and** the interaction a law needs.
+
+    This is the rung the frame rung is not.  75 of 97 public contexts carry no
+    interaction at all, so a free-body law has no force to sum however complete
+    the kinematics are; adding a frame alone can never reach one.  Here every
+    free body also gains a gravity interaction owning a force on it, which is
+    the smallest structure that makes `_newton_emissions` reachable.
+
+    Counterfactual only.  It is discarded with the diagnosis and never becomes
+    a Draft.
+    """
+
+    framed = context_with_counterfactual_frame(context)
+    bodies = sorted(_free_body_entity_ids(framed))
+    if not bodies:
+        return framed
+    interval_id = framed.motion_intervals[0].interval_id if framed.motion_intervals else None
+    field_id = _CF_FIELD_ENTITY_ID
+    entities = framed.entities
+    if not any(item.entity_id == field_id for item in entities):
+        entities = (
+            *entities,
+            IREntity(
+                entity_id=field_id,
+                primitive=EntityPrimitive.field,
+                label=field_id,
+                evidence_refs=(_CF_EVIDENCE_ID,),
+            ),
+        )
+    frame_id = framed.reference_frames[-1].frame_id if framed.reference_frames else None
+
+    quantities = list(framed.quantities)
+    interactions = list(framed.interactions)
+    for index, body in enumerate(bodies):
+        force_id = f"{_CF_PREFIX}_force_{index}"
+        symbol_id = f"{_CF_PREFIX}_forcesym_{index}"
+        quantities.append(
+            BoundQuantity(
+                quantity_id=force_id,
+                symbol_id=symbol_id,
+                role=QuantityRole.force,
+                subject_id=body,
+                point_id=None,
+                frame_id=frame_id,
+                interval_id=interval_id,
+                event_id=None,
+                component=QuantityComponent.y,
+                shape=QuantityShape.scalar,
+                dimension=_FORCE_DIMENSION,
+                expression=SymbolRef(symbol_id=symbol_id, dimension=_FORCE_DIMENSION),
+                evidence_ids=(_CF_EVIDENCE_ID,),
+            )
+        )
+        interactions.append(
+            IRInteraction(
+                interaction_id=f"{_CF_PREFIX}_gravity_{index}",
+                kind=InteractionKind.gravity,
+                participant_ids=(body, field_id),
+                frame_id=frame_id,
+                interval_id=interval_id,
+                quantity_ids=(force_id,),
+                evidence_refs=(_CF_EVIDENCE_ID,),
+            )
+        )
+    return replace(
+        framed,
+        entities=entities,
+        quantities=tuple(quantities),
+        interactions=tuple(interactions),
+    )
+
+
+def _ladder(
+    context: LawContext,
+    bound: LawContext,
+    query_quantity_id: str,
+    scoped_outcome: OwnershipCausalOutcome,
+    carriers: int,
+) -> tuple[OwnershipCausalOutcome, int]:
+    """Binding, then binding plus a frame, then binding plus a whole profile.
+
+    Each rung is reported under its own name, so a result reached by the third
+    is never quoted as a result of the first.
+    """
+
+    if _writes_about(bound, query_quantity_id):
+        return scoped_outcome, carriers
+    if _writes_about(context_with_counterfactual_frame(bound), query_quantity_id):
+        return OwnershipCausalOutcome.binding_plus_frame_unlocks, carriers
+    if _writes_about(
+        _context_with_minimal_complete_profile(bound), query_quantity_id
+    ):
+        return OwnershipCausalOutcome.binding_plus_complete_profile_unlocks, carriers
+    return OwnershipCausalOutcome.binding_does_not_close, carriers
+
+
 def classify_ownership_blocker(
     context: LawContext,
     query_quantity_id: str,
@@ -339,6 +670,10 @@ def classify_ownership_blocker(
     no law is about is reported as such before any binding is tried, because a
     binding that "does not close" such a context would read as evidence about
     ownership when it is evidence about applicability.
+
+    Each primitive gets the binding its readout actually needs: an aggregate is
+    bound to a proven member set, a point keeps its identity and gains an owner
+    and a `point_id`, and a joint is bound only for the readout the query names.
     """
 
     quantity = _query_quantity(context, query_quantity_id)
@@ -346,27 +681,95 @@ def classify_ownership_blocker(
         return OwnershipCausalOutcome.binding_not_formable, 0
     if not _any_law_applies(context):
         return OwnershipCausalOutcome.law_not_semantically_applicable, 0
+    if _writes_about(context, query_quantity_id):
+        # Already written about without any binding; ownership is not the wall.
+        return OwnershipCausalOutcome.binding_does_not_close, 0
+
+    if primitive is EntityPrimitive.system:
+        members, refusal = aggregate_common_magnitude_carriers(
+            context, quantity.subject_id, quantity
+        )
+        if not members and refusal == "member_readout_missing":
+            # The members are there and the rope constrains them; what is absent
+            # is a readout for the aggregate to be the common magnitude *of*.
+            # A profile supplies those as unknowns, so ask whether the aggregate
+            # closes once it has — a different question from whether the source
+            # states them.
+            supplied = _with_member_readouts(context, quantity)
+            members, refusal = aggregate_common_magnitude_carriers(
+                supplied, quantity.subject_id, quantity
+            )
+            if members:
+                bound = _bind_readout(supplied, quantity, sorted(members)[0])
+                if _writes_about(
+                    _context_with_minimal_complete_profile(bound), query_quantity_id
+                ):
+                    return (
+                        OwnershipCausalOutcome.binding_plus_complete_profile_unlocks,
+                        len(members),
+                    )
+                return OwnershipCausalOutcome.binding_does_not_close, len(members)
+        if not members:
+            single = candidate_carriers(context, quantity.subject_id, primitive)
+            if not single:
+                return OwnershipCausalOutcome.binding_not_formable, 0
+            if len(single) > 1:
+                return OwnershipCausalOutcome.binding_ambiguous, len(single)
+            bound = _bind_readout(context, quantity, next(iter(single)))
+            return _ladder(
+                context,
+                bound,
+                query_quantity_id,
+                OwnershipCausalOutcome.single_carrier_binding_alone_unlocks,
+                1,
+            )
+        # Proven equal magnitudes: the readout is every member's, so binding it
+        # to the stable-first is equivalent *because of the proof*, not instead
+        # of it.  Without the proof this path is never taken.
+        bound = _bind_readout(context, quantity, sorted(members)[0])
+        return _ladder(
+            context,
+            bound,
+            query_quantity_id,
+            OwnershipCausalOutcome.aggregate_multi_carrier_binding_unlocks,
+            len(members),
+        )
 
     carriers = candidate_carriers(context, quantity.subject_id, primitive)
     if not carriers:
         return OwnershipCausalOutcome.binding_not_formable, 0
+    if primitive is EntityPrimitive.joint:
+        readout = joint_readout_kind(context, quantity)
+        if readout is None:
+            return OwnershipCausalOutcome.binding_ambiguous, len(carriers)
+        if readout is ReadoutBindingKind.joint_reaction_readout and len(carriers) > 1:
+            # A reaction has a side.  Two connected bodies and no stated side is
+            # a real ambiguity, unlike a joint-point kinematic quantity which is
+            # the same for both.
+            return OwnershipCausalOutcome.binding_ambiguous, len(carriers)
+        bound = _bind_point_scoped_readout(
+            context, quantity, sorted(carriers)[0], role=PointRole.joint
+        )
+        return _ladder(
+            context,
+            bound,
+            query_quantity_id,
+            OwnershipCausalOutcome.joint_scoped_binding_unlocks,
+            len(carriers),
+        )
+
     if len(carriers) > 1:
-        # More than one entity could carry the readout and typed structure does
-        # not choose between them.  Choosing one here would invent the answer.
+        # More than one body could own the point and typed structure does not
+        # choose between them.  Choosing one here would invent the answer.
         return OwnershipCausalOutcome.binding_ambiguous, len(carriers)
-
-    carrier_id = next(iter(carriers))
-    if _writes_about(context, query_quantity_id):
-        # Already written about without any binding; ownership is not the wall.
-        return OwnershipCausalOutcome.binding_does_not_close, 1
-
-    bound = _bind_readout(context, quantity, carrier_id)
-    if _writes_about(bound, query_quantity_id):
-        return _UNLOCK_OUTCOME[primitive], 1
-
-    with_profile = context_with_counterfactual_frame(bound)
-    if _writes_about(with_profile, query_quantity_id):
-        return OwnershipCausalOutcome.binding_plus_profile_required, 1
+    bound = _bind_point_scoped_readout(context, quantity, next(iter(carriers)))
+    return _ladder(
+        context,
+        bound,
+        query_quantity_id,
+        OwnershipCausalOutcome.point_scoped_binding_unlocks,
+        1,
+    )
 
     return OwnershipCausalOutcome.binding_does_not_close, 1
 
@@ -392,6 +795,7 @@ def diagnose_query_readout_ownership(
     co_subject_unique = 0
     co_subject_unlocks = 0
     typed_points = 0
+    aggregate_refusals: Counter[str] = Counter()
 
     for context, query_quantity_id in contexts:
         total += 1
@@ -408,6 +812,11 @@ def diagnose_query_readout_ownership(
         if context.points:
             typed_points += 1
         if primitive is EntityPrimitive.system:
+            _members, refusal = aggregate_common_magnitude_carriers(
+                context, quantity.subject_id, quantity
+            )
+            if refusal is not None:
+                aggregate_refusals[refusal] += 1
             if candidate_carriers(context, quantity.subject_id, primitive):
                 membership += 1
             elif _interval_co_subject_bodies(context, quantity.subject_id):
@@ -439,6 +848,7 @@ def diagnose_query_readout_ownership(
         aggregate_co_subject_route_unlocks=co_subject_unlocks,
         aggregate_co_subject_route_unique_carrier=co_subject_unique,
         contexts_with_typed_point_record=typed_points,
+        aggregate_refusal_counts=tuple(sorted(aggregate_refusals.items())),
         free_body_primitives=tuple(sorted(free_body)),
     )
 
@@ -464,6 +874,10 @@ def diagnosis_as_dict(diagnosis: OwnershipCausalDiagnosis) -> dict[str, Any]:
             diagnosis.aggregate_co_subject_route_unique_carrier
         ),
         "contexts_with_typed_point_record": diagnosis.contexts_with_typed_point_record,
+        "aggregate_refusal_counts": [
+            {"refusal": key, "count": value}
+            for key, value in diagnosis.aggregate_refusal_counts
+        ],
         "free_body_primitives": list(diagnosis.free_body_primitives),
         "outcome_counts": [
             {"outcome": key, "count": value} for key, value in diagnosis.outcome_counts
@@ -484,9 +898,11 @@ __all__ = [
     "OwnershipCausalDiagnosis",
     "OwnershipCausalOutcome",
     "ReadoutBindingKind",
+    "aggregate_common_magnitude_carriers",
     "candidate_carriers",
     "classify_ownership_blocker",
     "co_subject_route_would_unlock",
     "diagnose_query_readout_ownership",
     "diagnosis_as_dict",
+    "joint_readout_kind",
 ]
