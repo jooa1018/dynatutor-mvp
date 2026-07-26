@@ -9,8 +9,8 @@ by a comment.  This module is the single source: both consumers import these
 tables and predicates, so the eligibility contract cannot drift.
 
 Everything here is pure data and pure predicates over plain strings and
-sizes.  Nothing reads a Draft, an IR, raw problem text, a case identity, or
-an expected answer.
+sizes.  Nothing reads a Draft, an IR, raw problem text, a source identity,
+or a reference result.
 """
 
 from __future__ import annotations
