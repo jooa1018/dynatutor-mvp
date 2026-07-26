@@ -33,11 +33,13 @@ Values of generated unknowns stay unknown.  Only their existence is derived.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Mapping
 
 from engine.mechanics.contracts import MechanicsProblemDraftV1
+from engine.mechanics.validation import AssumptionAuthorization
 
 from evaluation.phase56_stage7.complete_profile import (
     CompleteProfilePlanV1,
@@ -47,8 +49,24 @@ from evaluation.phase56_stage7.complete_profile import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v1"
+    "phase56-stage7-complete-profile-application-v2"
 )
+
+
+@dataclass(frozen=True, slots=True)
+class TransactionAuthority:
+    """What the authority stage issued, read-only, for transactions to consume.
+
+    A transaction may *consume* an authorization the Lane B authority stage
+    issued; it may never mint, widen, or restyle one.  The empty default is the
+    fail-closed posture: with no authority supplied, any profile that needs a
+    server-valued quantity simply refuses.
+    """
+
+    approved_assumption_ids: frozenset[str] = frozenset()
+    authorized_assumptions: Mapping[str, AssumptionAuthorization] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
 # The axis a source's own stated direction names, and the sign it carries on
 # that axis.  This is the *same* closed table the planner classified as
@@ -151,7 +169,7 @@ def _axis_binding(quantities: list[dict[str, Any]], subject_id: str) -> str | No
 
 
 def _impulse_momentum_transaction(
-    payload: dict[str, Any]
+    payload: dict[str, Any], _authority: TransactionAuthority
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
     """Bind one subject's stated directions to one derived signed axis.
 
@@ -249,7 +267,7 @@ def _impulse_momentum_transaction(
 
 
 def _relative_translating_frame_transaction(
-    payload: dict[str, Any]
+    payload: dict[str, Any], _authority: TransactionAuthority
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
     """Write down the observer the source already named.
 
@@ -392,10 +410,282 @@ def _relative_translating_frame_transaction(
     return closed, (WORLD_FRAME_ID, OBSERVER_FRAME_ID), tuple(rebound)
 
 
+# Every record the free-flight transaction creates, under one namespace so a
+# collision with any authored ID abandons the transaction instead of merging
+# with it.
+GRAVITY_QUANTITY_ID = "qty_closure_gravity"
+GRAVITY_SYMBOL_ID = "sym_closure_gravity"
+GRAVITY_INTERACTION_ID = "rel_closure_gravity"
+VERTICAL_ACCELERATION_QUANTITY_ID = "qty_closure_accel_y"
+VERTICAL_ACCELERATION_SYMBOL_ID = "sym_closure_accel_y"
+
+_ACCELERATION_DIMENSION: dict[str, int] = {"length": 1, "time": -2}
+_GRAVITY_ROLE = "gravity"
+_VERTICAL_AXIS = "y"
+
+
+def _free_flight_gravity_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Free flight under gravity alone, closed as one whole or not at all.
+
+    Creates together the pieces the planner proved must be created together:
+    the world frame and its axes, the vertical binding of the subject's own
+    stated directions, the gravity interaction, the server-valued gravity
+    magnitude, and the unknown vertical acceleration the gravity law writes
+    about (`a_y = -g`).
+
+    The gravity value is not invented here and cannot be.  It is admitted only
+    as the exact immutable :class:`AssumptionAuthorization` the Lane B
+    authority stage issued for this Draft's own approved `constant_gravity`
+    assumption — same subject, same interval, same role, same value, same unit
+    — and the quantity carries `assumption_policy_ref` so `validate_draft`
+    holds it to that authorization to the character.  No authorization, or an
+    authorization about another subject or no interval, refuses the whole
+    transaction.
+
+    Deliberately narrow.  A Draft that already carries any gravity quantity,
+    any gravity interaction, or any acceleration for this subject and interval
+    is not the shape this transaction closes; a subject whose stated
+    directions bind a horizontal axis needs the vector decomposition this
+    profile does not have; and a stated direction is only ever re-expressed
+    against the axis it already names — nothing gains a direction the source
+    did not state.  The query is left exactly as asked: a magnitude question
+    stays a magnitude question.
+    """
+
+    if not payload["queries"]:
+        return None
+    query = payload["queries"][0]
+    subject_id = query["target"]["subject_id"]
+
+    # Exactly one approved constant_gravity assumption, and the authority
+    # stage must have issued its authorization.
+    candidates = [
+        item
+        for item in payload["assumptions"]
+        if item["kind"] == "constant_gravity"
+        and item["disposition"] == "approved"
+        and item["assumption_id"] in authority.approved_assumption_ids
+    ]
+    if len(candidates) != 1:
+        return None
+    assumption = candidates[0]
+    authorization = authority.authorized_assumptions.get(
+        assumption["assumption_id"]
+    )
+    if type(authorization) is not AssumptionAuthorization:
+        return None
+    if authorization.assumption_id != assumption["assumption_id"]:
+        return None
+    if str(getattr(authorization.role, "value", authorization.role)) != _GRAVITY_ROLE:
+        return None
+    # The authorization must restate the Draft's own approved proposal to the
+    # character.  The bundle already guarantees this; the transaction checks it
+    # again so a forged map cannot make closure write any value the Draft's own
+    # authority does not carry.  (The validator and the compiler each verify it
+    # a further time.)
+    if (
+        str(assumption.get("proposed_role") or "") != _GRAVITY_ROLE
+        or assumption.get("proposed_value") != authorization.raw_value
+        or assumption.get("proposed_unit") != authorization.raw_unit
+        or assumption.get("subject_id") != authorization.subject_id
+        or assumption.get("interval_id") != authorization.interval_id
+    ):
+        return None
+    if authorization.subject_id != subject_id:
+        # Gravity authorised for another entity licenses nothing about this
+        # body's flight.
+        return None
+    interval_id = authorization.interval_id
+    if interval_id is None:
+        # Free flight is an interval regime; an authority scoped to no
+        # interval names none.
+        return None
+    if not any(
+        item["interval_id"] == interval_id for item in payload["motion_intervals"]
+    ):
+        return None
+
+    # A Draft already carrying gravity structure, or an acceleration for this
+    # subject and interval, is not this shape.
+    for item in payload["quantities"]:
+        if item["role"] == _GRAVITY_ROLE:
+            return None
+        if (
+            item["role"] == "acceleration"
+            and item["subject_id"] == subject_id
+            and item["interval_id"] == interval_id
+        ):
+            return None
+    for item in payload["interactions"]:
+        if item["kind"] == "gravity":
+            return None
+
+    # Created IDs must be fresh across every namespace they enter.
+    existing_ids = (
+        {item["quantity_id"] for item in payload["quantities"]}
+        | {item["symbol_id"] for item in payload["symbols"]}
+        | {item["interaction_id"] for item in payload["interactions"]}
+        | {item["frame_id"] for item in payload["reference_frames"]}
+    )
+    created_ids = {
+        GRAVITY_QUANTITY_ID,
+        GRAVITY_SYMBOL_ID,
+        GRAVITY_INTERACTION_ID,
+        VERTICAL_ACCELERATION_QUANTITY_ID,
+        VERTICAL_ACCELERATION_SYMBOL_ID,
+        WORLD_FRAME_ID,
+    }
+    if existing_ids & created_ids:
+        return None
+
+    # Gravity fixes the vertical.  Stated directions on the subject may only
+    # agree with it: a stated horizontal axis is a shape this profile cannot
+    # close without the vector decomposition it does not have.
+    stated_axis = _axis_binding(payload["quantities"], subject_id)
+    if stated_axis not in (None, _VERTICAL_AXIS):
+        return None
+    axis = _VERTICAL_AXIS
+
+    world = {
+        "frame_id": WORLD_FRAME_ID,
+        "frame_type": "cartesian_2d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {
+                "axis": name,
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": WORLD_FRAME_ID,
+                    "axis": name,
+                    "sign": 1,
+                },
+            }
+            for name in ("x", "y")
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": [],
+    }
+
+    rebound: list[str] = []
+    quantities: list[dict[str, Any]] = []
+    for original in payload["quantities"]:
+        quantity = dict(original)
+        if (
+            quantity["subject_id"] != subject_id
+            or quantity["role"] not in _COMPONENT_ROLES
+        ):
+            quantities.append(quantity)
+            continue
+        direction = quantity.get("direction") or {}
+        if direction.get("kind") == "semantic":
+            binding = _SEMANTIC_AXIS_BINDING.get(direction.get("direction", ""))
+            if binding is None or binding[0] != axis:
+                # A direction on another axis cannot be folded into this one.
+                return None
+            quantity["direction"] = {
+                "kind": "axis",
+                "frame_id": WORLD_FRAME_ID,
+                "axis": axis,
+                "sign": binding[1],
+            }
+            quantity["component"] = axis
+            quantity["frame_id"] = WORLD_FRAME_ID
+            rebound.append(quantity["quantity_id"])
+        # A magnitude, an already-bound direction, or a directionless unknown
+        # is left exactly as the source stated it: this transaction never
+        # invents a direction.
+        quantities.append(quantity)
+
+    gravity_quantity = {
+        "quantity_id": GRAVITY_QUANTITY_ID,
+        "symbol_id": GRAVITY_SYMBOL_ID,
+        "role": _GRAVITY_ROLE,
+        "subject_id": authorization.subject_id,
+        "point_id": None,
+        "frame_id": None,
+        "interval_id": interval_id,
+        "event_id": None,
+        "component": "magnitude",
+        "shape": "scalar",
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "provenance": "server_default",
+        "raw_value": authorization.raw_value,
+        "raw_unit": authorization.raw_unit,
+        "assumption_policy_ref": authorization.assumption_id,
+        "evidence_refs": [],
+    }
+    acceleration_quantity = {
+        "quantity_id": VERTICAL_ACCELERATION_QUANTITY_ID,
+        "symbol_id": VERTICAL_ACCELERATION_SYMBOL_ID,
+        "role": "acceleration",
+        "subject_id": subject_id,
+        "point_id": None,
+        "frame_id": WORLD_FRAME_ID,
+        "interval_id": interval_id,
+        "event_id": None,
+        "component": axis,
+        "shape": "scalar",
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "provenance": "unknown",
+        "evidence_refs": [],
+    }
+    symbols = [
+        *payload["symbols"],
+        {
+            "symbol_id": GRAVITY_SYMBOL_ID,
+            "quantity_id": GRAVITY_QUANTITY_ID,
+            "dimension": dict(_ACCELERATION_DIMENSION),
+            "shape": "scalar",
+        },
+        {
+            "symbol_id": VERTICAL_ACCELERATION_SYMBOL_ID,
+            "quantity_id": VERTICAL_ACCELERATION_QUANTITY_ID,
+            "dimension": dict(_ACCELERATION_DIMENSION),
+            "shape": "scalar",
+        },
+    ]
+    interaction = {
+        "interaction_id": GRAVITY_INTERACTION_ID,
+        "kind": "gravity",
+        "participant_ids": [subject_id],
+        "point_ids": [],
+        "frame_id": WORLD_FRAME_ID,
+        "interval_id": interval_id,
+        "event_id": None,
+        "quantity_ids": [
+            VERTICAL_ACCELERATION_QUANTITY_ID,
+            GRAVITY_QUANTITY_ID,
+        ],
+        "evidence_refs": [],
+    }
+
+    closed = dict(payload)
+    closed["reference_frames"] = [*payload["reference_frames"], world]
+    closed["quantities"] = [*quantities, gravity_quantity, acceleration_quantity]
+    closed["symbols"] = symbols
+    closed["interactions"] = [*payload["interactions"], interaction]
+    return (
+        closed,
+        (
+            WORLD_FRAME_ID,
+            GRAVITY_INTERACTION_ID,
+            GRAVITY_QUANTITY_ID,
+            VERTICAL_ACCELERATION_QUANTITY_ID,
+        ),
+        tuple(rebound),
+    )
+
+
 # Only a profile whose partial-attachment hazards already have engine-level
 # negative controls, or which creates no force at all, may appear here.
 # Everything else plans, is measured by the census, and is not built.
 _TRANSACTIONS = {
+    ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.relative_translating_frame: _relative_translating_frame_transaction,
 }
@@ -411,12 +701,17 @@ _DEFERRAL_ONLY_PROFILES: frozenset[ProfileId] = frozenset(
 def apply_complete_profile(
     plan: CompleteProfilePlanV1,
     draft: MechanicsProblemDraftV1,
+    authority: TransactionAuthority | None = None,
 ) -> ProfileApplication:
     """Apply one complete plan to one Draft, entirely or not at all.
 
     The plan must be `complete` and must have been computed against *this*
     Draft; a plan from a different Draft is refused rather than re-planned,
     because re-planning here would make the planning phase a mutation.
+
+    `authority` is what the Lane B authority stage issued for this Draft.
+    Omitting it is the fail-closed default: a transaction that needs an
+    authorization then refuses, and no transaction can mint one here.
     """
 
     authorised = plan.disposition is PlanDisposition.complete or (
@@ -442,7 +737,7 @@ def apply_complete_profile(
 
     payload = draft.model_dump(mode="json", warnings="none")
     try:
-        built = transaction(payload)
+        built = transaction(payload, authority or TransactionAuthority())
     except Exception as exc:
         return ProfileApplication(
             ApplicationOutcome.rejected, draft, sanitized_reason=type(exc).__name__
@@ -480,6 +775,7 @@ def close_projected_draft(
     draft: MechanicsProblemDraftV1,
     *,
     approved_assumption_ids: tuple[str, ...] = (),
+    authorized_assumptions: Mapping[str, AssumptionAuthorization] | None = None,
 ) -> ProfileApplication:
     """Plan every profile and apply at most one authorised transaction.
 
@@ -488,16 +784,28 @@ def close_projected_draft(
     one profile or by none.  Planning happens first and in full, so no
     transaction ever runs against a Draft another transaction has already
     touched.
+
+    `authorized_assumptions` is the Lane B authority bundle's own immutable
+    map, passed through for transactions to consume.  Closure can spend that
+    authority; it can never create it.
     """
 
     from evaluation.phase56_stage7.complete_profile import plan_every_profile
 
+    authority = TransactionAuthority(
+        approved_assumption_ids=frozenset(approved_assumption_ids),
+        authorized_assumptions=(
+            MappingProxyType(dict(authorized_assumptions))
+            if authorized_assumptions is not None
+            else MappingProxyType({})
+        ),
+    )
     for plan in plan_every_profile(
         draft, approved_assumption_ids=approved_assumption_ids
     ):
         if plan.disposition is PlanDisposition.not_applicable:
             continue
-        result = apply_complete_profile(plan, draft)
+        result = apply_complete_profile(plan, draft, authority)
         if result.applied:
             return result
     return ProfileApplication(
@@ -508,10 +816,16 @@ def close_projected_draft(
 __all__ = [
     "COMPLETE_PROFILE_APPLICATION_VERSION",
     "DERIVED_FRAME_ID",
+    "GRAVITY_INTERACTION_ID",
+    "GRAVITY_QUANTITY_ID",
+    "GRAVITY_SYMBOL_ID",
+    "VERTICAL_ACCELERATION_QUANTITY_ID",
+    "VERTICAL_ACCELERATION_SYMBOL_ID",
     "close_projected_draft",
     "OBSERVER_FRAME_ID",
     "WORLD_FRAME_ID",
     "ApplicationOutcome",
     "ProfileApplication",
+    "TransactionAuthority",
     "apply_complete_profile",
 ]

@@ -319,12 +319,26 @@ again a count, and again it is not the reachable population:
 
 | Profile | complete | Query subject | Reachable? |
 |---|---:|---|---|
-| `free_flight_gravity` | 2 | `particle` | yes |
+| `free_flight_gravity` | 2 | `particle` | **built** — applied 2, solved 0 (below) |
 | `fixed_pulley` | 3 | `system` | no — binding forms, does not close (§4) |
 | `incline_hanging_pulley` | 3 | `system` | no — binding forms, does not close (§4) |
 
-**The measured ceiling for the next profile package is 2 contexts, not 8.** Six
-of the eight ask for a readout owned by an aggregate, and the formed aggregate
+**The free-flight transaction is built and measured.** Both reachable
+contexts close as one transaction — world frame, vertical binding, gravity
+interaction, the authorized `server_default` gravity magnitude, and the
+unknown vertical acceleration — and both pass validation, normalization,
+authorization, and the compiler's provenance wall.  `uniform_gravity_acceleration`
+now emits on both (their emission count was zero before), and both then stop
+at a typed `underdetermined`: the graph does not determine the queried
+unknown.  The two walls that remain are stated by the sources themselves —
+one question's boundary event names a condition the source gives no value
+for, and the other's launch is stated as a magnitude with an angle, which
+needs a vector decomposition no closed rule currently derives.  Each is a
+separate contract decision, measured here rather than assumed, and neither is
+touched by this transaction.  **Measured full-pipeline yield: 0 solved of 2
+applied**, public distribution unchanged, wrong solve 0.
+
+Six of the eight ask for a readout owned by an aggregate, and the formed aggregate
 binding does not close at any measured rung — no law writes about the bound
 readout even with a frame and a minimal force profile supplied — so no
 transaction can deliver them regardless of how the profile recogniser is
@@ -334,10 +348,10 @@ translational body — was audited against these six and would move none of them
 because the wall is what emission does with the readout and not the
 recogniser's shape.
 
-### `ENGINE_CONTRACT_BLOCKER`: `server_default` provenance is unreachable from Lane B
+### `ENGINE_CONTRACT_BLOCKER` (RESOLVED): `server_default` provenance was unreachable from Lane B
 
 A prototype `free_flight_gravity` closure was built and run against the two
-reachable contexts to measure the profile rather than assume it. Both are
+reachable contexts to measure the profile rather than assume it. Both were
 rejected at validation, with one issue:
 
 ```
@@ -386,10 +400,12 @@ bundle before validation and hands the **same immutable map** to both
 boundary.  The closure layer still cannot mint authority — it can only consume
 what this stage issued.
 
-With the authority stage in place the public 100 is unchanged (no Draft yet
-carries a `server_default` quantity), which is the expected result: the stage
-opens the contract without moving a terminal until the free-flight
-transaction actually uses it.
+The free-flight transaction now spends this authority (see §4b): the two
+reachable contexts close, carry a real `server_default` gravity quantity, and
+pass the validator's and the compiler's two-key walls with the same immutable
+map.  The public distribution is still unchanged — the measured full-pipeline
+yield of the profile is zero solved, for reasons §4b records — and that is
+the honest outcome of running the real path rather than predicting it.
 
 ## 5. `CORPUS_CONTRACT_MISMATCH`: magnitude questions and signed axes
 
@@ -419,10 +435,14 @@ the measurement in §4 put its yield at zero.
 2. **Interactions** — 75 of 97 contexts carry none, so every free-body law has
    no force to sum whatever else is supplied. Like the frame, this is a
    per-profile transactional creation, not a standalone fix.
-3. **Enabling the profiles whose plans already say `complete`** — measured
-   reachable population **2**, not 8 (§4b). The six pulley contexts ask for a
-   readout on an aggregate nothing relates to its members, and the two reachable
-   ones are behind the `server_default` authorization decision in §4b.
+3. **Enabling the profiles whose plans already say `complete`** — **done for
+   the measured population.** The reachable population was 2, not 8 (§4b);
+   the authorization decision is resolved and the free-flight transaction is
+   built, applied to both, and measured at 0 solved of 2 — their remaining
+   walls are the two source-stated gaps §4b records (an endpoint boundary the
+   source values nowhere, and a magnitude-with-angle launch with no closed
+   decomposition rule). The six pulley contexts stay behind §4's
+   binding-does-not-close wall.
 4. **The 39 contexts whose plans report `unsupported`** — these name declared
    engine capability gaps (`_catalogue_has_no_capability`,
    `_event_scoped_solve_plan`, `_relative_acceleration_capability`) and are

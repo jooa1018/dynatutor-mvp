@@ -283,9 +283,12 @@ def run_lane_b_case(
     # Complete-profile closure runs before validation and is transactional: the
     # Draft below is either the projection's own or one whole closed Draft, never
     # a partially attached one.  A profile that does not close leaves the Draft
-    # exactly as projected.
+    # exactly as projected.  Closure receives the bundle's own immutable map so
+    # a transaction can spend an issued authorization; it can never mint one.
     draft = close_projected_draft(
-        projection.draft, approved_assumption_ids=approved
+        projection.draft,
+        approved_assumption_ids=approved,
+        authorized_assumptions=authority_map,
     ).draft
     query_fields = _query_projection(draft)
 
@@ -354,10 +357,14 @@ def run_lane_b_case(
         )
 
     try:
+        # The compiler re-verifies every server-valued quantity against the
+        # same immutable authority the validator saw — the engine's own
+        # two-key discipline, applied a third time rather than trusted twice.
         compiled = MechanicsCompiler().compile(
             normalization.ir,
             validated_ir_authorization=authorization,
             approved_assumption_ids=approved,
+            authorized_assumptions=authority_map,
         )
     except Exception as exc:
         return LaneBResult(
