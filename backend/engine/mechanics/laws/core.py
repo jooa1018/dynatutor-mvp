@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from fractions import Fraction
 import json
 import math
 
 from engine.mechanics.contracts import (
+    AssumptionDisposition,
     AxisName,
     EntityPrimitive,
     GeometryRelationKind,
@@ -3877,6 +3878,168 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
     return emitted
 
 
+_FORCE_BEARING_INTERACTIONS: frozenset[InteractionKind] = frozenset(
+    {
+        InteractionKind.contact,
+        InteractionKind.gravity,
+        InteractionKind.spring,
+        InteractionKind.damping,
+        InteractionKind.rope_tension,
+        InteractionKind.joint_reaction,
+        InteractionKind.applied_force,
+        InteractionKind.field,
+        InteractionKind.gear_contact,
+    }
+)
+# Primitives that carry their own free body.  A rope, a pulley, or a surface
+# appears in an interaction as the *other* side of it, not as a body whose
+# forces must balance.
+_FREE_BODY_PRIMITIVES: frozenset[EntityPrimitive] = frozenset(
+    {
+        EntityPrimitive.particle,
+        EntityPrimitive.rigid_body,
+        EntityPrimitive.mass_center,
+        EntityPrimitive.body_component,
+    }
+)
+# Interactions that constrain a body and therefore carry a reaction the free
+# body must account for.  Gravity, a field, and an applied force are not here:
+# they *are* the whole of what they contribute, so a body acted on only by those
+# has nothing hidden.
+_CONSTRAINT_BEARING_INTERACTIONS: frozenset[InteractionKind] = frozenset(
+    {
+        InteractionKind.contact,
+        InteractionKind.rope_tension,
+        InteractionKind.joint_reaction,
+        InteractionKind.spring,
+        InteractionKind.damping,
+        InteractionKind.gear_contact,
+    }
+)
+# A contact's force set is not decided by the contact alone: whether it
+# contributes a normal only, or a normal and a friction force, is what the
+# friction regime says.  Only a typed state condition states that regime.
+_CONTACT_REGIME_STATES: frozenset[StateKind] = frozenset(
+    {StateKind.contact, StateKind.friction}
+)
+# The authority that lets one force stand for the whole free body of a body
+# something else is also acting on.
+_RESULTANT_FORCE_AUTHORITY = "resultant_force"
+
+
+def _free_body_is_complete(
+    context: LawContext,
+    *,
+    subject_id: str,
+    forces: tuple[BoundQuantity, ...],
+    entity_kinds: Mapping[str, EntityPrimitive],
+) -> bool:
+    """Whether the forces being summed really are this body's whole free body.
+
+    Newton's second law sums *all* the forces on a body along one component.
+    Summing a subset is not a weaker answer, it is a wrong one delivered with
+    the same confidence as a right one: a block resting on a table whose free
+    body carries only its weight accelerates downwards at g.  The equation is
+    therefore withheld until the free body is closed, and closure is decided
+    from typed structure alone:
+
+    * a constraint — a contact, a rope, a joint, a spring, a damper, a gear —
+      names a reaction.  An interaction of one of those kinds that names this
+      body but models no force on it is a hole in the free body;
+    * a contact's regime is stated by a typed state condition, because the
+      regime is what decides whether the contact contributes a normal alone or a
+      normal and a friction force;
+    * a rope tension names a force on *each* body-like participant it connects,
+      so a rope that pulls on one side only never closes; and
+    * when only one force is being summed and something is constraining the
+      body, that force is the resultant only if a typed authority says so.
+
+    An interaction whose forces all lie on another component is not a hole: the
+    equation being written is per-component, and an off-axis force belongs to a
+    different one.  A body acted on only by gravity, a field, or applied forces
+    is already closed, which is the accepted contract for a free particle whose
+    source states a single force.
+    """
+
+    acting = tuple(
+        interaction
+        for interaction in context.interactions
+        if interaction.kind in _FORCE_BEARING_INTERACTIONS
+        and subject_id in interaction.participant_ids
+    )
+    # A contact is a reaction *against* something pressing the body into the
+    # surface.  A body whose only modelled interaction is the contact itself has
+    # no such driver, so the free body is missing whatever produced the contact.
+    if any(
+        interaction.kind is InteractionKind.contact for interaction in acting
+    ) and not any(
+        interaction.kind not in _CONSTRAINT_BEARING_INTERACTIONS
+        for interaction in acting
+    ):
+        return False
+    constrained = False
+    for interaction in acting:
+        owned = tuple(
+            quantity
+            for quantity in context.quantities
+            if quantity.role is QuantityRole.force
+            and quantity.subject_id == subject_id
+            and quantity.quantity_id in set(interaction.quantity_ids)
+        )
+        if interaction.kind not in _CONSTRAINT_BEARING_INTERACTIONS:
+            continue
+        constrained = True
+        if not owned:
+            return False
+        if interaction.kind is InteractionKind.contact:
+            regime = any(
+                state.kind in _CONTACT_REGIME_STATES
+                and state.subject_id == subject_id
+                and set(state.quantity_ids) & set(interaction.quantity_ids)
+                for state in context.state_conditions
+            )
+            if not regime:
+                return False
+        if interaction.kind is InteractionKind.rope_tension:
+            attached = tuple(
+                participant
+                for participant in interaction.participant_ids
+                if entity_kinds.get(participant) in _FREE_BODY_PRIMITIVES
+            )
+            covered = {
+                quantity.subject_id
+                for quantity in context.quantities
+                if quantity.role is QuantityRole.force
+                and quantity.quantity_id in set(interaction.quantity_ids)
+            }
+            if any(participant not in covered for participant in attached):
+                return False
+    if len(forces) == 1 and constrained:
+        # One force against a constrained body.  Either a typed authority states
+        # that this force *is* the net force, or every contact on the body
+        # declares a friction regime — which is what says the contact
+        # contributes nothing along this component rather than that its
+        # contribution was forgotten.
+        authorised = any(
+            assumption.kind == _RESULTANT_FORCE_AUTHORITY
+            and assumption.subject_id == subject_id
+            and assumption.disposition is AssumptionDisposition.approved
+            and assumption.assumption_id in context.approved_assumption_ids
+            for assumption in context.assumptions
+        )
+        if authorised:
+            return True
+        return all(
+            any(
+                state.kind is StateKind.friction and state.subject_id == subject_id
+                for state in context.state_conditions
+            )
+            for interaction in acting
+            if interaction.kind is InteractionKind.contact
+        )
+    return True
+
+
 def _newton_emissions(context: LawContext) -> list[LawEmission]:
     emitted: list[LawEmission] = []
     entity_kinds = {entity.entity_id: entity.primitive for entity in context.entities}
@@ -3884,26 +4047,10 @@ def _newton_emissions(context: LawContext) -> list[LawEmission]:
         quantity_id
         for interaction in context.interactions
         for quantity_id in interaction.quantity_ids
-        if interaction.kind
-        in {
-            InteractionKind.contact,
-            InteractionKind.gravity,
-            InteractionKind.spring,
-            InteractionKind.damping,
-            InteractionKind.rope_tension,
-            InteractionKind.joint_reaction,
-            InteractionKind.applied_force,
-            InteractionKind.field,
-            InteractionKind.gear_contact,
-        }
+        if interaction.kind in _FORCE_BEARING_INTERACTIONS
     }
     for acceleration in _by_role(context, QuantityRole.acceleration):
-        if entity_kinds.get(acceleration.subject_id) not in {
-            EntityPrimitive.particle,
-            EntityPrimitive.rigid_body,
-            EntityPrimitive.mass_center,
-            EntityPrimitive.body_component,
-        }:
+        if entity_kinds.get(acceleration.subject_id) not in _FREE_BODY_PRIMITIVES:
             continue
         masses = tuple(
             q
@@ -3926,6 +4073,13 @@ def _newton_emissions(context: LawContext) -> list[LawEmission]:
                 not _component_compatible(forces[0], force)
                 for force in forces[1:]
             )
+        ):
+            continue
+        if not _free_body_is_complete(
+            context,
+            subject_id=acceleration.subject_id,
+            forces=forces,
+            entity_kinds=entity_kinds,
         ):
             continue
         mass = masses[0]
