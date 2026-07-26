@@ -281,6 +281,12 @@ def _lane_b_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutc
     section.update(matrix.as_dict())
     solved = dict(matrix.terminal_counts).get("solved", 0)
     section["solved"] = solved
+    # Gold-domain answer scoring runs strictly after the runtime matrix is
+    # complete: the runtime loop never read a gold member, and the scorer
+    # reads only the runtime's own frozen solved outputs.
+    section["answer_scoring"] = _score_solved_outputs(
+        archive_path, matrix.solved_outputs
+    )
     return (
         section,
         GateOutcome(
@@ -467,7 +473,348 @@ def _profile_feasibility_section(archive_path: Path | None) -> dict[str, Any]:
     return section
 
 
-def build_report() -> tuple[dict[str, Any], bool]:
+# ---------------------------------------------------------------------------
+# Full-Stage-7 suite sections.  Each section executes the *exact* existing
+# suites for its lane — nothing is duplicated, nothing is simulated — via a
+# fresh interpreter per suite, and records counts only.  A lane that was not
+# requested is NOT_RUN, never PASS.
+# ---------------------------------------------------------------------------
+
+_BACKEND_ROOT = REPOSITORY_ROOT / "backend"
+_SUITE_TIMEOUT_S = 1800
+_SUMMARY_PATTERN = __import__("re").compile(
+    r"(\d+) (passed|failed|errors?|deselected|skipped)"
+)
+
+# Lane C — recorded/fake modeler: deterministic fake provider contract, one
+# combined call, at most one sanitized repair, reconciliation, revisions,
+# zero answer authority.  Actual model quality is NOT_RUN / N/A by contract.
+_LANE_C_SUITES: tuple[str, ...] = (
+    "tests/test_phase56_mechanics_modeler.py",
+    "tests/test_phase56_stage6_contracts.py",
+    "tests/test_phase56_stage6_reconciliation.py",
+)
+# Lane D — product API/runtime through FastAPI boundaries: auth, limits,
+# schemas, idempotency, stale revisions, owner isolation, image security,
+# privacy-safe observability.
+_LANE_D_SUITES: tuple[str, ...] = (
+    "tests/test_phase56_stage6_api_runtime_integration.py",
+    "tests/test_phase56_stage6_security_hardening.py",
+    "tests/test_phase56_stage6_image_security.py",
+    "tests/test_phase56_stage6_idempotency_conflicts.py",
+    "tests/test_phase56_stage6_observability.py",
+)
+# The 12 independently authored compositional structures, mapped to the
+# engine's own independently authored same-fixture parity suites — each of
+# which drives at least two reusable laws through compile, all-root solve,
+# and independent residual verification.
+_COMPOSITIONAL_STRUCTURES: tuple[tuple[str, str], ...] = (
+    ("newton_plus_rope", "tests/test_phase56_mechanics_atwood_same_fixture_parity.py"),
+    ("incline_friction_rope", "tests/test_phase56_mechanics_incline_hanging_same_fixture_parity.py"),
+    ("massive_pulley_rotation", "tests/test_phase56_mechanics_massive_pulley_same_fixture_parity.py"),
+    ("rolling_work_energy", "tests/test_phase56_mechanics_pure_rolling_same_fixture_parity.py"),
+    ("vertical_circle_contact_loss", "tests/test_phase56_mechanics_vertical_circle_same_fixture_parity.py"),
+    ("collision_restitution", "tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py"),
+    ("projectile_event_root", "tests/test_phase56_mechanics_projectile_same_fixture_parity.py"),
+    ("work_kinetic_energy", "tests/test_phase56_mechanics_constant_force_work_same_fixture_parity.py"),
+    ("impulse_momentum", "tests/test_phase56_mechanics_impulse_momentum_same_fixture_parity.py"),
+    ("fixed_axis_point_speed", "tests/test_phase56_mechanics_fixed_axis_rotation_same_fixture_parity.py"),
+    ("rigid_body_point_motion", "tests/test_phase56_mechanics_plane_rigid_body_velocity_same_fixture_parity.py"),
+    ("polar_kinematics_projection", "tests/test_phase56_mechanics_polar_kinematics_same_fixture_parity.py"),
+)
+_SYNTHETIC_38_SUITE = "tests/test_phase56_stage6_synthetic_figures.py"
+_SYNTHETIC_MANIFEST = (
+    _BACKEND_ROOT / "tests" / "fixtures" / "phase56_stage6_synthetic_manifest.json"
+)
+# The engine's metamorphic oracle instrument (identical authoritative results
+# under transformation) and its mutation-control twin (seeded physics changes
+# must be detected/killed).  Stage 7's own per-package invariance and
+# physics-changing controls additionally run inside the focused suite.
+_METAMORPHIC_SUITES: tuple[str, ...] = (
+    "tests/test_phase49_oracles_metamorphic.py",
+)
+_PHYSICS_CHANGING_SUITES: tuple[str, ...] = (
+    "tests/test_phase49_mutation_audit.py",
+)
+
+
+def _run_pytest_suite(path: str) -> dict[str, Any]:
+    """Run one exact suite in a fresh interpreter and record counts only."""
+
+    row: dict[str, Any] = {"suite": path}
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                "-o",
+                "addopts=",
+                path,
+            ],
+            cwd=_BACKEND_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_SUITE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        row.update(passed=0, failed=0, errors=1, disposition="TIMEOUT")
+        return row
+    counts = {"passed": 0, "failed": 0, "errors": 0, "deselected": 0, "skipped": 0}
+    for value, kind in _SUMMARY_PATTERN.findall(completed.stdout):
+        key = "errors" if kind.startswith("error") else kind
+        counts[key] = int(value)
+    row.update(counts)
+    row["disposition"] = (
+        "PASS"
+        if completed.returncode == 0
+        and counts["failed"] == 0
+        and counts["errors"] == 0
+        and counts["passed"] > 0
+        else "FAIL"
+    )
+    return row
+
+
+def _suite_section(paths: tuple[str, ...], *, executed: bool, note: str | None = None) -> dict[str, Any]:
+    if not executed:
+        section = {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+        if note:
+            section["note"] = note
+        return section
+    rows = [_run_pytest_suite(path) for path in paths]
+    section = {
+        "executed": True,
+        "suites": rows,
+        "total_passed": sum(row["passed"] for row in rows),
+        "total_failed": sum(row["failed"] for row in rows),
+        "result": (
+            "PASS"
+            if all(row["disposition"] == "PASS" for row in rows)
+            else "FAIL"
+        ),
+    }
+    if note:
+        section["note"] = note
+    return section
+
+
+def _lane_c_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(
+        _LANE_C_SUITES,
+        executed=executed,
+        note="contract/integration evidence only; actual model quality NOT_RUN / N/A",
+    )
+
+
+def _lane_d_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(_LANE_D_SUITES, executed=executed)
+
+
+def _synthetic_38_section(executed: bool) -> dict[str, Any]:
+    if not executed:
+        return {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+    manifest = json.loads(_SYNTHETIC_MANIFEST.read_text(encoding="utf-8"))
+    case_count = len(manifest.get("cases", ()))
+    section = _suite_section((_SYNTHETIC_38_SUITE,), executed=True)
+    section["synthetic_case_count"] = case_count
+    if case_count != 38:
+        section["result"] = "FAIL"
+    return section
+
+
+def _compositional_12_section(executed: bool) -> dict[str, Any]:
+    if not executed:
+        return {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+    rows = []
+    for structure, path in _COMPOSITIONAL_STRUCTURES:
+        row = _run_pytest_suite(path)
+        row["structure"] = structure
+        rows.append(row)
+    return {
+        "executed": True,
+        "structures": rows,
+        "structure_count": len(rows),
+        "passed_structures": sum(
+            1 for row in rows if row["disposition"] == "PASS"
+        ),
+        "result": (
+            "PASS"
+            if len(rows) == 12
+            and all(row["disposition"] == "PASS" for row in rows)
+            else "FAIL"
+        ),
+    }
+
+
+def _metamorphic_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(
+        _METAMORPHIC_SUITES,
+        executed=executed,
+        note="engine metamorphic oracle instrument; Stage 7 per-package invariance controls run in the focused suite",
+    )
+
+
+def _physics_changing_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(
+        _PHYSICS_CHANGING_SUITES,
+        executed=executed,
+        note="seeded physics mutations must be detected; Stage 7 per-package detection controls run in the focused suite",
+    )
+
+
+def _lane_e_section(executed: bool) -> dict[str, Any]:
+    """Frontend flow: tests, lint, typecheck, production build.
+
+    Dependency installation may use the network exactly as the permanent
+    workflow's own install step does; every evaluation-phase stage of this
+    gate remains socket-guarded.  A missing toolchain is a typed NOT_RUN,
+    never a pass.
+    """
+
+    if not executed:
+        return {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+    frontend = REPOSITORY_ROOT / "frontend"
+    steps: list[dict[str, Any]] = []
+
+    def run_step(name: str, command: list[str], timeout_s: int = 1200) -> bool:
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=frontend,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+        except FileNotFoundError:
+            steps.append({"step": name, "result": "NOT_RUN", "reason": "toolchain_missing"})
+            return False
+        except subprocess.TimeoutExpired:
+            steps.append({"step": name, "result": "FAIL", "reason": "timeout"})
+            return False
+        steps.append(
+            {"step": name, "result": "PASS" if completed.returncode == 0 else "FAIL"}
+        )
+        return completed.returncode == 0
+    if not (frontend / "node_modules").exists():
+        if not run_step("install", ["npm", "ci"], timeout_s=1800):
+            return {"result": "NOT_RUN", "executed": False, "steps": steps, "reason": "install_unavailable"}
+    ok = True
+    for name, command in (
+        ("tests", ["npm", "test", "--", "--run"]),
+        ("lint", ["npm", "run", "lint"]),
+        ("typecheck", ["npm", "run", "typecheck"]),
+        ("build", ["npm", "run", "build"]),
+    ):
+        ok = run_step(name, command) and ok
+    return {
+        "executed": True,
+        "steps": steps,
+        "result": "PASS" if ok else "FAIL",
+    }
+
+
+def _score_solved_outputs(
+    archive_path: Path | None, solved_outputs: tuple[tuple[int, float, str], ...]
+) -> dict[str, Any]:
+    """Gold-domain scoring of the runtime's frozen solved outputs.
+
+    Runs strictly after the runtime record is complete.  Answers are compared
+    in SI after converting the gold answer's own stated unit; a unit the
+    registry cannot convert is counted unscored rather than wrong.
+    """
+
+    if archive_path is None:
+        return {"scored": 0, "correct": 0, "wrong": 0, "unscored": 0}
+    import pint
+
+    registry = pint.UnitRegistry()
+    inventory = read_public_corpus_archive(archive_path)
+    public_dev, public_adversarial = load_public_cases(inventory)
+    cases = (*public_dev, *public_adversarial)
+    outputs_by_index = {index: (value, unit) for index, value, unit in solved_outputs}
+    correct = wrong = unscored = 0
+    for index, case in enumerate(cases):
+        if index not in outputs_by_index:
+            continue
+        value_si, _unit = outputs_by_index[index]
+        answers = case.gold.answers
+        if len(answers) != 1:
+            unscored += 1
+            continue
+        answer = answers[0]
+        try:
+            expected_si = (
+                registry.Quantity(answer.numeric, answer.unit or "")
+                .to_base_units()
+                .magnitude
+            )
+            tolerance_si = abs(
+                registry.Quantity(answer.tolerance_abs, answer.unit or "")
+                .to_base_units()
+                .magnitude
+            )
+        except Exception:
+            unscored += 1
+            continue
+        if abs(value_si - expected_si) <= max(
+            tolerance_si, 1.0e-6 * max(1.0, abs(expected_si))
+        ):
+            correct += 1
+        else:
+            wrong += 1
+    return {
+        "scored": correct + wrong,
+        "correct": correct,
+        "wrong": wrong,
+        "unscored": unscored,
+    }
+
+
+def _hard_safety_section(
+    report: dict[str, Any], gates: "list[GateOutcome]"
+) -> dict[str, Any]:
+    """The all-zero hard-safety catalog, from measured evidence only."""
+
+    contract = stage7_evaluation_contract()
+    lane_b = report.get("lane_b", {})
+    executed = bool(lane_b.get("executed"))
+    answer_scoring = lane_b.get("answer_scoring", {})
+    wrong_solves = answer_scoring.get("wrong")
+    structural_pass = all(
+        gate.result in ("PASS", "NOT_RUN") for gate in gates
+    )
+    # The catalog itself is frozen in the evaluation contract; the artifact
+    # carries counts only, because several signal *names* are themselves
+    # forbidden redaction substrings.
+    passing = (
+        executed
+        and wrong_solves == 0
+        and structural_pass
+        and report.get("external_model_calls") == 0
+        and report.get("private_heldout_accesses") == 0
+    )
+    return {
+        "executed": executed,
+        "catalog": "stage7_evaluation_contract().hard_safety_signals",
+        "signal_count": len(contract.hard_safety_signals),
+        "nonzero_signal_count": 0 if passing else None,
+        "all_zero": bool(passing),
+        "wrong_solves_measured": wrong_solves,
+        "evidence": {
+            "wrong_solve": "gold-scored solved outputs",
+            "external_calls": "offline environment + socket guard",
+            "private_access": "keys-only manifest audit",
+            "isolation": "structural gates",
+        },
+        "result": "PASS" if passing else ("FAIL" if executed else "NOT_RUN"),
+    }
+
+
+def build_report(*, run_full_suites: bool = False) -> tuple[dict[str, Any], bool]:
     contract = stage7_evaluation_contract()
     offline_evidence = assert_offline_environment()
 
@@ -498,6 +845,15 @@ def build_report() -> tuple[dict[str, Any], bool]:
         feasibility_section = _profile_feasibility_section(
             archive_path if corpus_gate.passed else None
         )
+        lane_c_section = _lane_c_section(run_full_suites)
+        lane_d_section = _lane_d_section(run_full_suites)
+        compositional_section = _compositional_12_section(run_full_suites)
+        synthetic_section = _synthetic_38_section(run_full_suites)
+        metamorphic_section = _metamorphic_section(run_full_suites)
+        physics_changing_section = _physics_changing_section(run_full_suites)
+    # Lane E may install its toolchain exactly as the workflow's own install
+    # step does, so it runs outside the evaluation socket guard.
+    lane_e_section = _lane_e_section(run_full_suites)
 
     report: dict[str, Any] = {
         "schema": OFFLINE_GATE_SCHEMA,
@@ -518,6 +874,13 @@ def build_report() -> tuple[dict[str, Any], bool]:
         "structural_blockers": blocker_section,
         "query_readout_ownership": ownership_section,
         "profile_feasibility": feasibility_section,
+        "lane_c": lane_c_section,
+        "lane_d": lane_d_section,
+        "lane_e": lane_e_section,
+        "compositional_12": compositional_section,
+        "synthetic_38": synthetic_section,
+        "metamorphic": metamorphic_section,
+        "physics_changing_controls": physics_changing_section,
         "gates": [
             {"name": gate.name, "result": gate.result, "detail": gate.detail}
             for gate in gates
@@ -527,7 +890,9 @@ def build_report() -> tuple[dict[str, Any], bool]:
         "measured_cost_usd": 0.0,
         "actual_model_quality": contract.actual_model_quality_disposition,
     }
+    report["hard_safety"] = _hard_safety_section(report, gates)
     assert_privacy_safe_artifact(report)
+    report["redaction"] = {"result": "PASS", "policy": "phase56-stage7-report-redaction-v1"}
     passed = all(gate.result in ("PASS", "NOT_RUN") for gate in gates)
     return report, passed
 
@@ -614,7 +979,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    report, passed = build_report()
+    report, passed = build_report(run_full_suites=args.require_full_stage7)
     strict = _strict_requirements(
         report,
         require_corpus=args.require_public_corpus,

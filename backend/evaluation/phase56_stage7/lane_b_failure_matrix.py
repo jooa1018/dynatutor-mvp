@@ -114,6 +114,11 @@ class LaneBPipelineMatrix:
     law_id_counts: tuple[tuple[str, int], ...]
     verification_check_counts: tuple[tuple[str, str, int], ...]
     structure_counts: tuple[tuple[str, int], ...]
+    # The runtime's own frozen outputs for solved cases, keyed by execution
+    # index only — a verified answer is snapshot-permitted content, and the
+    # gold domain scores it *after* this record is complete.  The runtime
+    # loop that fills it never reads a gold member.
+    solved_outputs: tuple[tuple[int, float, str], ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -143,6 +148,7 @@ class LaneBPipelineMatrix:
                 for kind, status, count in self.verification_check_counts
             ],
             "structure_counts": dict(self.structure_counts),
+            "solved_case_count": len(self.solved_outputs),
         }
 
 
@@ -166,6 +172,7 @@ def build_pipeline_failure_matrix(cases: Iterable[Any]) -> LaneBPipelineMatrix:
     law_ids: Counter[str] = Counter()
     checks: Counter[tuple[str, str]] = Counter()
     structures: Counter[str] = Counter()
+    solved_outputs: list[tuple[int, float, str]] = []
     total = 0
     executed = 0
 
@@ -212,6 +219,13 @@ def build_pipeline_failure_matrix(cases: Iterable[Any]) -> LaneBPipelineMatrix:
         structures["candidates"] += result.candidate_count
         structures["rejected_candidates"] += result.rejected_candidate_count
         structures["verified_candidates"] += result.verified_candidate_count
+        if (
+            result.terminal.value == "solved"
+            and result.answer_value_si is not None
+        ):
+            solved_outputs.append(
+                (index, result.answer_value_si, result.answer_unit or "")
+            )
 
     return LaneBPipelineMatrix(
         version=PIPELINE_MATRIX_VERSION,
@@ -239,6 +253,7 @@ def build_pipeline_failure_matrix(cases: Iterable[Any]) -> LaneBPipelineMatrix:
             (kind, status, count) for (kind, status), count in sorted(checks.items())
         ),
         structure_counts=tuple(sorted(structures.items())),
+        solved_outputs=tuple(solved_outputs),
     )
 
 
