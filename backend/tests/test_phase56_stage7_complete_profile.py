@@ -23,7 +23,9 @@ from evaluation.phase56_stage7.complete_profile import (
     CompleteProfileCensusV1,
     CompleteProfileFeasibilityV1,
     CompleteProfilePlanV1,
+    CompleteProfilePrerequisiteV1,
     PlanDisposition,
+    PrerequisiteKind,
     PrerequisiteDisposition,
     ProfileId,
     build_complete_profile_census,
@@ -206,21 +208,37 @@ def test_every_profile_is_planned_exactly_once():
 # --------------------------------------------------------------------------
 
 
-def test_a_recognised_impulse_profile_closes_through_server_derivation():
+def _prerequisite(plan, prerequisite_id: str):
+    matches = [
+        item for item in plan.prerequisites if item.prerequisite_id == prerequisite_id
+    ]
+    assert len(matches) == 1, prerequisite_id
+    return matches[0]
+
+
+def test_an_impulse_profiles_modelling_slots_all_resolve():
+    """Everything the *model* needs is there; the axis is server-derivable."""
+
     projection = _impulse_draft()
     plan = plan_complete_profile(
         ProfileId.impulse_momentum,
         projection.draft,
         approved_assumption_ids=projection.approvable_assumption_ids,
     )
-    assert plan.disposition is PlanDisposition.complete
-    # The axis is derived, not stated, so this is not a source-grounded close.
-    assert plan.uses_server_derivation
-    dispositions = {item.disposition for item in plan.prerequisites}
-    assert PrerequisiteDisposition.missing not in dispositions
-    assert PrerequisiteDisposition.ambiguous not in dispositions
-    assert PrerequisiteDisposition.unsupported not in dispositions
-    # A generated unknown asserts existence only.
+    for name in (
+        "interval_bounded",
+        "quantity_mass",
+        "quantity_velocity",
+        "quantity_impulse",
+    ):
+        assert _prerequisite(plan, name).disposition is (
+            PrerequisiteDisposition.explicit_source
+        )
+    for name in ("frame_signed_axis", "axis_signed", "component_binding"):
+        assert _prerequisite(plan, name).disposition is (
+            PrerequisiteDisposition.server_derivable
+        )
+    # A generated unknown asserts existence only, never a value.
     generated = [
         item
         for item in plan.prerequisites
@@ -228,6 +246,28 @@ def test_a_recognised_impulse_profile_closes_through_server_derivation():
     ]
     assert generated
     assert all(item.kind.value == "unknown_symbol" for item in generated)
+
+
+def test_an_event_scoped_impulse_plan_is_reported_unsupported_not_complete():
+    """The solver's static-boundary waiver is the real remaining blocker.
+
+    The endpoint velocities are event-scoped, and the solver accepts such a plan
+    only in its exact three-law shape.  A source that states the impulse and
+    asks for the velocity after it never reaches that shape, and manufacturing a
+    force and a duration to satisfy it would be inventing structure.  The plan
+    must say so rather than claim completeness it cannot deliver.
+    """
+
+    projection = _impulse_draft()
+    plan = plan_complete_profile(
+        ProfileId.impulse_momentum,
+        projection.draft,
+        approved_assumption_ids=projection.approvable_assumption_ids,
+    )
+    assert _prerequisite(
+        plan, "capability_event_scoped_solve_plan"
+    ).disposition is PrerequisiteDisposition.unsupported
+    assert plan.disposition is PlanDisposition.unsupported
 
 
 def test_a_profile_whose_shape_is_absent_is_not_applicable():
@@ -252,7 +292,9 @@ def test_two_axis_families_are_an_ambiguity_not_a_gap():
         projection.draft,
         approved_assumption_ids=projection.approvable_assumption_ids,
     )
-    assert plan.disposition is PlanDisposition.needs_confirmation
+    assert _prerequisite(plan, "frame_signed_axis").disposition is (
+        PrerequisiteDisposition.ambiguous
+    )
 
 
 def test_no_stated_direction_is_a_gap_not_an_ambiguity():
@@ -267,7 +309,9 @@ def test_no_stated_direction_is_a_gap_not_an_ambiguity():
         projection.draft,
         approved_assumption_ids=projection.approvable_assumption_ids,
     )
-    assert plan.disposition is PlanDisposition.insufficient_information
+    assert _prerequisite(plan, "frame_signed_axis").disposition is (
+        PrerequisiteDisposition.missing
+    )
 
 
 def test_an_unsupported_capability_outranks_a_missing_prerequisite():
@@ -431,6 +475,7 @@ def test_the_census_reports_one_row_per_profile_and_sums_to_the_context_count():
     )
     census = build_complete_profile_census([plans, plans, plans])
     assert census.context_count == 3
+    assert census.context_count == 3
     assert [row.profile_id for row in census.profiles] == list(ProfileId)
     for row in census.profiles:
         total = (
@@ -444,17 +489,56 @@ def test_the_census_reports_one_row_per_profile_and_sums_to_the_context_count():
         assert total == census.context_count
 
 
-def test_the_highest_yield_profile_is_the_largest_nonzero_complete_population():
-    projection = _impulse_draft()
-    plans = plan_every_profile(
-        projection.draft,
-        approved_assumption_ids=projection.approvable_assumption_ids,
+def _plan(profile_id: ProfileId, disposition: PlanDisposition, *, derived: bool):
+    """A hand-built plan, so the aggregation is tested apart from any Draft."""
+
+    prerequisites = (
+        CompleteProfilePrerequisiteV1(
+            prerequisite_id="slot",
+            kind=PrerequisiteKind.unknown_symbol,
+            disposition=(
+                PrerequisiteDisposition.server_derivable
+                if derived
+                else PrerequisiteDisposition.explicit_source
+            ),
+        ),
     )
-    census = build_complete_profile_census([plans])
+    return CompleteProfilePlanV1(
+        profile_id=profile_id,
+        disposition=disposition,
+        prerequisites=prerequisites,
+        draft_fingerprint="0" * 64,
+    )
+
+
+def test_the_highest_yield_profile_is_the_largest_nonzero_complete_population():
+    complete = PlanDisposition.complete
+    other = PlanDisposition.not_applicable
+    plan_sets = [
+        [
+            _plan(ProfileId.fixed_pulley, complete, derived=True),
+            _plan(ProfileId.work_energy, complete, derived=False),
+            _plan(ProfileId.rolling_energy, other, derived=False),
+        ],
+        [
+            _plan(ProfileId.fixed_pulley, complete, derived=True),
+            _plan(ProfileId.work_energy, other, derived=False),
+            _plan(ProfileId.rolling_energy, other, derived=False),
+        ],
+    ]
+    census = build_complete_profile_census(plan_sets)
     winner = census.highest_yield()
     assert winner is not None
-    assert winner.complete > 0
+    assert winner.profile_id is ProfileId.fixed_pulley
+    assert winner.complete == 2
+    assert winner.complete_with_closed_server_derivations == 2
+    assert winner.complete_source_grounded == 0
     assert winner.complete == max(row.complete for row in census.profiles)
+    # A profile that never completes never wins, however often it applies.
+    rolling = next(
+        row for row in census.profiles if row.profile_id is ProfileId.rolling_energy
+    )
+    assert rolling.complete == 0
 
 
 def test_an_empty_census_has_no_highest_yield_profile():

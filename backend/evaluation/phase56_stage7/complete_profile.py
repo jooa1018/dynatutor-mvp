@@ -70,6 +70,9 @@ class ProfileId(str, Enum):
     horizontal_contact = "horizontal_contact"
     incline_contact = "incline_contact"
     rigid_fixed_axis = "rigid_fixed_axis"
+    # Declared in the order the closure step considers them, so the enum and the
+    # signature table cannot drift apart.
+    relative_translating_frame = "relative_translating_frame"
     spring_vibration_deferred = "spring_vibration_deferred"
 
 
@@ -86,6 +89,10 @@ class PrerequisiteKind(str, Enum):
     state_condition = "state_condition"
     constraint = "constraint"
     authority = "authority"
+    # Not a record to create: a statement about what the engine declares it can
+    # do with the records once they exist.  Kept separate so "the model is
+    # complete" and "the engine will answer" never get confused for each other.
+    capability = "capability"
 
 
 class PrerequisiteDisposition(str, Enum):
@@ -172,6 +179,23 @@ class CompleteProfilePlanV1(FrozenStrictModel):
     @property
     def complete(self) -> bool:
         return self.disposition is PlanDisposition.complete
+
+    @property
+    def structurally_complete(self) -> bool:
+        """Every record the profile needs resolves, whatever the engine then does.
+
+        A profile can be fully modelled and still be one the engine declines —
+        a deferred readout is exactly that.  Building the structure anyway is
+        safe *because* it cannot produce an answer: it only turns a vague
+        `underdetermined` into the precise refusal the engine already knows how
+        to make.  This property is what separates the two questions.
+        """
+
+        return bool(self.prerequisites) and all(
+            item.disposition in _CLOSING_DISPOSITIONS
+            for item in self.prerequisites
+            if item.kind is not PrerequisiteKind.capability
+        )
 
     @property
     def uses_server_derivation(self) -> bool:
@@ -280,6 +304,18 @@ def _directed_axis_families(draft: Any) -> frozenset[str]:
     return frozenset(families)
 
 
+def _observer_entities(draft: Any) -> tuple[str, ...]:
+    """Entities the source itself declares to be reference frames."""
+
+    return tuple(
+        sorted(
+            item.entity_id
+            for item in draft.entities
+            if item.primitive.value == "reference_frame"
+        )
+    )
+
+
 def _query_component(draft: Any) -> str | None:
     if not draft.queries:
         return None
@@ -296,6 +332,7 @@ class _DraftFacts:
         "geometry",
         "has_blocking_ambiguity",
         "interactions",
+        "observer_count",
         "primitives",
         "query_component",
         "query_role",
@@ -312,6 +349,7 @@ class _DraftFacts:
         self.query_role = _query_role(draft)
         self.query_component = _query_component(draft)
         self.axis_families = _directed_axis_families(draft)
+        self.observer_count = len(_observer_entities(draft))
         self.has_blocking_ambiguity = _blocking_ambiguity(draft)
 
 
@@ -413,6 +451,66 @@ def _resultant_force_authority(facts: _DraftFacts) -> PrerequisiteDisposition:
 
 def _catalogue_has_no_capability(facts: _DraftFacts) -> PrerequisiteDisposition:
     return PrerequisiteDisposition.unsupported
+
+
+def _observer_frame_entity(facts: _DraftFacts) -> PrerequisiteDisposition:
+    """A `moves_relative_to` whose counterpart the source calls a frame.
+
+    The corpus states the observer as an entity of primitive `reference_frame`
+    and ties it to the moving body with a `topology_connects` geometry relation.
+    Both halves are the source's own; deriving the typed *frame record* from them
+    is the closed part.  Two observers, or none, is not a derivation.
+    """
+
+    if facts.observer_count == 1:
+        return PrerequisiteDisposition.server_derivable
+    if facts.observer_count > 1:
+        return PrerequisiteDisposition.ambiguous
+    return PrerequisiteDisposition.missing
+
+
+def _relative_acceleration_capability(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """Relative-acceleration readouts are declared out of the course scope.
+
+    The compiler carries the deferral code itself.  Building the frame does not
+    produce an answer — it makes the engine's refusal precise instead of leaving
+    the case as an undifferentiated underdetermined graph.
+    """
+
+    return PrerequisiteDisposition.unsupported
+
+
+def _event_scoped_solve_plan(facts: _DraftFacts) -> PrerequisiteDisposition:
+    """Whether the solver will accept a plan whose unknowns are event-scoped.
+
+    A velocity at an interval's start and a velocity at its end are two states,
+    not two instants in a timed simulation, but the solver cannot tell those
+    apart from the plan alone: it refuses any plan carrying event IDs unless the
+    graph matches one of its exact static-boundary waivers.  The impulse waiver
+    recognises the three-law shape — `linear_impulse`, `linear_impulse_momentum`
+    and `elapsed_time_positive` together — which needs a force, a duration, and
+    the authorities that license both.
+
+    A source that states the impulse outright and asks for the velocity after it
+    is a two-known, one-unknown algebraic problem that never reaches that shape.
+    Manufacturing a force and a duration to satisfy the waiver would be
+    inventing structure the source does not state, so this reports the honest
+    verdict instead: the engine declares no capability for this plan.
+    """
+
+    has_shape = (
+        bool(facts.roles.get("force"))
+        and bool(facts.roles.get("duration"))
+        and "constant_force" in facts.approved
+        and "strictly_positive_duration" in facts.approved
+    )
+    return (
+        PrerequisiteDisposition.explicit_source
+        if has_shape
+        else PrerequisiteDisposition.unsupported
+    )
 
 
 def _signed_axis_frame(facts: _DraftFacts) -> PrerequisiteDisposition:
@@ -646,6 +744,10 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _signed_axis_frame),
             ("axis_signed", PrerequisiteKind.axis, _signed_axis_frame),
             ("component_binding", PrerequisiteKind.constraint, _signed_axis_frame),
+            # The endpoint velocities are event-scoped, and the solver accepts
+            # such a plan only in its exact static-boundary shape.
+            ("capability_event_scoped_solve_plan", PrerequisiteKind.capability,
+             _event_scoped_solve_plan),
             ("symbol_final_velocity", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
         ),
@@ -661,7 +763,7 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
         (
             ("geometry_support", PrerequisiteKind.geometry,
              _needs_geometry("lies_on")),
-            ("authority_horizontal_surface", PrerequisiteKind.authority,
+            ("capability_horizontal_surface_profile", PrerequisiteKind.capability,
              _catalogue_has_no_capability),
             ("interaction_contact", PrerequisiteKind.interaction,
              _derivable_from_authority("constant_gravity")),
@@ -729,11 +831,11 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _needs_role("angular_velocity")),
             ("quantity_radius", PrerequisiteKind.interaction_quantity,
              _needs_role("radius")),
-            ("point_mass_center", PrerequisiteKind.point,
+            ("capability_rigid_point_authority", PrerequisiteKind.capability,
              _catalogue_has_no_capability),
             ("geometry_attached", PrerequisiteKind.geometry,
              _needs_geometry("attached")),
-            ("frame_body_fixed", PrerequisiteKind.reference_frame,
+            ("capability_body_fixed_frame", PrerequisiteKind.capability,
              _catalogue_has_no_capability),
             ("symbol_point_speed", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
@@ -741,6 +843,31 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
     ),
     # The one profile the engine answers by *declining*: a free undamped linear
     # spring period/frequency readout is outside the declared course scope.
+    # A body whose motion the source states relative to a declared observer.
+    # The typed frame record is derivable; the readout itself is deferred, and
+    # building the frame is what lets the engine say so precisely.
+    _ProfileSignature(
+        ProfileId.relative_translating_frame,
+        lambda facts: (
+            facts.observer_count >= 1
+            and facts.query_role == "acceleration"
+            and bool(facts.roles.get("acceleration"))
+        ),
+        (
+            ("entity_observer_frame", PrerequisiteKind.reference_frame,
+             _observer_frame_entity),
+            ("frame_parent_world", PrerequisiteKind.reference_frame,
+             _observer_frame_entity),
+            ("axis_signed", PrerequisiteKind.axis, _signed_axis_frame),
+            ("quantity_relative_acceleration", PrerequisiteKind.interaction_quantity,
+             _needs_role("acceleration")),
+            ("component_binding", PrerequisiteKind.constraint, _signed_axis_frame),
+            ("symbol_absolute_acceleration", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
+            ("capability_relative_acceleration_readout", PrerequisiteKind.capability,
+             _relative_acceleration_capability),
+        ),
+    ),
     _ProfileSignature(
         ProfileId.spring_vibration_deferred,
         lambda facts: (
@@ -754,7 +881,7 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _needs_role("mass")),
             ("quantity_stiffness", PrerequisiteKind.interaction_quantity,
              _needs_role("stiffness")),
-            ("capability_period_readout", PrerequisiteKind.constraint,
+            ("capability_period_readout", PrerequisiteKind.capability,
              _catalogue_has_no_capability),
         ),
     ),

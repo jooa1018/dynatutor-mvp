@@ -33,6 +33,9 @@ from engine.mechanics.pipeline import solve_verified_equation_graph
 from engine.mechanics.validation import ValidationTerminal, validate_draft
 from engine.mechanics.verification.contracts import MechanicsSolveTerminal
 
+from evaluation.phase56_stage7.complete_profile_application import (
+    close_projected_draft,
+)
 from evaluation.phase56_stage7.lane_b_draft_projection import (
     DraftProjection,
     DraftProjectionTerminal,
@@ -246,9 +249,15 @@ def run_lane_b_case(
     if projection.terminal is not DraftProjectionTerminal.projected:
         return LaneBResult(execution_token, LaneBTerminal.projection_rejected)
 
-    draft = projection.draft
     text = projection.problem_text
     approved = projection.approvable_assumption_ids
+    # Complete-profile closure runs before validation and is transactional: the
+    # Draft below is either the projection's own or one whole closed Draft, never
+    # a partially attached one.  A profile that does not close leaves the Draft
+    # exactly as projected.
+    draft = close_projected_draft(
+        projection.draft, approved_assumption_ids=approved
+    ).draft
     query_fields = _query_projection(draft)
 
     validation = validate_draft(text, draft, approved_assumption_ids=approved)
