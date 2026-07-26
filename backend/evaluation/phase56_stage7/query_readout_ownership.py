@@ -62,7 +62,7 @@ from evaluation.phase56_stage7.blocked_law_diagnosis import (
 from evaluation.phase56_stage7.contracts import FrozenStrictModel
 
 QUERY_READOUT_OWNERSHIP_DIAGNOSIS_VERSION = (
-    "phase56-stage7-query-readout-ownership-diagnosis-v1"
+    "phase56-stage7-query-readout-ownership-diagnosis-v2"
 )
 
 
@@ -89,8 +89,12 @@ class OwnershipCausalOutcome(str, Enum):
     outcome named after a stronger counterfactual than the one that ran is a
     measurement error waiting to be quoted.  An earlier revision of this module
     named the frame rung `binding_plus_profile_required` while only ever adding
-    a frame; the rung is now named for the frame, and a real complete-profile
-    rung exists beside it.
+    a frame; the rung is now named for the frame.  A later revision then named
+    the force rung `binding_plus_complete_profile_unlocks` while only ever
+    measuring law emission on a minimal force structure — no complete profile
+    was applied, validated, normalized, authorized, compiled, solved, or
+    verified — so that rung is now `binding_plus_minimal_force_profile_emits`,
+    which is what it does.
 
     `binding_not_formable` is the honest outcome for a context where no carrier
     is provable from typed structure at all.  It is deliberately *not* folded
@@ -110,8 +114,14 @@ class OwnershipCausalOutcome(str, Enum):
     joint_scoped_binding_unlocks = "joint_scoped_binding_unlocks"
     # The binding plus a frame — and nothing else.  Named for what it is.
     binding_plus_frame_unlocks = "binding_plus_frame_unlocks"
-    # The binding plus the profile structure a law actually needs.
-    binding_plus_complete_profile_unlocks = "binding_plus_complete_profile_unlocks"
+    # The binding plus the smallest force-bearing structure a free-body law can
+    # read, measured at **law emission**.  This rung never ran a complete
+    # profile through validate/normalize/authorize/compile/solve/verify, so it
+    # is not named as if it had; an emitted equation is not a solved case, and
+    # this outcome must never be quoted as a solved or verified unlock.
+    binding_plus_minimal_force_profile_emits = (
+        "binding_plus_minimal_force_profile_emits"
+    )
     binding_not_formable = "binding_not_formable"
     binding_ambiguous = "binding_ambiguous"
     binding_does_not_close = "binding_does_not_close"
@@ -170,6 +180,57 @@ _ROPE_TOPOLOGY_GEOMETRY: frozenset[GeometryRelationKind] = frozenset(
     {GeometryRelationKind.topology_connects, GeometryRelationKind.wraps}
 )
 _INEXTENSIBLE_ROPE_AUTHORITY = "inextensible_rope"
+# Roles an inextensible rope actually equates across its members.  Rope length
+# constrains rates of motion along the rope, so displacement, velocity, speed,
+# and acceleration magnitudes are shared; positions are not, and a tension or
+# any other dynamic quantity needs a different authority (massless rope and an
+# ideal pulley), which this proof does not have and must not pretend to.
+_ROPE_KINEMATIC_ROLES: frozenset[QuantityRole] = frozenset(
+    {
+        QuantityRole.displacement,
+        QuantityRole.velocity,
+        QuantityRole.speed,
+        QuantityRole.acceleration,
+    }
+)
+# Geometry that ties a wrapped intermediary to something else.  Used only to
+# detect that a pulley is carried by a free body, which is exactly the movable
+# pulley the equal-magnitude proof must refuse.
+_INTERMEDIARY_ATTACHMENT_GEOMETRY: frozenset[GeometryRelationKind] = frozenset(
+    {
+        GeometryRelationKind.attached,
+        GeometryRelationKind.lies_on,
+        GeometryRelationKind.coincident,
+    }
+)
+# Motion a wrapped intermediary may not have while claiming to be fixed.
+_INTERMEDIARY_MOTION_ROLES: frozenset[QuantityRole] = frozenset(
+    {
+        QuantityRole.position,
+        QuantityRole.displacement,
+        QuantityRole.velocity,
+        QuantityRole.speed,
+        QuantityRole.acceleration,
+    }
+)
+
+# Every refusal the aggregate proof can return.  Closed so the redacted
+# artifact's refusal counts are counts over a bounded vocabulary, and so a new
+# refusal is a deliberate contract change rather than a stray string.
+AGGREGATE_REFUSAL_CODES: frozenset[str] = frozenset(
+    {
+        "signed_component_has_no_common_readout",
+        "role_not_rope_kinematic",
+        "no_multi_member_topology",
+        "multiple_rope_components",
+        "topology_without_rope_evidence",
+        "mechanical_advantage_topology",
+        "pulley_not_proven_fixed",
+        "members_not_magnitude_constrained",
+        "authority_not_for_this_rope",
+        "member_readout_missing",
+    }
+)
 
 # Roles whose joint readout is a kinematic property of the joint point itself.
 # Two bodies meeting at one pin share these exactly, so two connected bodies are
@@ -244,7 +305,13 @@ class OwnershipCausalDiagnosis(FrozenStrictModel):
 
     @property
     def causally_blocked_on_ownership(self) -> int:
-        """Contexts where a formable binding is what actually moves the engine."""
+        """Contexts where a formable binding is what opens **law emission**.
+
+        Every rung of the ladder asks the real `apply_core_laws` whether an
+        equation now names the queried quantity.  That is the whole claim: a
+        non-zero here means emission needed the binding, never that a case
+        would become solved or verified.
+        """
 
         unlocking = {
             OwnershipCausalOutcome.single_carrier_binding_alone_unlocks.value,
@@ -252,7 +319,7 @@ class OwnershipCausalDiagnosis(FrozenStrictModel):
             OwnershipCausalOutcome.point_scoped_binding_unlocks.value,
             OwnershipCausalOutcome.joint_scoped_binding_unlocks.value,
             OwnershipCausalOutcome.binding_plus_frame_unlocks.value,
-            OwnershipCausalOutcome.binding_plus_complete_profile_unlocks.value,
+            OwnershipCausalOutcome.binding_plus_minimal_force_profile_emits.value,
         }
         return sum(count for key, count in self.outcome_counts if key in unlocking)
 
@@ -413,6 +480,46 @@ def _any_law_applies(context: LawContext) -> bool:
     )
 
 
+def _rope_topology_components(
+    relations: Sequence[Any],
+) -> tuple[tuple[frozenset[int], frozenset[str]], ...]:
+    """Connected components over shared participants, as (relation indices, participants).
+
+    A `topology_connects` and a `wraps` belong to the same rope assembly only
+    when a participant ties them together; nothing else does.  Two relations
+    that share no participant are two assemblies, however similar they look.
+    """
+
+    parents = list(range(len(relations)))
+
+    def find(index: int) -> int:
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    by_participant: dict[str, int] = {}
+    for index, relation in enumerate(relations):
+        for participant in relation.participant_ids:
+            if participant in by_participant:
+                parents[find(index)] = find(by_participant[participant])
+            else:
+                by_participant[participant] = index
+
+    grouped: dict[int, set[int]] = {}
+    for index in range(len(relations)):
+        grouped.setdefault(find(index), set()).add(index)
+    components: list[tuple[frozenset[int], frozenset[str]]] = []
+    for indices in grouped.values():
+        participants = frozenset(
+            participant
+            for index in indices
+            for participant in relations[index].participant_ids
+        )
+        components.append((frozenset(indices), participants))
+    return tuple(components)
+
+
 def aggregate_common_magnitude_carriers(
     context: LawContext, subject_id: str, quantity: BoundQuantity
 ) -> tuple[frozenset[str], str | None]:
@@ -420,12 +527,31 @@ def aggregate_common_magnitude_carriers(
 
     An aggregate readout is not "pick a member".  It is only well posed when
     typed structure proves every member shares one magnitude, and here that
-    proof is exactly the one an inextensible rope over a pulley makes:
+    proof is exactly the one an inextensible rope over a fixed redirector makes.
+    Every clause below is scoped to the query, because a proof assembled from
+    someone else's structure proves someone else's aggregate:
 
-    * a rope topology names the members together;
-    * an approved `inextensible_rope` authority holds over the query's interval;
-    * every named member is a free body with its own readout of the queried role
-      in that interval; and
+    * only rope-topology relations in the **query's interval** participate — an
+      unscoped relation applies everywhere, a scoped one only to its interval;
+    * those relations must form **exactly one** member-bearing connected
+      component, unless the topology itself names the query system, in which
+      case that named component is the one — two independent rope assemblies
+      with nothing tying either to the query fail closed;
+    * the component must carry **rope evidence**: a rope participant or a
+      `wraps`.  A bare `topology_connects` also projects from relative-motion
+      coupling, which shares no magnitude, so it proves nothing here;
+    * at most **one** `wraps`, and its wrapped intermediary must be provably
+      inert: not a free body, not a rope endpoint, not attached to or resting
+      on any free body, and carrying no motion readout in scope.  A movable
+      pulley or any mechanical-advantage assembly divides magnitudes instead of
+      sharing them, so each of those shapes refuses;
+    * an approved `inextensible_rope` authority must hold over the query's
+      interval **and belong to this rope** — its subject is a rope participant
+      of this component or the query system itself, never another rope, another
+      system, or a body;
+    * the queried role must be one an inextensible rope actually equates
+      (displacement, velocity, speed, acceleration — never a force);
+    * every member must carry its own readout of the queried role in scope; and
     * the question asks for a **magnitude**.
 
     The magnitude requirement is not a formality.  Two bodies on opposite sides
@@ -433,35 +559,132 @@ def aggregate_common_magnitude_carriers(
     does not exist to be bound: fabricating one would hand the solver a sign no
     member has.  A signed query therefore fails closed.
 
-    Returns `(members, refusal)` — an empty set with a bounded refusal code when
-    the proof does not hold.
+    Returns `(members, refusal)` — an empty set with a refusal code from
+    `AGGREGATE_REFUSAL_CODES` when the proof does not hold.
     """
 
     if quantity.component is not QuantityComponent.magnitude:
         return frozenset(), "signed_component_has_no_common_readout"
+    if quantity.role not in _ROPE_KINEMATIC_ROLES:
+        return frozenset(), "role_not_rope_kinematic"
 
     bodies = _free_body_entity_ids(context)
-    members: set[str] = set()
-    for relation in context.geometry:
-        if relation.kind not in _ROPE_TOPOLOGY_GEOMETRY:
-            continue
-        named = set(relation.participant_ids) & bodies
-        if len(named) >= 2:
-            members |= named
-    if len(members) < 2:
+    primitives = {item.entity_id: item.primitive for item in context.entities}
+
+    relations = tuple(
+        relation
+        for relation in context.geometry
+        if relation.kind in _ROPE_TOPOLOGY_GEOMETRY
+        and relation.interval_id in (None, quantity.interval_id)
+    )
+
+    def component_members(indices: frozenset[int]) -> frozenset[str]:
+        # Membership is what the rope path terminates on, so only the
+        # endpoints of `topology_connects` count; a body a `wraps` happens to
+        # mention is not thereby on the rope's ends.
+        return frozenset(
+            participant
+            for index in indices
+            if relations[index].kind is GeometryRelationKind.topology_connects
+            for participant in relations[index].participant_ids
+            if participant in bodies
+        )
+
+    components = _rope_topology_components(relations)
+    member_bearing = [
+        (indices, participants, component_members(indices))
+        for indices, participants in components
+        if len(component_members(indices)) >= 2
+    ]
+    if not member_bearing:
         # One member is not an aggregate, and none is not a member set.
         return frozenset(), "no_multi_member_topology"
 
-    inextensible = any(
-        assumption.kind == _INEXTENSIBLE_ROPE_AUTHORITY
+    named = [item for item in member_bearing if subject_id in item[1]]
+    if len(named) > 1:
+        return frozenset(), "multiple_rope_components"
+    if named:
+        indices, participants, members = named[0]
+    elif len(member_bearing) == 1:
+        indices, participants, members = member_bearing[0]
+    else:
+        # Two assemblies and nothing ties either to the query system: choosing
+        # one would invent the aggregate.
+        return frozenset(), "multiple_rope_components"
+
+    rope_participants = frozenset(
+        participant
+        for participant in participants
+        if primitives.get(participant) is EntityPrimitive.rope
+    )
+    wrap_indices = [
+        index
+        for index in indices
+        if relations[index].kind is GeometryRelationKind.wraps
+    ]
+    if not rope_participants and not wrap_indices:
+        return frozenset(), "topology_without_rope_evidence"
+    if len(wrap_indices) > 1:
+        return frozenset(), "mechanical_advantage_topology"
+
+    if wrap_indices:
+        wrap = relations[wrap_indices[0]]
+        intermediaries = (
+            frozenset(wrap.participant_ids) - members - rope_participants - {subject_id}
+        )
+        if not intermediaries:
+            # A wrap with no named redirector proves nothing about fixedness.
+            return frozenset(), "pulley_not_proven_fixed"
+        endpoint_ids = frozenset(
+            participant
+            for index in indices
+            if relations[index].kind is GeometryRelationKind.topology_connects
+            for participant in relations[index].participant_ids
+        )
+        for intermediary in sorted(intermediaries):
+            if intermediary in bodies:
+                # A free-body redirector is carried by the motion it redirects:
+                # that is a movable pulley, not a fixed one.
+                return frozenset(), "pulley_not_proven_fixed"
+            if intermediary in endpoint_ids:
+                # The rope terminates on its own redirector — the block-and-
+                # tackle shape whose magnitudes divide rather than match.
+                return frozenset(), "mechanical_advantage_topology"
+            for relation in context.geometry:
+                if relation.kind not in _INTERMEDIARY_ATTACHMENT_GEOMETRY:
+                    continue
+                relation_participants = set(relation.participant_ids)
+                if intermediary not in relation_participants:
+                    continue
+                if relation_participants & bodies:
+                    return frozenset(), "pulley_not_proven_fixed"
+            if any(
+                item.subject_id == intermediary
+                and item.role in _INTERMEDIARY_MOTION_ROLES
+                and item.interval_id in (None, quantity.interval_id)
+                for item in context.quantities
+            ):
+                return frozenset(), "pulley_not_proven_fixed"
+
+    approved_inextensible = tuple(
+        assumption
+        for assumption in context.assumptions
+        if assumption.kind == _INEXTENSIBLE_ROPE_AUTHORITY
         and assumption.disposition is AssumptionDisposition.approved
         and assumption.assumption_id in context.approved_assumption_ids
         and assumption.interval_id in (None, quantity.interval_id)
-        for assumption in context.assumptions
     )
-    if not inextensible:
+    if not approved_inextensible:
         # Unconstrained members share nothing; their magnitudes are independent.
         return frozenset(), "members_not_magnitude_constrained"
+    authority_subjects = rope_participants | {subject_id}
+    if not any(
+        assumption.subject_id in authority_subjects
+        for assumption in approved_inextensible
+    ):
+        # An authority about another rope or another system authorises nothing
+        # about this one.
+        return frozenset(), "authority_not_for_this_rope"
 
     # Every member must actually carry the readout being asked for, in scope.
     carried = {
@@ -562,7 +785,7 @@ def _with_member_readouts(
     return replace(context, quantities=tuple(quantities))
 
 
-def _context_with_minimal_complete_profile(context: LawContext) -> LawContext:
+def _context_with_minimal_force_profile(context: LawContext) -> LawContext:
     """Frame, axes, component topology — **and** the interaction a law needs.
 
     This is the rung the frame rung is not.  75 of 97 public contexts carry no
@@ -570,6 +793,10 @@ def _context_with_minimal_complete_profile(context: LawContext) -> LawContext:
     the kinematics are; adding a frame alone can never reach one.  Here every
     free body also gains a gravity interaction owning a force on it, which is
     the smallest structure that makes `_newton_emissions` reachable.
+
+    This is deliberately **not** a `CompleteProfilePlan`: nothing here is
+    validated, normalized, authorized, compiled, solved, or verified, and the
+    rung that uses it reports law emission under a name that says so.
 
     Counterfactual only.  It is discarded with the diagnosis and never becomes
     a Draft.
@@ -652,10 +879,11 @@ def _ladder(
         return scoped_outcome, carriers
     if _writes_about(context_with_counterfactual_frame(bound), query_quantity_id):
         return OwnershipCausalOutcome.binding_plus_frame_unlocks, carriers
-    if _writes_about(
-        _context_with_minimal_complete_profile(bound), query_quantity_id
-    ):
-        return OwnershipCausalOutcome.binding_plus_complete_profile_unlocks, carriers
+    if _writes_about(_context_with_minimal_force_profile(bound), query_quantity_id):
+        return (
+            OwnershipCausalOutcome.binding_plus_minimal_force_profile_emits,
+            carriers,
+        )
     return OwnershipCausalOutcome.binding_does_not_close, carriers
 
 
@@ -692,9 +920,10 @@ def classify_ownership_blocker(
         if not members and refusal == "member_readout_missing":
             # The members are there and the rope constrains them; what is absent
             # is a readout for the aggregate to be the common magnitude *of*.
-            # A profile supplies those as unknowns, so ask whether the aggregate
-            # closes once it has — a different question from whether the source
-            # states them.
+            # A profile supplies those as unknowns, so ask whether law emission
+            # opens once it has — a different question from whether the source
+            # states them, and still a question about emission, never about a
+            # solved terminal.
             supplied = _with_member_readouts(context, quantity)
             members, refusal = aggregate_common_magnitude_carriers(
                 supplied, quantity.subject_id, quantity
@@ -702,10 +931,10 @@ def classify_ownership_blocker(
             if members:
                 bound = _bind_readout(supplied, quantity, sorted(members)[0])
                 if _writes_about(
-                    _context_with_minimal_complete_profile(bound), query_quantity_id
+                    _context_with_minimal_force_profile(bound), query_quantity_id
                 ):
                     return (
-                        OwnershipCausalOutcome.binding_plus_complete_profile_unlocks,
+                        OwnershipCausalOutcome.binding_plus_minimal_force_profile_emits,
                         len(members),
                     )
                 return OwnershipCausalOutcome.binding_does_not_close, len(members)
@@ -770,8 +999,6 @@ def classify_ownership_blocker(
         OwnershipCausalOutcome.point_scoped_binding_unlocks,
         1,
     )
-
-    return OwnershipCausalOutcome.binding_does_not_close, 1
 
 
 def diagnose_query_readout_ownership(
@@ -894,6 +1121,7 @@ def diagnosis_as_dict(diagnosis: OwnershipCausalDiagnosis) -> dict[str, Any]:
 
 
 __all__ = [
+    "AGGREGATE_REFUSAL_CODES",
     "QUERY_READOUT_OWNERSHIP_DIAGNOSIS_VERSION",
     "OwnershipCausalDiagnosis",
     "OwnershipCausalOutcome",

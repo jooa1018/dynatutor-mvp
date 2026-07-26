@@ -14,7 +14,7 @@ redacted artifact.
 | Measurement | Module | Tests |
 |---|---|---|
 | Structural blocker census | `evaluation/phase56_stage7/lane_b_structural_blockers.py` | `test_phase56_stage7_structural_blockers.py` (15) |
-| Causal ownership diagnosis | `evaluation/phase56_stage7/query_readout_ownership.py` | `test_phase56_stage7_query_readout_ownership.py` (33) |
+| Causal ownership diagnosis | `evaluation/phase56_stage7/query_readout_ownership.py` | `test_phase56_stage7_query_readout_ownership.py` (46) |
 
 **A count is not a cause.** The census counts properties of contexts; the
 diagnosis tests whether a property is what actually stops the answer. §4 is the
@@ -121,15 +121,37 @@ are measured separately, each reported under its own name:
 
 1. the binding alone;
 2. the binding plus a frame;
-3. the binding plus a minimal complete profile — frame, axes, component
+3. the binding plus a **minimal force profile** — frame, axes, component
    topology, **and** a gravity interaction owning a force on each free body,
    because 75 of 97 contexts carry no interaction and a frame alone can never
-   reach a free-body law.
+   reach a free-body law. This rung measures **law emission only** and is named
+   `binding_plus_minimal_force_profile_emits` for exactly that reason: nothing
+   on it is validated, normalized, authorized, compiled, solved, or verified,
+   so it must never be quoted as a solved or verified unlock. (An earlier
+   revision named this rung `binding_plus_complete_profile_unlocks`, which
+   overclaimed a pipeline it never ran; the rename is the correction.)
 
 Each primitive gets the binding its readout actually needs. A point keeps its
 identity and gains an owner plus a `point_id` and a typed point record; a joint
 is bound only for the readout its role names; and an aggregate is bound to a
 **proven member set**, never by picking a member.
+
+The aggregate proof is scoped to the query, because a proof assembled from
+someone else's structure proves someone else's aggregate. Only rope-topology
+relations in the query's interval participate; they must form exactly one
+member-bearing connected component unless the topology names the query system
+itself; the component must carry rope evidence (a rope participant or a
+`wraps`), because a bare `topology_connects` also projects from
+`moves_relative_to`, which shares no magnitude; at most one `wraps` is
+accepted, and its wrapped intermediary must be provably inert — not a free
+body, not a rope endpoint, not attached to or resting on any free body, with
+no motion readout in scope — so a movable pulley or any mechanical-advantage
+assembly refuses; the approved `inextensible_rope` authority must belong to
+this rope or to the query system itself, never to another rope, another
+system, or a body; and the queried role must be one an inextensible rope
+actually equates (displacement, velocity, speed, acceleration — never a
+force). Every refusal is a code from the closed `AGGREGATE_REFUSAL_CODES`
+vocabulary.
 
 | Outcome | `system` | `point` | `joint` |
 |---|---:|---:|---:|
@@ -138,9 +160,9 @@ is bound only for the readout its role names; and an aggregate is bound to a
 | point-scoped binding unlocks | — | 0 | — |
 | joint-scoped binding unlocks | — | — | 0 |
 | binding plus frame unlocks | 0 | 0 | 0 |
-| binding plus complete profile unlocks | 0 | 0 | 0 |
-| binding does not close | 12 | 12 | 3 |
-| binding not formable | 0 | 0 | 0 |
+| binding plus minimal force profile emits | 0 | 0 | 0 |
+| binding does not close | 11 | 12 | 3 |
+| binding not formable | 1 | 0 | 0 |
 | binding ambiguous | 0 | 0 | 0 |
 | law not semantically applicable | 0 | 0 | 3 |
 
@@ -152,22 +174,39 @@ An earlier revision reported `system` as **12 `binding_not_formable`** and said
 no membership was provable. That was an artefact of a weaker instrument, and it
 is wrong in an interesting way.
 
-The aggregate proof does hold: `topology_connects` and `wraps` name both bodies
-together, and an approved `inextensible_rope` authority covers the interval, so
-the member set is `{member, member}` with one common magnitude. What was missing
-was that the members carry no readout of the queried role for the aggregate to
-be the common magnitude *of* — `aggregate_refusal_counts` records
-`member_readout_missing` on **12 of 12**. Supplying those readouts as unknowns,
-which is exactly what a profile does, forms the binding on all twelve.
+The aggregate proof does hold on eleven of the twelve: `topology_connects` and
+`wraps` form one component naming both bodies together, and an approved
+`inextensible_rope` authority whose subject is the query system covers the
+interval, so the member set is `{member, member}` with one common magnitude.
+What was missing was that the members carry no readout of the queried role for
+the aggregate to be the common magnitude *of* — `aggregate_refusal_counts`
+records `member_readout_missing` on **11 of 12**. Supplying those readouts as
+unknowns, which is exactly what a profile does, forms the binding on all
+eleven.
 
-So the aggregate binding **is formable**, is formed, and still does not close.
-That is a stronger result than the previous one, reached with a stronger
-instrument, and it says nothing was hiding behind the earlier refusal.
+The twelfth is refused as **`role_not_rope_kinematic`**: its system question
+asks for a **tension**, and inextensibility equates rates of motion, never
+forces — a common tension needs a massless rope over an ideal pulley, a
+different authority the proof does not hold. The earlier instrument formed
+that binding anyway, which was unsound; the scoped proof refuses it, and the
+refusal is the correction.
+
+So the aggregate binding **is formable** where the physics says it is, is
+formed, and still does not close. That is a stronger result than the previous
+one, reached with a stronger instrument, and it says nothing was hiding behind
+the earlier refusal.
 
 **The zeros are load-bearing only because the instrument is shown to detect an
 unlock when there is one.** `backend/tests/test_phase56_stage7_query_readout_ownership.py`
-(33 tests) carries a positive control per binding shape, not merely per
-primitive:
+(46 tests) carries a positive control per binding shape, not merely per
+primitive, and an attack suite that proves the aggregate proof is scoped: an
+unrelated second rope topology, two independent rope systems, an inextensible
+authority naming another rope, another system, or a body, a moving pulley in
+three typed shapes, a pulley anchored to the environment (which must still
+pass), a two-wraps and a rope-ends-on-pulley mechanical-advantage assembly,
+cross-interval topology, relative-motion coupling without rope evidence, a
+force-role system query, and renamed-ID variants of the attacks all decide
+exactly as their structure demands:
 
 - a **multi-member aggregate**: two bodies on one inextensible rope over a
   pulley, moving in opposite directions with one common magnitude, and a system
@@ -188,20 +227,23 @@ before any zero was accepted.
 
 ### What each group is really blocked on
 
-- **`system` (12) — `binding_does_not_close`.** The aggregate binding is
-  formable on all twelve once member readouts exist, and forming it changes
-  nothing at any rung. Note what is *not* the blocker here: no `gold.relations`
-  entry names the system entity directly (0 of 13 system-subject public cases),
-  but membership does not have to come from such a record — the rope topology
-  names the members together, and that is what the common-magnitude proof rests
-  on. The separate question of whether interval co-scoping should count as
-  membership therefore never arises, and its own measurement confirms it would
-  buy nothing: `aggregate_co_subject_route_unique_carrier` is **0 of 12**,
-  because every one is a two-body system and that route names two carriers.
+- **`system` (12) — 11 `binding_does_not_close`, 1 `binding_not_formable`.**
+  The aggregate binding is formable on the eleven kinematic questions once
+  member readouts exist, and forming it changes nothing at any rung. The
+  twelfth asks for a tension, which inextensibility does not equate, so no
+  common-magnitude binding exists to be formed (`role_not_rope_kinematic`).
+  Note what is *not* the blocker here: no `gold.relations` entry names the
+  system entity directly (0 of 13 system-subject public cases), but membership
+  does not have to come from such a record — the rope topology names the
+  members together, and that is what the common-magnitude proof rests on. The
+  separate question of whether interval co-scoping should count as membership
+  therefore never arises, and its own measurement confirms it would buy
+  nothing: `aggregate_co_subject_route_unique_carrier` is **0 of 12**, because
+  every one is a two-body system and that route names two carriers.
 - **`point` (12) — `binding_does_not_close`.** Each has exactly one owner via a
   `lies_on` relation. The scoped binding was formed — owner, `point_id`, and a
   typed point record, with the point entity and its geometry left intact — and
-  neither it, nor it plus a frame, nor it plus a complete profile produced a law
+  neither it, nor it plus a frame, nor it plus a minimal force profile produced a law
   that writes about the queried readout. Note also
   `contexts_with_typed_point_record = 0` in the source: the projection produces
   no `IRPoint` at all, so the rigid-point laws have no point to be about until
@@ -235,8 +277,12 @@ as it will be.
 ### Worked instance: the fixed-pulley contexts
 
 The fixed-pulley walls below are still real, but note which one they are: the
-`system`-owned readout is `binding_not_formable`, not a capability waiting to be
-built. Nothing in the source states that the system is made of its two bodies.
+`system`-owned acceleration readout **forms** an aggregate binding — the rope
+topology names the members together and the approved authority covers the
+interval — and the formed binding still `binding_does_not_close`. The wall is
+that no law writes about the bound readout at any measured rung, not that
+membership is unprovable. (An earlier revision reported `binding_not_formable`
+here; that was the weaker instrument.)
 
 `fixed_pulley` is the census's highest-yield profile — 3 of its 6 applicable
 contexts plan `complete`. It is still not enabled, and the measurement says why.
@@ -274,16 +320,19 @@ again a count, and again it is not the reachable population:
 | Profile | complete | Query subject | Reachable? |
 |---|---:|---|---|
 | `free_flight_gravity` | 2 | `particle` | yes |
-| `fixed_pulley` | 3 | `system` | no — `binding_not_formable` (§4) |
-| `incline_hanging_pulley` | 3 | `system` | no — `binding_not_formable` (§4) |
+| `fixed_pulley` | 3 | `system` | no — binding forms, does not close (§4) |
+| `incline_hanging_pulley` | 3 | `system` | no — binding forms, does not close (§4) |
 
 **The measured ceiling for the next profile package is 2 contexts, not 8.** Six
-of the eight ask for a readout on an aggregate nothing relates to its members,
-so no transaction can deliver them regardless of how the profile recogniser is
+of the eight ask for a readout owned by an aggregate, and the formed aggregate
+binding does not close at any measured rung — no law writes about the bound
+readout even with a frame and a minimal force profile supplied — so no
+transaction can deliver them regardless of how the profile recogniser is
 generalised. Generalising the Atwood recogniser — over a query-relevant connected
 subgraph, tolerating unrelated events, accepting a `rigid_body` as a
 translational body — was audited against these six and would move none of them,
-because the wall is the readout's owner and not the recogniser's shape.
+because the wall is what emission does with the readout and not the
+recogniser's shape.
 
 ### `ENGINE_CONTRACT_BLOCKER`: `server_default` provenance is unreachable from Lane B
 
@@ -364,12 +413,13 @@ the measurement in §4 put its yield at zero.
 
 **Not on this list: query-readout ownership.** It is measured at zero unlocks
 across all three rungs — binding alone, binding plus frame, and binding plus a
-minimal complete profile — with multi-carrier aggregate, point-scoped, and
+minimal force profile — with multi-carrier aggregate, point-scoped, and
 joint-scoped bindings all exercised by passing positive controls. It is not
 built. If items 1 and 2 land, re-run the diagnostic before reconsidering it: the
 verdicts were reached against an engine whose contexts have no frames, no
-interactions, and no typed points, and the minimal complete profile measured
-here is a counterfactual approximation of a real one, not a substitute for it.
+interactions, and no typed points, and the minimal force profile measured here
+is a law-emission counterfactual, not a pipeline run — nothing on that rung was
+validated, normalized, authorized, compiled, solved, or verified.
 
 ## 7. What this document is not
 

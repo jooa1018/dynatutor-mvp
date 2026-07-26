@@ -48,6 +48,7 @@ from engine.mechanics.laws.core import apply_core_laws, free_body_primitive_name
 from engine.mechanics.math_ast import DimensionVector, SymbolDefinition, SymbolRef
 
 from evaluation.phase56_stage7.query_readout_ownership import (
+    AGGREGATE_REFUSAL_CODES,
     OwnershipCausalOutcome,
     aggregate_common_magnitude_carriers,
     ReadoutBindingKind,
@@ -157,10 +158,14 @@ def _geometry(
     relation_id: str,
     kind: GeometryRelationKind,
     participants: list[str],
+    interval_id: str | None = None,
 ) -> IRGeometryRelation:
     return IRGeometryRelation(
         **GeometryRelation(
-            relation_id=relation_id, kind=kind, participant_ids=participants
+            relation_id=relation_id,
+            kind=kind,
+            participant_ids=participants,
+            interval_id=interval_id,
         ).model_dump()
     )
 
@@ -488,6 +493,381 @@ def test_renaming_every_entity_does_not_alter_the_aggregate_result():
         EntityPrimitive.system,
     )
     assert baseline == renamed
+
+
+# --------------------------------------------------------------------------
+# The aggregate proof is scoped: someone else's topology proves nothing here
+# --------------------------------------------------------------------------
+
+
+def _aggregate_refusal(context) -> str | None:
+    _, refusal = aggregate_common_magnitude_carriers(
+        context, context.quantities[0].subject_id, context.quantities[0]
+    )
+    return refusal
+
+
+def _with_second_assembly(
+    context, *, names: tuple[str, str, str, str] = ("mC", "mD", "rope2", "pul2")
+):
+    """The context plus a complete rope-over-pulley assembly it never mentions."""
+
+    c_id, d_id, rope2_id, pul2_id = names
+    return replace(
+        context,
+        entities=(
+            *context.entities,
+            _entity(c_id, EntityPrimitive.particle),
+            _entity(d_id, EntityPrimitive.particle),
+            _entity(rope2_id, EntityPrimitive.rope),
+            _entity(pul2_id, EntityPrimitive.pulley),
+        ),
+        geometry=(
+            *context.geometry,
+            _geometry(
+                "g_rope2",
+                GeometryRelationKind.topology_connects,
+                [c_id, d_id, rope2_id],
+            ),
+            _geometry("g_wrap2", GeometryRelationKind.wraps, [c_id, d_id, pul2_id]),
+        ),
+    )
+
+
+def test_an_unrelated_second_rope_topology_fails_closed():
+    """A second assembly the query never touches makes "the rope" unprovable.
+
+    Nothing ties either component to the query system, so choosing one would
+    invent the aggregate.  The classification falls through to the membership
+    route, which also names nothing, and the context is refused rather than
+    guessed at.
+    """
+
+    context = _with_second_assembly(_aggregate_context())
+    assert _aggregate_refusal(context) == "multiple_rope_components"
+    outcome, carriers = classify_ownership_blocker(
+        context, QUERY_QUANTITY_ID, EntityPrimitive.system
+    )
+    assert outcome is OwnershipCausalOutcome.binding_not_formable
+    assert carriers == 0
+
+
+def test_two_independent_rope_systems_fail_closed():
+    """Two complete systems, two authorities — and still no unique aggregate."""
+
+    context = _with_second_assembly(_aggregate_context())
+    context = replace(
+        context,
+        entities=(*context.entities, _entity("sys2", EntityPrimitive.system)),
+        assumptions=(
+            *context.assumptions,
+            Assumption(
+                assumption_id="asm_rope2",
+                kind="inextensible_rope",
+                subject_id="sys2",
+                interval_id="seg",
+                disposition=AssumptionDisposition.approved,
+                reason="the source states the second rope does not stretch",
+            ),
+        ),
+        approved_assumption_ids=context.approved_assumption_ids | {"asm_rope2"},
+    )
+    assert _aggregate_refusal(context) == "multiple_rope_components"
+
+
+def test_an_inextensible_authority_for_another_rope_authorises_nothing():
+    """The authority must belong to this rope or this system, exactly."""
+
+    base = _aggregate_context()
+    for wrong_subject in ("rope2", "mA"):
+        entities = base.entities
+        if wrong_subject == "rope2":
+            entities = (*entities, _entity("rope2", EntityPrimitive.rope))
+        context = replace(
+            base,
+            entities=entities,
+            assumptions=tuple(
+                item.model_copy(update={"subject_id": wrong_subject})
+                for item in base.assumptions
+            ),
+        )
+        assert _aggregate_refusal(context) == "authority_not_for_this_rope"
+
+    # The rope actually named by the topology is a valid authority subject.
+    context = replace(
+        base,
+        assumptions=tuple(
+            item.model_copy(update={"subject_id": "rope"})
+            for item in base.assumptions
+        ),
+    )
+    assert _aggregate_refusal(context) is None
+
+
+def test_the_authority_of_another_system_entity_fails_closed():
+    """Two systems in the context, and the authority names the other one."""
+
+    base = _aggregate_context()
+    context = replace(
+        base,
+        entities=(*base.entities, _entity("sys2", EntityPrimitive.system)),
+        assumptions=tuple(
+            item.model_copy(update={"subject_id": "sys2"})
+            for item in base.assumptions
+        ),
+    )
+    assert _aggregate_refusal(context) == "authority_not_for_this_rope"
+    outcome, _ = classify_ownership_blocker(
+        context, QUERY_QUANTITY_ID, EntityPrimitive.system
+    )
+    assert outcome is OwnershipCausalOutcome.binding_not_formable
+
+
+def test_a_moving_pulley_is_never_a_common_magnitude():
+    """Any typed evidence that the redirector moves refuses the proof.
+
+    A movable pulley halves and doubles magnitudes instead of sharing them.
+    Three distinct shapes of motion evidence all refuse: the pulley carrying
+    its own motion readout, the pulley riding on a free body, and a free body
+    standing where the pulley should be.
+    """
+
+    base = _aggregate_context()
+
+    with_motion = replace(
+        base,
+        quantities=(
+            *base.quantities,
+            BoundQuantity(
+                quantity_id="qty_pul_v",
+                symbol_id="sym_pul_v",
+                role=QuantityRole.velocity,
+                subject_id="pul",
+                point_id=None,
+                frame_id=None,
+                interval_id="seg",
+                event_id=None,
+                component=QuantityComponent.y,
+                shape=QuantityShape.scalar,
+                dimension=VELOCITY,
+                expression=SymbolRef(symbol_id="sym_pul_v", dimension=VELOCITY),
+                evidence_ids=("ev_v",),
+            ),
+        ),
+    )
+    assert _aggregate_refusal(with_motion) == "pulley_not_proven_fixed"
+
+    carried_by_body = replace(
+        base,
+        entities=(*base.entities, _entity("carrier", EntityPrimitive.rigid_body)),
+        geometry=(
+            *base.geometry,
+            _geometry("g_carry", GeometryRelationKind.attached, ["pul", "carrier"]),
+        ),
+    )
+    assert _aggregate_refusal(carried_by_body) == "pulley_not_proven_fixed"
+
+    free_body_redirector = replace(
+        base,
+        entities=tuple(
+            _entity("pul", EntityPrimitive.rigid_body)
+            if item.entity_id == "pul"
+            else item
+            for item in base.entities
+        ),
+    )
+    assert _aggregate_refusal(free_body_redirector) == "pulley_not_proven_fixed"
+
+
+def test_a_pulley_anchored_to_the_environment_is_still_fixed():
+    """The refusal reads free-body attachment, not anchoring.
+
+    A pulley bolted to a ceiling is exactly the fixed redirector the proof
+    accepts, and must not be refused for having the bolt stated.
+    """
+
+    base = _aggregate_context()
+    context = replace(
+        base,
+        entities=(*base.entities, _entity("ceiling", EntityPrimitive.surface)),
+        geometry=(
+            *base.geometry,
+            _geometry("g_anchor", GeometryRelationKind.attached, ["pul", "ceiling"]),
+        ),
+    )
+    members, refusal = aggregate_common_magnitude_carriers(
+        context, "sys", context.quantities[0]
+    )
+    assert refusal is None
+    assert members == frozenset({"mA", "mB"})
+
+
+def test_a_mechanical_advantage_topology_is_never_a_common_magnitude():
+    """Two wraps, or a rope terminating on its own redirector, refuse.
+
+    Both are the block-and-tackle shape: the magnitudes divide by the number
+    of supporting segments instead of matching, so treating them as one common
+    magnitude would be wrong physics stated confidently.
+    """
+
+    base = _aggregate_context()
+
+    two_wraps = replace(
+        base,
+        entities=(*base.entities, _entity("pul2", EntityPrimitive.pulley)),
+        geometry=(
+            *base.geometry,
+            _geometry("g_wrap2", GeometryRelationKind.wraps, ["mA", "mB", "pul2"]),
+        ),
+    )
+    assert _aggregate_refusal(two_wraps) == "mechanical_advantage_topology"
+
+    rope_ends_on_pulley = replace(
+        base,
+        geometry=(
+            *base.geometry,
+            _geometry(
+                "g_end", GeometryRelationKind.topology_connects, ["mA", "pul", "rope"]
+            ),
+        ),
+    )
+    assert _aggregate_refusal(rope_ends_on_pulley) == "mechanical_advantage_topology"
+
+
+def test_cross_interval_topology_is_out_of_scope():
+    """Topology stated for another stretch of motion proves nothing here."""
+
+    base = _aggregate_context()
+    other_interval = replace(
+        base,
+        geometry=tuple(
+            _geometry(item.relation_id, item.kind, list(item.participant_ids), "seg2")
+            for item in base.geometry
+        ),
+    )
+    assert _aggregate_refusal(other_interval) == "no_multi_member_topology"
+
+    # Scoped to the query's own interval, the same relations still prove it.
+    same_interval = replace(
+        base,
+        geometry=tuple(
+            _geometry(item.relation_id, item.kind, list(item.participant_ids), "seg")
+            for item in base.geometry
+        ),
+    )
+    assert _aggregate_refusal(same_interval) is None
+
+
+def test_relative_motion_coupling_is_not_rope_evidence():
+    """A bare `topology_connects` also projects from `moves_relative_to`.
+
+    Two bodies in relative motion share no magnitude, and the typed IR cannot
+    tell that coupling apart from a rope once the rope itself goes unnamed.
+    Without a rope participant or a wrap, the proof refuses rather than reads
+    a relative-motion statement as an inextensible path.
+    """
+
+    base = _aggregate_context()
+    context = replace(
+        base,
+        geometry=(
+            _geometry("g_rel", GeometryRelationKind.topology_connects, ["mA", "mB"]),
+        ),
+    )
+    assert _aggregate_refusal(context) == "topology_without_rope_evidence"
+
+
+def test_a_force_role_system_readout_is_not_a_rope_kinematic_magnitude():
+    """Inextensibility equates rates of motion, never forces.
+
+    A common tension needs a massless rope over an ideal pulley — a different
+    authority this proof does not hold.  A force-role system query refuses
+    before any topology is read.
+    """
+
+    base = _aggregate_context()
+    force = DimensionVector(mass=1, length=1, time=-2)
+    context = replace(
+        base,
+        quantities=tuple(
+            replace(
+                item,
+                role=QuantityRole.force,
+                dimension=force,
+                expression=SymbolRef(symbol_id=item.symbol_id, dimension=force),
+            )
+            if item.quantity_id == QUERY_QUANTITY_ID
+            else item
+            for item in base.quantities
+        ),
+    )
+    assert _aggregate_refusal(context) == "role_not_rope_kinematic"
+
+
+def test_renaming_an_attacked_context_does_not_change_its_refusal():
+    """The attacks are structural too: renamed IDs refuse identically."""
+
+    baseline = _with_second_assembly(_aggregate_context())
+    renamed = _with_second_assembly(
+        _aggregate_context(entity_names=("agg", "left", "right", "cord", "wheel")),
+        names=("north", "south", "line2", "wheel2"),
+    )
+    assert _aggregate_refusal(baseline) == _aggregate_refusal(renamed)
+    assert (
+        classify_ownership_blocker(baseline, QUERY_QUANTITY_ID, EntityPrimitive.system)
+        == classify_ownership_blocker(renamed, QUERY_QUANTITY_ID, EntityPrimitive.system)
+    )
+
+
+def test_the_aggregate_refusal_vocabulary_is_closed():
+    """Every refusal the proof can return is declared, and nothing else is."""
+
+    assert AGGREGATE_REFUSAL_CODES == frozenset(
+        {
+            "signed_component_has_no_common_readout",
+            "role_not_rope_kinematic",
+            "no_multi_member_topology",
+            "multiple_rope_components",
+            "topology_without_rope_evidence",
+            "mechanical_advantage_topology",
+            "pulley_not_proven_fixed",
+            "members_not_magnitude_constrained",
+            "authority_not_for_this_rope",
+            "member_readout_missing",
+        }
+    )
+
+
+def test_the_supplied_readout_rung_reports_emission_not_a_solved_unlock():
+    """The retry rung emits under a name that says emission, and only that.
+
+    Members whose queried readout the source does not state are supplied as
+    unknowns, the binding forms, and `state_at_rest` emits about the bound
+    readout.  The outcome name must say the profile was minimal force
+    structure and the result law emission — the overclaiming
+    `binding_plus_complete_profile_unlocks` name is retired, and no outcome
+    may claim a complete profile again.
+    """
+
+    context = _aggregate_context(
+        member_roles=(QuantityRole.velocity, QuantityRole.acceleration)
+    )
+    members, refusal = aggregate_common_magnitude_carriers(
+        context, "sys", context.quantities[0]
+    )
+    assert members == frozenset()
+    assert refusal == "member_readout_missing"
+
+    outcome, carriers = classify_ownership_blocker(
+        context, QUERY_QUANTITY_ID, EntityPrimitive.system
+    )
+    assert (
+        outcome is OwnershipCausalOutcome.binding_plus_minimal_force_profile_emits
+    )
+    assert carriers == 2
+    assert not any(
+        "complete_profile" in item.value for item in OwnershipCausalOutcome
+    )
 
 
 def _two_sided_joint_context(role: QuantityRole) -> LawContext:
