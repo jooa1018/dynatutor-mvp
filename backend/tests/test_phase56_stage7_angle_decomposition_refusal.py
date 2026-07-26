@@ -26,9 +26,22 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 
+import math
+
 import pytest
 
+from engine.mechanics.compiler.contracts import EquationNode, EquationScope
+from engine.mechanics.contracts import QuantityRole
+from engine.mechanics.laws import core as laws_core
+from engine.mechanics.laws.base import LawRule, emission_for
 from engine.mechanics.laws.core import apply_core_laws
+from engine.mechanics.math_ast import Cos, Equality, LiteralNode, Multiply
+
+from evaluation.phase56_stage7.angle_reference_axis_controls import (
+    angle_axis_violations,
+    launch_pair,
+    signed_launch_component_quantities,
+)
 
 from evaluation.phase56_stage7.complete_profile_application import (
     close_projected_draft,
@@ -56,9 +69,11 @@ PROBLEM_TEXT = (
     "공기 저항은 무시한다. 공이 도달하는 최고 높이를 구하시오."
 )
 
-# Laws that would constitute a decomposition of a magnitude-with-angle launch
-# into signed components.  None exists today; the assertion below keeps the
-# absence load-bearing instead of accidental.
+# Auxiliary tripwire only: law-ID substrings a *carelessly honest* name would
+# carry.  A renamed decomposition slips this list by construction, so the
+# hard-safety gate is the structural scan below
+# (`angle_reference_axis_controls`), which reads what an equation touches —
+# never what it is called.
 _DECOMPOSITION_LAW_MARKERS = ("decomposition", "cos", "sin", "component_projection")
 
 
@@ -204,7 +219,15 @@ def _final_draft(projection: DraftProjection):
     return bundle, derive_event_boundaries(closed).draft
 
 
-def _law_ids(projection: DraftProjection) -> set[str]:
+def _emission_surface(projection: DraftProjection):
+    """The runtime's own emission surface for this fixture.
+
+    Returns the law context, the emissions the runtime would aggregate, the
+    normalized IR, and the symbol→quantity table — everything the structural
+    gate scans.  Built through the compiler's own steps so the surface under
+    audit is the runtime's, not a re-implementation.
+    """
+
     from engine.mechanics.compiler import MechanicsCompiler
     from engine.mechanics.compiler import compiler as compiler_module
     from engine.mechanics.normalization import normalize_draft
@@ -235,7 +258,17 @@ def _law_ids(projection: DraftProjection) -> set[str]:
         frozenset(bundle.approved_assumption_ids),
     )
     assert context is not None
-    return {emission.rule.law_id for emission in apply_core_laws(context)}
+    symbol_to_quantity = {
+        symbol.symbol_id: symbol.quantity_id
+        for symbol in ir.symbols
+        if symbol.quantity_id is not None
+    }
+    return context, apply_core_laws(context), ir, symbol_to_quantity
+
+
+def _law_ids(projection: DraftProjection) -> set[str]:
+    _, emissions, _, _ = _emission_surface(projection)
+    return {emission.rule.law_id for emission in emissions}
 
 
 # --------------------------------------------------------------------------
@@ -395,3 +428,258 @@ def test_negative_magnitudes_stay_impossible_by_contract():
     )
     assert speed.direction is None
     assert speed.frame_id is None
+
+
+# --------------------------------------------------------------------------
+# Structural gate: what an equation touches, never what it is called
+# --------------------------------------------------------------------------
+
+
+def _identities(ir):
+    pair = launch_pair(ir.quantities, subject_id="ball", event_id="go")
+    assert pair is not None, "the launch pair must resolve by typed identity"
+    magnitude, angle = pair
+    return magnitude, angle
+
+
+def _violations(items, ir, symbol_to_quantity):
+    magnitude, angle = _identities(ir)
+    assert angle.si_value is not None
+    return angle_axis_violations(
+        items,
+        symbol_to_quantity=symbol_to_quantity,
+        magnitude_quantity_id=magnitude.quantity_id,
+        angle_quantity_id=angle.quantity_id,
+        angle_si_radians=angle.si_value,
+    )
+
+
+def _compiled(projection: DraftProjection):
+    from engine.mechanics.compiler import MechanicsCompiler
+    from engine.mechanics.compiler.compiler import (
+        authorize_validated_mechanics_ir,
+    )
+    from engine.mechanics.normalization import normalize_draft
+
+    bundle, draft = _final_draft(projection)
+    normalization = normalize_draft(
+        projection.problem_text,
+        draft,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+    assert normalization.accepted and normalization.ir is not None
+    authorization = authorize_validated_mechanics_ir(normalization.ir)
+    return normalization.ir, MechanicsCompiler().compile(
+        normalization.ir,
+        validated_ir_authorization=authorization,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+
+
+def test_the_runtime_emission_surface_carries_no_decomposition_structure():
+    _, emissions, ir, table = _emission_surface(_projection())
+    assert emissions, "an empty surface would make this gate vacuous"
+    assert _violations(emissions, ir, table) == ()
+    assert all(e.generated_unknown_symbol_ids == () for e in emissions)
+
+
+def test_the_compiled_surface_carries_no_decomposition_structure():
+    ir, compiled = _compiled(_projection())
+    equations = () if compiled.graph is None else compiled.graph.equations
+    table = {
+        symbol.symbol_id: symbol.quantity_id
+        for symbol in ir.symbols
+        if symbol.quantity_id is not None
+    }
+    assert _violations(equations, ir, table) == ()
+    if compiled.graph is not None:
+        generated = {
+            node.symbol.symbol_id
+            for node in compiled.graph.symbols
+            if node.generated
+        }
+        assert generated <= {compiled.graph.query_symbol_id}
+
+
+def test_the_launch_pair_survives_untouched_across_draft_and_ir():
+    projection = _projection()
+    _, draft = _final_draft(projection)
+    _, _, ir, _ = _emission_surface(projection)
+    for quantities in (draft.quantities, ir.quantities):
+        pair = launch_pair(quantities, subject_id="ball", event_id="go")
+        assert pair is not None
+        magnitude, angle = pair
+        assert magnitude.component.value == "magnitude"
+        assert magnitude.direction is None
+        assert magnitude.frame_id is None
+        assert angle.component.value == "unspecified"
+        assert angle.direction is None
+        assert angle.frame_id is None
+        assert (
+            signed_launch_component_quantities(
+                quantities, subject_id="ball", event_id="go"
+            )
+            == ()
+        )
+
+
+def test_the_final_quantity_registry_is_exactly_the_authored_closure():
+    projection = _projection()
+    _, draft = _final_draft(projection)
+    assert {q.quantity_id for q in draft.quantities} == {
+        "qty_v0",
+        "qty_theta",
+        "qty_unknown_q1",
+        "qty_closure_gravity",
+        "qty_closure_accel_y",
+    }
+
+
+# --------------------------------------------------------------------------
+# Positive controls: a renamed decomposition is detected on every surface
+# --------------------------------------------------------------------------
+
+
+def _attack_rule() -> LawRule:
+    return LawRule(
+        law_id="launch-axis-resolution",
+        category="kinematics",
+        required_roles=(QuantityRole.velocity, QuantityRole.angle),
+    )
+
+
+def _attack_parts(context):
+    velocity = next(
+        q
+        for q in context.quantities
+        if q.role is QuantityRole.velocity and q.component.value == "magnitude"
+    )
+    acceleration = next(
+        q for q in context.quantities if q.role is QuantityRole.acceleration
+    )
+    angle = next(
+        q for q in context.quantities if q.role is QuantityRole.angle
+    )
+    return velocity, acceleration, angle
+
+
+def _folded_attack_expression(velocity, acceleration, angle):
+    # The engine's own idiom: trig evaluated numerically and folded into a
+    # literal, leaving the angle out of the symbol set entirely.
+    return Equality(
+        left=acceleration.expression,
+        right=Multiply(
+            factors=(
+                velocity.expression,
+                LiteralNode(
+                    value=math.sin(angle.known_si_value),
+                    dimension=acceleration.dimension,
+                ),
+            )
+        ),
+    )
+
+
+def test_a_renamed_literal_folded_decomposition_is_detected():
+    context, _, ir, table = _emission_surface(_projection())
+    velocity, acceleration, angle = _attack_parts(context)
+    attack = emission_for(
+        _attack_rule(),
+        _folded_attack_expression(velocity, acceleration, angle),
+        (acceleration, velocity, angle),
+    )
+    # The renamed law slips the substring tripwire by construction…
+    assert not any(
+        marker in attack.rule.law_id for marker in _DECOMPOSITION_LAW_MARKERS
+    )
+    # …and the structural gate flags it on three independent grounds.
+    kinds = {v.kind for v in _violations((attack,), ir, table)}
+    assert {
+        "angle_consumed",
+        "magnitude_angle_combined",
+        "folded_trig_literal",
+    } <= kinds
+
+
+def test_a_renamed_symbolic_decomposition_is_detected():
+    context, _, ir, table = _emission_surface(_projection())
+    velocity, acceleration, angle = _attack_parts(context)
+    attack = emission_for(
+        _attack_rule(),
+        Equality(
+            left=acceleration.expression,
+            right=Multiply(
+                factors=(velocity.expression, Cos(argument=angle.expression))
+            ),
+        ),
+        (acceleration, velocity, angle),
+    )
+    kinds = {v.kind for v in _violations((attack,), ir, table)}
+    assert {"angle_consumed", "magnitude_angle_combined"} <= kinds
+
+
+def test_a_provenance_dropping_decomposition_is_still_detected():
+    context, _, ir, table = _emission_surface(_projection())
+    velocity, acceleration, angle = _attack_parts(context)
+    attack = emission_for(
+        _attack_rule(),
+        _folded_attack_expression(velocity, acceleration, angle),
+        (acceleration, velocity),  # the angle vanishes from provenance too
+    )
+    assert angle.quantity_id not in attack.source_quantity_ids
+    kinds = {v.kind for v in _violations((attack,), ir, table)}
+    assert "folded_trig_literal" in kinds
+
+
+def test_the_detector_sees_the_attack_through_the_real_aggregation(monkeypatch):
+    context, _, ir, table = _emission_surface(_projection())
+    velocity, acceleration, angle = _attack_parts(context)
+    attack = emission_for(
+        _attack_rule(),
+        _folded_attack_expression(velocity, acceleration, angle),
+        (acceleration, velocity, angle),
+    )
+    monkeypatch.setitem(
+        laws_core._RULES, "launch-axis-resolution", _attack_rule()
+    )
+    monkeypatch.setattr(
+        laws_core, "_chain_kinematics_emissions", lambda ctx: [attack]
+    )
+    emissions = laws_core.apply_core_laws(context)
+    assert any(
+        emission.rule.law_id == "launch-axis-resolution"
+        for emission in emissions
+    )
+    kinds = {v.kind for v in _violations(emissions, ir, table)}
+    assert "magnitude_angle_combined" in kinds
+
+
+def test_the_detector_holds_on_the_compiled_equation_shape():
+    context, _, ir, table = _emission_surface(_projection())
+    velocity, acceleration, angle = _attack_parts(context)
+    node = EquationNode(
+        equation_id="eq_attack",
+        expression=_folded_attack_expression(velocity, acceleration, angle),
+        expression_fingerprint=hashlib.sha256(b"attack").hexdigest(),
+        law_id="launch-axis-resolution",
+        scope=EquationScope(entity_ids=("ball",)),
+        source_quantity_ids=tuple(
+            sorted(
+                {
+                    acceleration.quantity_id,
+                    velocity.quantity_id,
+                    angle.quantity_id,
+                }
+            )
+        ),
+        dimension=acceleration.dimension,
+        complexity_cost=1,
+    )
+    kinds = {v.kind for v in _violations((node,), ir, table)}
+    assert {
+        "angle_consumed",
+        "magnitude_angle_combined",
+        "folded_trig_literal",
+    } <= kinds

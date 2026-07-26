@@ -609,17 +609,28 @@ typed angle reference — for example an `angle_from_axis` relation naming the
 axis entity or frame axis, with orientation), which is an upstream contract
 decision, not an evaluator or engine patch.
 
-The refused state is pinned by 8 controls in
-`test_phase56_stage7_angle_decomposition_refusal.py`: the engine catalog
-carries no decomposition law (asserted by name markers, so a future rule
-must revisit this audit and its tests), the unproven shape emits no
-component equation under the original form or the attack variants (another
-subject's angle; answer removal and answer tampering change nothing), two
-competing angles at one physical identity fail closed at projection
-(`duplicate_canonical_symbol`), the full lane stays a typed blocked terminal
-with no stage exception, and the stated magnitude keeps its directionless
-component end to end — no negative magnitude, no invented sign, no quadrant
-choice anywhere.
+The refused state is pinned by 17 controls in
+`test_phase56_stage7_angle_decomposition_refusal.py`, and the hard gate is
+**structural**, not nominal: a scan over the emission and compiled-equation
+surfaces (`evaluation/phase56_stage7/angle_reference_axis_controls.py`)
+flags any equation that touches the axisless angle at all, combines it with
+the launch magnitude, carries the angle's exact numeric trig fingerprint as
+a folded literal (the engine's own idiom, invisible to symbol scans and —
+when provenance is dropped — to provenance scans), or wields sign machinery
+near the magnitude.  No law ID is read, so a renamed decomposition changes
+nothing; positive controls prove detection of a renamed rule on three
+surfaces — a hand-built emission, the real `apply_core_laws` aggregation,
+and the compiled `EquationNode` shape.  The old name-marker check survives
+as an auxiliary tripwire only.  The rest of the pin is unchanged: the
+unproven shape emits no component equation under the original form or the
+attack variants (another subject's angle; answer removal and answer
+tampering change nothing), two competing angles at one physical identity
+fail closed at projection (`duplicate_canonical_symbol`), the full lane
+stays a typed blocked terminal with no stage exception, the launch pair
+keeps its directionless identity across Draft and IR, no signed launch
+component ever appears, and the closed quantity registry is pinned to
+exactly the authored set — no negative magnitude, no invented sign, no
+quadrant choice anywhere.
 
 Also measured while auditing: the same context's `highest_point` event is
 typed but **segment-internal** (see §4b), so its apex instant additionally
