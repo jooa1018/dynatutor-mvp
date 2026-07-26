@@ -1,288 +1,242 @@
 # Phase 56 Stage 7 progress report
 
-Disposition: **`STAGE_7_IN_PROGRESS / CORPUS_PREFLIGHT_PASSED / LANE_B_NOT_STARTED`**
-
-## Public corpus integrity preflight — PASS
-
-The authorised archive was supplied to the evaluator from a path outside the
-repository. It was never copied into the worktree and never committed.
-
-| Evidence | Observed |
-|---|---|
-| Gate exit code | `0` |
-| Archive SHA-256 | `cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef` |
-| Matches frozen contract SHA | yes |
-| `public_dev` / `public_adversarial` / total | `84` / `16` / `100` |
-| Scope-adjusted distribution | `81 / 12 / 2 / 2 / 2 / 1` |
-| Distinct families | `29` (= 25 accepted + 4 deferred) |
-| Deferred family counts | 3 each across the frozen four |
-| Facts individually quote-verified | `277` |
-| runtime / compiler / solver / provider calls | `0 / 0 / 0 / 0` |
-| External model calls · private access · cost | `0` · `0` · `$0` |
-| Redaction | PASS — artifact written only after the contract check |
-
-**Corpus integrity PASS is not Stage 7 PASS.** The public 100 has not been
-executed through the engine; Lane B remains not started.
-
-### Two fail-closed rejections that the binding caught
-
-Both were real mismatches between the hypothesised and actual archive, and both
-were rejected rather than silently mis-bound:
-
-1. The archive nests every member under a single bundle directory
-   `dynatutor_beer12_ko_corpus_v1_public/` and ships four members the original
-   allowlist did not name.
-2. Gold is nested under `gold`, evidence quotes are per fact, reference answers
-   live in `gold.answers[]`, and unsupported-other is spelled `solver_gap`.
-
-One genuine corpus property forced a contract-preserving change: 12
-dimensionless facts carry `raw_unit: ""`, which is a real unit value rather than
-a missing field, so it is preserved instead of rejected.
-
-The corpus `manifest.json` describes the whole 128-case bundle, so it names
-files this public subset does not ship. Declared entries are verified where
-present, and a declared *forbidden* member must stay absent. The
-private-without-text manifest passed its keys-only audit and is quarantined:
-its case IDs, hashes, families, and terminals inform no implementation,
-routing, prompt, or metric.
-
-## Lane B design (validated route, not yet implemented)
-
-The corpus gold ontology aligns closely with the Phase 55 parse contract, so
-Lane B does not need a new Draft builder:
-
-```text
-corpus gold structure
-  → TextbookProblemParseV1   (source-grounded structural projection)
-  → validate_parse
-  → adapt_validated_phase55  → MechanicsProblemDraftV1
-  → normalize_draft → authorize → MechanicsCompiler → solve_verified_equation_graph
-```
-
-Field correspondence is close to one-to-one for entities, motion segments,
-events, explicit facts, relations, queries, and assumption proposals.
-
-**Open design constraint that must be resolved before implementing.**
-`TextbookProblemParseV1` requires at least one `InterpretationCandidate`, which
-carries a `ParserSystemType`. The corpus exposes `gold.expected_system_type`,
-but §6 and §8 forbid passing an expected system type into the runtime domain,
-and `system_type` has no calculation, routing, law, or solver authority. The
-candidate's system type must therefore be derived **structurally** from the
-query output key and relation kinds, never copied from gold. `adapt_validated_phase55`
-already treats it as diagnostics-only, which is consistent with that rule.
-
-## Superseded blocker note
-
-An earlier revision of this report recorded the corpus as unavailable in the
-evaluator environment. That blocker is resolved; the preflight evidence above
-replaces it. The corpus-independent sections below remain accurate.
+Disposition: **`STAGE_7_IN_PROGRESS / NOT_ACCEPTED`**
 
 Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
+## Supersession note
+
+Earlier revisions of this report described the corpus-preflight checkpoint
+(`LANE_B_NOT_STARTED`) and, before that, a corpus-unavailable blocker. Both
+states are superseded: the authorised public archive has since been supplied,
+its integrity re-verified, and the public 100 **executed end-to-end through the
+engine**. The evidence below replaces the preflight-only claims. Historical
+package heads remain listed for provenance; their CI evidence still belongs to
+them and must not be re-attributed.
+
 ## Exact heads
 
 | Role | SHA |
 |---|---|
-| Main baseline | `00b3a60de6e13756d089655879a02e4094122047` |
-| Phase 55 base | `4762727e8f9191604e2531b9982a5ae72ed73db9` |
-| Stage 6 code candidate | `58589ad49982871e7d617489b525e9b67428548a` |
-| Stage 6 documentation head | `1f05e6cdfab8dd68dd3b76294618477e2761ddd3` |
-| Stage 7 preflight checkpoint | `2512c6631acd691b2ad5033f86d8b9cc2c1088dd` |
-| Corpus integrity package | `612634bc25b120c25903580d4f26b82f1de94250` |
-| Gold-isolation package | `e1c79af201747168b609eb6283305abf1cc2e296` |
-| Permanent offline workflow | `a4995799c097e0b36d5c60d671c40b1765b1993d` |
+| Main baseline (unchanged) | `00b3a60de6e13756d089655879a02e4094122047` |
+| Prior authoritative head (session base) | `10f4829366c2e959429cd6405541803b6847b370` |
+| Session base candidate (exact 4-commit fast-forward of the above) | `d33c70bf16341ae06eb80bbf515333b52d92b59a` |
+| **Code candidate / tested head (this session)** | `b88a9eac06c8be16f53a909e63d0c15a044afdf9` |
+| Documentation head | this commit and later |
 
-Each package was committed atomically and fast-forward pushed to
-`codex/phase56-generic-mechanics-engine`. No reset, rebase, force-push, or
-history rewrite occurred.
+The candidate was reflected onto `codex/phase56-generic-mechanics-engine` by a
+verified-ancestor **fast-forward push only** (`10f4829 → b88a9ea`). No reset,
+rebase, amend, squash, force-push, or history rewrite occurred anywhere in the
+session. The four pre-existing candidate commits (`c1d2dd1`, `42fcc01`,
+`bfab131`, `d33c70b`) are preserved byte-identical; every change landed as a
+new atomic commit on top of them.
 
-## Entry gates reconfirmed against the remote
+## Session packages (`d33c70b..b88a9ea`, 10 atomic commits)
 
-- PR #17 open, Draft, unmerged, base `codex/phase55-gpt-first-textbook-parser`.
-- PR #16 open, Draft, unmerged, base `main`.
-- Stage 6 code candidate `58589ad…`: release `30045176722`, Phase 55
-  `30045176496`, Stage 6 multimodal `30045176628` — all **SUCCESS**.
-- Stage 7 preflight head `2512c66…`: release `30049919989`, Phase 55
-  `30049920103`, Stage 6 multimodal `30049919985` — all **SUCCESS**, with
-  `live-openai-smoke` **skipped**, which is the positive evidence that no Live
-  call occurred at that head.
+| Package | Commit | Content |
+|---|---|---|
+| A — event source authority | `a677547` (+`15255a5`) | An event kind licenses a numeric boundary equation only when its gold-declared `evidence_quote` binds to an exact, unique span of the problem text and flows through `source_evidence` into `Event.evidence_refs`. Missing, unfound, or ambiguous quotes fail closed as typed `event_authority_gaps`; unproven events are preserved but never license emission. No raw-text keyword or regex routing. Shared eligibility contract in `engine/mechanics/laws/event_boundary.py`, consumed identically by the law layer and the Stage 7 derivation. |
+| B — typed occurrence scope | `a3b9b43` (+`fc4ec64`) | `Event.occurs_in_interval_ids` types segment-interior occupancy separately from boundary authority; `MotionInterval.start/end_event_id` stays the sole boundary authority. Forged interiority (an occupied event that is actually an endpoint) and foreign-subject occupancy are rejected at validation; the compiler enforces inverse reciprocity and applies occurrence reach at every scope site. |
+| C — elapsed-duration query binding | `0083fd9` | A time query rebinds to a typed segment duration only when the segment's both boundaries are set, distinct, and the query's event role is terminal — proven from typed fields, with no epoch invention and no role smuggling. Unprovable time queries decline rather than misbind. |
+| D — structural angle refusal | `c616151` | The magnitude-with-angle launch refusal is pinned to what an equation structurally touches (consumed angle quantities, folded trig literals, signed launch components, sign machinery) instead of `law_id` substrings, so it is rename-proof. Frozen refusal behaviour unchanged. |
+| E — profile-isolated feasibility | `223c070` | `profile_feasibility.py` rewritten: each (profile, context) pair is measured by an independent selected-profile run; 14-status taxonomy; unimplemented profiles report `profile_not_implemented` = **not measured**, never a definitional zero; `precise_unsupported` only via exact typed compiler codes; declaration-order invariance proven by permutation. |
+| Solver waiver | `84d1cb6` | Exact static-graph recognizer admits the evidenced-extremum boundary family ({event_vertical_extremum_velocity, particle_constant_acceleration_velocity, uniform_gravity_acceleration}); gravity emission now cites its `constant_gravity` authorization; the verifier's `source_evidence` check accepts assumption citations as provenance while still failing when both evidence and citations are empty. First end-to-end applied-profile verified solve achieved (synthetic apex time `t = v0/g`, all checks passed). |
+| Gate aggregation | `1770ea1` | The offline gate now measures every Stage 7 lane honestly: Lane C/D suites in fresh interpreters, compositional 12, synthetic 38, metamorphic, physics-changing controls, gold-scored answer scoring (pint, SI), counts-only hard-safety aggregate, redaction stamp, `--require-full-stage7` strict keys. |
+| Gate CI parity | `b88a9ea` | Lane E runs exactly the workflow's steps (pinned eslint toolchain, tests/lint/typecheck/build); hard-safety aggregate no longer inherits the Lane B yield gate — safety and yield are independent verdicts. |
 
-## Blocking limitation — the authorised public archive is unavailable
+## Measured Lane B public-100 result (executed at `b88a9ea`)
 
-`dynatutor_beer12_ko_corpus_v1_public.zip` is **not present in this execution
-environment**, and neither are the two instruction documents. The whole
-filesystem was searched. Consequently:
+The full public corpus (SHA-256 `cc8d8b27…` verified, 84 dev / 16 adversarial)
+was executed through the complete pipeline: projection → authority →
+closure → validation → normalization → authorization → compiler → solver →
+independent verification → frozen snapshot → gold scoring.
 
-- **`public_dev` 84, `public_adversarial` 16, and the public total of 100 were
-  NOT EXECUTED.** No supported/deferred/blocked accuracy figure is claimed.
-- Lane B, Lane C, Lane D, and Lane E end-to-end corpus runs are **NOT_RUN**.
-- The compositional 12, synthetic 38, and metamorphic suites over corpus
-  material are **NOT_RUN**.
+| Terminal | Count |
+|---|---:|
+| `solved` | **6** |
+| `verified_unsupported` (deferred) | 6 |
+| `needs_figure` | 2 |
+| `needs_confirmation` | 2 |
+| `insufficient_information` | 1 |
+| `compiler_failure` (underdetermined) | 67 |
+| `compiler_unsupported` (typed precise codes) | 16 |
+| Total | 100 |
 
-The corpus-independent contract, security, isolation, and integrity work is
-complete and verified; it is reported separately below and must never be read
-as public-corpus evidence.
+- **Answer scoring: 6 scored, 6 correct, 0 wrong, 0 unscored.** Every solved
+  value was converted to SI with `pint` and matched the gold reference within
+  tolerance. **Wrong solves: 0** — the hard requirement holds.
+- All 6 solved candidates passed all six verification checks
+  (`equation_residual`, `nonnegative_time`, `query_binding`,
+  `source_evidence`, `unit_consistency`, `constraint`).
+- The lane distribution was **byte-identical at every package head** of the
+  session — packages A–E and both gate commits changed no public-100 outcome,
+  which is the intended result of contract-hardening work.
 
-The archive is deliberately not committed to the repository and not stored in a
-GitHub secret. The permanent workflow accepts it only through
-`STAGE7_PUBLIC_CORPUS_PATH`, and reports `NOT_RUN` when it is absent rather
-than claiming an unexecuted pass.
+**Frozen target comparison.** The frozen Lane B target is
+`81 solved / 12 verified deferred / 2 / 2 / 2 / 1, wrong 0`. The measured
+result is `6 solved` — the target is **not met**, and this is the single
+honest gap that keeps Stage 7 `NOT_ACCEPTED`. The target was not lowered,
+reinterpreted, or re-scoped.
 
-## Completed and verified — Lane A corpus integrity
+### Typed remaining walls (why 6, not 81)
 
-`backend/evaluation/phase56_stage7/corpus_integrity.py`,
-`corpus_records.py`, `corpus_semantics.py`, `corpus_preflight.py`.
+Every non-solved executed case terminates with a typed compiler code, not a
+silent failure:
 
-Archive layer: expected SHA-256, ZIP magic, archive byte limit, entry-count
-limit, per-entry and total uncompressed limits, compression-ratio limit, path
-traversal, absolute path, `..` component, drive/UNC, directory, symlink,
-device, forged-link-payload, duplicate name, case-insensitive duplicate name,
-member allowlist, forbidden private names, encrypted entry, unsupported
-compression method, forged declared size, nested archive, and UTF-8 validation.
+| Typed code | Path | Count |
+|---|---|---:|
+| `underdetermined` | `equations` | 67 |
+| `requires_specialized_model` | `geometry.*` | 12 |
+| `requires_specialized_model` | `interactions.*` | 4 |
+| `nonlinear_verification_deferred` | `equations` | 6 |
+| `free_linear_vibration_readout_deferred` | `queries.*.target.role` | 3 |
+| `translating_frame_relative_acceleration_deferred` | `queries.*.target.frame_id` | 3 |
 
-Members are read in memory only. `extract` and `extractall` are never called,
-and a structural audit fails the build if they ever are, so no archive member
-can materialise a link, a device node, or a traversed path on disk.
+The dominant wall (`underdetermined`, 67) is a real modelling gap: the
+projected drafts do not yet carry enough typed structure for the compiler to
+close the equation systems the corpus questions need. The profile-by-profile
+route to closing it is recorded in
+`docs/PHASE56_STAGE7_STRUCTURAL_BLOCKERS.md` §6a, measured by the corrected
+profile-isolated instrument (below).
 
-Record layer: corpus keys bind through an alias contract that must resolve
-unambiguously per record, consistently across records, and only to fields the
-archive's own `schema.json` declares. Ambiguity, drift, and undeclared keys
-fail closed rather than binding the wrong column. JSON, JSONL framing, record
-shape, non-finite numbers, and private-marker keys are rejected.
+## Profile-isolated feasibility (corrected instrument)
 
-Semantic layer: unique case IDs, unique problem texts, valid problem hashes,
-disjoint splits, Korean problem text, evidence quotes present in the problem
-text, fact values present in the evidence quotes, finite reference answers,
-required gold fields, blocked cases carrying no answer, private-manifest
-keys-only absence audit, and manifest / validation-report cross-checks.
+The superseded first-wins census overstated `rigid_fixed_axis`; the rewritten
+instrument measures each implemented profile in an **independent
+selected-profile run** per applicable context:
 
-Scope-adjusted distribution is **derived**, never hardcoded: the only scope
-input is the frozen four deferred families, and the derived counts must equal
-the frozen `81 / 12 / 2 / 2 / 2 / 1` contract totalling 100. No case ID, split,
-chapter, or filename participates. Current course scope overrides an older
-corpus-declared terminal, which is covered by a dedicated regression.
+- `free_flight_gravity` — 8 applicable: 2 `compiler_no_equation`,
+  6 `profile_plan_not_formable`. After the solver waiver this profile has a
+  proven end-to-end verified-solve path (synthetic apex-time control), making
+  it the **first qualifying profile** under the measured-yield rule.
+- `impulse_momentum` — 4 applicable: 4 `profile_plan_not_formable`.
+- `relative_translating_frame` — 9 applicable: 3 verified-deferred,
+  6 `profile_plan_not_formable`.
+- 10 unimplemented profiles — reported `profile_not_implemented` =
+  **not measured**. No definitional zeros.
 
-Every integrity failure terminates as `HARNESS_CONTRACT_FAILURE` with runtime,
-compiler, solver, and provider calls all `0` and cost `$0`, carrying only a
-closed sanitized reason with no corpus content.
+## Full strict gate result at `b88a9ea`
 
-## Completed and verified — gold/runtime isolation
+`run_phase56_stage7_offline_gate.py --require-full-stage7` (authorised archive
+supplied out-of-tree via `STAGE7_PUBLIC_CORPUS_PATH`; exit code 2, as expected
+with exactly one failing requirement):
 
-`backend/evaluation/phase56_stage7/evaluator_adapter.py` is the single
-authorised crossing. It projects a gold case down to user-like problem text
-only; case ID, split, family, chapter, declared terminal, gold facts, evidence
-quotes, and the reference answer never cross.
+| Strict gate | Result |
+|---|---|
+| `strict_corpus_supplied` / `sha_match` / `84` / `16` / `100` | PASS |
+| `strict_lane_b_executed` / `strict_lane_b_100_executed` | PASS |
+| **`strict_lane_b_all_solved`** | **FAIL — `unsolved_cases_remain` (6/81)** |
+| `strict_lane_c_pass` (modeler 59 + contracts 19 + reconciliation 4 = 82) | PASS |
+| `strict_lane_d_pass` (API/runtime + security + image + idempotency + observability = 24) | PASS |
+| `strict_lane_e_pass` (toolchain, tests, lint, typecheck, build) | PASS |
+| `strict_compositional_12_pass` (12/12 structures) | PASS |
+| `strict_synthetic_38_pass` (manifest = 38) | PASS |
+| `strict_metamorphic_pass` | PASS |
+| `strict_physics_changing_controls_pass` | PASS |
+| `strict_hard_safety_pass` (23 signals all zero; wrong solves measured 0) | PASS |
+| `strict_redaction_pass` | PASS |
 
-Execution tokens derive from a run nonce and a monotonic counter, never from
-case identity, and stay excluded from cache identity. Rebinding a result to its
-gold case re-verifies both the token and the cache digest, so a scorer cannot
-substitute an execution, mutate a frozen snapshot, or re-run runtime with
-expected data.
+Lane C remains contract/integration evidence over the deterministic recorded
+modeler only; **actual model quality is `NOT_RUN / N/A`** — no external model
+call was made and measured cost is $0.
 
-Attack coverage: direct forbidden field, nested forbidden field at depth,
-snake/camel/kebab/spaced aliases, case-ID routing, family/split/chapter/
-declared-terminal routing, expected-answer lookup, filename and path routing,
-cache-key contamination, prompt-material contamination, environment
-contamination, substituted execution, unbound token, and blocked-terminal
-answer carriage. Structural audits prove production modules cannot import the
-evaluator, gold-domain modules cannot import an executing or network subsystem,
-and `runtime_domain` never references gold or corpus modules.
-
-## Completed and verified — permanent offline workflow
-
-`.github/workflows/phase56-stage7-offline-evaluation.yml` plus
-`backend/tools/run_phase56_stage7_offline_gate.py`.
-
-The workflow holds `contents: read` only and never pushes, commits, dispatches
-a finalizer, modifies itself, reads a secret, deploys, or names private or
-full-corpus material. It forces empty `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
-and all provider base URLs. Dependencies install before the guard; corpus
-integrity, gold isolation, and the contract preflight then run behind a
-fail-fast socket guard, before any regression executes. A before/after worktree
-diff proves the gate mutated no source. Only the redacted aggregate artifact is
-uploaded, and it passes the Stage 7 redaction contract before it is written, so
-a redaction failure blocks report generation instead of leaking.
-
-## Test evidence
+## Regression evidence
 
 | Suite | Result |
 |---|---|
-| `test_phase56_stage7_preflight_contracts.py` | 38 passed |
-| `test_phase56_stage7_corpus_integrity.py` | 80 passed |
-| `test_phase56_stage7_gold_isolation.py` | 44 passed |
-| `test_phase56_stage7_offline_workflow.py` | 19 passed |
-| Stage 7 focused total | **181 passed** |
-| Full backend collection | 3571 tests collected, no errors |
+| Full backend regression (waiver head `84d1cb6`) | **3912 passed, 0 failed** (1 skipped, 430 deselected) |
+| Full backend regression (package E head `223c070`) | 3899 passed, 0 failed |
+| Stage 7 focused suite at `b88a9ea` | **794 passed** |
+| Solver + parity suites at waiver head | 203 passed |
+| Extremum-boundary solve controls (incl. 9 near-miss graph mutations + provenance-void control) | 13 passed |
 
-No test was deleted, no assertion was weakened, and no threshold was relaxed.
-The Pydantic `schema` shadowing warnings are pre-existing and are not failures;
-the frozen contract was not redesigned to silence them.
+No test was deleted, no assertion weakened, no threshold relaxed, no legacy
+fallback or case-specific patch introduced. Negative controls for package A
+were written first and confirmed red before the implementation landed.
 
-## Exact-head CI evidence for `a4995799…`
+## Exact-head CI evidence for `b88a9ea`
+
+All four workflows executed at the exact candidate head on
+`codex/phase56-generic-mechanics-engine`:
 
 | Workflow | Run | Result |
 |---|---:|---|
-| Phase 56 Stage 7 offline evaluation (pull_request) | `30148547712` | **SUCCESS** |
-| Phase 56 Stage 7 offline evaluation (push) | `30148546200` | **SUCCESS** |
+| Phase 56 Stage 7 offline evaluation (push) | `30213405608` | **SUCCESS** |
+| Phase 56 Stage 7 offline evaluation (pull_request) | `30213406987` | **SUCCESS** |
+| Phase 56 Stage 6 multimodal (push) | `30213405564` | **SUCCESS** |
+| Phase 56 Stage 6 multimodal (pull_request) | `30213407012` | **SUCCESS** |
+| DynaTutor release tests (pull_request) | `30213406981` | **FAILURE** — `backend slow` shard timeout, analysed below |
+| Phase 55 textbook parser (pull_request) | `30213407014` | **SUCCESS** (`live-openai-smoke` skipped — no Live call) |
 
-Within the Stage 7 run: backend compile, the Stage 7 offline gate, Stage 7
-focused contracts, Stage 6 multimodal regression, full backend collection, full
-backend regression, the no-source-mutation assertion, and the redacted-artifact
-upload all succeeded, as did the frontend tests, lint, typecheck, and
-production build. `live-openai-smoke` remained **skipped** at this head, which
-is positive evidence that no Live call occurred.
+This evidence belongs to `b88a9ea` and must not be re-attributed to the later
+documentation-only head.
 
-### Local reproduction note
+### Release-tests failure analysis (run `30213406981`)
 
-A local full-regression pass on this container initially reported two failures.
-Both were traced to this sandbox, not to the code:
+The `backend slow` job's `incline_hanging_same_fixture_parity` file shard was
+killed at the wrapper's 240 s per-shard budget, and the `release gate` job then
+failed as a consequence. The run's other five jobs — fast, quality (including
+the warm-solve latency and cold-import/RSS budgets), frontend, performance —
+all passed.
 
-- `test_phase56_stage6_api_runtime_integration.py::test_openapi_registers_stage6_routes_exactly_once_and_unconfigured_is_typed_503`
-  failed only under unpinned FastAPI 0.140.0 / Starlette 1.3.1; it passes under
-  the locked `fastapi==0.128.2`.
-- `test_phase41_followup.py::test_backend_benchmark_wrapper_returns_after_real_pytest_summary`
-  failed only because a uv-managed `/root/.local/bin/pytest` without the project
-  dependencies shadowed the project interpreter on `PATH`; it passes once the
-  project `pytest` resolves first.
+Measured evidence classifies this as the **documented recurring duration flake
+of a structurally marginal shard budget**, not a code regression:
 
-CI installs `backend/requirements-lock.txt` and passed both tests at this exact
-head. No test or threshold was modified in response.
+1. At the green base head `10f4829` the same shard passed CI at **215.82 s of
+   the 240 s budget** — 90 % consumed before any commit of this session.
+2. In the failed run, every slow shard was uniformly 6–12 % slower than in the
+   green run, including suites untouched by any commit in the window
+   (incline_friction 66.2 s vs 59.2 s, massive_pulley 52.0 vs 46.6,
+   rolling_general 49.3 vs 45.2, atwood 32.8 vs 30.5, vertical_circle 46.6 vs
+   44.1). That is runner-level slowness: 215.8 × ~1.10 ≈ 237 s, plus
+   two-worker contention, crossed 240 s.
+3. Same-hardware serial timing of the identical shard command on the session
+   container: base `10f4829` = **286.94 s**, head `b88a9ea` = **286.46 s** —
+   a 0.2 % delta, code-parity within noise. (This container is ~33 % slower
+   than CI runners, so both sides exceed 240 s locally; per-test durations are
+   statistically identical between the heads.)
+4. The identical shard timed out once before, at intermediate head `1c86986`,
+   and was classified a duration flake with parent-green and head-green CI
+   evidence (recorded in PR #17's body at the time).
+5. The `incline_hanging` fixtures carry zero events, so the session window's
+   event-scoped engine changes do not execute in this suite.
 
-After pinning `fastapi==0.128.2` and restoring the project interpreter on
-`PATH`, the local full backend regression reported **3203 passed, 1 skipped,
-430 deselected, 0 failed**. That run executed at documentation head
-`fdc884bf…`, whose `backend/` and `.github/` trees are byte-identical to the
-code candidate `a4995799…`.
-
-### Head accounting
-
-- Code candidate / tested head: `a4995799c097e0b36d5c60d671c40b1765b1993d`
-- Documentation head: `fdc884bf0ff9c4ac21de642014fb15623a4f9134` and later
-- No accepted head exists: Stage 7 is not accepted.
-
-CI evidence above belongs to `a4995799…` and must not be re-attributed to a
-later documentation-only head.
+No threshold was changed and no test was altered in response. The structural
+fact — this shard's cost sits at ~90 % of its per-shard budget on a nominal
+runner — is recorded here as a typed infrastructure blocker for the maintainer
+to resolve deliberately (budget, shard split, or fixture cost), outside this
+session's scope.
 
 ## Read-only audit (same-model, not an independent Checker)
 
-Scope and result — blocking findings **0**:
+A same-model read-only audit covered all 10 commits of `d33c70b..b88a9ea`:
+**blocking findings 0**. Spot-runs re-executed 50 + 188 + 237 + 23 tests with
+no failure. Identity-routing grep over every added line found zero forbidden
+tokens; the evidence-quote binding was confirmed to be exact literal span
+matching, not regex routing; the verifier's both-empty provenance refusal was
+confirmed by negative control.
 
-| Audited property | Result |
-|---|---|
-| Diff since `2512c66…` is additive | 11 files added; only `PHASE56_CLAUDE_CODE_HANDOFF.md` modified |
-| Frozen contract/runtime/gold/preflight/redaction modules and the 38-test preflight suite | untouched |
-| Case-ID / family / split / filename routing in new code | none; the sole `case_id` use is a gold-domain uniqueness cardinality check |
-| Expected-answer use | only inside the leak *detector* that proves its absence from runtime material |
-| Adapter payload to runtime | exactly token, input kind, problem text, options |
-| Network or provider imports in the evaluator package | only `socket` inside `network_guard`, which is the guard itself |
-| Threshold relaxation | no removed threshold or assertion lines |
-| Test deletion | none |
-| Raw corpus, private material, ZIP, or PDF committed | none |
-| Workflow push / commit / secret / self-mutation | none; `contents: read` only |
-| Report privacy in practice | exactly one 830-byte redacted artifact uploaded |
-| main / PR protection | main `00b3a60…` unchanged; PR #16 and #17 open, Draft, unmerged |
+Non-blocking observations recorded for a future session (deliberately **not**
+patched here, to keep the CI-attributed code head exact):
+
+1. The gate module docstring still says the gate "never contacts an external
+   endpoint"; the opt-in strict Lane E step runs `npm install` for the pinned
+   lint toolchain, so the wording needs a qualifier.
+2. The answer-scoring tolerance floor `1e-6·max(1,|expected|)` can override a
+   tighter corpus-declared tolerance; a `1e-9` floor would be safer for the
+   wrong-solve signal.
+3. `hard_safety.all_zero` does not consider the `unscored` bucket (currently
+   0); gate it explicitly.
+4. `_score_solved_outputs` is invoked outside the runtime `try/except`; a
+   scorer crash aborts the gate instead of degrading to a typed FAIL.
+5. The verifier accepts any non-empty assumption citation; it could be
+   tightened to accept citations only for equations binding assumption-sourced
+   quantities (trust is currently compiler-side, symmetric with the evidence
+   path).
+6. ~400 gate-runner lines (suite subprocess plumbing, Lane E steps) have no
+   direct unit tests; `__import__("re")` style in the summary parser.
 
 ## Hard-safety and privacy status
 
@@ -292,28 +246,21 @@ Scope and result — blocking findings **0**:
 | Measured cost | $0 |
 | Private held-out access | 0 |
 | Textbook PDF access | 0 |
-| Raw corpus committed | no |
+| Raw corpus committed | no (path-supplied archive only) |
 | Gold leakage in runtime material | 0 (enforced and tested) |
-| Case-ID / family / filename routing | 0 (enforced and tested) |
+| Case-ID / family / filename / raw-text routing | 0 (enforced and tested) |
+| Wrong solves (gold-scored) | **0** |
 | Actual model quality | `NOT_RUN / N/A` |
-
-These counts describe the corpus-independent lanes that actually ran. They are
-not a public-100 result.
 
 ## Next exact task
 
-Supply the authorised archive to a runner as
-`STAGE7_PUBLIC_CORPUS_PATH=/path/to/dynatutor_beer12_ko_corpus_v1_public.zip`
-and run:
-
-```bash
-python backend/tools/run_phase56_stage7_offline_gate.py \
-  --output "$RUNNER_TEMP/stage7_offline_gate_report.json"
-```
-
-A passing corpus gate confirms the archive SHA-256, the 84/16/100 splits, and
-the derived `81/12/2/2/2/1` scope distribution. Only then may Lane B execution,
-the compositional 12, the synthetic 38, metamorphic controls, the API/runtime
-lane, and the frontend lane proceed.
+Continue Lane B from the measured matrix, not the census: extend the
+`free_flight_gravity` plan former so its 6 `profile_plan_not_formable`
+contexts become formable (the verified-solve path past the solver waiver is
+already proven), then re-measure; take `impulse_momentum` and
+`relative_translating_frame` next by the same rule. Each increment must keep
+wrong solves at 0 and the distribution honest. Then fold in the six
+non-blocking audit observations as small atomic commits, re-run the strict
+gate, and re-attribute CI at the new exact head.
 
 Stage 8 must not start.
