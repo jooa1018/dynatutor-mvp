@@ -34,7 +34,16 @@ def _observer_payload(
     *,
     query_role: str = "velocity",
     with_observer: bool = True,
+    modelled: bool = True,
+    at_rest: bool = False,
 ) -> dict[str, object]:
+    """A one-unknown kinematic problem beside a declared observer entity.
+
+    ``modelled`` decides whether the typed model refers to the observer again —
+    here by carrying the observer's own velocity, which is how a source states
+    that the observer moves.  ``at_rest`` instead states that it does not.
+    """
+
     payload = _single_unknown_payload([])
     payload["entities"] = [
         payload["entities"][0],
@@ -61,6 +70,44 @@ def _observer_payload(
     payload["quantities"] = [
         _quantity("targetQ", "target", query_role, "bodyA", dimension)
     ]
+    if with_observer and (modelled or at_rest):
+        payload["symbols"].append(_symbol("observerV", "observerQ", VELOCITY))
+        payload["quantities"].append(
+            _quantity(
+                "observerQ",
+                "observerV",
+                "velocity",
+                "observerFrame",
+                VELOCITY,
+                value=0.0 if at_rest else 4.0,
+                unit="m/s",
+                evidence_refs=("observerEvidence",),
+            )
+        )
+        payload["source_evidence"] = [
+            {
+                "kind": "text",
+                "evidence_id": "observerEvidence",
+                "quote": "The observer's own motion is stated by the source.",
+                "source_span": {"start": 0, "end": 49},
+                "quantity_span": None,
+                "occurrence_index": 0,
+            }
+        ]
+    if with_observer and at_rest:
+        payload["state_conditions"] = [
+            {
+                "state_condition_id": "observerRest",
+                "kind": "motion",
+                "state": "at_rest",
+                "subject_id": "observerFrame",
+                "interval_id": None,
+                "event_id": None,
+                "expression": None,
+                "quantity_ids": ["observerQ"],
+                "evidence_refs": ["observerEvidence"],
+            }
+        ]
     payload["queries"][0]["target"].update(
         {"role": query_role, "target_quantity_id": "targetQ"}
     )
@@ -117,6 +164,77 @@ def test_a_frame_bound_query_stays_supported_beside_an_observer_entity() -> None
     assert payload["queries"][0]["target"]["frame_id"] is not None
     result = compile_mechanics_ir(_ir(payload))
     assert CompilerIssueCode.requires_specialized_model.value not in _codes(result)
+
+
+# --------------------------------------------------------------------------
+# Negative controls: two observer declarations that mean nothing relative
+# --------------------------------------------------------------------------
+
+
+def test_an_observer_the_model_never_refers_to_again_is_not_deferred() -> None:
+    # A source can name something without relating it to anything.  Claiming a
+    # specialized model on the strength of a dangling declaration would refuse a
+    # problem the catalogue may well close, and would permanently close the door
+    # on ever solving it.
+    result = compile_mechanics_ir(_ir(_observer_payload(modelled=False)))
+    assert CompilerIssueCode.requires_specialized_model.value not in _codes(result)
+
+
+def test_an_observer_the_source_states_is_at_rest_is_not_deferred() -> None:
+    # An observer that does not move describes the same motion the ground frame
+    # does, so no specialized model is needed to relate anything across it.
+    result = compile_mechanics_ir(_ir(_observer_payload(at_rest=True)))
+    assert CompilerIssueCode.requires_specialized_model.value not in _codes(result)
+
+
+def test_a_resting_observer_is_still_part_of_the_model() -> None:
+    # The exemption must come from the declared rest, not from the observer
+    # having dropped out of the model: the same wiring without the rest defers.
+    from engine.mechanics.compiler.compiler import _entity_is_modelled
+
+    ir = _ir(_observer_payload(at_rest=True))
+    assert _entity_is_modelled(ir, "observerFrame")
+    moving = compile_mechanics_ir(_ir(_observer_payload(modelled=True)))
+    assert CompilerIssueCode.requires_specialized_model.value in _codes(moving)
+
+
+def test_a_dangling_observer_is_not_reported_as_modelled() -> None:
+    from engine.mechanics.compiler.compiler import _entity_is_modelled
+
+    assert not _entity_is_modelled(_ir(_observer_payload(modelled=False)), "observerFrame")
+
+
+def test_being_modelled_is_decided_by_the_whole_typed_record_not_a_field_list() -> None:
+    # The scan walks each typed record's own fields, so an entity referenced
+    # through a nested origin — a field no hand-kept list would have to name —
+    # still counts as modelled.
+    from engine.mechanics.compiler.compiler import _entity_is_modelled
+
+    payload = _observer_payload(modelled=False)
+    payload["reference_frames"] = [
+        {
+            "frame_id": "observerBound",
+            "frame_type": "cartesian_1d",
+            "origin": {"kind": "entity", "entity_id": "observerFrame"},
+            "axes": [
+                {
+                    "axis": "x",
+                    "direction": {
+                        "kind": "axis",
+                        "frame_id": "observerBound",
+                        "axis": "x",
+                        "sign": 1,
+                    },
+                }
+            ],
+            "parent_frame_id": None,
+            "translating_with_entity_id": None,
+            "rotating_about_point_id": None,
+            "generalized_coordinate_symbol_ids": [],
+            "evidence_refs": [],
+        }
+    ]
+    assert _entity_is_modelled(_ir(payload), "observerFrame")
 
 
 def test_a_non_kinematic_query_is_not_deferred_by_an_observer_frame() -> None:

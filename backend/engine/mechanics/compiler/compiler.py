@@ -58,6 +58,7 @@ from engine.mechanics.contracts import (
     QuantityRole,
     QuantityShape,
     ReferenceFrameType,
+    StateValue,
 )
 from engine.mechanics.laws import (
     BoundQuantity,
@@ -518,6 +519,64 @@ def _query_quantity(
     return (matches[0] if matches else None), None
 
 
+def _mentions_entity(node: object, entity_id: str) -> bool:
+    """True when a typed record names this entity anywhere inside itself."""
+
+    if isinstance(node, str):
+        return node == entity_id
+    if isinstance(node, BaseModel):
+        return any(
+            _mentions_entity(getattr(node, field), entity_id)
+            for field in type(node).model_fields
+        )
+    if isinstance(node, (tuple, list)):
+        return any(_mentions_entity(item, entity_id) for item in node)
+    return False
+
+
+# Every collection that can relate one entity to the rest of the problem.  The
+# scan is by field rather than by a hand-listed set of reference attributes, so
+# a new typed field that carries an entity id is covered when it is added.
+_ENTITY_REFERENCE_COLLECTIONS: tuple[str, ...] = (
+    "points",
+    "reference_frames",
+    "motion_intervals",
+    "events",
+    "geometry",
+    "interactions",
+    "constraints",
+    "state_conditions",
+    "quantities",
+    "queries",
+)
+
+
+def _entity_is_modelled(ir: MechanicsProblemIRV1, entity_id: str) -> bool:
+    """True when the typed model places this entity in the problem.
+
+    Its own declaration does not count.  A source can name something without
+    relating it to anything — and an entity the model never refers to again
+    cannot be what makes the question relative.
+    """
+
+    for entity in ir.entities:
+        if entity.entity_id != entity_id and _mentions_entity(entity, entity_id):
+            return True
+    return any(
+        _mentions_entity(getattr(ir, name), entity_id)
+        for name in _ENTITY_REFERENCE_COLLECTIONS
+    )
+
+
+def _declared_at_rest(ir: MechanicsProblemIRV1, entity_id: str) -> bool:
+    """True when the source states this entity does not move."""
+
+    return any(
+        state.subject_id == entity_id and state.state is StateValue.at_rest
+        for state in ir.state_conditions
+    )
+
+
 def _structural_specialization_issue(
     ir: MechanicsProblemIRV1,
     query: IRQuery,
@@ -573,6 +632,12 @@ def _structural_specialization_issue(
     # quantity across it.  Saying so is the precise answer; letting the graph
     # fall through to "underdetermined" would report a missing equation when
     # what is missing is a whole model.
+    #
+    # Two declarations do not carry that meaning, and claiming a specialized
+    # model for them would refuse a problem the catalogue may well close.  An
+    # observer the typed model never refers to again is a name, not a frame of
+    # reference; and an observer the source states is at rest describes the same
+    # motion the ground frame does.
     observer = next(
         (
             item
@@ -581,13 +646,20 @@ def _structural_specialization_issue(
         ),
         None,
     )
-    if observer is not None and frame is None and query.target.role in {
-        QuantityRole.position,
-        QuantityRole.displacement,
-        QuantityRole.velocity,
-        QuantityRole.speed,
-        QuantityRole.acceleration,
-    }:
+    if (
+        observer is not None
+        and frame is None
+        and query.target.role
+        in {
+            QuantityRole.position,
+            QuantityRole.displacement,
+            QuantityRole.velocity,
+            QuantityRole.speed,
+            QuantityRole.acceleration,
+        }
+        and _entity_is_modelled(ir, observer.entity_id)
+        and not _declared_at_rest(ir, observer.entity_id)
+    ):
         return _issue(
             CompilerIssueCode.requires_specialized_model,
             "motion stated relative to a declared observer frame requires a specialized mechanics model",
