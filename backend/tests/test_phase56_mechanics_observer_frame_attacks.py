@@ -419,6 +419,7 @@ _NON_ENTITY_STRING_FIELDS: frozenset[str] = frozenset(
         "interaction_id",
         "interval_id",
         "interval_ids",
+        "occurs_in_interval_ids",
         "kind",
         "label",
         "language",
