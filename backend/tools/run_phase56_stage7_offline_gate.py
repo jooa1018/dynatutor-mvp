@@ -57,6 +57,10 @@ from evaluation.phase56_stage7.lane_b_structural_blockers import (  # noqa: E402
     build_structural_blocker_census,
     census_as_dict,
 )
+from evaluation.phase56_stage7.query_readout_ownership import (  # noqa: E402
+    diagnose_query_readout_ownership,
+    diagnosis_as_dict,
+)
 from evaluation.phase56_stage7.lane_b_failure_matrix import (  # noqa: E402
     build_pipeline_failure_matrix,
 )
@@ -386,6 +390,45 @@ def _structural_blocker_section(archive_path: Path | None) -> dict[str, Any]:
     return section
 
 
+def _query_readout_ownership_section(archive_path: Path | None) -> dict[str, Any]:
+    """Test whether query-readout ownership causally blocks anything.
+
+    Diagnostic, never a gate.  The structural blocker census counts contexts
+    whose queried readout sits on an entity outside the free-body set; this
+    section asks the real engine whether binding that readout to a carrier
+    changes anything, so a count of a property is never mistaken for a cause.
+
+    The counterfactual is evaluator-only.  It changes one field of one quantity
+    in a law context that is discarded immediately; no Draft, runtime result, or
+    answer is derived from it, no entity primitive is rewritten, and nothing is
+    added to the engine's free-body set.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        pairs = []
+        for case in (*public_dev, *public_adversarial):
+            projection = project_case_to_draft(case)
+            if not projection.projected:
+                continue
+            context = law_context_for_projection(projection)
+            if context is None:
+                continue
+            target_quantity_id = projection.draft.queries[0].target.target_quantity_id
+            if target_quantity_id is None:
+                continue
+            pairs.append((context, target_quantity_id))
+        diagnosis = diagnose_query_readout_ownership(pairs)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(diagnosis_as_dict(diagnosis))
+    return section
+
+
 def _resolve_archive_path() -> Path | None:
     raw = os.environ.get(PUBLIC_CORPUS_PATH_ENV, "").strip()
     if not raw:
@@ -418,6 +461,9 @@ def build_report() -> tuple[dict[str, Any], bool]:
         blocker_section = _structural_blocker_section(
             archive_path if corpus_gate.passed else None
         )
+        ownership_section = _query_readout_ownership_section(
+            archive_path if corpus_gate.passed else None
+        )
 
     report: dict[str, Any] = {
         "schema": OFFLINE_GATE_SCHEMA,
@@ -436,6 +482,7 @@ def build_report() -> tuple[dict[str, Any], bool]:
         "blocked_law_diagnosis": diagnosis_section,
         "complete_profile_census": census_section,
         "structural_blockers": blocker_section,
+        "query_readout_ownership": ownership_section,
         "gates": [
             {"name": gate.name, "result": gate.result, "detail": gate.detail}
             for gate in gates

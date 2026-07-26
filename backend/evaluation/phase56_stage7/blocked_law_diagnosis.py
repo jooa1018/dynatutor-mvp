@@ -335,6 +335,42 @@ def _semantically_applicable(context: LawContext, rule: LawRule) -> bool:
     return True
 
 
+def context_with_counterfactual_frame(
+    context: LawContext,
+    frame_type: ReferenceFrameType = ReferenceFrameType.cartesian_2d,
+    axes: tuple[AxisName, ...] = (AxisName.x, AxisName.y),
+    *,
+    scope_quantities: bool = True,
+    component_topology: bool = True,
+) -> LawContext:
+    """The frame rung of this module's ladder, for another diagnostic to reuse.
+
+    Exposed so a second counterfactual can ask "does this close once the frame
+    is also supplied?" against *this* implementation rather than a second copy
+    of it that could drift.  Diagnosis only: the returned context never reaches
+    a Draft, a runtime result, or an answer.
+    """
+
+    return _with_frame(
+        context,
+        frame_type,
+        axes,
+        scope_quantities=scope_quantities,
+        component_topology=component_topology,
+    )
+
+
+def law_is_semantically_applicable(context: LawContext, rule: LawRule) -> bool:
+    """Whether the source describes what this law is about at all.
+
+    Public for the same reason as `context_with_counterfactual_frame`: one
+    implementation, read by every diagnostic that needs the distinction between
+    "blocked" and "not about this".
+    """
+
+    return _semantically_applicable(context, rule)
+
+
 def _frame_of_admissible_type(context: LawContext) -> bool:
     return any(
         item.frame_type
@@ -691,8 +727,10 @@ __all__ = [
     "CounterfactualOutcome",
     "EmitterFamilyReach",
     "UnmetPrerequisite",
+    "context_with_counterfactual_frame",
     "counterfactual_outcome",
     "diagnose_blocked_laws",
     "first_unmet_prerequisite",
+    "law_is_semantically_applicable",
     "measure_emitter_family_reach",
 ]

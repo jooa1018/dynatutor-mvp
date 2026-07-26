@@ -7,10 +7,18 @@ package is chosen from evidence.
 
 Every number below is reproduced by
 `backend/tools/run_phase56_stage7_offline_gate.py` against the authorised public
-archive, in the `structural_blockers`, `complete_profile_census`,
-`blocked_law_diagnosis`, and `lane_b` sections of the redacted artifact. The
-census that produces them is `evaluation/phase56_stage7/lane_b_structural_blockers.py`,
-pinned by `backend/tests/test_phase56_stage7_structural_blockers.py` (15 tests).
+archive, in the `structural_blockers`, `query_readout_ownership`,
+`complete_profile_census`, `blocked_law_diagnosis`, and `lane_b` sections of the
+redacted artifact.
+
+| Measurement | Module | Tests |
+|---|---|---|
+| Structural blocker census | `evaluation/phase56_stage7/lane_b_structural_blockers.py` | `test_phase56_stage7_structural_blockers.py` (15) |
+| Causal ownership diagnosis | `evaluation/phase56_stage7/query_readout_ownership.py` | `test_phase56_stage7_query_readout_ownership.py` (19) |
+
+**A count is not a cause.** The census counts properties of contexts; the
+diagnosis tests whether a property is what actually stops the answer. §4 is the
+worked example of the difference, and of the correction it forced.
 
 ## 1. Where the distribution stands
 
@@ -79,7 +87,7 @@ What the corpus does state, in closed vocabularies the server may derive from:
 11 relation kinds, 13 motion models, 9 assumption kinds, 12 fact directions,
 6 query components, and 19 entity kinds.
 
-## 4. `ENGINE_CONTRACT_BLOCKER`: the queried unknown's owner
+## 4. The queried unknown's owner — a count, and what it turned out to mean
 
 **30 of 97 contexts ask for a quantity owned by an entity no free-body law will
 ever write an equation for.**
@@ -97,24 +105,93 @@ even considered.
 | `system` | 12 | **no** |
 | `joint` | 6 | **no** |
 
-This is not a planner gap. No closure transaction can remove it, because the
-only way to make the equation reachable is to restate what the source says the
-entity *is* — an aggregate `system` becoming a particle, a `point` becoming a
-body. That is fabricating structure, and it is forbidden.
+### That count is not a cause, and measuring it as one refuted it
 
-Closing these 30 needs one of:
+An earlier revision of this document read the 30 as "up to 30 contexts an
+ownership capability would unlock", and ranked that capability first. **That was
+wrong.** A context can carry a non-free-body query subject and be blocked several
+layers earlier, in which case binding the readout to a carrier changes nothing.
 
-- a typed **aggregate-to-member binding** capability, so a quantity owned by a
-  `system` is related to the members the source names through the relations it
-  states (`connected_by_rope`, `passes_over_pulley`), rather than by renaming the
-  entity; and
-- a typed **point-on-body** and **joint** readout capability, so a quantity owned
-  by a `point` or a `joint` is related to the body the source says it belongs to.
+`evaluation/phase56_stage7/query_readout_ownership.py` settles it by experiment.
+For each such context it adds **only** a typed query-readout binding — the source
+Draft is not modified, no entity primitive is rewritten, nothing is added to the
+free-body set — and asks the real `apply_core_laws` whether the queried unknown
+is now written about. When it is not, the frame rung of the blocked-law ladder is
+added on top.
 
-Both are compiler-contract changes and each needs its own review. Neither is
-attempted here.
+| Outcome | `system` | `point` | `joint` |
+|---|---:|---:|---:|
+| binding alone unlocks | 0 | 0 | 0 |
+| binding plus profile required | 0 | 0 | 0 |
+| binding does not close | 0 | 12 | 3 |
+| binding not formable | 12 | 0 | 0 |
+| law not semantically applicable | 0 | 0 | 3 |
+
+**`causally_blocked_on_ownership = 0`.** Building an aggregate, point, or joint
+ownership capability would unlock **nothing** as the corpus stands.
+
+**The zeros are load-bearing only because the instrument is shown to detect an
+unlock when there is one.** `backend/tests/test_phase56_stage7_query_readout_ownership.py`
+carries a positive control per primitive: a context complete in every respect
+except that its readout sits on a `point`, a `joint`, or a `system`, each of
+which classifies as `*_binding_alone_unlocks`. The same three shapes were also
+reproduced against real projected contexts before the zeros were accepted.
+
+### What each group is really blocked on
+
+- **`system` (12) — `binding_not_formable`.** No typed record names the system
+  alongside a body: `aggregate_contexts_with_membership_relation` is **0 of 12**.
+  This is a property of the corpus, not of the projection — over the 13
+  system-subject public cases, **0** have any `gold.relations` entry whose
+  `participant_roles` include the system entity. What exists instead is
+  co-scoping: all 12 share a motion interval with their bodies, and sharing an
+  interval says the records describe the same stretch of motion, not that the
+  aggregate is made of them.
+
+  Whether co-scoping should count as membership is a contract question, and it
+  was answered with a measurement rather than an argument:
+  `aggregate_co_subject_route_unique_carrier` is **0 of 12**. Every one of these
+  is a two-body system, so even if an interval's subject list were accepted as
+  membership, the route names two carriers and cannot form a binding either.
+  `aggregate_co_subject_route_unlocks` is **0**. **The contract question does not
+  need to be settled**, because deciding it either way buys nothing.
+- **`point` (12) — `binding_does_not_close`.** Here the binding *is* formable: each
+  has exactly one carrier via a `lies_on` relation. It was formed, and neither it
+  nor it-plus-a-frame produced a law that writes about the queried readout.
+  Ownership is not the wall for these. Note also
+  `contexts_with_typed_point_record = 0`: the projection produces no `IRPoint` at
+  all, so the rigid-point laws have no point to be about.
+- **`joint` (6).** Three are `binding_does_not_close` and three are
+  `law_not_semantically_applicable` — for the latter the source declares no
+  free-body entity anywhere, so no law in the catalogue is about them.
+
+### Consequences for the contract audit
+
+An ownership capability stays **unbuilt**, and `system`, `point`, and `joint`
+stay **out** of the free-body set. No entity primitive is rewritten anywhere.
+
+The audit asked whether a `QueryReadoutBindingV1` contract would be needed to
+express these bindings, or whether the existing `Query.target`,
+`target_quantity_id`, `point_id`, constraints, `lies_on` geometry, interactions,
+and state conditions already suffice. **No new contract is introduced**, for a
+reason that makes the expressiveness question moot: the capability such a
+contract would serve has a measured yield of zero. Adding typed vocabulary for a
+capability nothing needs would be structure with no consumer, which is the same
+mistake the reference-frame package was already ruled out for.
+
+For the record, where a binding *was* formable the existing contracts did
+express it — the `point` group's carrier was resolved entirely from `lies_on`
+geometry the source already states, with no new field.
+
+Should the frame and interaction blockers below be closed, this diagnostic must
+be re-run before ownership is ranked again: it measures the engine as it is, not
+as it will be.
 
 ### Worked instance: the fixed-pulley contexts
+
+The fixed-pulley walls below are still real, but note which one they are: the
+`system`-owned readout is `binding_not_formable`, not a capability waiting to be
+built. Nothing in the source states that the system is made of its two bodies.
 
 `fixed_pulley` is the census's highest-yield profile — 3 of its 6 applicable
 contexts plan `complete`. It is still not enabled, and the measurement says why.
@@ -162,14 +239,16 @@ overlap.
 
 ## 6. What is left, and in what order
 
-Ranked by measured yield, not by family:
+Ranked by **measured** yield. Ownership has been removed from this list because
+the measurement in §4 put its yield at zero.
 
-1. **Aggregate and point/joint ownership capability** — unblocks up to 30
-   contexts and is a precondition for the highest-yield profile. Compiler
-   contract change; needs its own review.
-2. **A frame-and-binding derivation shared across profiles** — every one of the
-   97 contexts needs it, and `frame_alone_unlocks = 0` says it only pays off
-   bundled with the rest of a profile's structure.
+1. **A frame-and-binding derivation shared across profiles** — every one of the
+   97 contexts lacks a frame, and `frame_alone_unlocks = 0` says it only pays off
+   bundled with the rest of a profile's structure. This is the only item with a
+   measured population covering the whole corpus.
+2. **Interactions** — 75 of 97 contexts carry none, so every free-body law has
+   no force to sum whatever else is supplied. Like the frame, this is a
+   per-profile transactional creation, not a standalone fix.
 3. **Enabling the profiles whose plans already say `complete`** — 8 contexts
    across `free_flight_gravity` (2), `fixed_pulley` (3), and
    `incline_hanging_pulley` (3), each behind item 1 or 2 or both.
@@ -180,6 +259,12 @@ Ranked by measured yield, not by family:
 5. **The remaining 37 `insufficient_information` contexts** — for each, decide
    whether the prerequisite is genuinely absent from the source or is derivable
    from a closed vocabulary the planner does not yet read.
+
+**Not on this list: query-readout ownership.** It is measured at zero unlocks and
+is not built. If items 1 and 2 land, re-run the ownership diagnostic before
+reconsidering it — the `point` group's `binding_does_not_close` verdict was
+reached against an engine with no frames and no typed points, and that verdict
+could change once those exist.
 
 ## 7. What this document is not
 
