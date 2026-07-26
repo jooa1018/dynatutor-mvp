@@ -84,6 +84,27 @@ DERIVED_FRAME_ID = "frm_closure_axis"
 WORLD_FRAME_ID = "frm_closure_world"
 OBSERVER_FRAME_ID = "frm_closure_observer"
 
+# A source that said a quantity has no direction stated its *magnitude*, and a
+# magnitude is not a signed component of anything.  Restamping it onto an axis
+# would hand the solver a sign the source never gave, so a magnitude is left
+# exactly as the source wrote it.
+_DIRECTIONLESS_COMPONENT = "magnitude"
+_SIGNED_AXIS_COMPONENTS: frozenset[str] = frozenset({"x", "y", "z"})
+
+
+def _query_axis_conflicts(query: dict[str, Any], axis: str) -> bool:
+    """Whether binding this axis would change what the question asks.
+
+    A question about a magnitude is a different question from one about a
+    signed component, and a question about another axis is about another axis.
+    Either way the transaction is abandoned rather than the question rewritten.
+    """
+
+    component = query["target"].get("component")
+    if component in _SIGNED_AXIS_COMPONENTS:
+        return component != axis
+    return component == _DIRECTIONLESS_COMPONENT
+
 
 class ApplicationOutcome(str, Enum):
     """What the applier did.  There is no partial outcome."""
@@ -153,8 +174,7 @@ def _impulse_momentum_transaction(
     axis = _axis_binding(payload["quantities"], subject_id)
     if axis is None:
         return None
-    component = query["target"].get("component")
-    if component in {"x", "y", "z"} and component != axis:
+    if _query_axis_conflicts(query, axis):
         return None
 
     frame = {
@@ -202,8 +222,9 @@ def _impulse_momentum_transaction(
                 "axis": axis,
                 "sign": binding[1],
             }
-        elif direction:
-            # An already-bound direction is left exactly as it is.
+        elif direction or quantity.get("component") == _DIRECTIONLESS_COMPONENT:
+            # An already-bound direction, or a magnitude the source stated as
+            # directionless, is left exactly as it is.
             quantities.append(quantity)
             continue
         quantity["component"] = axis
@@ -260,6 +281,8 @@ def _relative_translating_frame_transaction(
     if axis is None:
         return None
     if _axis_binding(payload["quantities"], observer_id) not in {None, axis}:
+        return None
+    if _query_axis_conflicts(query, axis):
         return None
 
     world = {
@@ -336,7 +359,11 @@ def _relative_translating_frame_transaction(
             quantities.append(quantity)
             rebound.append(quantity["quantity_id"])
             continue
-        if quantity["quantity_id"] == target_quantity_id and not direction:
+        if (
+            quantity["quantity_id"] == target_quantity_id
+            and not direction
+            and quantity.get("component") != _DIRECTIONLESS_COMPONENT
+        ):
             # The unknown the question asks for: the body's motion as the world
             # sees it.  It gains a component and a frame, never a direction.
             quantity["component"] = axis

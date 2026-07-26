@@ -561,3 +561,74 @@ def test_closure_leaves_an_unclosable_draft_exactly_as_projected():
     result = close_projected_draft(draft)
     assert not result.applied
     assert result.draft.model_dump(mode="json", warnings="none") == before
+
+
+# --------------------------------------------------------------------------
+# A magnitude is not a signed component
+# --------------------------------------------------------------------------
+
+
+def test_a_source_stated_magnitude_is_never_restamped_onto_an_axis():
+    """A directionless statement carries no sign, and must not acquire one.
+
+    The source said this speed has no direction, which is a statement about a
+    magnitude.  Binding it to `+x` would hand the solver a sign the source never
+    gave, so the quantity keeps exactly what the source wrote.
+    """
+
+    gold = _impulse_gold()
+    gold["explicit_facts"] = [
+        *gold["explicit_facts"],
+        _fact(
+            "speed",
+            "velocity",
+            "4",
+            "m/s",
+            "속력은 4 m/s",
+            "cart",
+            direction="not_applicable",
+        ),
+    ]
+    text = IMPULSE_TEXT.replace("x 방향 나중 속도를", "속력은 4 m/s 이다. x 방향 나중 속도를")
+    draft = project_case_to_draft(_case(text, gold)).draft
+    magnitude_before = [
+        item
+        for item in draft.quantities
+        if item.component.value == "magnitude" and item.raw_value is not None
+    ]
+    assert magnitude_before
+
+    closed = apply_complete_profile(_complete_plan(draft), draft).draft
+    by_id = {item.quantity_id: item for item in closed.quantities}
+    for original in magnitude_before:
+        after = by_id[original.quantity_id]
+        assert after.component.value == "magnitude"
+        assert after.direction is None
+        assert after.frame_id == original.frame_id
+
+
+def test_a_magnitude_question_is_never_rewritten_into_a_signed_one():
+    """Changing the query's component would change what was asked."""
+
+    gold = _impulse_gold()
+    gold["queries"][0]["component"] = "magnitude"
+    draft = project_case_to_draft(_case(IMPULSE_TEXT, gold)).draft
+    result = apply_complete_profile(_complete_plan(draft), draft)
+    assert result.outcome is ApplicationOutcome.rejected
+    assert result.draft.queries[0].target.component.value == "magnitude"
+    assert result.draft.reference_frames == []
+
+
+def test_a_relative_magnitude_question_is_never_rewritten_either():
+    gold = _relative_gold()
+    gold["queries"][0]["component"] = "magnitude"
+    projection = project_case_to_draft(_case(RELATIVE_TEXT, gold))
+    plan = plan_complete_profile(
+        ProfileId.relative_translating_frame,
+        projection.draft,
+        approved_assumption_ids=projection.approvable_assumption_ids,
+    )
+    result = apply_complete_profile(plan, projection.draft)
+    assert result.outcome is ApplicationOutcome.rejected
+    assert result.draft.queries[0].target.component.value == "magnitude"
+    assert result.draft.reference_frames == []

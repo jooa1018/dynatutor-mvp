@@ -185,6 +185,18 @@ _MOTION_MODEL_ASSUMPTIONS: dict[str, str] = {
     "spring_oscillation": "angular_natural_frequency",
 }
 
+# An authority that licenses one readout is emitted only when that readout is
+# what the source asks for.  `angular_natural_frequency` is the case in point:
+# it is what lets the engine relate a natural frequency to a mass and a
+# stiffness, so a question about anything else has no business carrying it.
+# Without this the authority would sit in every oscillation Draft and could
+# combine with an unrelated frequency quantity to write an equation the source
+# never asked for.
+_QUERY_SCOPED_MOTION_MODEL_ASSUMPTIONS: dict[str, frozenset[str]] = {
+    # assumption kind -> query roles that may carry it
+    "angular_natural_frequency": frozenset({"period", "frequency"}),
+}
+
 # corpus query output key -> (draft quantity role, output unit, dimension)
 _QUERY_ROLES: dict[str, tuple[str, str, dict[str, int]]] = {
     "acceleration": ("acceleration", "m/s^2", _dim(length=1, time=-2)),
@@ -1340,9 +1352,18 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
     # and to nothing else, and it carries no proposed value: it constrains how
     # the interval behaves, it does not supply a number.
     declared_assumption_ids = {entry["assumption_id"] for entry in assumptions}
+    queried_roles = {
+        _QUERY_ROLES[query.output_key][0]
+        for query in gold.queries
+        if query.output_key in _QUERY_ROLES
+    }
     for segment in gold.motion_segments:
         kind = _MOTION_MODEL_ASSUMPTIONS.get(segment.motion_model or "")
         if kind is None:
+            continue
+        licensed = _QUERY_SCOPED_MOTION_MODEL_ASSUMPTIONS.get(kind)
+        if licensed is not None and not (queried_roles & licensed):
+            # The authority licenses a readout this source does not ask for.
             continue
         for actor in sorted(segment.actor_roles):
             assumption_id = f"asm_{kind}_{segment.role}_{actor}"

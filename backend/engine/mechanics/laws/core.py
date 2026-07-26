@@ -3927,12 +3927,38 @@ _CONTACT_REGIME_STATES: frozenset[StateKind] = frozenset(
 _RESULTANT_FORCE_AUTHORITY = "resultant_force"
 
 
+def _force_quantities_by_id(
+    context: LawContext,
+) -> Mapping[str, BoundQuantity]:
+    """Index the context's force quantities once, by ID."""
+
+    return {
+        quantity.quantity_id: quantity
+        for quantity in context.quantities
+        if quantity.role is QuantityRole.force and quantity.quantity_id is not None
+    }
+
+
+def _acting_interactions(context: LawContext) -> Mapping[str, tuple[Any, ...]]:
+    """Index the force-bearing interactions once, by participant."""
+
+    acting: dict[str, list[Any]] = {}
+    for interaction in context.interactions:
+        if interaction.kind not in _FORCE_BEARING_INTERACTIONS:
+            continue
+        for participant in interaction.participant_ids:
+            acting.setdefault(participant, []).append(interaction)
+    return {key: tuple(value) for key, value in acting.items()}
+
+
 def _free_body_is_complete(
     context: LawContext,
     *,
     subject_id: str,
     forces: tuple[BoundQuantity, ...],
     entity_kinds: Mapping[str, EntityPrimitive],
+    force_quantities: Mapping[str, BoundQuantity],
+    acting_interactions: Mapping[str, tuple[Any, ...]],
 ) -> bool:
     """Whether the forces being summed really are this body's whole free body.
 
@@ -3961,12 +3987,7 @@ def _free_body_is_complete(
     source states a single force.
     """
 
-    acting = tuple(
-        interaction
-        for interaction in context.interactions
-        if interaction.kind in _FORCE_BEARING_INTERACTIONS
-        and subject_id in interaction.participant_ids
-    )
+    acting = acting_interactions.get(subject_id, ())
     # A contact is a reaction *against* something pressing the body into the
     # surface.  A body whose only modelled interaction is the contact itself has
     # no such driver, so the free body is missing whatever produced the contact.
@@ -3979,16 +4000,17 @@ def _free_body_is_complete(
         return False
     constrained = False
     for interaction in acting:
-        owned = tuple(
-            quantity
-            for quantity in context.quantities
-            if quantity.role is QuantityRole.force
-            and quantity.subject_id == subject_id
-            and quantity.quantity_id in set(interaction.quantity_ids)
-        )
         if interaction.kind not in _CONSTRAINT_BEARING_INTERACTIONS:
             continue
         constrained = True
+        owned = tuple(
+            quantity
+            for quantity in (
+                force_quantities.get(quantity_id)
+                for quantity_id in interaction.quantity_ids
+            )
+            if quantity is not None and quantity.subject_id == subject_id
+        )
         if not owned:
             return False
         if interaction.kind is InteractionKind.contact:
@@ -4008,9 +4030,11 @@ def _free_body_is_complete(
             )
             covered = {
                 quantity.subject_id
-                for quantity in context.quantities
-                if quantity.role is QuantityRole.force
-                and quantity.quantity_id in set(interaction.quantity_ids)
+                for quantity in (
+                    force_quantities.get(quantity_id)
+                    for quantity_id in interaction.quantity_ids
+                )
+                if quantity is not None
             }
             if any(participant not in covered for participant in attached):
                 return False
@@ -4043,6 +4067,10 @@ def _free_body_is_complete(
 def _newton_emissions(context: LawContext) -> list[LawEmission]:
     emitted: list[LawEmission] = []
     entity_kinds = {entity.entity_id: entity.primitive for entity in context.entities}
+    # Indexed once per context: the completeness check runs per acceleration and
+    # per interaction, so rescanning every quantity inside it is cubic.
+    force_quantities = _force_quantities_by_id(context)
+    acting_interactions = _acting_interactions(context)
     linked_force_ids = {
         quantity_id
         for interaction in context.interactions
@@ -4080,6 +4108,8 @@ def _newton_emissions(context: LawContext) -> list[LawEmission]:
             subject_id=acceleration.subject_id,
             forces=forces,
             entity_kinds=entity_kinds,
+            force_quantities=force_quantities,
+            acting_interactions=acting_interactions,
         ):
             continue
         mass = masses[0]

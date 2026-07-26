@@ -24,6 +24,7 @@ from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 from evaluation.phase56_stage7.gold_domain import PublicSplit
 from evaluation.phase56_stage7.lane_b_draft_projection import (
     _MOTION_MODEL_ASSUMPTIONS,
+    _QUERY_SCOPED_MOTION_MODEL_ASSUMPTIONS,
     DraftProjectionTerminal,
     project_case_to_draft,
 )
@@ -75,11 +76,36 @@ def _assumptions(projection, kind: str):
 # --------------------------------------------------------------------------
 
 
+# The base fixture asks for a force.  An authority that licenses one specific
+# readout is only carried when that readout is what the source asks for, so the
+# licensing table decides which query this case must use.
+_LICENSING_QUERY_KEY: dict[str, str] = {"period": "period", "frequency": "frequency"}
+
+
+def _with_licensing_query(case: PublicCorpusCaseV1, kind: str) -> PublicCorpusCaseV1:
+    """Give the case a query that licenses `kind`, if `kind` needs one."""
+
+    licensed = _QUERY_SCOPED_MOTION_MODEL_ASSUMPTIONS.get(kind)
+    if licensed is None:
+        return case
+    output_key = next(
+        _LICENSING_QUERY_KEY[role] for role in sorted(licensed)
+        if role in _LICENSING_QUERY_KEY
+    )
+    return _with_gold(
+        case,
+        queries=(
+            case.gold.queries[0].model_copy(update={"output_key": output_key}),
+        ),
+    )
+
+
 @pytest.mark.parametrize("motion_model, kind", sorted(_MOTION_MODEL_ASSUMPTIONS.items()))
 def test_a_declared_motion_model_becomes_one_approved_assumption(
     motion_model, kind
 ) -> None:
-    projection = _projected(_with_model(_case(), motion_model))
+    case = _with_licensing_query(_with_model(_case(), motion_model), kind)
+    projection = _projected(case)
     derived = _assumptions(projection, kind)
     assert len(derived) == 1
     assumption = derived[0]
@@ -87,6 +113,28 @@ def test_a_declared_motion_model_becomes_one_approved_assumption(
     assert assumption.subject_id == "box"
     assert assumption.interval_id == "motion_1"
     assert assumption.assumption_id in projection.approvable_assumption_ids
+
+
+@pytest.mark.parametrize(
+    "motion_model, kind",
+    sorted(
+        (model, kind)
+        for model, kind in _MOTION_MODEL_ASSUMPTIONS.items()
+        if kind in _QUERY_SCOPED_MOTION_MODEL_ASSUMPTIONS
+    ),
+)
+def test_a_query_scoped_authority_is_withheld_when_its_readout_is_not_asked_for(
+    motion_model, kind
+) -> None:
+    """An authority licenses one readout, so an unrelated question never carries it.
+
+    Left unscoped it would sit in every Draft of that motion model and could
+    combine with an unrelated quantity to write an equation the source never
+    asked for.
+    """
+
+    projection = _projected(_with_model(_case(), motion_model))
+    assert _assumptions(projection, kind) == []
 
 
 def test_a_motion_model_assumption_carries_no_proposed_value() -> None:
