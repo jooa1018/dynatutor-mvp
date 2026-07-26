@@ -47,6 +47,7 @@ from engine.mechanics.contracts import (
     IRPointOrigin,
     IRQuery,
     IRQuantity,
+    IRReferenceFrame,
     IRSourceAsset,
     IRStateCondition,
     IRTextEvidence,
@@ -519,24 +520,64 @@ def _query_quantity(
     return (matches[0] if matches else None), None
 
 
-def _mentions_entity(node: object, entity_id: str) -> bool:
-    """True when a typed record names this entity anywhere inside itself."""
+# The fields that carry an *entity* id, listed per typed model.  Every other
+# field either names a different namespace — an evidence, symbol, quantity,
+# point, frame, interval, or event id — or is free text: a label, an alias, a
+# written value, a unit.  A string that happens to equal an entity id in one of
+# those is a coincidence, not a reference, and treating it as one would let a
+# label decide that a problem needs a whole specialized model.
+#
+# Two collections are deliberately absent.  ``Ambiguity.referenced_ids`` and
+# ``UnsupportedFeature.referenced_ids`` point at the *parse*, not at the
+# physics: they record what the reader could not resolve, which is not the
+# source placing an entity in the problem.  ``PrincipleHint.scope_ids`` is a
+# hint, and a hint carries no authority anywhere else in this engine either.
+_ENTITY_REFERENCE_FIELDS: dict[str, frozenset[str]] = {
+    "IREntity": frozenset({"component_of_entity_id"}),
+    "IRPoint": frozenset({"owner_entity_id"}),
+    "IRReferenceFrame": frozenset({"translating_with_entity_id"}),
+    "IREntityOrigin": frozenset({"entity_id"}),
+    "IRMotionInterval": frozenset({"subject_ids"}),
+    "IREvent": frozenset({"subject_ids"}),
+    "IRGeometryRelation": frozenset({"participant_ids"}),
+    "IRInteraction": frozenset({"participant_ids"}),
+    "IRConstraint": frozenset({"subject_ids"}),
+    "IRStateCondition": frozenset({"subject_id"}),
+    "IRQueryTarget": frozenset({"subject_id"}),
+    "IRAssumption": frozenset({"subject_id"}),
+    "IRQuantity": frozenset({"subject_id"}),
+}
 
-    if isinstance(node, str):
-        return node == entity_id
+
+def _typed_entity_references(node: object) -> set[str]:
+    """Every entity id a typed record actually refers to.
+
+    The walk is structural, so a reference nested inside a frame's origin or a
+    query's target is found without naming the path.  What counts as a
+    reference is decided per model and per field, because the same field name
+    means different things in different records: ``Entity.entity_id`` declares
+    an identity while ``EntityOrigin.entity_id`` refers to one.
+    """
+
+    found: set[str] = set()
     if isinstance(node, BaseModel):
-        return any(
-            _mentions_entity(getattr(node, field), entity_id)
-            for field in type(node).model_fields
-        )
-    if isinstance(node, (tuple, list)):
-        return any(_mentions_entity(item, entity_id) for item in node)
-    return False
+        allowed = _ENTITY_REFERENCE_FIELDS.get(type(node).__name__, frozenset())
+        for field in type(node).model_fields:
+            value = getattr(node, field)
+            if field in allowed:
+                if isinstance(value, str):
+                    found.add(value)
+                elif isinstance(value, (tuple, list)):
+                    found.update(item for item in value if isinstance(item, str))
+            else:
+                found |= _typed_entity_references(value)
+    elif isinstance(node, (tuple, list)):
+        for item in node:
+            found |= _typed_entity_references(item)
+    return found
 
 
-# Every collection that can relate one entity to the rest of the problem.  The
-# scan is by field rather than by a hand-listed set of reference attributes, so
-# a new typed field that carries an entity id is covered when it is added.
+# Every collection that can relate one entity to the rest of the problem.
 _ENTITY_REFERENCE_COLLECTIONS: tuple[str, ...] = (
     "points",
     "reference_frames",
@@ -560,21 +601,73 @@ def _entity_is_modelled(ir: MechanicsProblemIRV1, entity_id: str) -> bool:
     """
 
     for entity in ir.entities:
-        if entity.entity_id != entity_id and _mentions_entity(entity, entity_id):
+        if entity.entity_id != entity_id and entity_id in _typed_entity_references(entity):
             return True
     return any(
-        _mentions_entity(getattr(ir, name), entity_id)
+        entity_id in _typed_entity_references(getattr(ir, name))
         for name in _ENTITY_REFERENCE_COLLECTIONS
     )
 
 
-def _declared_at_rest(ir: MechanicsProblemIRV1, entity_id: str) -> bool:
-    """True when the source states this entity does not move."""
+def _frame_moves(frame: IRReferenceFrame) -> bool:
+    """True when a frame is not the ground frame."""
 
-    return any(
-        state.subject_id == entity_id and state.state is StateValue.at_rest
-        for state in ir.state_conditions
+    return (
+        frame.translating_with_entity_id is not None
+        or frame.rotating_about_point_id is not None
+        or frame.frame_type
+        in {
+            ReferenceFrameType.translating,
+            ReferenceFrameType.rotating,
+            ReferenceFrameType.body_fixed,
+        }
     )
+
+
+def _rest_is_stated_in_a_moving_frame(
+    ir: MechanicsProblemIRV1, state: IRStateCondition
+) -> bool:
+    """True when 'at rest' is stated relative to something that itself moves.
+
+    An observer at rest in a translating frame is not at rest in the ground
+    frame, and exempting it would treat a genuinely relative problem as an
+    ordinary one.
+    """
+
+    frames = {item.frame_id: item for item in ir.reference_frames}
+    scoped = {
+        item.frame_id
+        for item in ir.quantities
+        if item.quantity_id in set(state.quantity_ids) and item.frame_id is not None
+    }
+    return any(
+        frame_id in frames and _frame_moves(frames[frame_id]) for frame_id in scoped
+    )
+
+
+def _declared_at_rest(ir: MechanicsProblemIRV1, entity_id: str) -> bool:
+    """True when the source states this entity does not move, without caveat.
+
+    Three declarations look like rest and are not.  Rest *at an event* is an
+    instant, not a description of the motion either side of it.  Rest over one
+    interval of several says nothing about the others, so it cannot stand in for
+    the whole question.  And rest stated in a frame that itself moves is not
+    rest in the ground frame at all.  Each of those still leaves an observer the
+    ground frame cannot describe, so none of them earns the exemption.
+    """
+
+    multiple_intervals = len(ir.motion_intervals) > 1
+    for state in ir.state_conditions:
+        if state.subject_id != entity_id or state.state is not StateValue.at_rest:
+            continue
+        if state.event_id is not None:
+            continue
+        if state.interval_id is not None and multiple_intervals:
+            continue
+        if _rest_is_stated_in_a_moving_frame(ir, state):
+            continue
+        return True
+    return False
 
 
 def _structural_specialization_issue(
@@ -638,34 +731,32 @@ def _structural_specialization_issue(
     # observer the typed model never refers to again is a name, not a frame of
     # reference; and an observer the source states is at rest describes the same
     # motion the ground frame does.
-    observer = next(
-        (
-            item
-            for item in ir.entities
-            if item.primitive is EntityPrimitive.reference_frame
-        ),
-        None,
-    )
-    if (
-        observer is not None
-        and frame is None
-        and query.target.role
-        in {
-            QuantityRole.position,
-            QuantityRole.displacement,
-            QuantityRole.velocity,
-            QuantityRole.speed,
-            QuantityRole.acceleration,
-        }
-        and _entity_is_modelled(ir, observer.entity_id)
-        and not _declared_at_rest(ir, observer.entity_id)
-    ):
-        return _issue(
-            CompilerIssueCode.requires_specialized_model,
-            "motion stated relative to a declared observer frame requires a specialized mechanics model",
-            f"queries.{query.query_id}.target.role",
-            observer.entity_id,
-        )
+    #
+    # A source may declare more than one observer, and they need not agree: a
+    # dangling name beside a real moving frame is one declaration too few to
+    # exempt the other.  So every declared observer is asked, and the first that
+    # genuinely makes the question relative decides — reading only the first
+    # would let a name shadow a frame.
+    if frame is None and query.target.role in {
+        QuantityRole.position,
+        QuantityRole.displacement,
+        QuantityRole.velocity,
+        QuantityRole.speed,
+        QuantityRole.acceleration,
+    }:
+        for observer in ir.entities:
+            if observer.primitive is not EntityPrimitive.reference_frame:
+                continue
+            if not _entity_is_modelled(ir, observer.entity_id):
+                continue
+            if _declared_at_rest(ir, observer.entity_id):
+                continue
+            return _issue(
+                CompilerIssueCode.requires_specialized_model,
+                "motion stated relative to a declared observer frame requires a specialized mechanics model",
+                f"queries.{query.query_id}.target.role",
+                observer.entity_id,
+            )
     return None
 
 
