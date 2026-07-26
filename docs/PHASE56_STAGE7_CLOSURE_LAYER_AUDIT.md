@@ -245,24 +245,37 @@ Checker.
 
 ## 10. Exact-head CI
 
-| Workflow | Result |
-|---|---|
-| Phase 56 Stage 7 offline evaluation | **SUCCESS** |
-| Phase 56 Stage 6 multimodal | **SUCCESS** |
-| Phase 55 textbook parser | **SUCCESS** |
-| DynaTutor release tests | **FAILURE** — one slow shard hit its timeout |
+All four workflows were dispatched against `eb595bef1ada2f8c00cfaf88ef3e400550621dbe`,
+whose `backend/`, `.github/`, `scripts/`, and `frontend/` trees are byte-identical
+to the code candidate `4cfd07b`; the only difference is this document.
 
-The release failure is a shard timeout, not an assertion failure: `backend fast`,
-`backend quality`, `backend performance`, and `frontend` all succeeded, and the
-failing step reports `[run_with_timeout] timed out after 240s` on
+| Workflow | Run | Result |
+|---|---:|---|
+| Phase 56 Stage 7 offline evaluation | `30190433296` | **SUCCESS** |
+| Phase 56 Stage 6 multimodal | `30190434064` | **SUCCESS** |
+| DynaTutor release tests | `30190436946` | **SUCCESS** |
+| Phase 55 textbook parser | `30190437749` | **SUCCESS** |
+
+### The release failure on the earlier head, and why it was a flake
+
+An earlier dispatch against `d58b6c0` — before the audit fixes landed — reported
+`DynaTutor release tests` as **FAILURE**. It was not an assertion failure:
+`backend fast`, `backend quality`, `backend performance`, and `frontend` all
+succeeded, and the failing step reported
+`[run_with_timeout] timed out after 240s` on
 `test_phase56_mechanics_incline_hanging_same_fixture_parity.py`.
 
 Measured back to back on an idle machine, that shard runs **211.2 s** at this
-head against **215.9 s** at the `6ed46e8` checkpoint. The shard already consumed
-about 90% of its 240 s budget before this branch existed, and two shards run
-concurrently on one runner. This is a pre-existing timing fragility surfaced by
-runner load, not a regression introduced here — but it is reported as a failure,
-not explained away, and the release workflow is **not** green at this head.
+head against **215.9 s** at the `6ed46e8` checkpoint, so the free-body
+completeness check costs nothing measurable. The shard already consumed about
+90% of its 240 s budget before this branch existed, and two shards run
+concurrently on one runner. The re-run at `eb595be` passed, which confirms the
+diagnosis: runner-load flakiness against a budget that is too tight for that
+shard, not a regression introduced here.
+
+The fragility is real and is left recorded rather than papered over: a shard at
+90% of its timeout will fail again under load. Widening that budget, or splitting
+the shard, is a separate change and was not made here.
 
 ## 11. What is not done
 
