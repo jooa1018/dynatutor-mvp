@@ -213,7 +213,58 @@ stand at 6 of 12 deferred, 2 of 2 needs_confirmation, 2 of 2 needs_figure, and
 1 of 1 insufficient_information. Solved is unchanged at 6 and no case regressed.
 The target was not lowered.
 
-## 9. What is not done
+## 9. Read-only audit (same-model, not an independent Checker)
+
+A fresh read-only pass over the whole diff found **0 blocking findings** and
+three non-blocking hazards, all of which were then closed rather than recorded:
+
+1. A declared `spring_oscillation` handed every Draft of that motion model an
+   approved `angular_natural_frequency`, whatever the source asked for. With the
+   stiffness re-owning that landed alongside it, that newly satisfied the
+   precondition of `vibration_natural_frequency` — an emitter that writes
+   ω² = k/m — for any query outside the compiler's period/frequency deferral
+   guard. The authority now travels only with the readout it licenses.
+2. The impulse transaction would have restamped a source-stated *magnitude* onto
+   `+x`, handing the solver a sign the source never gave.
+3. Both transactions rewrote the query's component unconditionally, so a
+   magnitude question could silently become a signed-component one.
+
+Each has a regression test. Closing all three moved no public-100 terminal.
+
+Audited and found clean: case-ID/family/split routing, expected-answer and gold
+leakage, raw-text keyword routing, direction and geometry preservation,
+unsupported silent solve, needs-confirmation auto-selection, answer/graph
+patching, root early discard, legacy fallback, report privacy, threshold
+relaxation, test deletion, workflow mutation, network or provider imports, and
+raw corpus commits. The free-body guard was confirmed to be purely withholding:
+its single call site's entire effect is `continue`, so it can remove an emission
+but never add one.
+
+This was a same-model read-only audit. It is not represented as an independent
+Checker.
+
+## 10. Exact-head CI
+
+| Workflow | Result |
+|---|---|
+| Phase 56 Stage 7 offline evaluation | **SUCCESS** |
+| Phase 56 Stage 6 multimodal | **SUCCESS** |
+| Phase 55 textbook parser | **SUCCESS** |
+| DynaTutor release tests | **FAILURE** — one slow shard hit its timeout |
+
+The release failure is a shard timeout, not an assertion failure: `backend fast`,
+`backend quality`, `backend performance`, and `frontend` all succeeded, and the
+failing step reports `[run_with_timeout] timed out after 240s` on
+`test_phase56_mechanics_incline_hanging_same_fixture_parity.py`.
+
+Measured back to back on an idle machine, that shard runs **211.2 s** at this
+head against **215.9 s** at the `6ed46e8` checkpoint. The shard already consumed
+about 90% of its 240 s budget before this branch existed, and two shards run
+concurrently on one runner. This is a pre-existing timing fragility surfaced by
+runner load, not a regression introduced here — but it is reported as a failure,
+not explained away, and the release workflow is **not** green at this head.
+
+## 11. What is not done
 
 - Lane B is **IN_PROGRESS**, not passed.
 - 6 of the 12 deferred cases reach `verified_unsupported`. The remaining 6 —
