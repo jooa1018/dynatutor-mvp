@@ -42,8 +42,17 @@ from evaluation.phase56_stage7.corpus_preflight import (  # noqa: E402
     load_public_cases,
     run_corpus_integrity_preflight,
 )
+from evaluation.phase56_stage7.blocked_law_diagnosis import (  # noqa: E402
+    diagnose_blocked_laws,
+)
+from evaluation.phase56_stage7.lane_b_draft_projection import (  # noqa: E402
+    project_case_to_draft,
+)
 from evaluation.phase56_stage7.lane_b_failure_matrix import (  # noqa: E402
     build_pipeline_failure_matrix,
+)
+from evaluation.phase56_stage7.law_prerequisites import (  # noqa: E402
+    law_context_for_projection,
 )
 from evaluation.phase56_stage7.evaluator_adapter import (  # noqa: E402
     assert_gold_domain_has_no_execution_authority,
@@ -266,6 +275,37 @@ def _lane_b_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutc
     )
 
 
+def _blocked_law_diagnosis_section(archive_path: Path | None) -> dict[str, Any]:
+    """Measure what each blocked law is really blocked on.
+
+    Diagnostic, never a gate.  It reports which typed structure each blocked
+    emission function stops at, and what the real engine does when that
+    structure is supplied — so the next package is chosen from a measured
+    unlock rather than from a declared-prerequisite gap that counts contexts the
+    law has nothing to do with.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        contexts = [
+            context
+            for context in (
+                law_context_for_projection(project_case_to_draft(case))
+                for case in (*public_dev, *public_adversarial)
+            )
+            if context is not None
+        ]
+        report = diagnose_blocked_laws(contexts)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(report.as_dict())
+    return section
+
+
 def _resolve_archive_path() -> Path | None:
     raw = os.environ.get(PUBLIC_CORPUS_PATH_ENV, "").strip()
     if not raw:
@@ -289,6 +329,9 @@ def build_report() -> tuple[dict[str, Any], bool]:
             archive_path if corpus_gate.passed else None
         )
         gates.append(lane_b_gate)
+        diagnosis_section = _blocked_law_diagnosis_section(
+            archive_path if corpus_gate.passed else None
+        )
 
     report: dict[str, Any] = {
         "schema": OFFLINE_GATE_SCHEMA,
@@ -304,6 +347,7 @@ def build_report() -> tuple[dict[str, Any], bool]:
         },
         "public_corpus": corpus_section,
         "lane_b": lane_b_section,
+        "blocked_law_diagnosis": diagnosis_section,
         "gates": [
             {"name": gate.name, "result": gate.result, "detail": gate.detail}
             for gate in gates
