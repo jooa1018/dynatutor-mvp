@@ -2,6 +2,8 @@
 
     MechanicsProblemDraftV1
       → LaneBAuthorityBundleV1 (evaluator-only assumption authority)
+      → complete-profile transactional closure
+      → event boundary derivation (typed boundary unknowns, transactional)
       → validate_draft
       → normalize_draft
       → authorize_validated_mechanics_ir
@@ -43,6 +45,9 @@ from engine.mechanics.verification.contracts import MechanicsSolveTerminal
 from evaluation.phase56_stage7.complete_profile_application import (
     close_projected_draft,
 )
+from evaluation.phase56_stage7.event_boundary_derivation import (
+    derive_event_boundaries,
+)
 from evaluation.phase56_stage7.lane_b_authority import (
     LaneBAuthorityError,
     build_lane_b_authority_bundle,
@@ -54,7 +59,7 @@ from evaluation.phase56_stage7.lane_b_draft_projection import (
 )
 
 
-LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v2"
+LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v3"
 
 _MAX_DIAGNOSTIC_CODES = 24
 
@@ -290,6 +295,11 @@ def run_lane_b_case(
         approved_assumption_ids=approved,
         authorized_assumptions=authority_map,
     ).draft
+    # Event boundary derivation follows closure and is transactional in the
+    # same way: the whole package of typed boundary unknowns is created, or
+    # the Draft above is kept exactly.  It creates existence, never values —
+    # the zeros themselves are the engine's own event boundary laws.
+    draft = derive_event_boundaries(draft).draft
     query_fields = _query_projection(draft)
 
     validation = validate_draft(
@@ -395,6 +405,12 @@ def run_lane_b_case(
             terminal = LaneBTerminal.compiler_unsupported
         else:
             terminal = LaneBTerminal.compiler_failure
+        # The compiler builds the graph before it judges it, so a blocked
+        # graph still names which laws wrote about it.  Recording them keeps
+        # the diagnosis honest — an underdetermined verdict with and without
+        # a law's equation are different states — and stays privacy-safe:
+        # law IDs are the engine's own closed vocabulary.
+        blocked_graph = compiled.graph
         return LaneBResult(
             execution_token,
             terminal,
@@ -403,6 +419,16 @@ def run_lane_b_case(
             compiler_codes=compiler_codes,
             compiler_code_paths=compiler_code_paths,
             calculation_fingerprint=fingerprint,
+            applied_law_ids=(
+                tuple(
+                    sorted({item.law_id for item in blocked_graph.applications})
+                )
+                if blocked_graph is not None
+                else ()
+            ),
+            equation_count=(
+                len(blocked_graph.equations) if blocked_graph is not None else 0
+            ),
             **query_fields,
         )
 

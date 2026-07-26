@@ -416,6 +416,13 @@ class EventKind(str, Enum):
     rope_slack = "rope_slack"
     finish = "finish"
     other = "other"
+    # Appended: vertical position extrema of a smooth trajectory.  These carry
+    # real boundary physics (the vertical velocity component is zero at the
+    # extremum instant) that a generic `reaches_condition` cannot state, so
+    # collapsing them loses semantics the source typed.  Append-only: nothing
+    # above changes meaning or order.
+    highest_point = "highest_point"
+    lowest_point = "lowest_point"
 
 
 class MotionInterval(StrictModel):

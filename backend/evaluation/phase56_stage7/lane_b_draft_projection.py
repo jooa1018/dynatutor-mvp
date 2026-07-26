@@ -64,7 +64,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v1"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v2"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -261,8 +261,11 @@ _EVENT_KINDS: dict[str, str] = {
     "just_after_collision": "other",
     "reaches_position": "reaches_condition",
     "reaches_height": "reaches_condition",
-    "highest_point": "reaches_condition",
-    "lowest_point": "reaches_condition",
+    # The extremum kinds are preserved, not collapsed: `highest_point` and
+    # `lowest_point` carry boundary physics (vertical velocity component zero
+    # at a smooth extremum) that a generic `reaches_condition` cannot state.
+    "highest_point": "highest_point",
+    "lowest_point": "lowest_point",
     "comes_to_rest": "comes_to_rest",
     "turnaround": "turnaround",
     "contact_lost": "contact_end",

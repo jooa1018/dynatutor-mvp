@@ -130,6 +130,9 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("vertical_circle_top_minimum_speed", "kinematics", (QuantityRole.radius, QuantityRole.gravity, QuantityRole.speed), cost=2, hooks=("kinematic_residual", "contact_validity")),
     _rule("gear_pitch_velocity", "constraint", (QuantityRole.angular_velocity, QuantityRole.radius), interactions=(InteractionKind.gear_contact.value,), cost=3, hooks=("constraint_residual",)),
     _rule("state_at_rest", "constraint", (QuantityRole.velocity,), cost=1, hooks=("boundary_residual",)),
+    _rule("event_vertical_extremum_velocity", "constraint", (QuantityRole.velocity,), cost=1, hooks=("boundary_residual",)),
+    _rule("event_turnaround_axis_velocity", "constraint", (QuantityRole.velocity,), cost=1, hooks=("boundary_residual",)),
+    _rule("event_comes_to_rest_velocity", "constraint", (QuantityRole.velocity,), cost=1, hooks=("boundary_residual",)),
     _rule("angular_position_derivative", "rigid_body_kinematics", (QuantityRole.angular_position, QuantityRole.angular_velocity, QuantityRole.time), cost=4, hooks=("derivative_residual",)),
     _rule("angular_velocity_derivative", "rigid_body_kinematics", (QuantityRole.angular_velocity, QuantityRole.angular_acceleration, QuantityRole.time), cost=4, hooks=("derivative_residual",)),
     _rule("fixed_axis_speed", "rigid_body_kinematics", (QuantityRole.angular_velocity, QuantityRole.radius, QuantityRole.speed), cost=3, hooks=("kinematic_residual",)),
@@ -688,6 +691,311 @@ def _projectile_boundary_emissions(context: LawContext) -> list[LawEmission]:
             )
         )
     return emitted
+
+
+# Typed event kinds that carry their own boundary physics, and the guards that
+# keep those statements exact.  An impulsive instant — a collision, a contact
+# change, a rope snapping taut or slack — breaks the smoothness a velocity
+# zero at an extremum or a turnaround relies on, so any such typed structure
+# touching the subject and interval fails the emission closed.
+_VERTICAL_EXTREMUM_EVENT_KINDS: frozenset[str] = frozenset(
+    {"highest_point", "lowest_point"}
+)
+_IMPULSIVE_EVENT_KINDS: frozenset[str] = frozenset(
+    {
+        "collision_start",
+        "collision_end",
+        "contact_start",
+        "contact_end",
+        "rope_taut",
+        "rope_slack",
+    }
+)
+# Interactions a smooth vertical extremum tolerates: free flight, and a
+# rope-guided arc (a pendulum's lowest point, a vertical circle's top).  A
+# contact cannot join — the surface's own shape at the extremum instant is
+# not typed, so its smoothness is unprovable and a kinked crest would break
+# the zero.
+_EXTREMUM_SMOOTH_INTERACTION_KINDS: frozenset[str] = frozenset(
+    {"gravity", "rope_tension"}
+)
+# A turnaround is a smooth reversal along the proven motion axis.  A contact
+# or a spring may carry it (a block sliding up an incline, a mass at maximum
+# compression); a collision may not — a bounce reverses at nonzero speed and
+# is typed as a collision, which the guard above already excludes.
+_TURNAROUND_SMOOTH_INTERACTION_KINDS: frozenset[str] = frozenset(
+    {"gravity", "rope_tension", "contact", "spring"}
+)
+_SIGNED_AXIS_COMPONENT_SET: frozenset[QuantityComponent] = frozenset(
+    {QuantityComponent.x, QuantityComponent.y, QuantityComponent.z}
+)
+
+
+def _event_boundary_emissions(context: LawContext) -> list[LawEmission]:
+    """Boundary velocity zeros licensed by typed event kinds alone.
+
+    A source that types an event ``highest_point`` or ``lowest_point`` has
+    stated that a smooth trajectory's world-vertical position reaches an
+    extremum there, and at a smooth extremum the **vertical velocity
+    component** is zero — never the speed, never the horizontal component.
+    ``turnaround`` states the signed velocity along the single proven motion
+    axis is zero at that instant.  ``comes_to_rest`` states the velocity
+    magnitude is zero for that subject at that event.
+
+    Every zero here is deterministic boundary physics carried by the typed
+    event kind — no raw problem wording, no answer, no source identity, and no
+    numeric source fact participates.  Emission is scope-exact and fails
+    closed: the event must be a declared boundary of an interval whose actors
+    include the subject (a segment-internal event is never promoted), the
+    vertical frame must be proven by the subject's own gravity interaction,
+    the motion axis must be unique where an axis is the claim, impulsive
+    structure at the instant refuses the smooth zeros, and anything ambiguous
+    — several candidate quantities, several gravity frames — emits nothing.
+    """
+
+    emitted: list[LawEmission] = []
+    velocities = _by_role(context, QuantityRole.velocity)
+
+    def subject_interval_interactions(
+        subject_id: str, interval_id: str
+    ) -> tuple[object, ...]:
+        return tuple(
+            item
+            for item in context.interactions
+            if subject_id in item.participant_ids
+            and item.interval_id in (None, interval_id)
+        )
+
+    def subject_has_collision(subject_id: str) -> bool:
+        return any(
+            item.kind is InteractionKind.collision
+            for item in context.interactions
+            if subject_id in item.participant_ids
+        )
+
+    def impulsive_instant(subject_id: str, interval) -> bool:
+        for other in context.events:
+            if other.kind.value not in _IMPULSIVE_EVENT_KINDS:
+                continue
+            if subject_id not in other.subject_ids:
+                continue
+            if interval.interval_id in other.interval_ids or other.event_id in (
+                interval.start_event_id,
+                interval.end_event_id,
+            ):
+                return True
+        return False
+
+    for event in context.events:
+        kind = event.kind.value
+        is_extremum = kind in _VERTICAL_EXTREMUM_EVENT_KINDS
+        if not is_extremum and kind not in {"turnaround", "comes_to_rest"}:
+            continue
+        for interval in context.motion_intervals:
+            if event.event_id not in (
+                interval.start_event_id,
+                interval.end_event_id,
+            ):
+                # A segment-internal event is never promoted to a boundary.
+                continue
+            for subject_id in event.subject_ids:
+                if subject_id not in interval.subject_ids:
+                    continue
+
+                if kind == "comes_to_rest":
+                    # An `at_rest` state condition already owns its instant
+                    # through the `state_at_rest` law; pinning the same
+                    # instant twice would duplicate the equation.
+                    if any(
+                        state.state is StateValue.at_rest
+                        and state.subject_id == subject_id
+                        and state.event_id == event.event_id
+                        for state in context.state_conditions
+                    ):
+                        continue
+                    # `|v| = 0` pins the magnitude, and — as a theorem, not a
+                    # new authority — every component with it.  The component
+                    # form is emitted only for the single axis the subject's
+                    # own signed kinematics prove, so a 2-D shape never gains
+                    # a per-axis zero from an ambiguous axis choice.
+                    targets: list[BoundQuantity] = []
+                    magnitude_candidates = tuple(
+                        q
+                        for q in velocities
+                        if q.subject_id == subject_id
+                        and q.interval_id == interval.interval_id
+                        and q.event_id == event.event_id
+                        and q.component is QuantityComponent.magnitude
+                        and q.shape is QuantityShape.scalar
+                    )
+                    if len(magnitude_candidates) == 1:
+                        targets.append(magnitude_candidates[0])
+                    rest_axis_pairs = {
+                        (q.component, q.frame_id)
+                        for q in context.quantities
+                        if q.subject_id == subject_id
+                        and q.interval_id == interval.interval_id
+                        and q.role
+                        in {
+                            QuantityRole.velocity,
+                            QuantityRole.acceleration,
+                            QuantityRole.displacement,
+                            QuantityRole.position,
+                        }
+                        and q.component in _SIGNED_AXIS_COMPONENT_SET
+                    }
+                    if len(rest_axis_pairs) == 1:
+                        component, frame_id = next(iter(rest_axis_pairs))
+                        if frame_id is not None:
+                            axis_candidates = tuple(
+                                q
+                                for q in velocities
+                                if q.subject_id == subject_id
+                                and q.interval_id == interval.interval_id
+                                and q.event_id == event.event_id
+                                and q.component is component
+                                and q.shape is QuantityShape.scalar
+                                and q.frame_id == frame_id
+                            )
+                            if len(axis_candidates) == 1:
+                                targets.append(axis_candidates[0])
+                    for target in targets:
+                        if any(
+                            state.state is StateValue.at_rest
+                            and state.subject_id == subject_id
+                            and target.quantity_id is not None
+                            and target.quantity_id in state.quantity_ids
+                            for state in context.state_conditions
+                        ):
+                            continue
+                        emitted.append(
+                            _emit(
+                                context,
+                                "event_comes_to_rest_velocity",
+                                Equality(
+                                    left=target.expression,
+                                    right=LiteralNode(
+                                        value=0.0, dimension=target.dimension
+                                    ),
+                                ),
+                                (target,),
+                                extra_evidence_ids=tuple(event.evidence_refs),
+                            )
+                        )
+                    continue
+
+                # The smooth zeros: a collision-bearing subject, or any
+                # impulsive event touching this subject and interval, breaks
+                # the smoothness the zero relies on.
+                if subject_has_collision(subject_id):
+                    continue
+                if impulsive_instant(subject_id, interval):
+                    continue
+                carried = subject_interval_interactions(
+                    subject_id, interval.interval_id
+                )
+
+                if is_extremum:
+                    if any(
+                        item.kind.value not in _EXTREMUM_SMOOTH_INTERACTION_KINDS
+                        for item in carried
+                    ):
+                        continue
+                    gravity_frames = {
+                        item.frame_id
+                        for item in carried
+                        if item.kind.value == "gravity"
+                        and item.frame_id is not None
+                    }
+                    if len(gravity_frames) != 1:
+                        # The vertical is proven by the subject's own gravity
+                        # interaction and its frame, or it is not proven.
+                        continue
+                    frame_id = next(iter(gravity_frames))
+                    candidates = tuple(
+                        q
+                        for q in velocities
+                        if q.subject_id == subject_id
+                        and q.interval_id == interval.interval_id
+                        and q.event_id == event.event_id
+                        and q.component is QuantityComponent.y
+                        and q.shape is QuantityShape.scalar
+                        and q.frame_id == frame_id
+                    )
+                    if len(candidates) != 1:
+                        continue
+                    target = candidates[0]
+                    emitted.append(
+                        _emit(
+                            context,
+                            "event_vertical_extremum_velocity",
+                            Equality(
+                                left=target.expression,
+                                right=LiteralNode(
+                                    value=0.0, dimension=target.dimension
+                                ),
+                            ),
+                            (target,),
+                            extra_evidence_ids=tuple(event.evidence_refs),
+                        )
+                    )
+                    continue
+
+                # Turnaround: the axis must be the single one every signed
+                # kinematic component of this subject and interval agrees on.
+                if any(
+                    item.kind.value not in _TURNAROUND_SMOOTH_INTERACTION_KINDS
+                    for item in carried
+                ):
+                    continue
+                axis_pairs = {
+                    (q.component, q.frame_id)
+                    for q in context.quantities
+                    if q.subject_id == subject_id
+                    and q.interval_id == interval.interval_id
+                    and q.role
+                    in {
+                        QuantityRole.velocity,
+                        QuantityRole.acceleration,
+                        QuantityRole.displacement,
+                        QuantityRole.position,
+                    }
+                    and q.component in _SIGNED_AXIS_COMPONENT_SET
+                }
+                if len(axis_pairs) != 1:
+                    continue
+                component, frame_id = next(iter(axis_pairs))
+                if frame_id is None:
+                    continue
+                candidates = tuple(
+                    q
+                    for q in velocities
+                    if q.subject_id == subject_id
+                    and q.interval_id == interval.interval_id
+                    and q.event_id == event.event_id
+                    and q.component is component
+                    and q.shape is QuantityShape.scalar
+                    and q.frame_id == frame_id
+                )
+                if len(candidates) != 1:
+                    continue
+                target = candidates[0]
+                emitted.append(
+                    _emit(
+                        context,
+                        "event_turnaround_axis_velocity",
+                        Equality(
+                            left=target.expression,
+                            right=LiteralNode(
+                                value=0.0, dimension=target.dimension
+                            ),
+                        ),
+                        (target,),
+                        extra_evidence_ids=tuple(event.evidence_refs),
+                    )
+                )
+    return emitted
+
 
 def _constant_angular_acceleration_emissions(
     context: LawContext,
@@ -10891,6 +11199,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_constant_velocity_emissions(context))
     emitted.extend(_constant_acceleration_emissions(context))
     emitted.extend(_projectile_boundary_emissions(context))
+    emitted.extend(_event_boundary_emissions(context))
     emitted.extend(_constant_angular_acceleration_emissions(context))
     emitted.extend(_chain_kinematics_emissions(context))
     emitted.extend(_incline_gravity_contact_emissions(context))

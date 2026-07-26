@@ -500,6 +500,7 @@ _INCREMENTAL_EMITTERS: tuple[str, ...] = (
     "_constant_velocity_emissions",
     "_constant_acceleration_emissions",
     "_projectile_boundary_emissions",
+    "_event_boundary_emissions",
     "_constant_angular_acceleration_emissions",
     "_chain_kinematics_emissions",
     "_incline_gravity_contact_emissions",

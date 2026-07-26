@@ -338,6 +338,64 @@ separate contract decision, measured here rather than assumed, and neither is
 touched by this transaction.  **Measured full-pipeline yield: 0 solved of 2
 applied**, public distribution unchanged, wrong solve 0.
 
+### The event semantic package, and what it measured
+
+The projection used to collapse the corpus's typed `highest_point` and
+`lowest_point` event kinds onto a generic `reaches_condition`, which loses
+boundary physics the source typed: at a smooth trajectory's vertical
+extremum the **vertical velocity component** is zero — never the speed,
+never the horizontal component.  That is closed now, end to end:
+
+- `EventKind` gains `highest_point` and `lowest_point` (append-only), and
+  the Stage 7 projection preserves the typed kinds (projection v2).
+- Three engine boundary laws emit zeros **from typed event kinds alone** —
+  `event_vertical_extremum_velocity` (v_y = 0 at a proven-vertical smooth
+  extremum), `event_turnaround_axis_velocity` (the single proven motion
+  axis's signed component), and `event_comes_to_rest_velocity` (the
+  magnitude, plus — as a theorem, `|v| = 0` implies every component — the
+  one proven axis component).  Fail-closed guards: the event must be a
+  declared interval boundary (a segment-internal event is never promoted),
+  the vertical must be proven by the subject's own gravity interaction and
+  frame, impulsive structure (collisions, contact changes, rope snap)
+  refuses the smooth zeros, an `at_rest` state condition keeps ownership of
+  its instant, and any ambiguity — several candidates, several frames, an
+  unproven axis — emits nothing.
+- An evaluator event-boundary derivation stage (between closure and
+  validation, transactional, full-Draft ID collision domain) creates the
+  boundary unknowns those laws write about — existence only, never values —
+  mirroring the laws' own conditions exactly so no dead unknown ever widens
+  a graph.
+
+**Measured on the public 100 (counts only): the distribution is unchanged**,
+and the package engages exactly where the typed structure licenses it —
+2 contexts derive boundary unknowns at `comes_to_rest` end boundaries
+(a stated-deceleration time question and an impulse-to-stop question), and
+`event_comes_to_rest_velocity` emits on both.  The free-flight pair is
+**not** an event-semantics case after all, which this measurement is the
+first to establish precisely:
+
+- The time-question context's end boundary is typed `reaches_condition` —
+  the corpus did not type it as an extremum — and no source fact values the
+  condition, so the wall recorded above stands exactly as stated.  Its
+  remaining gap is also structural on the query side: the question projects
+  as a `time`-role unknown while the algebraic endpoint laws consume a
+  `duration`-role quantity, so even a pinned end velocity would leave the
+  query symbol outside the equation component.
+- The angle context's `highest_point` event **is** typed — and is
+  segment-internal (the interval runs launch → landing; the apex is
+  mid-interval, and the question asks the height at that internal instant).
+  The no-promotion control refuses it correctly; closing it needs a
+  sub-interval contract decision on top of the §5 magnitude-with-angle
+  decomposition, and neither is invented here.
+
+25 positive/negative controls in
+`test_phase56_stage7_event_boundary_semantics.py` hold the package: the
+speed is never zeroed at an extremum, the stated initial velocity is never
+touched, another subject's or another interval's event licenses nothing,
+unproven frames and axes fail closed, unrelated `reaches_condition` events
+emit nothing, ID/order/gold-metadata tampering changes nothing, and the
+production path never imports the derivation module.
+
 Six of the eight ask for a readout owned by an aggregate, and the formed aggregate
 binding does not close at any measured rung — no law writes about the bound
 readout even with a frame and a minimal force profile supplied — so no
