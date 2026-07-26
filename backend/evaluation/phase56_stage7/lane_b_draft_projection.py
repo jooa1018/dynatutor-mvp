@@ -54,6 +54,7 @@ from engine.mechanics.contracts import (
     DRAFT_SCHEMA_VERSION,
     MechanicsProblemDraftV1,
 )
+from engine.mechanics.laws.event_boundary import NUMERIC_LICENSING_EVENT_KINDS
 from engine.textbook_parser.evidence_alignment import (
     _normalized_number,
     _unit_dimension,
@@ -64,7 +65,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v2"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v3"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -539,6 +540,11 @@ class DraftProjection:
     approvable_assumption_ids: tuple[str, ...] = ()
     known_symbol_ids: tuple[str, ...] = ()
     unknown_symbol_ids: tuple[str, ...] = ()
+    # Licensing events whose source authority could not be proven, as
+    # `(event_id, reason)` pairs over a closed reason vocabulary
+    # (`missing_quote`, `quote_not_found`, `quote_ambiguous`).  The events
+    # themselves stay in the Draft; only their equation licence is withheld.
+    event_authority_gaps: tuple[tuple[str, str], ...] = ()
 
     @property
     def projected(self) -> bool:
@@ -939,6 +945,7 @@ def project_case_to_draft(case: PublicCorpusCaseV1) -> DraftProjection:
         approvable_assumption_ids=projected.approvable_assumption_ids,
         known_symbol_ids=projected.known_symbol_ids,
         unknown_symbol_ids=projected.unknown_symbol_ids,
+        event_authority_gaps=projected.event_authority_gaps,
     )
 
 
@@ -976,6 +983,7 @@ class _PayloadProjection:
     approvable_assumption_ids: tuple[str, ...]
     known_symbol_ids: tuple[str, ...]
     unknown_symbol_ids: tuple[str, ...]
+    event_authority_gaps: tuple[tuple[str, str], ...]
 
 
 def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
@@ -1043,6 +1051,8 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
 
     events: list[dict[str, Any]] = []
     segment_internal: list[str] = []
+    source_evidence: list[dict[str, Any]] = []
+    event_authority_gaps: list[tuple[str, str]] = []
     for event in gold.events:
         kind = _EVENT_KINDS.get(event.kind)
         if kind is None:
@@ -1066,13 +1076,51 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             # The event occurs inside the segment without bounding it.  The
             # occurrence is recorded; it is never restated as a boundary.
             segment_internal.append(event.role)
+        # A numeric-licensing event kind (a vertical extremum, a turnaround,
+        # a comes-to-rest) needs its own source authority: the corpus event's
+        # stated evidence quote, resolved to the exact, unique span of the
+        # problem text and linked through `evidence_refs`.  Missing,
+        # unresolvable, or ambiguous evidence fails closed — the event itself
+        # is preserved, but it carries no authority and no boundary law will
+        # consume it.  No keyword or regex routing participates: the quote is
+        # the modeler's own statement, matched exactly.
+        event_refs: list[str] = []
+        if kind in NUMERIC_LICENSING_EVENT_KINDS:
+            quote = event.evidence_quote
+            if not quote:
+                event_authority_gaps.append((event.role, "missing_quote"))
+            else:
+                occurrences = quote_occurrences(problem_text, quote)
+                if not occurrences:
+                    event_authority_gaps.append((event.role, "quote_not_found"))
+                elif len(occurrences) > 1:
+                    event_authority_gaps.append((event.role, "quote_ambiguous"))
+                else:
+                    span = occurrences[0]
+                    digest = hashlib.sha256(
+                        event.role.encode("utf-8")
+                    ).hexdigest()[:16]
+                    evidence_id = f"ev_evt_{digest}"
+                    source_evidence.append(
+                        {
+                            "evidence_id": evidence_id,
+                            "kind": "text",
+                            "quote": problem_text[span.start : span.end],
+                            "occurrence_index": 0,
+                            "source_span": {
+                                "start": span.start,
+                                "end": span.end,
+                            },
+                        }
+                    )
+                    event_refs = [evidence_id]
         events.append(
             {
                 "event_id": event.role,
                 "kind": kind,
                 "subject_ids": list(event.subject_roles),
                 "interval_ids": membership,
-                "evidence_refs": [],
+                "evidence_refs": event_refs,
             }
         )
 
@@ -1109,7 +1157,6 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         item["event_id"]: frozenset(item["interval_ids"]) for item in events
     }
 
-    source_evidence: list[dict[str, Any]] = []
     quantities: list[dict[str, Any]] = []
     environment_scoped: list[str] = []
     interaction_owned: dict[str, list[str]] = {}
@@ -1526,6 +1573,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         approvable_assumption_ids=tuple(approved),
         known_symbol_ids=tuple(symbol["symbol_id"] for symbol in known_symbols),
         unknown_symbol_ids=tuple(symbol["symbol_id"] for symbol in unknown_symbols),
+        event_authority_gaps=tuple(sorted(event_authority_gaps)),
     )
 
 

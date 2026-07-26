@@ -108,7 +108,9 @@ def _record(*, top_kind: str = "highest_point", **gold_overrides) -> dict:
             "kind": top_kind,
             "subject_roles": ["stone"],
             "segment_role": "fall",
-            "evidence_quote": None,
+            # A licensing kind carries its own source authority: the quote
+            # resolves to the unique `최고점에 도달` span of the problem text.
+            "evidence_quote": "최고점에 도달",
         },
     ]
     gold["explicit_facts"] = [

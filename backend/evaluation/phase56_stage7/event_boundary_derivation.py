@@ -33,42 +33,32 @@ from dataclasses import dataclass
 from enum import Enum
 
 from engine.mechanics.contracts import MechanicsProblemDraftV1
+from engine.mechanics.laws import event_boundary as _event_boundary_contract
 
 from evaluation.phase56_stage7.complete_profile_application import (
     _authored_draft_ids,
 )
 
 EVENT_BOUNDARY_DERIVATION_VERSION = (
-    "phase56-stage7-event-boundary-derivation-v1"
+    "phase56-stage7-event-boundary-derivation-v2"
 )
 
-# Mirrors of the engine law tables.  These must stay exact copies of the
-# guards in ``engine.mechanics.laws.core._event_boundary_emissions``: the law
-# is the authority, and this stage creates only what that authority will
-# provably consume.
-_VERTICAL_EXTREMUM_EVENT_KINDS: frozenset[str] = frozenset(
-    {"highest_point", "lowest_point"}
+# The engine law tables, imported from the shared eligibility contract in
+# ``engine.mechanics.laws.event_boundary``.  The law is the authority, and
+# this stage creates only what that authority will provably consume; sharing
+# one source makes drift between the two impossible rather than forbidden.
+_VERTICAL_EXTREMUM_EVENT_KINDS = (
+    _event_boundary_contract.VERTICAL_EXTREMUM_EVENT_KINDS
 )
-_IMPULSIVE_EVENT_KINDS: frozenset[str] = frozenset(
-    {
-        "collision_start",
-        "collision_end",
-        "contact_start",
-        "contact_end",
-        "rope_taut",
-        "rope_slack",
-    }
+_IMPULSIVE_EVENT_KINDS = _event_boundary_contract.IMPULSIVE_EVENT_KINDS
+_EXTREMUM_SMOOTH_INTERACTION_KINDS = (
+    _event_boundary_contract.EXTREMUM_SMOOTH_INTERACTION_KINDS
 )
-_EXTREMUM_SMOOTH_INTERACTION_KINDS: frozenset[str] = frozenset(
-    {"gravity", "rope_tension"}
+_TURNAROUND_SMOOTH_INTERACTION_KINDS = (
+    _event_boundary_contract.TURNAROUND_SMOOTH_INTERACTION_KINDS
 )
-_TURNAROUND_SMOOTH_INTERACTION_KINDS: frozenset[str] = frozenset(
-    {"gravity", "rope_tension", "contact", "spring"}
-)
-_SIGNED_AXIS_COMPONENTS: frozenset[str] = frozenset({"x", "y", "z"})
-_AXIS_BEARING_ROLES: frozenset[str] = frozenset(
-    {"velocity", "acceleration", "displacement", "position"}
-)
+_SIGNED_AXIS_COMPONENTS = _event_boundary_contract.SIGNED_AXIS_COMPONENTS
+_AXIS_BEARING_ROLES = _event_boundary_contract.AXIS_BEARING_ROLES
 _VELOCITY_DIMENSION: dict[str, int] = {"length": 1, "time": -1}
 
 
@@ -187,6 +177,13 @@ def _plan_candidates(payload: dict) -> list[dict] | None:
         kind = event["kind"]
         is_extremum = kind in _VERTICAL_EXTREMUM_EVENT_KINDS
         if not is_extremum and kind not in {"turnaround", "comes_to_rest"}:
+            continue
+        if not _event_boundary_contract.is_boundary_eligible(
+            kind, event.get("evidence_refs") or ()
+        ):
+            # The same shared authority predicate the engine law applies: a
+            # licensing kind without linked source evidence licenses nothing,
+            # so no unknown is created for it either.
             continue
         for interval in intervals:
             if event["event_id"] not in (

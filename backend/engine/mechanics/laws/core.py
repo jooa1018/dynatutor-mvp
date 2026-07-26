@@ -20,6 +20,7 @@ from engine.mechanics.contracts import (
     StateKind,
     StateValue,
 )
+from engine.mechanics.laws import event_boundary as _event_boundary_contract
 from engine.mechanics.laws.base import (
     BoundQuantity,
     InitialConditionBinding,
@@ -694,40 +695,24 @@ def _projectile_boundary_emissions(context: LawContext) -> list[LawEmission]:
 
 
 # Typed event kinds that carry their own boundary physics, and the guards that
-# keep those statements exact.  An impulsive instant — a collision, a contact
-# change, a rope snapping taut or slack — breaks the smoothness a velocity
-# zero at an extremum or a turnaround relies on, so any such typed structure
-# touching the subject and interval fails the emission closed.
-_VERTICAL_EXTREMUM_EVENT_KINDS: frozenset[str] = frozenset(
-    {"highest_point", "lowest_point"}
+# keep those statements exact.  The tables live in the shared eligibility
+# contract (`engine.mechanics.laws.event_boundary`) so this law and the
+# Stage 7 evaluator derivation can never drift apart; the aliases below keep
+# this module's established names.
+_VERTICAL_EXTREMUM_EVENT_KINDS = _event_boundary_contract.VERTICAL_EXTREMUM_EVENT_KINDS
+_IMPULSIVE_EVENT_KINDS = _event_boundary_contract.IMPULSIVE_EVENT_KINDS
+_EXTREMUM_SMOOTH_INTERACTION_KINDS = (
+    _event_boundary_contract.EXTREMUM_SMOOTH_INTERACTION_KINDS
 )
-_IMPULSIVE_EVENT_KINDS: frozenset[str] = frozenset(
-    {
-        "collision_start",
-        "collision_end",
-        "contact_start",
-        "contact_end",
-        "rope_taut",
-        "rope_slack",
-    }
-)
-# Interactions a smooth vertical extremum tolerates: free flight, and a
-# rope-guided arc (a pendulum's lowest point, a vertical circle's top).  A
-# contact cannot join — the surface's own shape at the extremum instant is
-# not typed, so its smoothness is unprovable and a kinked crest would break
-# the zero.
-_EXTREMUM_SMOOTH_INTERACTION_KINDS: frozenset[str] = frozenset(
-    {"gravity", "rope_tension"}
-)
-# A turnaround is a smooth reversal along the proven motion axis.  A contact
-# or a spring may carry it (a block sliding up an incline, a mass at maximum
-# compression); a collision may not — a bounce reverses at nonzero speed and
-# is typed as a collision, which the guard above already excludes.
-_TURNAROUND_SMOOTH_INTERACTION_KINDS: frozenset[str] = frozenset(
-    {"gravity", "rope_tension", "contact", "spring"}
+_TURNAROUND_SMOOTH_INTERACTION_KINDS = (
+    _event_boundary_contract.TURNAROUND_SMOOTH_INTERACTION_KINDS
 )
 _SIGNED_AXIS_COMPONENT_SET: frozenset[QuantityComponent] = frozenset(
-    {QuantityComponent.x, QuantityComponent.y, QuantityComponent.z}
+    QuantityComponent(value)
+    for value in _event_boundary_contract.SIGNED_AXIS_COMPONENTS
+)
+_AXIS_BEARING_ROLE_SET: frozenset[QuantityRole] = frozenset(
+    QuantityRole(value) for value in _event_boundary_contract.AXIS_BEARING_ROLES
 )
 
 
@@ -791,6 +776,12 @@ def _event_boundary_emissions(context: LawContext) -> list[LawEmission]:
         is_extremum = kind in _VERTICAL_EXTREMUM_EVENT_KINDS
         if not is_extremum and kind not in {"turnaround", "comes_to_rest"}:
             continue
+        if not _event_boundary_contract.is_boundary_eligible(
+            kind, event.evidence_refs
+        ):
+            # A licensing kind without linked source evidence has stated a
+            # label and nothing else; a label alone is not equation authority.
+            continue
         for interval in context.motion_intervals:
             if event.event_id not in (
                 interval.start_event_id,
@@ -835,13 +826,7 @@ def _event_boundary_emissions(context: LawContext) -> list[LawEmission]:
                         for q in context.quantities
                         if q.subject_id == subject_id
                         and q.interval_id == interval.interval_id
-                        and q.role
-                        in {
-                            QuantityRole.velocity,
-                            QuantityRole.acceleration,
-                            QuantityRole.displacement,
-                            QuantityRole.position,
-                        }
+                        and q.role in _AXIS_BEARING_ROLE_SET
                         and q.component in _SIGNED_AXIS_COMPONENT_SET
                     }
                     if len(rest_axis_pairs) == 1:
@@ -953,13 +938,7 @@ def _event_boundary_emissions(context: LawContext) -> list[LawEmission]:
                     for q in context.quantities
                     if q.subject_id == subject_id
                     and q.interval_id == interval.interval_id
-                    and q.role
-                    in {
-                        QuantityRole.velocity,
-                        QuantityRole.acceleration,
-                        QuantityRole.displacement,
-                        QuantityRole.position,
-                    }
+                    and q.role in _AXIS_BEARING_ROLE_SET
                     and q.component in _SIGNED_AXIS_COMPONENT_SET
                 }
                 if len(axis_pairs) != 1:
