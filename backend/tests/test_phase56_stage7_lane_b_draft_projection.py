@@ -169,16 +169,19 @@ def test_blocker_a_event_keeps_its_instant_without_faking_a_boundary() -> None:
     mid = next(event for event in draft.events if event.event_id == "instant")
     # `interval_ids` is the typed reciprocal of an interval's own boundary
     # declaration.  A segment-internal event bounds nothing, so it declares
-    # nothing, and the interval never adopts it as an endpoint.
+    # nothing, and the interval never adopts it as an endpoint.  Its proven
+    # occupancy is a separate, strictly weaker typed claim.
     assert mid.interval_ids == []
+    assert mid.occurs_in_interval_ids == [interval.interval_id]
     assert interval.start_event_id != "instant"
     assert interval.end_event_id != "instant"
     assert "instant" in projection.segment_internal_event_ids
-    # The query keeps the instant itself as its precise scope; it does not
-    # restate a segment boundary the source never declared.
+    # The query keeps the instant as its precise scope *and* the occupied
+    # interval — occupancy makes that legal without restating a boundary the
+    # source never declared.
     target = draft.queries[0].target
     assert target.event_id == "instant"
-    assert target.interval_id is None
+    assert target.interval_id == interval.interval_id
     assert target.subject_id == "box"
 
 

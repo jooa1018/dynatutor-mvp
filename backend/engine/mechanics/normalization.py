@@ -131,6 +131,7 @@ _DROP_KEYS = frozenset({
 _TOP_LEVEL_DIAGNOSTIC_KEYS = frozenset({"assumptions"})
 _SET_LIKE_KEYS = frozenset({
     "participant_ids", "point_ids", "quantity_ids", "subject_ids", "interval_ids",
+    "occurs_in_interval_ids",
     "scope_ids", "referenced_ids", "generalized_coordinate_symbol_ids",
 })
 

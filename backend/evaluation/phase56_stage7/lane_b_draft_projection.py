@@ -17,9 +17,11 @@ Two corpus structures are preserved rather than flattened:
 * **Segment-internal event** — an event that occurs inside a segment without
   bounding it is never promoted to that segment's start or end boundary.
   `Event.interval_ids` is the typed reciprocal of an interval's own boundary
-  declaration, so a segment-internal event declares none, and the records that
-  reference it keep the event as their precise instant scope rather than
-  restating a boundary the source never declared.
+  declaration, so a segment-internal event declares none there; its provable
+  occupancy is preserved separately in `Event.occurs_in_interval_ids`, and
+  records that reference the event keep both the precise instant scope and
+  the occupied interval without ever restating a boundary the source never
+  declared.
 * **Relation-scoped timeless environment fact** — an environment entity is
   never promoted to an interval subject.  Its quantity keeps the environment
   entity as `subject_id` and stays timeless, and is only admitted when exactly
@@ -65,7 +67,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v3"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v4"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -1072,10 +1074,17 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             boundary_slots=boundary_slots,
             actors_by_interval=actors_by_interval,
         )
+        occurrence: list[str] = []
         if event.segment_role is not None and not membership:
             # The event occurs inside the segment without bounding it.  The
-            # occurrence is recorded; it is never restated as a boundary.
+            # occurrence is preserved as a typed scope of its own —
+            # `occurs_in_interval_ids` — and is never restated as a boundary.
+            # The claim is only made when the event's subjects provably
+            # belong to the occupying interval; otherwise the event stays,
+            # scopeless, rather than carrying an unproven occupancy.
             segment_internal.append(event.role)
+            if set(event.subject_roles) <= actors_by_interval[event.segment_role]:
+                occurrence = [event.segment_role]
         # A numeric-licensing event kind (a vertical extremum, a turnaround,
         # a comes-to-rest) needs its own source authority: the corpus event's
         # stated evidence quote, resolved to the exact, unique span of the
@@ -1120,6 +1129,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "kind": kind,
                 "subject_ids": list(event.subject_roles),
                 "interval_ids": membership,
+                "occurs_in_interval_ids": occurrence,
                 "evidence_refs": event_refs,
             }
         )
@@ -1149,12 +1159,21 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                     boundary_slots=boundary_slots,
                     actors_by_interval=actors_by_interval,
                 ),
+                # A synthesized event exists only because an interval names
+                # it as a boundary; it occupies nothing.
+                "occurs_in_interval_ids": [],
                 "evidence_refs": [],
             }
         )
     event_ids = {item["event_id"] for item in events}
-    bounded_intervals_by_event = {
-        item["event_id"]: frozenset(item["interval_ids"]) for item in events
+    # An event's typed interval reach: the intervals it bounds plus the
+    # intervals it provably occurs within.  Records scoped to a
+    # (segment, internal event) pair keep both dimensions — the occurrence
+    # scope makes that legal without ever claiming a boundary.
+    interval_reach_by_event = {
+        item["event_id"]: frozenset(item["interval_ids"])
+        | frozenset(item["occurs_in_interval_ids"])
+        for item in events
     }
 
     quantities: list[dict[str, Any]] = []
@@ -1198,7 +1217,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             intervals_by_id,
         )
         interval_id, event_id = _typed_scope(
-            fact.segment_role, fact_event_role, bounded_intervals_by_event
+            fact.segment_role, fact_event_role, interval_reach_by_event
         )
         if interval_id is not None:
             actors = actors_by_interval.get(interval_id, set())
@@ -1481,7 +1500,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             intervals_by_id,
         )
         query_interval_id, query_event_id = _typed_scope(
-            query.segment_role, query_event_role, bounded_intervals_by_event
+            query.segment_role, query_event_role, interval_reach_by_event
         )
         # The query target is a quantity the source does *not* state.  It keeps
         # the full subject/interval/event/component identity of the question and
@@ -1709,20 +1728,22 @@ def _interaction_interval(
 def _typed_scope(
     interval_id: str | None,
     event_id: str | None,
-    bounded_intervals_by_event: Mapping[str, frozenset[str]],
+    interval_reach_by_event: Mapping[str, frozenset[str]],
 ) -> tuple[str | None, str | None]:
     """Reduce a corpus (segment, event) pair to the scope the IR can express.
 
-    The typed IR admits an interval *and* an event on one record only when the
-    event bounds that interval; that is the same reciprocity the compiler
-    enforces.  When the event is segment-internal, the event is the precise
-    scope on its own — restating the segment would claim a boundary the source
-    never declared, and dropping the event would lose the instant.
+    The typed IR admits an interval *and* an event on one record when the
+    event either bounds that interval or provably occurs within it — the
+    same reach the compiler's reciprocity checks accept.  Occurrence never
+    claims a boundary: `MotionInterval.start_event_id`/`end_event_id` stay
+    the sole boundary authority, and a record scoped to an internal instant
+    keeps its interval through `occurs_in_interval_ids` alone.  An event
+    with neither claim keeps the instant and drops the unproven interval.
     """
 
     if event_id is None:
         return interval_id, None
-    if interval_id is not None and interval_id in bounded_intervals_by_event.get(
+    if interval_id is not None and interval_id in interval_reach_by_event.get(
         event_id, frozenset()
     ):
         return interval_id, event_id

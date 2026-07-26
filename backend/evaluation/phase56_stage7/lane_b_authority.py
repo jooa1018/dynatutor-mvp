@@ -117,16 +117,20 @@ def _enum_value(value: object) -> object:
 def _event_interval_reach(
     draft: MechanicsProblemDraftV1,
 ) -> Mapping[str, frozenset[str]]:
-    """Which intervals each event provably touches: membership plus boundary.
+    """Which intervals each event provably touches: membership, occupancy,
+    and boundary.
 
-    ``Event.interval_ids`` is the event's own declared membership; an interval
-    whose ``start_event_id``/``end_event_id`` names the event touches it from
-    the interval side.  Both are typed source structure — nothing here reads
-    raw text.
+    ``Event.interval_ids`` is the event's own declared membership,
+    ``Event.occurs_in_interval_ids`` its proven interior occupancy, and an
+    interval whose ``start_event_id``/``end_event_id`` names the event
+    touches it from the interval side.  All three are typed source
+    structure — nothing here reads raw text.
     """
 
     reach: dict[str, set[str]] = {
-        event.event_id: set(event.interval_ids) for event in draft.events
+        event.event_id: set(event.interval_ids)
+        | set(event.occurs_in_interval_ids)
+        for event in draft.events
     }
     for interval in draft.motion_intervals:
         for boundary in (interval.start_event_id, interval.end_event_id):

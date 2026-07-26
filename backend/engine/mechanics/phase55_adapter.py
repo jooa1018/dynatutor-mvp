@@ -492,7 +492,21 @@ def adapt_validated_phase55(
         event_kind = _EVENTS.get(item.kind.value)
         if event_kind is None:
             return _failure(_issue(MechanicsIssueCode.schema_error, "event kind has no conservative mapping", f"events.{source}"))
-        mapped_events.append(Event(event_id=event_id(source), kind=event_kind, subject_ids=[entity_id(x) for x in item.subject_ids], interval_ids=[interval_id(item.segment_id)] if item.segment_id else []))
+        # A segment reference is a boundary claim only when the segment's own
+        # start/end names this event; otherwise the event merely occurs
+        # within the segment and must not forge an endpoint.
+        boundary_interval_ids: list[str] = []
+        occurrence_interval_ids: list[str] = []
+        if item.segment_id:
+            segment = segments_by_id.get(item.segment_id)
+            if segment is not None and source in (
+                segment.start_event_id,
+                segment.end_event_id,
+            ):
+                boundary_interval_ids = [interval_id(item.segment_id)]
+            else:
+                occurrence_interval_ids = [interval_id(item.segment_id)]
+        mapped_events.append(Event(event_id=event_id(source), kind=event_kind, subject_ids=[entity_id(x) for x in item.subject_ids], interval_ids=boundary_interval_ids, occurs_in_interval_ids=occurrence_interval_ids))
 
     evidence, quantities = [], []
     for source in selected_facts:

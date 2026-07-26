@@ -440,8 +440,29 @@ class Event(StrictModel):
     kind: EventKind
     subject_ids: list[Identifier] = Field(default_factory=list, max_length=64)
     interval_ids: list[Identifier] = Field(default_factory=list, max_length=16)
+    # Appended: intervals this event occurs *within* without bounding.
+    # `interval_ids` stays the typed reciprocal of
+    # MotionInterval.start_event_id / end_event_id — the sole boundary
+    # authority.  Occurrence is a disjoint, strictly weaker claim: "this
+    # instant lies inside that interval".  An interval is bounded or
+    # occupied by an event, never both, and no downstream stage may promote
+    # an occurrence into a boundary.
+    occurs_in_interval_ids: list[Identifier] = Field(
+        default_factory=list, max_length=16
+    )
     time_quantity_id: Identifier | None = None
     evidence_refs: list[Identifier] = Field(default_factory=list, max_length=16)
+
+    @model_validator(mode="after")
+    def validate_occurrence_is_not_a_boundary(self) -> "Event":
+        occurrence = list(self.occurs_in_interval_ids)
+        if len(set(occurrence)) != len(occurrence):
+            raise ValueError("event occurrence intervals must be unique")
+        if set(occurrence) & set(self.interval_ids):
+            raise ValueError(
+                "an interval is bounded or occupied by an event, never both"
+            )
+        return self
 
 
 class QuantityRole(str, Enum):
@@ -935,6 +956,9 @@ class IREvent(Event):
 
     subject_ids: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=64)
     interval_ids: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=16)
+    occurs_in_interval_ids: tuple[Identifier, ...] = Field(
+        default_factory=tuple, max_length=16
+    )
     evidence_refs: tuple[Identifier, ...] = Field(default_factory=tuple, max_length=16)
 
 

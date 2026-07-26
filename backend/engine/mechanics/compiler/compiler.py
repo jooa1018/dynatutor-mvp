@@ -147,6 +147,20 @@ def authorize_validated_mechanics_ir(ir: object) -> ValidatedIRAuthorization:
     return ValidatedIRAuthorization(ir_sha256=_validated_ir_digest(safe_ir))
 
 
+def _event_interval_reach(event: object) -> frozenset[str]:
+    """The intervals an event bounds plus those it provably occurs within.
+
+    Boundary authority stays with ``MotionInterval.start_event_id`` /
+    ``end_event_id`` — the occurrence field never adds a boundary, it only
+    widens the scope a record may legally claim when it names both the
+    interval and an instant strictly inside it.
+    """
+
+    return frozenset(getattr(event, "interval_ids", ())) | frozenset(
+        getattr(event, "occurs_in_interval_ids", ())
+    )
+
+
 def _sorted_unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(set(values)))
 
@@ -7631,7 +7645,7 @@ def _structural_reference_issue(ir: MechanicsProblemIRV1, query: IRQuery) -> Com
             event_intervals = {
                 linked_interval
                 for linked_event in events_in_expression
-                for linked_interval in events[linked_event].interval_ids
+                for linked_interval in _event_interval_reach(events[linked_event])
             }
             if len(event_intervals) != 1 or (interval_id is not None and event_intervals != {interval_id}):
                 return _issue(CompilerIssueCode.invalid_binding, "relation expression combines events outside one reciprocal interval", path)
@@ -7685,12 +7699,21 @@ def _structural_reference_issue(ir: MechanicsProblemIRV1, query: IRQuery) -> Com
     for event in ir.events:
         bad_subject = unresolved_refs(event.subject_ids, entity_ids)
         bad_interval = unresolved_refs(event.interval_ids, interval_ids)
-        if bad_subject or bad_interval or missing(event.time_quantity_id, quantity_ids):
-            return _issue(CompilerIssueCode.invalid_binding, "event subject, interval, or time quantity does not resolve", f"events.{event.event_id}", bad_subject or bad_interval or event.time_quantity_id)
+        bad_occurrence = unresolved_refs(event.occurs_in_interval_ids, interval_ids)
+        if bad_subject or bad_interval or bad_occurrence or missing(event.time_quantity_id, quantity_ids):
+            return _issue(CompilerIssueCode.invalid_binding, "event subject, interval, or time quantity does not resolve", f"events.{event.event_id}", bad_subject or bad_interval or bad_occurrence or event.time_quantity_id)
         for interval_id in event.interval_ids:
             interval = intervals[interval_id]
             if event.event_id not in {interval.start_event_id, interval.end_event_id} or not set(event.subject_ids).issubset(interval.subject_ids):
                 return _issue(CompilerIssueCode.invalid_binding, "event and interval membership must be reciprocal", f"events.{event.event_id}.interval_ids", interval_id)
+        for interval_id in event.occurs_in_interval_ids:
+            # The inverse of the boundary reciprocity: an occurrence must be
+            # strictly interval-internal.  An interval whose declared start
+            # or end is this event cannot also be occupied by it, and the
+            # occupying interval's actors must carry the event's subjects.
+            interval = intervals[interval_id]
+            if event.event_id in {interval.start_event_id, interval.end_event_id} or not set(event.subject_ids).issubset(interval.subject_ids):
+                return _issue(CompilerIssueCode.invalid_binding, "event occurrence scope must be interval-internal", f"events.{event.event_id}.occurs_in_interval_ids", interval_id)
         if event.time_quantity_id is not None:
             time_quantity = quantities[event.time_quantity_id]
             if time_quantity.role is not QuantityRole.time or time_quantity.event_id not in {None, event.event_id}:
@@ -7726,7 +7749,7 @@ def _structural_reference_issue(ir: MechanicsProblemIRV1, query: IRQuery) -> Com
         return _issue(CompilerIssueCode.invalid_binding, "query subject is outside the query interval", f"queries.{query.query_id}.target.interval_id", target.interval_id)
     if target.event_id is not None:
         event = events[target.event_id]
-        if target.subject_id not in event.subject_ids or (target.interval_id is not None and target.interval_id not in event.interval_ids):
+        if target.subject_id not in event.subject_ids or (target.interval_id is not None and target.interval_id not in _event_interval_reach(event)):
             return _issue(CompilerIssueCode.invalid_binding, "query event is outside reciprocal subject/interval scope", f"queries.{query.query_id}.target.event_id", target.event_id)
     direction = target.direction
     if direction is not None and (missing(getattr(direction, "frame_id", None), frame_ids) or missing(getattr(direction, "symbol_id", None), symbol_ids)):
@@ -7775,7 +7798,8 @@ def _structural_reference_issue(ir: MechanicsProblemIRV1, query: IRQuery) -> Com
         if quantity.event_id is not None:
             event = events[quantity.event_id]
             if quantity.subject_id not in event.subject_ids or (
-                quantity.interval_id is not None and quantity.interval_id not in event.interval_ids
+                quantity.interval_id is not None
+                and quantity.interval_id not in _event_interval_reach(event)
             ):
                 return _issue(CompilerIssueCode.invalid_binding, "quantity event binding is outside reciprocal subject/interval scope", f"quantities.{quantity.quantity_id}.event_id", quantity.event_id)
         direction = quantity.direction
@@ -7822,7 +7846,8 @@ def _structural_reference_issue(ir: MechanicsProblemIRV1, query: IRQuery) -> Com
         if interaction.event_id is not None:
             event = events[interaction.event_id]
             if not set(interaction.participant_ids).issubset(event.subject_ids) or (
-                interaction.interval_id is not None and interaction.interval_id not in event.interval_ids
+                interaction.interval_id is not None
+                and interaction.interval_id not in _event_interval_reach(event)
             ):
                 return _issue(CompilerIssueCode.invalid_binding, "interaction event is outside reciprocal participant/interval scope", f"interactions.{interaction.interaction_id}.event_id", interaction.event_id)
         for quantity_id in interaction.quantity_ids:
@@ -7869,7 +7894,7 @@ def _structural_reference_issue(ir: MechanicsProblemIRV1, query: IRQuery) -> Com
         bad_subject = unresolved_refs(constraint.subject_ids, entity_ids | point_ids)
         if bad_subject or missing(constraint.interval_id, interval_ids) or missing(constraint.event_id, event_ids):
             return _issue(CompilerIssueCode.invalid_binding, "constraint subject, interval, or event does not resolve", f"constraints.{constraint.constraint_id}", bad_subject or constraint.interval_id or constraint.event_id)
-        if constraint.event_id is not None and constraint.interval_id is not None and constraint.interval_id not in events[constraint.event_id].interval_ids:
+        if constraint.event_id is not None and constraint.interval_id is not None and constraint.interval_id not in _event_interval_reach(events[constraint.event_id]):
             return _issue(CompilerIssueCode.invalid_binding, "constraint event and interval are not reciprocal", f"constraints.{constraint.constraint_id}.event_id", constraint.event_id)
         bad = bad_evidence(constraint)
         if bad:
@@ -7889,7 +7914,7 @@ def _structural_reference_issue(ir: MechanicsProblemIRV1, query: IRQuery) -> Com
             return _issue(CompilerIssueCode.invalid_binding, "state subject, quantity, interval, or event does not resolve", f"state_conditions.{state.state_condition_id}", bad_quantity or state.subject_id)
         if state.event_id is not None:
             event = events[state.event_id]
-            if state.subject_id not in event.subject_ids or (state.interval_id is not None and state.interval_id not in event.interval_ids):
+            if state.subject_id not in event.subject_ids or (state.interval_id is not None and state.interval_id not in _event_interval_reach(event)):
                 return _issue(CompilerIssueCode.invalid_binding, "state event is outside reciprocal subject/interval scope", f"state_conditions.{state.state_condition_id}.event_id", state.event_id)
         for quantity_id in state.quantity_ids:
             quantity = quantities[quantity_id]

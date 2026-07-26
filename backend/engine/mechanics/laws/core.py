@@ -764,9 +764,14 @@ def _event_boundary_emissions(context: LawContext) -> list[LawEmission]:
                 continue
             if subject_id not in other.subject_ids:
                 continue
-            if interval.interval_id in other.interval_ids or other.event_id in (
-                interval.start_event_id,
-                interval.end_event_id,
+            if (
+                interval.interval_id in other.interval_ids
+                or interval.interval_id in other.occurs_in_interval_ids
+                or other.event_id
+                in (
+                    interval.start_event_id,
+                    interval.end_event_id,
+                )
             ):
                 return True
         return False
@@ -783,12 +788,32 @@ def _event_boundary_emissions(context: LawContext) -> list[LawEmission]:
             # label and nothing else; a label alone is not equation authority.
             continue
         for interval in context.motion_intervals:
-            if event.event_id not in (
+            boundary = event.event_id in (
                 interval.start_event_id,
                 interval.end_event_id,
-            ):
-                # A segment-internal event is never promoted to a boundary.
+            )
+            internal = interval.interval_id in event.occurs_in_interval_ids
+            if not boundary and not internal:
+                # An event with neither a boundary nor a proven occurrence
+                # claim on this interval states nothing about it.
                 continue
+            if internal:
+                # The interior mode: by Fermat's theorem a differentiable
+                # trajectory's interior extremum has a zero derivative, so
+                # only the vertical extremum kinds qualify — a turnaround's
+                # axis proof and a rest instant's ownership rule reason about
+                # the interval's endpoints and stay boundary-only.  The
+                # occupied span must be closed and non-degenerate, or
+                # "interior" is not even well defined.  An occurrence is
+                # never a boundary: the contract keeps the two disjoint.
+                if not is_extremum:
+                    continue
+                if (
+                    interval.start_event_id is None
+                    or interval.end_event_id is None
+                    or interval.start_event_id == interval.end_event_id
+                ):
+                    continue
             for subject_id in event.subject_ids:
                 if subject_id not in interval.subject_ids:
                     continue
@@ -897,6 +922,22 @@ def _event_boundary_emissions(context: LawContext) -> list[LawEmission]:
                         # interaction and its frame, or it is not proven.
                         continue
                     frame_id = next(iter(gravity_frames))
+                    frame_records = tuple(
+                        item
+                        for item in context.reference_frames
+                        if item.frame_id == frame_id
+                    )
+                    if len(frame_records) != 1 or (
+                        frame_records[0].parent_frame_id is not None
+                        or frame_records[0].translating_with_entity_id is not None
+                        or frame_records[0].rotating_about_point_id is not None
+                    ):
+                        # The vertical is the gravity frame's own y axis, and
+                        # that proof holds only in an inertial frame: a
+                        # translating or rotating observer's apparent extremum
+                        # is not the world-vertical extremum.  An unresolvable
+                        # frame record proves nothing and refuses likewise.
+                        continue
                     candidates = tuple(
                         q
                         for q in velocities

@@ -59,7 +59,7 @@ from evaluation.phase56_stage7.lane_b_draft_projection import (
 )
 
 
-LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v3"
+LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v4"
 
 _MAX_DIAGNOSTIC_CODES = 24
 
@@ -89,6 +89,7 @@ _PATH_FIELDS: frozenset[str] = frozenset(
         "interactions",
         "interval_id",
         "interval_ids",
+        "occurs_in_interval_ids",
         "ir",
         "laws",
         "motion_intervals",

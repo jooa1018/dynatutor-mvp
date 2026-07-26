@@ -40,7 +40,7 @@ from evaluation.phase56_stage7.complete_profile_application import (
 )
 
 EVENT_BOUNDARY_DERIVATION_VERSION = (
-    "phase56-stage7-event-boundary-derivation-v2"
+    "phase56-stage7-event-boundary-derivation-v3"
 )
 
 # The engine law tables, imported from the shared eligibility contract in
@@ -135,12 +135,30 @@ def _plan_candidates(payload: dict) -> list[dict] | None:
                 continue
             if subject_id not in other["subject_ids"]:
                 continue
-            if interval["interval_id"] in other.get("interval_ids", ()) or (
-                other["event_id"]
+            if (
+                interval["interval_id"] in other.get("interval_ids", ())
+                or interval["interval_id"]
+                in other.get("occurs_in_interval_ids", ())
+                or other["event_id"]
                 in (interval.get("start_event_id"), interval.get("end_event_id"))
             ):
                 return True
         return False
+
+    def inertial_gravity_frame(frame_id: str) -> bool:
+        frame_records = [
+            item
+            for item in payload.get("reference_frames", ())
+            if item.get("frame_id") == frame_id
+        ]
+        if len(frame_records) != 1:
+            return False
+        record = frame_records[0]
+        return (
+            record.get("parent_frame_id") is None
+            and record.get("translating_with_entity_id") is None
+            and record.get("rotating_about_point_id") is None
+        )
 
     def existing_velocities(
         subject_id: str, interval_id: str, event_id: str
@@ -186,12 +204,30 @@ def _plan_candidates(payload: dict) -> list[dict] | None:
             # so no unknown is created for it either.
             continue
         for interval in intervals:
-            if event["event_id"] not in (
+            boundary = event["event_id"] in (
                 interval.get("start_event_id"),
                 interval.get("end_event_id"),
-            ):
-                # A segment-internal event is never promoted to a boundary.
+            )
+            internal = interval["interval_id"] in event.get(
+                "occurs_in_interval_ids", ()
+            )
+            if not boundary and not internal:
+                # A segment-internal event is never promoted to a boundary,
+                # and an event with no proven occupancy states nothing here.
                 continue
+            if internal:
+                # Mirror of the law's interior mode: only the vertical
+                # extremum kinds, and only over a closed, non-degenerate
+                # span.
+                if not is_extremum:
+                    continue
+                if (
+                    interval.get("start_event_id") is None
+                    or interval.get("end_event_id") is None
+                    or interval.get("start_event_id")
+                    == interval.get("end_event_id")
+                ):
+                    continue
             for subject_id in event["subject_ids"]:
                 if subject_id not in interval["subject_ids"]:
                     continue
@@ -271,6 +307,10 @@ def _plan_candidates(payload: dict) -> list[dict] | None:
                         continue
                     component = "y"
                     frame_id = next(iter(gravity_frames))
+                    if not inertial_gravity_frame(frame_id):
+                        # Mirror of the law: the vertical is proven only by
+                        # an inertial gravity frame.
+                        continue
                 else:  # turnaround
                     if subject_has_collision(subject_id):
                         continue

@@ -2061,6 +2061,42 @@ def validate_draft(
             path = f"events.{index}"
             _validate_reference_list(event, "subject_ids", entities, path=path, issues=issues)
             _validate_reference_list(event, "interval_ids", intervals, path=path, issues=issues)
+            _validate_reference_list(event, "occurs_in_interval_ids", intervals, path=path, issues=issues)
+            # An occurrence is interval-internal by definition: an interval
+            # whose declared start or end *is* this event cannot also be
+            # occupied by it, and the occupying interval's actors must carry
+            # the event's subjects.  `MotionInterval.start_event_id` /
+            # `end_event_id` remain the sole boundary authority — this check
+            # is what keeps a forged interiority from promoting itself.
+            event_id = getattr(event, "event_id", None)
+            for occurrence_index, occupied_id in enumerate(
+                getattr(event, "occurs_in_interval_ids", ()) or ()
+            ):
+                occupied = intervals.get(occupied_id) if isinstance(occupied_id, str) else None
+                if occupied is None:
+                    continue
+                occurrence_path = f"{path}.occurs_in_interval_ids.{occurrence_index}"
+                if event_id in (
+                    getattr(occupied, "start_event_id", None),
+                    getattr(occupied, "end_event_id", None),
+                ):
+                    _add_issue(
+                        issues,
+                        MechanicsIssueCode.interval_event_invalid,
+                        "an event cannot occur inside an interval it bounds",
+                        occurrence_path,
+                        referenced_id=occupied_id,
+                    )
+                elif not set(getattr(event, "subject_ids", ()) or ()) <= set(
+                    getattr(occupied, "subject_ids", ()) or ()
+                ):
+                    _add_issue(
+                        issues,
+                        MechanicsIssueCode.interval_event_invalid,
+                        "event occurrence subjects must belong to the occupied interval",
+                        occurrence_path,
+                        referenced_id=occupied_id,
+                    )
             time_quantity_id = getattr(event, "time_quantity_id", None)
             if _optional_reference(time_quantity_id, quantities, path=f"{path}.time_quantity_id", issues=issues) and time_quantity_id is not None:
                 time_quantity = quantities.get(time_quantity_id) if isinstance(time_quantity_id, str) else None
