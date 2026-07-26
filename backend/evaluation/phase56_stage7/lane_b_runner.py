@@ -27,9 +27,10 @@ from engine.mechanics.compiler import (
     MechanicsCompiler,
     authorize_validated_mechanics_ir,
 )
+from engine.mechanics.compiler.contracts import has_course_scope_deferred_issue
 from engine.mechanics.normalization import normalize_draft
 from engine.mechanics.pipeline import solve_verified_equation_graph
-from engine.mechanics.validation import validate_draft
+from engine.mechanics.validation import ValidationTerminal, validate_draft
 from engine.mechanics.verification.contracts import MechanicsSolveTerminal
 
 from evaluation.phase56_stage7.lane_b_draft_projection import (
@@ -133,6 +134,18 @@ class LaneBTerminal(str, Enum):
     verification_rejected = "verification_rejected"
     solved = "solved"
     verified_unsupported = "verified_unsupported"
+
+
+# The engine's own neutral validation terminals, kept distinct from a malformed
+# Draft.  Anything absent here — `invalid` — stays `validation_rejected`.
+_NEUTRAL_VALIDATION_TERMINALS: dict[ValidationTerminal, LaneBTerminal] = {
+    ValidationTerminal.needs_figure: LaneBTerminal.needs_figure,
+    ValidationTerminal.needs_confirmation: LaneBTerminal.needs_confirmation,
+    ValidationTerminal.insufficient_information: (
+        LaneBTerminal.insufficient_information
+    ),
+    ValidationTerminal.unsupported: LaneBTerminal.verified_unsupported,
+}
 
 
 def _codes(items: Any, attribute: str = "code") -> tuple[str, ...]:
@@ -241,9 +254,16 @@ def run_lane_b_case(
     validation = validate_draft(text, draft, approved_assumption_ids=approved)
     validation_codes = _codes(validation.issues)
     if not validation.accepted:
+        # A neutral validation terminal is a first-class blocked outcome, not a
+        # rejection: the engine has decided the Draft needs a figure, a reader
+        # decision, or information the source never states.  Collapsing those
+        # onto `validation_rejected` would hide the difference between "this
+        # Draft is malformed" and "this problem cannot be closed safely".
         return LaneBResult(
             execution_token,
-            LaneBTerminal.validation_rejected,
+            _NEUTRAL_VALIDATION_TERMINALS.get(
+                validation.terminal, LaneBTerminal.validation_rejected
+            ),
             validation_codes=validation_codes,
             validation_code_paths=_code_paths(validation.issues),
             **query_fields,
@@ -303,12 +323,21 @@ def run_lane_b_case(
     compiler_status = _text(compiled.status)
     if not compiled.compilable or compiled.graph is None:
         # A precise typed unsupported is a first-class outcome, not a failure.
-        terminal = (
-            LaneBTerminal.compiler_unsupported
-            if "unsupported" in compiler_status.casefold()
-            or any("unsupported" in code.casefold() for code in compiler_codes)
-            else LaneBTerminal.compiler_failure
-        )
+        # A *course-scope deferred* unsupported is narrower still: the engine
+        # proved from its own typed capability that the readout is out of the
+        # course scope it declares, and that proof is what `verified_unsupported`
+        # names.  It is never a family label — `has_course_scope_deferred_issue`
+        # reads the compiler's own issue codes.
+        if has_course_scope_deferred_issue(
+            item.code for item in compiled.issues
+        ):
+            terminal = LaneBTerminal.verified_unsupported
+        elif "unsupported" in compiler_status.casefold() or any(
+            "unsupported" in code.casefold() for code in compiler_codes
+        ):
+            terminal = LaneBTerminal.compiler_unsupported
+        else:
+            terminal = LaneBTerminal.compiler_failure
         return LaneBResult(
             execution_token,
             terminal,

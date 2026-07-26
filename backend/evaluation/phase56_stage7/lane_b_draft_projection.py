@@ -47,7 +47,7 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from engine.mechanics.contracts import (
     DRAFT_SCHEMA_NAME,
@@ -178,6 +178,11 @@ _MOTION_MODEL_ASSUMPTIONS: dict[str, str] = {
     "constant_acceleration_1d": "constant_acceleration",
     "constant_velocity_1d": "constant_velocity",
     "projectile_free_flight": "constant_acceleration",
+    # A source-declared oscillation names the regime whose typed readout
+    # authority the engine already carries.  It supplies no number: the
+    # authority only says which regime the segment is in, and the engine then
+    # decides from its own capability whether that readout is in scope.
+    "spring_oscillation": "angular_natural_frequency",
 }
 
 # corpus query output key -> (draft quantity role, output unit, dimension)
@@ -386,6 +391,33 @@ _ENVIRONMENT_LINK_RELATION_KINDS: frozenset[str] = frozenset(
     {"contact_with", "slides_on", "rolls_on", "moves_in_slot", "rotates_about"}
 )
 
+# A constitutive parameter the source states on the *passive* side of a typed
+# interaction belongs, under the engine's own accepted convention, to the body
+# that interaction acts on: the accepted engine fixtures subject a spring's
+# stiffness to the oscillating body, never to the spring entity.  The binding
+# is admitted only when exactly one typed interaction of an owning kind ties the
+# stated subject to exactly one body-like counterpart.  Nothing is invented —
+# the value, unit, evidence, and interval are the source's own; only the typed
+# owner the engine requires is resolved.  Anything ambiguous fails closed.
+_INTERACTION_OWNED_CONSTITUTIVE_ROLES: dict[str, frozenset[str]] = {
+    # corpus relation kind -> quantity roles that relation owns
+    "attached_to_spring": frozenset({"stiffness"}),
+}
+# Primitives that can carry a constitutive parameter as their own property.
+_CONSTITUTIVE_OWNER_PRIMITIVES: frozenset[str] = frozenset(
+    {"particle", "rigid_body", "mass_center", "body_component", "system"}
+)
+# Primitives a body can slide along.  A point on a body or a pin in a slot also
+# `lies_on` something, but neither is a support contact with a friction regime.
+_SUPPORT_PRIMITIVES: frozenset[str] = frozenset({"surface", "incline"})
+_SLIDING_SUPPORT_GEOMETRY_KIND = "lies_on"
+# Assumption kinds that settle a sliding contact's friction regime outright.
+_FRICTION_REGIME_ASSUMPTIONS: frozenset[str] = frozenset(
+    {"frictionless", "pure_rolling"}
+)
+# Components whose answer is a signed number rather than a magnitude.
+_SIGNED_AXIS_COMPONENTS: frozenset[str] = frozenset({"x", "y", "z"})
+
 # The closed set of assumption kinds this evaluator may authorise at all.
 _CLOSED_ASSUMPTION_KINDS: frozenset[str] = frozenset(
     {
@@ -453,6 +485,7 @@ class DraftProjectionReason(str, Enum):
     evidence_unit_dimension_mismatch = "evidence_unit_dimension_mismatch"
     missing_evidence_for_explicit_value = "missing_evidence_for_explicit_value"
     environment_relation_ambiguous = "environment_relation_ambiguous"
+    interaction_owner_ambiguous = "interaction_owner_ambiguous"
     environment_relation_absent = "environment_relation_absent"
     environment_relation_kind_not_contact = "environment_relation_kind_not_contact"
     environment_relation_cross_interval = "environment_relation_cross_interval"
@@ -876,6 +909,12 @@ def project_case_to_draft(case: PublicCorpusCaseV1) -> DraftProjection:
             ).sanitized_reason,
         )
 
+    if _has_no_relational_structure(draft):
+        return DraftProjection(
+            terminal=DraftProjectionTerminal.insufficient_information,
+            problem_text=problem_text,
+        )
+
     return DraftProjection(
         terminal=DraftProjectionTerminal.projected,
         problem_text=problem_text,
@@ -885,6 +924,32 @@ def project_case_to_draft(case: PublicCorpusCaseV1) -> DraftProjection:
         approvable_assumption_ids=projected.approvable_assumption_ids,
         known_symbol_ids=projected.known_symbol_ids,
         unknown_symbol_ids=projected.unknown_symbol_ids,
+    )
+
+
+def _has_no_relational_structure(draft: MechanicsProblemDraftV1) -> bool:
+    """True when the Draft states quantities but relates none of them.
+
+    Every law in the catalogue relates quantities *through* structure — an
+    interval, an event, a geometry relation, an interaction, a constraint, a
+    state condition, or an approved assumption.  A Draft that carries none of
+    those has nothing a law could bind, so no amount of solving reaches the
+    query and no single reader decision would change that: unlike an ambiguity,
+    there is no enumerable alternative to confirm.  That is exactly
+    `insufficient_information`, and it is a structural fact about the Draft, not
+    a judgement about the sentence.
+    """
+
+    if not draft.queries:
+        return True
+    return not (
+        draft.motion_intervals
+        or draft.events
+        or draft.geometry
+        or draft.interactions
+        or draft.constraints
+        or draft.state_conditions
+        or draft.assumptions
     )
 
 
@@ -1032,6 +1097,10 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
     source_evidence: list[dict[str, Any]] = []
     quantities: list[dict[str, Any]] = []
     environment_scoped: list[str] = []
+    interaction_owned: dict[str, list[str]] = {}
+    primitives_by_entity = {
+        entity["entity_id"]: entity["primitive"] for entity in entities
+    }
     relations_by_pair = _interval_scoped_relations(gold, interval_ids, entity_ids)
 
     for index, fact in enumerate(gold.explicit_facts):
@@ -1104,11 +1173,25 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "quantity_span": {"start": value_span[0], "end": value_span[1]},
             }
         )
+        # A constitutive parameter stated on an interaction's passive side takes
+        # the typed owner the engine's own convention requires, and records that
+        # it is owned by the interaction that licensed the binding.
+        owner = _interaction_owned_binding(
+            subject=fact.subject_role,
+            role=role,
+            interval_id=interval_id,
+            gold=gold,
+            primitives_by_entity=primitives_by_entity,
+        )
+        subject_id = fact.subject_role
+        if owner is not None:
+            subject_id, relation_role = owner
+            interaction_owned.setdefault(relation_role, []).append(f"qty_{fact.role}")
         quantities.append(
             {
                 "quantity_id": f"qty_{fact.role}",
                 "role": role,
-                "subject_id": fact.subject_role,
+                "subject_id": subject_id,
                 "interval_id": interval_id,
                 "event_id": event_id,
                 "shape": "scalar",
@@ -1163,6 +1246,11 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                     relation.participant_roles,
                     actors_by_interval,
                 ),
+                # An interaction owns the constitutive parameters the source
+                # states through it, so the typed link is reciprocal: the
+                # quantity names its owner and the interaction names the
+                # quantity.
+                "quantity_ids": sorted(interaction_owned.get(relation.role, ())),
                 "evidence_refs": [],
             }
         )
@@ -1393,7 +1481,13 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         "queries": queries,
         "principle_hints": [],
         "assumptions": assumptions,
-        "ambiguities": [],
+        "ambiguities": _unresolved_typed_ambiguities(
+            entities=entities,
+            quantities=quantities,
+            geometry=geometry,
+            assumptions=assumptions,
+            queries=queries,
+        ),
         "figure_dependency": {
             "level": gold.figure_dependency.level,
             "missing_information": list(gold.figure_dependency.missing_information),
@@ -1561,6 +1655,170 @@ def _typed_scope(
     ):
         return interval_id, event_id
     return None, event_id
+
+
+def _unresolved_typed_ambiguities(
+    *,
+    entities: Sequence[Mapping[str, Any]],
+    quantities: Sequence[Mapping[str, Any]],
+    geometry: Sequence[Mapping[str, Any]],
+    assumptions: Sequence[Mapping[str, Any]],
+    queries: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Report the typed ambiguities a reader — not the server — must resolve.
+
+    Both detectors read only typed Draft structure that is already built: a
+    primitive, a geometry kind, a quantity role, a component, an assumption
+    kind.  Neither reads problem text, a family, a case ID, an expected
+    terminal, or an expected answer, and neither picks a resolution.  A blocking
+    ambiguity is the engine's own contract for "a reader must decide", and
+    `validate_draft` already turns it into `needs_confirmation`.
+    """
+
+    primitives = {entity["entity_id"]: entity["primitive"] for entity in entities}
+    found: list[dict[str, Any]] = []
+
+    # A sliding support contact has a friction regime.  The source resolves it
+    # either by stating a coefficient or by declaring the contact frictionless.
+    # With neither, two physically different closures — frictionless, and rough
+    # with an unstated coefficient — are equally consistent with the source, and
+    # choosing one silently would be a confident wrong answer.
+    frictionless_subjects = {
+        assumption["subject_id"]
+        for assumption in assumptions
+        if assumption["kind"] in _FRICTION_REGIME_ASSUMPTIONS
+        and assumption["disposition"] == "approved"
+    }
+    # A `system` is the aggregate of the bodies it contains, so a friction
+    # regime the source declares on the system resolves the regime for each of
+    # them.  The reading is typed — it turns on the subject's primitive — and it
+    # only ever *resolves* a regime the source did state, never invents one.
+    system_wide_regime = any(
+        primitives.get(subject) == "system" for subject in frictionless_subjects
+    )
+    has_coefficient = any(
+        quantity["role"] == "coefficient_friction" for quantity in quantities
+    )
+    for relation in geometry:
+        if relation["kind"] != _SLIDING_SUPPORT_GEOMETRY_KIND:
+            continue
+        participants = list(relation["participant_ids"])
+        bodies = [
+            item
+            for item in participants
+            if primitives.get(item) in _CONSTITUTIVE_OWNER_PRIMITIVES
+        ]
+        supports = [
+            item
+            for item in participants
+            if primitives.get(item) in _SUPPORT_PRIMITIVES
+        ]
+        if len(bodies) != 1 or len(supports) != 1:
+            continue
+        if has_coefficient or system_wide_regime or bodies[0] in frictionless_subjects:
+            continue
+        found.append(
+            {
+                "ambiguity_id": f"amb_friction_{relation['relation_id']}",
+                "kind": "assumption",
+                "description": (
+                    "a sliding support contact states neither a friction "
+                    "coefficient nor a frictionless regime, so the friction "
+                    "regime must be confirmed before this contact can close"
+                ),
+                "blocking": True,
+                "referenced_ids": [relation["relation_id"], bodies[0]],
+                "evidence_refs": [],
+            }
+        )
+
+    # A query for a signed axis component is answered by a sign, and a source
+    # quantity whose direction the source left uncommitted cannot supply one.
+    # The magnitude is not a substitute: it answers a different question.
+    for query in queries:
+        target = query["target"]
+        if target.get("component") not in _SIGNED_AXIS_COMPONENTS:
+            continue
+        for quantity in quantities:
+            if quantity["subject_id"] != target["subject_id"]:
+                continue
+            if quantity["role"] not in _COMPONENT_ROLES:
+                continue
+            if quantity.get("provenance") != "explicit_source":
+                continue
+            if quantity.get("component") is not None or quantity.get("direction"):
+                continue
+            found.append(
+                {
+                    "ambiguity_id": f"amb_direction_{quantity['quantity_id']}",
+                    "kind": "direction",
+                    "description": (
+                        "a signed component is queried while a source quantity "
+                        "it depends on leaves its direction uncommitted, so the "
+                        "direction must be confirmed before a signed answer "
+                        "can be delivered"
+                    ),
+                    "blocking": True,
+                    "referenced_ids": [quantity["quantity_id"], query["query_id"]],
+                    "evidence_refs": [],
+                }
+            )
+    return found
+
+
+def _interaction_owned_binding(
+    *,
+    subject: str,
+    role: str,
+    interval_id: str | None,
+    gold: Any,
+    primitives_by_entity: Mapping[str, str],
+) -> tuple[str, str] | None:
+    """Resolve the typed owner of one interaction-owned constitutive parameter.
+
+    Returns ``(owner_entity_id, relation_role)`` when exactly one typed
+    interaction of an owning kind ties the stated subject to exactly one
+    body-like counterpart, and ``None`` when no owning relation mentions this
+    role at all.  Two candidate owners, or an owning relation whose counterpart
+    is not a body, fail closed: guessing which body a stiffness belongs to would
+    invent structure the source never stated.
+    """
+
+    owners: set[str] = set()
+    relation_roles: set[str] = set()
+    for relation in gold.relations:
+        owned = _INTERACTION_OWNED_CONSTITUTIVE_ROLES.get(relation.kind)
+        if owned is None or role not in owned:
+            continue
+        if subject not in relation.participant_roles:
+            continue
+        if (
+            interval_id is not None
+            and relation.segment_role is not None
+            and relation.segment_role != interval_id
+        ):
+            continue
+        counterparts = {
+            participant
+            for participant in relation.participant_roles
+            if participant != subject
+        }
+        if len(counterparts) != 1:
+            raise DraftProjectionError(
+                DraftProjectionReason.interaction_owner_ambiguous
+            )
+        counterpart = next(iter(counterparts))
+        if primitives_by_entity.get(counterpart) not in _CONSTITUTIVE_OWNER_PRIMITIVES:
+            raise DraftProjectionError(
+                DraftProjectionReason.interaction_owner_ambiguous
+            )
+        owners.add(counterpart)
+        relation_roles.add(relation.role)
+    if not owners:
+        return None
+    if len(owners) != 1 or len(relation_roles) != 1:
+        raise DraftProjectionError(DraftProjectionReason.interaction_owner_ambiguous)
+    return next(iter(owners)), next(iter(relation_roles))
 
 
 def _interval_scoped_relations(
