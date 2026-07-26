@@ -3925,6 +3925,30 @@ _CONTACT_REGIME_STATES: frozenset[StateKind] = frozenset(
 # The authority that lets one force stand for the whole free body of a body
 # something else is also acting on.
 _RESULTANT_FORCE_AUTHORITY = "resultant_force"
+# The authority that states a contact carries no tangential force at all, so
+# that a component the contact owns nothing on really is a component it
+# contributes nothing to.
+_FRICTIONLESS_CONTACT_AUTHORITY = "frictionless_contact"
+
+
+def _scope_bound_here(
+    anchor: BoundQuantity,
+    *,
+    interval_id: str | None,
+    event_id: str | None,
+) -> bool:
+    """Whether a record scoped to `interval_id`/`event_id` describes this equation.
+
+    An interval is a separate dynamical situation and an event is an instant
+    inside one, so a record bound to either of them speaks only for that scope.
+    An unbound record speaks for all of them.  Borrowing across the boundary
+    would let a later phase, or the instant of an impact, retroactively license
+    an equation written somewhere else.
+    """
+
+    if interval_id is not None and interval_id != anchor.interval_id:
+        return False
+    return event_id is None or event_id == anchor.event_id
 
 
 def _force_quantities_by_id(
@@ -3951,10 +3975,56 @@ def _acting_interactions(context: LawContext) -> Mapping[str, tuple[Any, ...]]:
     return {key: tuple(value) for key, value in acting.items()}
 
 
+def _contact_contributes_nothing_here(
+    context: LawContext,
+    *,
+    subject_id: str,
+    anchor: BoundQuantity,
+) -> bool:
+    """Whether typed structure states this contact carries no force on this component.
+
+    Only two things say it, and both must belong to the equation's own interval
+    and event:
+
+    * an approved ``frictionless_contact`` authority for this body — the source
+      stated a smooth surface; or
+    * a typed ``friction`` state condition whose regime is ``inactive`` — the
+      same statement made as a state rather than an assumption.
+
+    A stated ``sliding`` or ``sticking`` regime says the opposite: the contact
+    *does* carry a tangential force, which then has to appear as an owned force
+    on this component before the free body closes.  Every input is typed IR
+    structure; no identity, label, or source text participates.
+    """
+
+    authorised = any(
+        assumption.kind == _FRICTIONLESS_CONTACT_AUTHORITY
+        and assumption.subject_id == subject_id
+        and assumption.disposition is AssumptionDisposition.approved
+        and assumption.assumption_id in context.approved_assumption_ids
+        and _scope_bound_here(anchor, interval_id=assumption.interval_id, event_id=None)
+        for assumption in context.assumptions
+    )
+    if authorised:
+        return True
+    return any(
+        state.kind is StateKind.friction
+        and state.state is StateValue.inactive
+        and state.subject_id == subject_id
+        and _scope_bound_here(
+            anchor,
+            interval_id=state.interval_id,
+            event_id=state.event_id,
+        )
+        for state in context.state_conditions
+    )
+
+
 def _free_body_is_complete(
     context: LawContext,
     *,
     subject_id: str,
+    anchor: BoundQuantity,
     forces: tuple[BoundQuantity, ...],
     entity_kinds: Mapping[str, EntityPrimitive],
     force_quantities: Mapping[str, BoundQuantity],
@@ -3967,24 +4037,32 @@ def _free_body_is_complete(
     the same confidence as a right one: a block resting on a table whose free
     body carries only its weight accelerates downwards at g.  The equation is
     therefore withheld until the free body is closed, and closure is decided
-    from typed structure alone:
+    from typed structure alone, for the exact equation being written — this
+    subject, this component, this frame, this interval, this event:
 
     * a constraint — a contact, a rope, a joint, a spring, a damper, a gear —
       names a reaction.  An interaction of one of those kinds that names this
-      body but models no force on it is a hole in the free body;
-    * a contact's regime is stated by a typed state condition, because the
-      regime is what decides whether the contact contributes a normal alone or a
-      normal and a friction force;
+      body but models no force on it *in this scope* is a hole in the free body;
+    * a contact's regime is stated by a typed state condition belonging to this
+      scope, because the regime is what decides whether the contact contributes
+      a normal alone or a normal and a friction force;
+    * along a component the contact owns no force on, that regime is what says
+      the contact contributes *zero* here rather than that its contribution was
+      forgotten.  A stated normal closes the normal component and says nothing
+      about the tangent: two applied tangential forces summed over an unstated
+      regime silently drop friction;
     * a rope tension names a force on *each* body-like participant it connects,
       so a rope that pulls on one side only never closes; and
     * when only one force is being summed and something is constraining the
       body, that force is the resultant only if a typed authority says so.
 
-    An interaction whose forces all lie on another component is not a hole: the
-    equation being written is per-component, and an off-axis force belongs to a
-    different one.  A body acted on only by gravity, a field, or applied forces
-    is already closed, which is the accepted contract for a free particle whose
-    source states a single force.
+    A non-contact interaction whose forces all lie on another component is not a
+    hole: a rope pulls along the rope, and its absence from a perpendicular
+    component is geometry rather than an omission.  A contact is the exception,
+    because normal and friction are two contributions of one interaction along
+    two different components.  A body acted on only by gravity, a field, or
+    applied forces is already closed, which is the accepted contract for a free
+    particle whose source states a single force.
     """
 
     acting = acting_interactions.get(subject_id, ())
@@ -4009,7 +4087,9 @@ def _free_body_is_complete(
                 force_quantities.get(quantity_id)
                 for quantity_id in interaction.quantity_ids
             )
-            if quantity is not None and quantity.subject_id == subject_id
+            if quantity is not None
+            and quantity.subject_id == subject_id
+            and _scope_compatible_without_component(anchor, quantity)
         )
         if not owned:
             return False
@@ -4018,10 +4098,27 @@ def _free_body_is_complete(
                 state.kind in _CONTACT_REGIME_STATES
                 and state.subject_id == subject_id
                 and set(state.quantity_ids) & set(interaction.quantity_ids)
+                and _scope_bound_here(
+                    anchor,
+                    interval_id=state.interval_id,
+                    event_id=state.event_id,
+                )
                 for state in context.state_conditions
             )
             if not regime:
                 return False
+            # Normal and friction are one interaction's two contributions along
+            # two different components.  Owning the normal closes the normal
+            # component and proves nothing about the tangent, so a component the
+            # contact owns no force on needs a typed statement that the contact
+            # contributes nothing there.
+            if not any(_component_compatible(anchor, quantity) for quantity in owned):
+                if not _contact_contributes_nothing_here(
+                    context,
+                    subject_id=subject_id,
+                    anchor=anchor,
+                ):
+                    return False
         if interaction.kind is InteractionKind.rope_tension:
             attached = tuple(
                 participant
@@ -4055,7 +4152,13 @@ def _free_body_is_complete(
             return True
         return all(
             any(
-                state.kind is StateKind.friction and state.subject_id == subject_id
+                state.kind is StateKind.friction
+                and state.subject_id == subject_id
+                and _scope_bound_here(
+                    anchor,
+                    interval_id=state.interval_id,
+                    event_id=state.event_id,
+                )
                 for state in context.state_conditions
             )
             for interaction in acting
@@ -4106,6 +4209,7 @@ def _newton_emissions(context: LawContext) -> list[LawEmission]:
         if not _free_body_is_complete(
             context,
             subject_id=acceleration.subject_id,
+            anchor=acceleration,
             forces=forces,
             entity_kinds=entity_kinds,
             force_quantities=force_quantities,
