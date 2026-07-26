@@ -367,9 +367,29 @@ than a silent choice inside a closure transaction:
 2. Leave the boundary alone, in which case `free_flight_gravity` cannot supply
    gravity and its reachable population is 0 rather than 2.
 
-Until that is decided, the profile stays unbuilt. Note that either way the
-frozen distribution is unaffected in scale: the decision is worth at most 2 of
-the 75 contexts between here and the target.
+**RESOLVED — option 1, as its own reviewed stage, not a choice inside a
+transaction.** `evaluation/phase56_stage7/lane_b_authority.py` adds an
+evaluator-only authority stage between projection and validation.  It builds
+one immutable `LaneBAuthorityBundleV1` per projected Draft — the approved IDs,
+an `AssumptionAuthorization` per approved assumption of a closed value policy
+(today exactly `constant_gravity` at `gravity / 9.81 / m/s^2`), a fingerprint
+of the source Draft, and a fingerprint of the bundle itself.  Authorization
+restates the approved record's own proposal, to the character, and invents
+nothing; anything else — wrong role, value, unit, subject, or interval,
+unapproved dispositions, duplicates, competitors, a stated fact for the same
+role — fails closed under a bounded refusal vocabulary.  The bundle verifies
+against exactly its own Draft revision, so replaying it against another case,
+another revision, or a mutated Draft refuses.  `run_lane_b_case` verifies the
+bundle before validation and hands the **same immutable map** to both
+`validate_draft` and `normalize_draft`.  26 bundle/attack regressions in
+`test_phase56_stage7_lane_b_authority.py` and the runner tests hold the
+boundary.  The closure layer still cannot mint authority — it can only consume
+what this stage issued.
+
+With the authority stage in place the public 100 is unchanged (no Draft yet
+carries a `server_default` quantity), which is the expected result: the stage
+opens the contract without moving a terminal until the free-flight
+transaction actually uses it.
 
 ## 5. `CORPUS_CONTRACT_MISMATCH`: magnitude questions and signed axes
 

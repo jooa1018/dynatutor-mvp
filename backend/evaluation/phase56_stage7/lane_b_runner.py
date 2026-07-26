@@ -1,6 +1,7 @@
 """Lane B: run one projected Draft through the real deterministic pipeline.
 
     MechanicsProblemDraftV1
+      → LaneBAuthorityBundleV1 (evaluator-only assumption authority)
       → validate_draft
       → normalize_draft
       → authorize_validated_mechanics_ir
@@ -8,6 +9,12 @@
       → solve_verified_equation_graph
       → independent verification
       → frozen RuntimeDomainSnapshotV1
+
+The authority stage sits between projection and validation, outside any
+complete-profile transaction: the bundle is built from and bound to the
+projected Draft, verified against it before anything reads it, and the same
+immutable authorization map is handed to **both** `validate_draft` and
+`normalize_draft`.
 
 Each stage records its own terminal.  Exceptions are never collapsed into a
 single `runtime_failure`.  The snapshot carries no case identity, no gold, no
@@ -36,13 +43,18 @@ from engine.mechanics.verification.contracts import MechanicsSolveTerminal
 from evaluation.phase56_stage7.complete_profile_application import (
     close_projected_draft,
 )
+from evaluation.phase56_stage7.lane_b_authority import (
+    LaneBAuthorityError,
+    build_lane_b_authority_bundle,
+    verify_lane_b_authority_bundle,
+)
 from evaluation.phase56_stage7.lane_b_draft_projection import (
     DraftProjection,
     DraftProjectionTerminal,
 )
 
 
-LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v1"
+LANE_B_RUNNER_VERSION = "phase56-stage7-lane-b-runner-v2"
 
 _MAX_DIAGNOSTIC_CODES = 24
 
@@ -250,7 +262,24 @@ def run_lane_b_case(
         return LaneBResult(execution_token, LaneBTerminal.projection_rejected)
 
     text = projection.problem_text
-    approved = projection.approvable_assumption_ids
+    # The authority stage: built from the projected Draft, bound to it by
+    # fingerprint, and verified before anything reads it.  It runs outside the
+    # complete-profile transaction below, so closure can consume authority but
+    # never mint it.
+    try:
+        bundle = build_lane_b_authority_bundle(projection)
+        if not verify_lane_b_authority_bundle(bundle, projection.draft):
+            raise LaneBAuthorityError(
+                "the authority bundle does not verify against its own draft"
+            )
+    except Exception as exc:
+        return LaneBResult(
+            execution_token,
+            LaneBTerminal.authorization_failed,
+            stage_exception=type(exc).__name__,
+        )
+    approved = bundle.approved_assumption_ids
+    authority_map = bundle.authorization_map()
     # Complete-profile closure runs before validation and is transactional: the
     # Draft below is either the projection's own or one whole closed Draft, never
     # a partially attached one.  A profile that does not close leaves the Draft
@@ -260,7 +289,12 @@ def run_lane_b_case(
     ).draft
     query_fields = _query_projection(draft)
 
-    validation = validate_draft(text, draft, approved_assumption_ids=approved)
+    validation = validate_draft(
+        text,
+        draft,
+        approved_assumption_ids=approved,
+        authorized_assumptions=authority_map,
+    )
     validation_codes = _codes(validation.issues)
     if not validation.accepted:
         # A neutral validation terminal is a first-class blocked outcome, not a
@@ -279,7 +313,14 @@ def run_lane_b_case(
         )
 
     try:
-        normalization = normalize_draft(text, draft, approved_assumption_ids=approved)
+        # The same immutable map validation received — never a copy, never a
+        # different one.
+        normalization = normalize_draft(
+            text,
+            draft,
+            approved_assumption_ids=approved,
+            authorized_assumptions=authority_map,
+        )
     except Exception as exc:
         return LaneBResult(
             execution_token,
