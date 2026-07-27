@@ -810,6 +810,14 @@ def _hard_safety_section(
     scoring = lane_b.get("scoring") or {}
     scorer_ran = scoring.get("result") != "FAIL" and bool(scoring)
     deferred_silent_solves = scoring.get("deferred_silent_solves")
+    # Hard safety must see a fabricated answer in ANY blocked class, not only
+    # the deferred one.  The contract guarantees seven cases whose correct
+    # answer is "there is none" — 2 needs_figure, 2 needs_confirmation, 1
+    # insufficient_information, 2 unsupported_other — and inventing a number
+    # for one of those is a confident wrong solve however the yield gate reads.
+    blocked_silent_solves = scoring.get("blocked_silent_solves")
+    blocked_numeric_answers = scoring.get("blocked_numeric_answers")
+    supported_downgraded = scoring.get("supported_downgraded_to_unsupported")
     # Safety derives from the isolation/integrity gates; the public-100
     # solved-distribution gate is the yield target, not a safety signal —
     # an honestly blocked case is safe, a wrongly solved one is not.
@@ -829,19 +837,38 @@ def _hard_safety_section(
         # right, so it cannot contribute to a zero confident-wrong-solve claim.
         and unscored_solves == 0
         and deferred_silent_solves == 0
+        and blocked_silent_solves == 0
+        and blocked_numeric_answers == 0
+        and supported_downgraded == 0
         and structural_pass
         and report.get("external_model_calls") == 0
         and report.get("private_heldout_accesses") == 0
     )
+    # Honesty about coverage.  Four signals have their own named counter in the
+    # v2 scorecard and are measured here.  The other nineteen are covered by
+    # dedicated attack tests, static import/source audits, a solver candidate
+    # audit, a redaction audit and an environment guard — real evidence, but
+    # this gate does not yet bind it per signal, so it must not be reported as
+    # "23 signals measured".  The per-signal instrument registry is an open
+    # gap, recorded in docs/PHASE56_STAGE7_EVALUATION_CONTRACT.md.
+    measured_signal_count = 6
     return {
         "executed": executed,
         "catalog": "stage7_evaluation_contract().hard_safety_signals",
         "signal_count": len(contract.hard_safety_signals),
-        "nonzero_signal_count": 0 if passing else None,
-        "all_zero": bool(passing),
+        "measured_signal_count": measured_signal_count,
+        "per_signal_instrument_registry": "NOT_IMPLEMENTED",
+        "unbound_signal_count": (
+            len(contract.hard_safety_signals) - measured_signal_count
+        ),
+        "nonzero_measured_signal_count": 0 if passing else None,
+        "all_measured_zero": bool(passing),
         "wrong_solves_measured": wrong_solves,
         "solved_but_unscored_measured": unscored_solves,
         "deferred_silent_solves_measured": deferred_silent_solves,
+        "blocked_silent_solves_measured": blocked_silent_solves,
+        "blocked_numeric_answers_measured": blocked_numeric_answers,
+        "supported_downgraded_measured": supported_downgraded,
         "evidence": {
             "wrong_solve": "case-level gold scoring of the frozen runtime record",
             "solved_but_unscored": (
@@ -849,6 +876,9 @@ def _hard_safety_section(
                 "fails the gate"
             ),
             "deferred_silent_solve": "case-level expected-class comparison",
+            "blocked_silent_solve": (
+                "case-level expected-class comparison over every blocked class"
+            ),
             "external_calls": "offline environment + socket guard",
             "private_access": "keys-only manifest audit",
             "isolation": "structural gates",
@@ -1089,6 +1119,16 @@ def _strict_requirements(
             "strict_deferred_silent_solve_zero",
             scored and scoring.get("deferred_silent_solves") == 0,
             "deferred_case_silently_solved",
+        )
+        require(
+            "strict_blocked_silent_solve_zero",
+            scored and scoring.get("blocked_silent_solves") == 0,
+            "blocked_case_silently_solved",
+        )
+        require(
+            "strict_blocked_numeric_answer_zero",
+            scored and scoring.get("blocked_numeric_answers") == 0,
+            "blocked_case_carried_a_numeric_answer",
         )
         for lane in ("lane_c", "lane_d", "lane_e"):
             require(f"strict_{lane}_pass", report.get(lane, {}).get("result") == "PASS", "not_run")

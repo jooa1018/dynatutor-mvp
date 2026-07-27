@@ -31,6 +31,7 @@ from evaluation.phase56_stage7.contracts import (
 from evaluation.phase56_stage7.corpus_records import parse_public_jsonl, parse_schema_document
 from evaluation.phase56_stage7.gold_domain import PublicSplit
 from evaluation.phase56_stage7.lane_b_runner import LaneBResult, LaneBTerminal
+from evaluation.phase56_stage7 import lane_b_scoring
 from evaluation.phase56_stage7.lane_b_scoring import (
     ScoringFailure,
     ScoringFailureReason,
@@ -445,7 +446,162 @@ def test_hard_safety_is_not_passed_by_an_unscored_solve() -> None:
     report = _report_with_scorecard(scorecard)
     section = gate._hard_safety_section(report, [])
     assert section["result"] == "FAIL"
-    assert section["all_zero"] is False
+    assert section["all_measured_zero"] is False
+    # Coverage is stated honestly: six signals carry their own counter here,
+    # the rest are covered by tests and static guards this gate does not yet
+    # bind per signal, and the artifact says so rather than implying 23.
+    assert section["measured_signal_count"] == 6
+    assert section["signal_count"] == 23
+    assert section["per_signal_instrument_registry"] == "NOT_IMPLEMENTED"
+
+
+# ---------------------------------------------------------------------------
+# Hard safety sees a fabricated answer in EVERY blocked class.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "blocked_class",
+    [
+        Stage7ExpectedTerminal.needs_figure,
+        Stage7ExpectedTerminal.needs_confirmation,
+        Stage7ExpectedTerminal.insufficient_information,
+        Stage7ExpectedTerminal.unsupported_other,
+    ],
+)
+def test_hard_safety_fails_when_any_blocked_class_is_silently_solved(
+    blocked_class: Stage7ExpectedTerminal,
+) -> None:
+    """Inventing a number for a problem that has none is a wrong solve.
+
+    The frozen contract guarantees seven such cases. Measuring only the
+    deferred class would let the other five fabricate answers while the
+    artifact published `all_measured_zero`.
+    """
+
+    cases = _fixture_cases()
+    records = _perfect_records(cases)
+    index = next(
+        i
+        for i, expected in enumerate(_expected_terminals(cases))
+        if expected is blocked_class
+    )
+    records[index] = LaneBResult(
+        execution_token="t" * 32,
+        terminal=LaneBTerminal.solved,
+        verified_candidate_count=1,
+        verification_checks=(("equation_residual", "passed"),),
+        answer_value_si=42.0,
+        answer_unit="m/s",
+        answer_query_symbol_id="q",
+        query_subject_id="e",
+        answer_component="magnitude",
+    )
+
+    scorecard = score_lane_b_cases(cases, records)
+    assert scorecard.blocked_silent_solves == 1
+    assert scorecard.deferred_silent_solves == 0
+
+    report = _report_with_scorecard(scorecard)
+    section = gate._hard_safety_section(report, [])
+    assert section["result"] == "FAIL"
+    assert section["all_measured_zero"] is False
+
+    outcomes = _strict_outcomes(report)
+    assert outcomes["strict_blocked_silent_solve_zero"] == "FAIL"
+
+
+def test_hard_safety_fails_when_a_blocked_case_carries_a_number() -> None:
+    """Right terminal, wrong payload — still a fabricated answer."""
+
+    cases = _fixture_cases()
+    records = _perfect_records(cases)
+    index = next(
+        i
+        for i, expected in enumerate(_expected_terminals(cases))
+        if expected is Stage7ExpectedTerminal.needs_figure
+    )
+    records[index] = LaneBResult(
+        execution_token="t" * 32,
+        terminal=LaneBTerminal.needs_figure,
+        answer_value_si=7.0,
+        answer_unit="m",
+    )
+
+    scorecard = score_lane_b_cases(cases, records)
+    assert scorecard.blocked_numeric_answers == 1
+
+    report = _report_with_scorecard(scorecard)
+    assert gate._hard_safety_section(report, [])["result"] == "FAIL"
+    assert _strict_outcomes(report)["strict_blocked_numeric_answer_zero"] == "FAIL"
+
+
+def test_hard_safety_fails_when_a_supported_case_is_downgraded() -> None:
+    cases = _fixture_cases()
+    records = _perfect_records(cases)
+    index = next(
+        i
+        for i, expected in enumerate(_expected_terminals(cases))
+        if expected is Stage7ExpectedTerminal.accepted
+    )
+    records[index] = _deferred_record()
+
+    report = _report_with_scorecard(score_lane_b_cases(cases, records))
+    assert gate._hard_safety_section(report, [])["result"] == "FAIL"
+
+
+def test_hard_safety_passes_on_a_perfect_run() -> None:
+    """The negative controls above must not be passing for the wrong reason."""
+
+    cases = _fixture_cases()
+    report = _report_with_scorecard(
+        score_lane_b_cases(cases, _perfect_records(cases))
+    )
+    section = gate._hard_safety_section(report, [])
+    assert section["result"] == "PASS"
+    assert section["all_measured_zero"] is True
+
+
+# ---------------------------------------------------------------------------
+# Tolerance conversion is a true delta, including for offset units.
+# ---------------------------------------------------------------------------
+
+
+def test_offset_unit_tolerance_is_converted_as_a_delta() -> None:
+    """A `± 0.1 degC` declaration must not arrive as `± 273.25 K`.
+
+    Converting the tolerance as an absolute quantity adds the unit's offset to
+    it, which would accept essentially any answer — the same defect class as
+    the removed 1e-6 floor, reached through the unit path.
+    """
+
+    registry = lane_b_scoring._registry()
+
+    class _Answer:
+        numeric = 20.0
+        unit = "degC"
+        tolerance_abs = 0.1
+
+    converted = lane_b_scoring._gold_answer_in_si(registry, _Answer())
+    assert converted is not None
+    assert converted.value == pytest.approx(293.15, abs=1e-9)
+    # A delta of 0.1 degC is a delta of 0.1 K — not 273.25 K.
+    assert converted.tolerance == pytest.approx(0.1, abs=1e-9)
+    assert abs(566.0 - converted.value) > converted.tolerance
+
+
+def test_multiplicative_unit_tolerance_is_unchanged_by_the_delta_fix() -> None:
+    registry = lane_b_scoring._registry()
+
+    class _Answer:
+        numeric = 3.6
+        unit = "km/hour"
+        tolerance_abs = 0.36
+
+    converted = lane_b_scoring._gold_answer_in_si(registry, _Answer())
+    assert converted is not None
+    assert converted.value == pytest.approx(1.0, abs=1e-12)
+    assert converted.tolerance == pytest.approx(0.1, abs=1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -531,14 +687,23 @@ def _report_with_scorecard(scorecard: Any) -> dict[str, Any]:
         "synthetic_38": {"result": "PASS"},
         "metamorphic": {"result": "PASS"},
         "physics_changing_controls": {"result": "PASS"},
-        "hard_safety": {"result": "PASS"},
         "redaction": {"result": "PASS"},
     }
 
 
+def _with_real_hard_safety(report: dict[str, Any]) -> dict[str, Any]:
+    """Fill `hard_safety` from the runner itself, never from a hardcoded PASS.
+
+    Hardcoding it would make the perfect-report test assert nothing about the
+    section that actually decides safety.
+    """
+
+    return {**report, "hard_safety": gate._hard_safety_section(report, [])}
+
+
 def _strict_outcomes(report: dict[str, Any]) -> dict[str, str]:
     outcomes = gate._strict_requirements(
-        report, require_corpus=True, require_full=True
+        _with_real_hard_safety(report), require_corpus=True, require_full=True
     )
     return {outcome.name: outcome.result for outcome in outcomes}
 

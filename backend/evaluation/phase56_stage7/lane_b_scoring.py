@@ -193,6 +193,16 @@ class LaneBScorecard:
     insufficient_information_expected: int
     insufficient_information_matched: int
     blocked_defect_counts: tuple[tuple[str, int], ...]
+    # Every blocked class, not only the deferred one.  A `needs_figure`,
+    # `needs_confirmation`, `insufficient_information` or `unsupported_other`
+    # case that comes back `solved` is fabricating an answer to a problem the
+    # contract says has none — the same hard-safety failure as a silently
+    # solved deferred case, and it must not be invisible just because it lands
+    # in a different class.
+    blocked_silent_solves: int
+    # A blocked case that reached its correct safe terminal and *still* carries
+    # a numeric answer.  The terminal is right and the payload is not.
+    blocked_numeric_answers: int
     unit_dimension_matches: int
     query_binding_matches: int
     direction_sign_matches: int
@@ -277,6 +287,8 @@ class LaneBScorecard:
                 "matched": self.insufficient_information_matched,
             },
             "blocked_defect_counts": dict(self.blocked_defect_counts),
+            "blocked_silent_solves": self.blocked_silent_solves,
+            "blocked_numeric_answers": self.blocked_numeric_answers,
             "metrics": {
                 "answer_accuracy": self.answer_accuracy,
                 "unit_dimension_accuracy": self.unit_dimension_accuracy,
@@ -319,20 +331,31 @@ class _SiAnswer:
 def _gold_answer_in_si(registry: Any, answer: Any) -> _SiAnswer | None:
     """Convert one gold answer and its declared tolerance into SI.
 
-    The tolerance is converted as a *delta* in the answer's own unit, which is
-    what the corpus declares.  No floor is applied and no relative slack is
-    invented: a corpus that asks for 1e-6 gets 1e-6.
+    The tolerance is converted as a true *delta*: the SI distance between the
+    declared value and the declared value plus its tolerance.  Converting the
+    tolerance as an absolute quantity instead would be correct only for purely
+    multiplicative units — for an offset unit it adds the offset to the
+    tolerance, so a `± 0.1 degC` declaration would arrive as `± 273.25 K` and
+    accept essentially any answer.  That is the same defect class as the
+    removed `1e-6` floor, an evaluator silently widening a corpus tolerance,
+    reached through the unit path instead of the arithmetic one.
+
+    No floor is applied and no relative slack is invented: a corpus that asks
+    for 1e-6 gets 1e-6.
     """
 
     unit = answer.unit or ""
     try:
         quantity = registry.Quantity(answer.numeric, unit).to_base_units()
-        tolerance = registry.Quantity(answer.tolerance_abs, unit).to_base_units()
+        shifted = registry.Quantity(
+            answer.numeric + answer.tolerance_abs, unit
+        ).to_base_units()
+        tolerance = abs(float(shifted.magnitude) - float(quantity.magnitude))
     except Exception:
         return None
     return _SiAnswer(
         value=float(quantity.magnitude),
-        tolerance=abs(float(tolerance.magnitude)),
+        tolerance=tolerance,
         dimensionality=quantity.dimensionality,
     )
 
@@ -540,6 +563,7 @@ def score_lane_b_cases(
     confirmation_expected = confirmation_matched = 0
     insufficient_expected = insufficient_matched = 0
     deferred_silent_solves = 0
+    blocked_silent_solves = blocked_numeric_answers = 0
     supported_downgraded = 0
 
     for index, (case, record) in enumerate(zip(cases, records)):
@@ -580,11 +604,17 @@ def score_lane_b_cases(
             continue
 
         matched = _score_blocked(expected_terminal, record, blocked_defects)
-        if (
-            expected_terminal is Stage7ExpectedTerminal.deferred_unsupported
-            and record.terminal.value == _SOLVED_TERMINAL
-        ):
-            deferred_silent_solves += 1
+        # Silent solves are counted for *every* blocked class.  The deferred
+        # one keeps its own counter because the frozen hard-safety catalog
+        # names `deferred_silent_solve` specifically; the other four are
+        # counted together so none of them can pass unmeasured.
+        if record.terminal.value == _SOLVED_TERMINAL:
+            if expected_terminal is Stage7ExpectedTerminal.deferred_unsupported:
+                deferred_silent_solves += 1
+            else:
+                blocked_silent_solves += 1
+        elif record.answer_value_si is not None:
+            blocked_numeric_answers += 1
         if expected_terminal is Stage7ExpectedTerminal.deferred_unsupported:
             deferred_expected += 1
             deferred_matched += int(matched)
@@ -627,6 +657,8 @@ def score_lane_b_cases(
         insufficient_information_expected=insufficient_expected,
         insufficient_information_matched=insufficient_matched,
         blocked_defect_counts=tuple(sorted(blocked_defects.items())),
+        blocked_silent_solves=blocked_silent_solves,
+        blocked_numeric_answers=blocked_numeric_answers,
         unit_dimension_matches=unit_matches,
         query_binding_matches=query_matches,
         direction_sign_matches=direction_matches,

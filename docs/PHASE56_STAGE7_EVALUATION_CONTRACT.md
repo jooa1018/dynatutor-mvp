@@ -19,14 +19,15 @@ gate strictly harder to pass.
 
 | | Previous behaviour (v1) | Defect | v2 behaviour |
 |---|---|---|---|
-| Lane B acceptance | one gate, `strict_lane_b_all_solved`, requiring `terminals["solved"] == executed_cases` | The frozen target is 81 solved plus 19 cases that must reach a safe **non-solved** terminal. A correct Stage 7 could never satisfy this, and a run that wrongly solved a deferred case scored *better*. | Case-level scoring against each case's own expected class, split into `strict_supported_81_solved`, `strict_deferred_12_verified_unsupported`, `strict_unsupported_other_2`, `strict_needs_figure_2`, `strict_needs_confirmation_2`, `strict_insufficient_information_1`, `strict_terminal_mapping_100_percent`, the six metric gates, `strict_wrong_solve_zero`, `strict_unscored_zero`, and `strict_deferred_silent_solve_zero`. |
-| Answer tolerance | `max(corpus_tolerance, 1e-6 * max(1, abs(expected)))` | The invented floor **widened** any corpus tolerance tighter than 1e-6 relative — the evaluator scoring its own engine. | The corpus's declared absolute tolerance, converted to SI in the answer's own unit, applied exactly. |
+| Lane B acceptance | one gate, `strict_lane_b_all_solved`, requiring `terminals["solved"] == executed_cases` | The frozen target is 81 solved plus 19 cases that must reach a safe **non-solved** terminal. A correct Stage 7 could never satisfy this, and a run that wrongly solved a deferred case scored *better*. | Case-level scoring against each case's own expected class, split into `strict_supported_81_solved`, `strict_deferred_12_verified_unsupported`, `strict_unsupported_other_2`, `strict_needs_figure_2`, `strict_needs_confirmation_2`, `strict_insufficient_information_1`, `strict_terminal_mapping_100_percent`, the six metric gates, `strict_wrong_solve_zero`, `strict_unscored_zero`, `strict_solved_but_unscored_zero`, `strict_deferred_silent_solve_zero`, `strict_blocked_silent_solve_zero`, and `strict_blocked_numeric_answer_zero`. |
+| Answer tolerance | `max(corpus_tolerance, 1e-6 * max(1, abs(expected)))` | The invented floor **widened** any corpus tolerance tighter than 1e-6 relative — the evaluator scoring its own engine. | The corpus's declared absolute tolerance, converted to SI as a true **delta** in the answer's own unit, applied exactly. Converting it as an absolute quantity would re-open the same widening for offset units. |
 | Unscored solves | counted and reported, but neither the Lane B gate nor hard safety rejected them | An output nobody could score has not been shown correct; treating it as safe shrinks the measured sample below the one being claimed. | `strict_unscored_zero`, and hard safety fails on any unscored solve. |
 | Scorer exceptions | propagated out of `build_report`, aborting the process with a traceback | Unstructured abort; no typed verdict, and a partial artifact could be misread. | Typed `SCORER_FAILURE`: sanitized reason only, Lane B FAILs, every distribution gate FAILs. |
 
-Safety impact: strictly positive. Wrong solves, unscored solves, silent solves
-of deferred cases, and supported cases downgraded to unsupported are now each
-measured separately and each fail the gate. Metric impact: the reported
+Safety impact: strictly positive. Wrong solves, unverifiable solved outputs,
+silent solves in *any* blocked class, numeric answers carried by a blocked case,
+and supported cases downgraded to unsupported are now each measured separately
+and each fail the gate. Metric impact: the reported
 `answer_accuracy` denominator is the 81 supported cases rather than the count of
 whatever happened to be solved, so partial progress reads as partial. Target
 impact: none — `Stage7ExpectedTerminalCounts` is byte-identical.
@@ -34,6 +35,64 @@ impact: none — `Stage7ExpectedTerminalCounts` is byte-identical.
 These defects were identified by running the public corpus and reading
 privacy-safe aggregate counts: `PUBLIC_EVALUATION_INFORMED_FIX: YES`. No
 private-corpus generalization is claimed from that evidence.
+
+### Hard-safety catalog — evidence audit (NOT yet enforced per signal)
+
+`_hard_safety_section` derives its verdict from six named counters (wrong
+solves, solved-but-unscored, deferred silent solves, silent solves in any other
+blocked class, numeric answers carried by a blocked case, and supported cases
+downgraded to unsupported) plus the structural gates, zero external calls, and
+zero private accesses. It does **not** yet require
+each of the 23 `Stage7HardSafetySignal` members to carry its own instrument, so
+a signal with no instrument is still covered by an aggregate rather than being
+reported `NOT_MEASURED`. **This is an open evaluator gap**, recorded here rather
+than papered over.
+
+A read-only audit of the repository located, and verified by name, concrete
+existing evidence for **all 23** signals — no signal is at `NONE`. The evidence
+kinds present are runtime counters, dedicated attack tests, static source/import
+audits, negative-control suites, an out-of-process solver candidate audit, a
+privacy/redaction audit, and an environment guard. Six signals are now backed by named
+counters introduced with evaluator v2: `supported_wrong`,
+`supported_solved_unscored`, `deferred_silent_solves`, `blocked_silent_solves`,
+`blocked_numeric_answers`, and `supported_downgraded_to_unsupported`.
+
+The last three were added after an independent read-only audit demonstrated
+that hard safety reported `PASS` while the engine fabricated a numeric answer
+for a `needs_figure`, `needs_confirmation`, `insufficient_information`, or
+`unsupported_other` case — seven cases the frozen contract guarantees exist and
+whose correct answer is that there is none. Only the deferred class was
+measured, so the other five could invent answers invisibly. The same audit
+found the tolerance conversion was not delta-safe for offset units, which would
+have widened a `± 0.1 degC` declaration to `± 273.25 K`; both are fixed and
+pinned by negative controls.
+
+Three weaknesses the audit found, which the per-signal registry must fix rather
+than inherit:
+
+1. **`expected_answer_leakage`** — `isolation.py`'s
+   `FORBIDDEN_RUNTIME_SOURCE_TOKENS` is defined and *never referenced anywhere*.
+   Only the AST import audit runs across `backend/app` and `backend/engine`;
+   source-token auditing exists only for `engine/mechanics/modeler*.py` and the
+   runtime orchestrator. The declared guard is not a guard.
+2. **`raw_image_or_base64_logging`** — no static audit asserts that `app/` and
+   `engine/mechanics/` never log image bytes. Those modules contain zero logging
+   calls today, but nothing holds them to it, so a newly added
+   `logger.debug(image.content)` would fire the signal undetected.
+3. **`direct_graph_patch`** — shares its only correction-path attack test with
+   `direct_answer_patch`, and that test injects answer/solver/verification keys
+   only; no graph-shaped key (`equation_graph`, `equation_solution`,
+   `selected_equation_set`) is actually injected into a correction request.
+   Separately, `BenchmarkMetrics.unsafe_patch_bypass_rate` is fed by a
+   caller-supplied flag with no validator binding — declarative, not measured.
+
+Until the registry exists, no Stage 7 report may describe the hard-safety
+catalog as "23 signals measured". The honest statement is: six measured
+counters, seventeen signals covered by existing tests and static guards that the
+gate does not yet bind per signal, and three named weaknesses above. The
+artifact says exactly that — `measured_signal_count`, `unbound_signal_count`,
+and `per_signal_instrument_registry: NOT_IMPLEMENTED` — rather than reporting
+`all_zero` over a catalog of 23.
 
 The commit that first introduces this contract is the `STAGE7_PREFLIGHT_HEAD`.
 Its exact SHA is recorded in the Stage 7 evidence report after the commit is
