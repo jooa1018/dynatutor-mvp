@@ -61,6 +61,11 @@ from evaluation.phase56_stage7.complete_profile import (  # noqa: E402
     draft_structure_fingerprint,
     plan_every_profile,
 )
+from evaluation.phase56_stage7.hard_safety_registry import (  # noqa: E402
+    bound_node_ids,
+    measure_signals,
+    summarize,
+)
 from evaluation.phase56_stage7.lane_b_draft_projection import (  # noqa: E402
     project_case_to_draft,
 )
@@ -602,6 +607,63 @@ _PHYSICS_CHANGING_SUITES: tuple[str, ...] = (
 )
 
 
+_NODE_OUTCOME_PATTERN = re.compile(
+    r"^(?P<node>[\w/\\.\-]+\.py::[\w\[\]\-.,= ]+?)(?:\[.*\])?\s+"
+    r"(?P<outcome>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b",
+    re.MULTILINE,
+)
+
+
+def _run_bound_attack_nodes(node_ids: tuple[str, ...]) -> dict[str, str]:
+    """Run every registry-bound attack node once and record each verdict.
+
+    A node that does not appear in the output has not run, and stays NOT_RUN —
+    which the registry turns into NOT_MEASURED rather than an implicit pass.
+    """
+
+    outcomes: dict[str, str] = {node: "NOT_RUN" for node in node_ids}
+    if not node_ids:
+        return outcomes
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-v",
+                "-p",
+                "no:cacheprovider",
+                "-o",
+                "addopts=",
+                *node_ids,
+            ],
+            cwd=_BACKEND_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_SUITE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return outcomes
+    # A parametrised node reports once per parameter; the signal is measured
+    # only if every one of them ran, and violated if any of them failed.
+    seen: dict[str, list[str]] = {node: [] for node in node_ids}
+    for match in _NODE_OUTCOME_PATTERN.finditer(completed.stdout):
+        node = match.group("node").strip()
+        if node in seen:
+            seen[node].append(match.group("outcome"))
+    for node, verdicts in seen.items():
+        if not verdicts:
+            continue
+        if any(verdict in ("FAILED", "ERROR") for verdict in verdicts):
+            outcomes[node] = "FAILED"
+        elif all(verdict in ("PASSED", "XFAIL") for verdict in verdicts):
+            outcomes[node] = "PASSED"
+        else:
+            # SKIPPED is not evidence: the attack did not run.
+            outcomes[node] = "NOT_RUN"
+    return outcomes
+
+
 def _run_pytest_suite(path: str) -> dict[str, Any]:
     """Run one exact suite in a fresh interpreter and record counts only."""
 
@@ -792,10 +854,45 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
     }
 
 
-def _hard_safety_section(
-    report: dict[str, Any], gates: "list[GateOutcome]"
+def _hard_safety_registry_summary(
+    report: dict[str, Any], *, executed: bool
 ) -> dict[str, Any]:
-    """The all-zero hard-safety catalog, from measured evidence only."""
+    """Measure all 23 catalog signals from this run's counters and attacks."""
+
+    lane_b = report.get("lane_b", {})
+    scoring = lane_b.get("scoring") or {}
+    answer_scoring = lane_b.get("answer_scoring", {})
+    counters: dict[str, Any] = {
+        "wrong_solves": answer_scoring.get("wrong"),
+        "solved_but_unscored": answer_scoring.get("solved_but_unscored"),
+        "blocked_numeric_answers": scoring.get("blocked_numeric_answers"),
+        "deferred_silent_solves": scoring.get("deferred_silent_solves"),
+        "blocked_silent_solves": scoring.get("blocked_silent_solves"),
+        "private_heldout_accesses": report.get("private_heldout_accesses"),
+    }
+    node_outcomes = (
+        _run_bound_attack_nodes(bound_node_ids())
+        if executed
+        else {node: "NOT_RUN" for node in bound_node_ids()}
+    )
+    return summarize(
+        measure_signals(counters=counters, node_outcomes=node_outcomes)
+    )
+
+
+def _hard_safety_section(
+    report: dict[str, Any],
+    gates: "list[GateOutcome]",
+    *,
+    registry_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The all-zero hard-safety catalog, from measured evidence only.
+
+    `registry_summary` is supplied by the caller so this stays a pure function
+    of evidence already gathered: measuring the per-signal registry runs the
+    bound attack nodes, and a reporting function that silently spawns a test
+    suite could not be unit-tested at all.  Omitting it measures on demand.
+    """
 
     contract = stage7_evaluation_contract()
     lane_b = report.get("lane_b", {})
@@ -829,9 +926,17 @@ def _hard_safety_section(
     # The catalog itself is frozen in the evaluation contract; the artifact
     # carries counts only, because several signal *names* are themselves
     # forbidden redaction substrings.
+    if registry_summary is None:
+        registry_summary = _hard_safety_registry_summary(report, executed=executed)
     passing = (
         executed
         and scorer_ran
+        # The catalog is a claim about twenty-three properties.  It passes only
+        # if all twenty-three were examined in this run and none was violated.
+        and registry_summary["measured_signal_count"]
+        == len(contract.hard_safety_signals)
+        and registry_summary["unbound_signal_count"] == 0
+        and registry_summary["nonzero_signal_count"] == 0
         and wrong_solves == 0
         # An unscorable solved output is not a safe one: nothing proved it
         # right, so it cannot contribute to a zero confident-wrong-solve claim.
@@ -844,24 +949,25 @@ def _hard_safety_section(
         and report.get("external_model_calls") == 0
         and report.get("private_heldout_accesses") == 0
     )
-    # Honesty about coverage.  Four signals have their own named counter in the
-    # v2 scorecard and are measured here.  The other nineteen are covered by
-    # dedicated attack tests, static import/source audits, a solver candidate
-    # audit, a redaction audit and an environment guard — real evidence, but
-    # this gate does not yet bind it per signal, so it must not be reported as
-    # "23 signals measured".  The per-signal instrument registry is an open
-    # gap, recorded in docs/PHASE56_STAGE7_EVALUATION_CONTRACT.md.
-    measured_signal_count = 6
+    # Every catalog signal is now bound to a named instrument that ran in this
+    # run: a counter the scorer produced, or exact attack nodes that executed.
+    # A signal whose instrument did not run reports NOT_MEASURED and fails
+    # strict mode, because an unexamined property is not a zero.
     return {
         "executed": executed,
         "catalog": "stage7_evaluation_contract().hard_safety_signals",
         "signal_count": len(contract.hard_safety_signals),
-        "measured_signal_count": measured_signal_count,
-        "per_signal_instrument_registry": "NOT_IMPLEMENTED",
-        "unbound_signal_count": (
-            len(contract.hard_safety_signals) - measured_signal_count
+        "measured_signal_count": registry_summary["measured_signal_count"],
+        "per_signal_instrument_registry": registry_summary[
+            "per_signal_instrument_registry"
+        ],
+        "registry_version": registry_summary["registry_version"],
+        "unbound_signal_count": registry_summary["unbound_signal_count"],
+        "nonzero_signal_count": registry_summary["nonzero_signal_count"],
+        "per_signal": registry_summary["signals"],
+        "nonzero_measured_signal_count": (
+            registry_summary["nonzero_signal_count"] if passing else None
         ),
-        "nonzero_measured_signal_count": 0 if passing else None,
         "all_measured_zero": bool(passing),
         "wrong_solves_measured": wrong_solves,
         "solved_but_unscored_measured": unscored_solves,
@@ -963,7 +1069,15 @@ def build_report(*, run_full_suites: bool = False) -> tuple[dict[str, Any], bool
         "measured_cost_usd": 0.0,
         "actual_model_quality": contract.actual_model_quality_disposition,
     }
-    report["hard_safety"] = _hard_safety_section(report, gates)
+    # Measured once, here, so the reporting function stays pure and the bound
+    # attack nodes are executed exactly one time per run.
+    report["hard_safety"] = _hard_safety_section(
+        report,
+        gates,
+        registry_summary=_hard_safety_registry_summary(
+            report, executed=bool(report.get("lane_b", {}).get("executed"))
+        ),
+    )
     assert_privacy_safe_artifact(report)
     report["redaction"] = {"result": "PASS", "policy": "phase56-stage7-report-redaction-v1"}
     passed = all(gate.result in ("PASS", "NOT_RUN") for gate in gates)
@@ -1141,6 +1255,27 @@ def _strict_requirements(
             "redaction",
         ):
             require(f"strict_{name}_pass", report.get(name, {}).get("result") == "PASS", "not_run")
+        # The catalog is only a safety claim when every signal in it was
+        # actually examined.  These three bind the per-signal registry, so a
+        # signal that lost its instrument fails the gate instead of quietly
+        # dropping out of the denominator.
+        safety = report.get("hard_safety", {})
+        catalog_size = len(contract.hard_safety_signals)
+        require(
+            "strict_hard_safety_all_signals_measured",
+            safety.get("measured_signal_count") == catalog_size,
+            "signals_not_measured",
+        )
+        require(
+            "strict_hard_safety_unbound_zero",
+            safety.get("unbound_signal_count") == 0,
+            "unbound_signals_present",
+        )
+        require(
+            "strict_hard_safety_nonzero_zero",
+            safety.get("nonzero_signal_count") == 0,
+            "nonzero_signal_present",
+        )
     return outcomes
 
 

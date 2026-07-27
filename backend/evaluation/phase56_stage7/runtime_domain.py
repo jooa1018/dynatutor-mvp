@@ -270,8 +270,8 @@ class RuntimeDomainSnapshotV1(FrozenStrictModel):
         STAGE7_RUNTIME_SNAPSHOT_SCHEMA
     )
     version: Literal["1.0"] = STAGE7_RUNTIME_SNAPSHOT_VERSION
-    evaluator_version: Literal["phase56-stage7-evaluator-v2"] = (
-        "phase56-stage7-evaluator-v2"
+    evaluator_version: Literal["phase56-stage7-evaluator-v3"] = (
+        "phase56-stage7-evaluator-v3"
     )
     execution_token: OpaqueExecutionToken
     input_cache_sha256: Sha256

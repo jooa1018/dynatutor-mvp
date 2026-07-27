@@ -29,6 +29,7 @@ and the value is never handed back to the runtime.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
@@ -60,22 +61,70 @@ _DEFERRED_CODE_VALUES: frozenset[str] = frozenset(
 # property, which is exactly the state a scored solve may not be in.
 _PASSED = "passed"
 
+# The kinds every solved candidate must carry whatever its graph looks like.
+#
+# "Some check passed" is not verification.  Without a required-kind floor a
+# single `("anything", "passed")` would drive both candidate coverage and
+# residual verification to 100 %, so an engine that checked nothing but its own
+# arithmetic would score identically to one that proved its units, its binding
+# and its evidence.  These four are the ones no solved graph can be without:
+# the residual of the equations actually used, the dimensional consistency of
+# the unknowns, the binding of the answer to the question asked, and the source
+# evidence the plan was allowed to rest on.
+#
+# Beyond this floor the obligation is the *graph's*, not a list's: the runtime
+# records what its own plan and candidate required, and the scorer demands that
+# whole set.  A graph with events must show its event ordering, one with
+# constraints its constraints, one with a time unknown its non-negative time —
+# without this scorer hard-coding physics it cannot see.
+_REQUIRED_CHECK_KINDS: frozenset[str] = frozenset(
+    {
+        "equation_residual",
+        "unit_consistency",
+        "query_binding",
+        "source_evidence",
+    }
+)
+
 _SOLVED_TERMINAL = LaneBTerminal.solved.value
 _VERIFIED_UNSUPPORTED_TERMINAL = LaneBTerminal.verified_unsupported.value
 _NEEDS_FIGURE_TERMINAL = LaneBTerminal.needs_figure.value
 _NEEDS_CONFIRMATION_TERMINAL = LaneBTerminal.needs_confirmation.value
 _INSUFFICIENT_TERMINAL = LaneBTerminal.insufficient_information.value
 
-# The runtime terminal each expected class must reach.  Deferred and
-# unsupported-other share a terminal on purpose — the *evidence* separates them,
-# not the terminal name — and the per-class checks below enforce that.
-_REQUIRED_TERMINAL: dict[Stage7ExpectedTerminal, str] = {
-    Stage7ExpectedTerminal.accepted: _SOLVED_TERMINAL,
-    Stage7ExpectedTerminal.deferred_unsupported: _VERIFIED_UNSUPPORTED_TERMINAL,
-    Stage7ExpectedTerminal.unsupported_other: _VERIFIED_UNSUPPORTED_TERMINAL,
-    Stage7ExpectedTerminal.needs_figure: _NEEDS_FIGURE_TERMINAL,
-    Stage7ExpectedTerminal.needs_confirmation: _NEEDS_CONFIRMATION_TERMINAL,
-    Stage7ExpectedTerminal.insufficient_information: _INSUFFICIENT_TERMINAL,
+_COMPILER_UNSUPPORTED_TERMINAL = LaneBTerminal.compiler_unsupported.value
+
+# The runtime terminals each expected class may reach.  Deferred and
+# unsupported-other overlap on purpose — the *evidence* separates them, not the
+# terminal name — and the per-class checks below enforce that.
+#
+# `unsupported_other` accepts `compiler_unsupported` as well as
+# `verified_unsupported`, because otherwise the class is unreachable by
+# construction and no correct Stage 7 could ever satisfy it.  The only producer
+# of `verified_unsupported` in the compiler path requires a course-scope
+# deferred code — which is exactly the evidence that *disqualifies*
+# unsupported-other — so an engine that correctly proves a problem out of scope
+# at the compiler lands on `compiler_unsupported` and would score
+# `terminal_mismatch` forever.  That is the same defect class as the removed
+# `strict_lane_b_all_solved`: a gate a correct implementation cannot pass.
+#
+# This widens no judgement.  The added terminal still has to clear the blocked
+# checks below — no numeric answer, no deferred evidence — and now also has to
+# carry positive typed evidence that the compiler really refused on scope.
+# Measured before landing: both unsupported-other cases currently stop at
+# `compiler_failure :: underdetermined`, so this changes no count today; it
+# removes a trap that would have fired the moment they were fixed.
+_REQUIRED_TERMINALS: dict[Stage7ExpectedTerminal, frozenset[str]] = {
+    Stage7ExpectedTerminal.accepted: frozenset({_SOLVED_TERMINAL}),
+    Stage7ExpectedTerminal.deferred_unsupported: frozenset(
+        {_VERIFIED_UNSUPPORTED_TERMINAL}
+    ),
+    Stage7ExpectedTerminal.unsupported_other: frozenset(
+        {_VERIFIED_UNSUPPORTED_TERMINAL, _COMPILER_UNSUPPORTED_TERMINAL}
+    ),
+    Stage7ExpectedTerminal.needs_figure: frozenset({_NEEDS_FIGURE_TERMINAL}),
+    Stage7ExpectedTerminal.needs_confirmation: frozenset({_NEEDS_CONFIRMATION_TERMINAL}),
+    Stage7ExpectedTerminal.insufficient_information: frozenset({_INSUFFICIENT_TERMINAL}),
 }
 
 
@@ -122,6 +171,7 @@ class SupportedDefect(str, Enum):
     candidate_not_unique = "candidate_not_unique"
     verification_check_missing = "verification_check_missing"
     verification_check_not_passed = "verification_check_not_passed"
+    verification_check_kind_missing = "verification_check_kind_missing"
     numeric_outside_tolerance = "numeric_outside_tolerance"
 
 
@@ -134,6 +184,7 @@ class BlockedDefect(str, Enum):
         "unsupported_other_used_deferred_evidence"
     )
     numeric_answer_present = "numeric_answer_present"
+    unsupported_reason_missing = "unsupported_reason_missing"
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,6 +411,41 @@ def _gold_answer_in_si(registry: Any, answer: Any) -> _SiAnswer | None:
     )
 
 
+# How many representable steps of rounding the comparison itself may introduce.
+#
+# Three roundings stand between the corpus's declaration and the number compared
+# here: the SI conversion of the expected value, the SI conversion of the
+# tolerance delta, and the subtraction.  Each can move its result by up to half
+# an ULP at the operand scale, so a value that is *exactly* on the declared
+# boundary can land a couple of ULP outside it and be scored wrong for arithmetic
+# reasons alone.
+#
+# This forgives that, and only that.  An ULP is a property of binary64 — about
+# 2.2e-16 relative — not of the corpus, so the allowance cannot widen a declared
+# tolerance in any way a result could exploit: it is some eleven orders of
+# magnitude below the tightest tolerance the corpus declares.  It is emphatically
+# NOT a floor: there is no `1e-6`, no `max(tolerance, ...)`, and no magnitude-
+# based slack.  A tolerance of 1e-6 still means 1e-6.
+_TOLERANCE_BOUNDARY_ULPS = 4
+
+
+def _within_declared_tolerance(
+    value: float, expected_value: float, tolerance: float
+) -> bool:
+    """The declared tolerance, plus only the rounding this comparison caused."""
+
+    difference = abs(value - expected_value)
+    if difference <= tolerance:
+        return True
+    scale = max(abs(value), abs(expected_value), tolerance)
+    if not math.isfinite(scale) or scale <= 0.0:
+        return False
+    admissible = tolerance
+    for _ in range(_TOLERANCE_BOUNDARY_ULPS):
+        admissible += math.ulp(scale)
+    return difference <= admissible
+
+
 def _runtime_dimensionality(registry: Any, unit: str | None) -> Any | None:
     if not unit:
         return None
@@ -417,13 +503,18 @@ def _score_supported(
     if not coverage_ok:
         defects[SupportedDefect.candidate_not_unique.value] += 1
 
-    # --- residual verification: every check present and every check passed
+    # --- residual verification: the checks this graph *owed*, all of them passed
     checks = record.verification_checks
-    residual_ok = bool(checks) and all(status == _PASSED for _kind, status in checks)
+    passed_kinds = {kind for kind, status in checks if status == _PASSED}
+    obliged = _REQUIRED_CHECK_KINDS | set(record.required_check_kinds)
+    all_passed = bool(checks) and all(status == _PASSED for _kind, status in checks)
+    residual_ok = all_passed and obliged <= passed_kinds
     if not checks:
         defects[SupportedDefect.verification_check_missing.value] += 1
-    elif not residual_ok:
+    elif not all_passed:
         defects[SupportedDefect.verification_check_not_passed.value] += 1
+    elif not residual_ok:
+        defects[SupportedDefect.verification_check_kind_missing.value] += 1
 
     partial = _SupportedOutcome(
         solved=True,
@@ -475,7 +566,7 @@ def _score_supported(
         )
 
     # --- the corpus's own frozen tolerance, applied exactly
-    within = abs(value - expected.value) <= expected.tolerance
+    within = _within_declared_tolerance(value, expected.value, expected.tolerance)
     if not within:
         defects[SupportedDefect.numeric_outside_tolerance.value] += 1
     # Direction/sign is proven by the *signed* comparison above together with an
@@ -506,8 +597,8 @@ def _score_blocked(
 ) -> bool:
     """Score one non-supported case against its exact expected safe terminal."""
 
-    required = _REQUIRED_TERMINAL[expected_terminal]
-    if record.terminal.value != required:
+    required = _REQUIRED_TERMINALS[expected_terminal]
+    if record.terminal.value not in required:
         defects[BlockedDefect.terminal_mismatch.value] += 1
         return False
     # No blocked class may carry a numeric answer, whatever produced it.
@@ -528,6 +619,14 @@ def _score_blocked(
                 BlockedDefect.unsupported_other_used_deferred_evidence.value
             ] += 1
             return False
+        # Reaching the terminal is not the same as proving the refusal.  A case
+        # that arrives at `compiler_unsupported` must say *why* with a typed
+        # compiler code, or it is an undifferentiated failure wearing the right
+        # terminal — the exact substitution this class exists to make visible.
+        if record.terminal.value == _COMPILER_UNSUPPORTED_TERMINAL:
+            if not record.compiler_codes:
+                defects[BlockedDefect.unsupported_reason_missing.value] += 1
+                return False
         return True
     return True
 
@@ -577,7 +676,7 @@ def score_lane_b_cases(
             ) from exc
         expected_counts[expected_terminal.value] += 1
         actual_terminals[record.terminal.value] += 1
-        if record.terminal.value == _REQUIRED_TERMINAL[expected_terminal]:
+        if record.terminal.value in _REQUIRED_TERMINALS[expected_terminal]:
             terminal_matches += 1
 
         if expected_terminal is Stage7ExpectedTerminal.accepted:

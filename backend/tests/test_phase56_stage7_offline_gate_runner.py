@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,28 @@ def _load_gate_module() -> Any:
 
 
 gate = _load_gate_module()
+
+
+def _measured_registry(
+    *, measured: int = 23, unbound: int = 0, nonzero: int = 0
+) -> dict[str, Any]:
+    """A per-signal registry summary, supplied rather than measured.
+
+    The tests below exercise the *counter* half of hard safety, so they hand in
+    a fully-measured registry instead of running the thirty-seven bound attack
+    nodes once per assertion.  The registry half has its own tests, which vary
+    these numbers and check the gate reacts.
+    """
+
+    return {
+        "registry_version": "test-supplied",
+        "per_signal_instrument_registry": "IMPLEMENTED",
+        "signal_count": 23,
+        "measured_signal_count": measured,
+        "unbound_signal_count": unbound,
+        "nonzero_signal_count": nonzero,
+        "signals": [],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -444,15 +467,14 @@ def test_hard_safety_is_not_passed_by_an_unscored_solve() -> None:
     )
     scorecard = score_lane_b_cases(cases, records)
     report = _report_with_scorecard(scorecard)
-    section = gate._hard_safety_section(report, [])
+    section = gate._hard_safety_section(report, [], registry_summary=_measured_registry())
     assert section["result"] == "FAIL"
     assert section["all_measured_zero"] is False
-    # Coverage is stated honestly: six signals carry their own counter here,
-    # the rest are covered by tests and static guards this gate does not yet
-    # bind per signal, and the artifact says so rather than implying 23.
-    assert section["measured_signal_count"] == 6
+    # Every catalog signal now carries a named instrument, so the artifact
+    # reports full coverage rather than the honest partial count it used to.
+    assert section["measured_signal_count"] == 23
     assert section["signal_count"] == 23
-    assert section["per_signal_instrument_registry"] == "NOT_IMPLEMENTED"
+    assert section["per_signal_instrument_registry"] == "IMPLEMENTED"
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +525,7 @@ def test_hard_safety_fails_when_any_blocked_class_is_silently_solved(
     assert scorecard.deferred_silent_solves == 0
 
     report = _report_with_scorecard(scorecard)
-    section = gate._hard_safety_section(report, [])
+    section = gate._hard_safety_section(report, [], registry_summary=_measured_registry())
     assert section["result"] == "FAIL"
     assert section["all_measured_zero"] is False
 
@@ -532,7 +554,7 @@ def test_hard_safety_fails_when_a_blocked_case_carries_a_number() -> None:
     assert scorecard.blocked_numeric_answers == 1
 
     report = _report_with_scorecard(scorecard)
-    assert gate._hard_safety_section(report, [])["result"] == "FAIL"
+    assert gate._hard_safety_section(report, [], registry_summary=_measured_registry())["result"] == "FAIL"
     assert _strict_outcomes(report)["strict_blocked_numeric_answer_zero"] == "FAIL"
 
 
@@ -547,7 +569,7 @@ def test_hard_safety_fails_when_a_supported_case_is_downgraded() -> None:
     records[index] = _deferred_record()
 
     report = _report_with_scorecard(score_lane_b_cases(cases, records))
-    assert gate._hard_safety_section(report, [])["result"] == "FAIL"
+    assert gate._hard_safety_section(report, [], registry_summary=_measured_registry())["result"] == "FAIL"
 
 
 def test_hard_safety_passes_on_a_perfect_run() -> None:
@@ -557,9 +579,234 @@ def test_hard_safety_passes_on_a_perfect_run() -> None:
     report = _report_with_scorecard(
         score_lane_b_cases(cases, _perfect_records(cases))
     )
-    section = gate._hard_safety_section(report, [])
+    section = gate._hard_safety_section(report, [], registry_summary=_measured_registry())
     assert section["result"] == "PASS"
     assert section["all_measured_zero"] is True
+
+
+# ---------------------------------------------------------------------------
+# The per-signal registry: an unexamined signal is never a zero.
+# ---------------------------------------------------------------------------
+
+
+def _perfect_report() -> dict[str, Any]:
+    cases = _fixture_cases()
+    return _report_with_scorecard(score_lane_b_cases(cases, _perfect_records(cases)))
+
+
+def test_an_unmeasured_signal_fails_hard_safety_on_an_otherwise_perfect_run() -> None:
+    """The whole point: seventeen unexamined properties are not seventeen zeros."""
+
+    section = gate._hard_safety_section(
+        _perfect_report(),
+        [],
+        registry_summary=_measured_registry(measured=6, unbound=17),
+    )
+    assert section["result"] == "FAIL"
+    assert section["measured_signal_count"] == 6
+    assert section["unbound_signal_count"] == 17
+
+
+def test_a_violated_signal_fails_hard_safety_on_an_otherwise_perfect_run() -> None:
+    section = gate._hard_safety_section(
+        _perfect_report(), [], registry_summary=_measured_registry(nonzero=1)
+    )
+    assert section["result"] == "FAIL"
+    assert section["nonzero_signal_count"] == 1
+
+
+def test_the_registry_binds_every_catalog_signal_exactly_once() -> None:
+    from evaluation.phase56_stage7.contracts import Stage7HardSafetySignal
+    from evaluation.phase56_stage7.hard_safety_registry import REGISTRY
+
+    bound = [item.signal for item in REGISTRY]
+    assert len(bound) == len(set(bound)) == len(tuple(Stage7HardSafetySignal))
+    assert set(bound) == set(Stage7HardSafetySignal)
+
+
+def test_a_signal_whose_attack_did_not_run_reports_not_measured() -> None:
+    from evaluation.phase56_stage7.hard_safety_registry import (
+        bound_node_ids,
+        measure_signals,
+        summarize,
+    )
+
+    counters = {
+        "wrong_solves": 0,
+        "solved_but_unscored": 0,
+        "blocked_numeric_answers": 0,
+        "deferred_silent_solves": 0,
+        "blocked_silent_solves": 0,
+        "private_heldout_accesses": 0,
+    }
+    all_passed = {node: "PASSED" for node in bound_node_ids()}
+    full = summarize(measure_signals(counters=counters, node_outcomes=all_passed))
+    assert full["measured_signal_count"] == 23
+    assert full["unbound_signal_count"] == 0
+    assert full["nonzero_signal_count"] == 0
+
+    # Drop a single attack and the signals resting on it stop being measured.
+    starved = dict(all_passed)
+    starved[
+        "tests/test_phase56_stage7_hard_safety_instruments.py"
+        "::test_no_log_record_carries_image_bytes_or_base64"
+    ] = "NOT_RUN"
+    partial = summarize(measure_signals(counters=counters, node_outcomes=starved))
+    assert partial["measured_signal_count"] < 23
+    assert partial["unbound_signal_count"] > 0
+
+    # A failing attack is a violation, not a missing measurement.
+    broken = dict(all_passed)
+    broken[
+        "tests/test_phase56_stage7_hard_safety_instruments.py"
+        "::test_no_log_record_carries_raw_provider_output"
+    ] = "FAILED"
+    violated = summarize(measure_signals(counters=counters, node_outcomes=broken))
+    assert violated["measured_signal_count"] == 23
+    assert violated["nonzero_signal_count"] >= 1
+
+
+def test_unsupported_other_is_reachable_by_a_correct_engine() -> None:
+    """A class only `verified_unsupported` could satisfy was unsatisfiable.
+
+    `verified_unsupported` is produced in the compiler path only when a
+    course-scope deferred code is present — and that same code disqualifies
+    `unsupported_other`.  An engine that correctly proves a problem out of scope
+    at the compiler reaches `compiler_unsupported`, so before this fix the class
+    could never match and `terminal_mapping` could never reach 100 %.
+    """
+
+    from evaluation.phase56_stage7.lane_b_scoring import _REQUIRED_TERMINALS
+
+    accepted = _REQUIRED_TERMINALS[Stage7ExpectedTerminal.unsupported_other]
+    assert LaneBTerminal.compiler_unsupported.value in accepted
+    assert LaneBTerminal.verified_unsupported.value in accepted
+
+    # The deferred class must NOT gain the same terminal, or the two classes
+    # would stop being separable by evidence.
+    deferred = _REQUIRED_TERMINALS[Stage7ExpectedTerminal.deferred_unsupported]
+    assert LaneBTerminal.compiler_unsupported.value not in deferred
+
+
+def test_compiler_unsupported_still_needs_a_typed_reason() -> None:
+    """Reaching the terminal is not proving the refusal."""
+
+    from evaluation.phase56_stage7.lane_b_scoring import BlockedDefect, _score_blocked
+
+    defects: Counter[str] = Counter()
+    bare = LaneBResult(
+        "token", LaneBTerminal.compiler_unsupported, compiler_codes=()
+    )
+    assert not _score_blocked(
+        Stage7ExpectedTerminal.unsupported_other, bare, defects
+    )
+    assert defects[BlockedDefect.unsupported_reason_missing.value] == 1
+
+    reasoned = LaneBResult(
+        "token",
+        LaneBTerminal.compiler_unsupported,
+        compiler_codes=("requires_specialized_model",),
+    )
+    assert _score_blocked(
+        Stage7ExpectedTerminal.unsupported_other, reasoned, Counter()
+    )
+
+
+def test_compiler_unsupported_may_not_borrow_deferred_evidence() -> None:
+    from evaluation.phase56_stage7.lane_b_scoring import (
+        _DEFERRED_CODE_VALUES,
+        BlockedDefect,
+        _score_blocked,
+    )
+
+    defects: Counter[str] = Counter()
+    borrowed = LaneBResult(
+        "token",
+        LaneBTerminal.compiler_unsupported,
+        compiler_codes=(sorted(_DEFERRED_CODE_VALUES)[0],),
+    )
+    assert not _score_blocked(
+        Stage7ExpectedTerminal.unsupported_other, borrowed, defects
+    )
+    assert (
+        defects[BlockedDefect.unsupported_other_used_deferred_evidence.value] == 1
+    )
+
+
+def test_a_blocked_case_carrying_a_number_still_fails_on_the_new_terminal() -> None:
+    from evaluation.phase56_stage7.lane_b_scoring import BlockedDefect, _score_blocked
+
+    defects: Counter[str] = Counter()
+    fabricated = LaneBResult(
+        "token",
+        LaneBTerminal.compiler_unsupported,
+        compiler_codes=("requires_specialized_model",),
+        answer_value_si=42.0,
+    )
+    assert not _score_blocked(
+        Stage7ExpectedTerminal.unsupported_other, fabricated, defects
+    )
+    assert defects[BlockedDefect.numeric_answer_present.value] == 1
+
+
+def test_one_authoritative_distribution_feeds_both_consumers() -> None:
+    """The frozen 81/12/2/2/2/1 has exactly one home, and both readers use it.
+
+    The corpus semantic preflight and the strict scorer each check the
+    distribution.  If either carried its own hand-written copy the two could
+    drift, and the gate would be comparing the corpus against one target while
+    reporting acceptance against another.  Both read
+    `stage7_evaluation_contract().expected_terminals`; this pins that, and pins
+    that the counts cannot be satisfied by an internal sum alone.
+    """
+
+    import inspect
+
+    from evaluation.phase56_stage7 import corpus_semantics
+
+    expected = stage7_evaluation_contract().expected_terminals
+    assert (
+        expected.supported_accepted,
+        expected.deferred_unsupported,
+        expected.unsupported_other,
+        expected.needs_figure,
+        expected.needs_confirmation,
+        expected.insufficient_information,
+        expected.total,
+    ) == (81, 12, 2, 2, 2, 1, 100)
+
+    # Both consumers name the contract rather than a literal of their own.
+    for module in (corpus_semantics, gate):
+        source = inspect.getsource(module)
+        assert "expected_terminals" in source, module.__name__
+
+    # A distribution that totals 100 but misplaces a class must still fail: the
+    # preflight compares every class, not just the sum.
+    preflight = inspect.getsource(corpus_semantics)
+    for field in (
+        "supported_accepted",
+        "deferred_unsupported",
+        "unsupported_other",
+        "needs_figure",
+        "needs_confirmation",
+        "insufficient_information",
+    ):
+        assert f"expected.{field}" in preflight, field
+
+
+def test_a_missing_counter_is_not_a_zero() -> None:
+    from evaluation.phase56_stage7.hard_safety_registry import (
+        bound_node_ids,
+        measure_signals,
+        summarize,
+    )
+
+    node_outcomes = {node: "PASSED" for node in bound_node_ids()}
+    summary = summarize(
+        measure_signals(counters={}, node_outcomes=node_outcomes)
+    )
+    assert summary["unbound_signal_count"] >= 3
+    assert summary["measured_signal_count"] <= 20
 
 
 # ---------------------------------------------------------------------------
@@ -698,7 +945,7 @@ def _with_real_hard_safety(report: dict[str, Any]) -> dict[str, Any]:
     section that actually decides safety.
     """
 
-    return {**report, "hard_safety": gate._hard_safety_section(report, [])}
+    return {**report, "hard_safety": gate._hard_safety_section(report, [], registry_summary=_measured_registry())}
 
 
 def _strict_outcomes(report: dict[str, Any]) -> dict[str, str]:

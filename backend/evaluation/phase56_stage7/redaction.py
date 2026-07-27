@@ -70,8 +70,8 @@ def assert_privacy_safe_artifact(value: Any) -> None:
 class Stage7AggregateArtifactV1(FrozenStrictModel):
     schema: Literal["dynatutor.phase56_stage7.report"] = STAGE7_ARTIFACT_SCHEMA
     version: Literal["1.0"] = STAGE7_ARTIFACT_VERSION
-    evaluator_version: Literal["phase56-stage7-evaluator-v2"] = (
-        "phase56-stage7-evaluator-v2"
+    evaluator_version: Literal["phase56-stage7-evaluator-v3"] = (
+        "phase56-stage7-evaluator-v3"
     )
     exact_head_sha: Sha256
     corpus_zip_sha256: Sha256

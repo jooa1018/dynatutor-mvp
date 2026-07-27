@@ -40,7 +40,10 @@ from engine.mechanics.compiler.contracts import has_course_scope_deferred_issue
 from engine.mechanics.normalization import normalize_draft
 from engine.mechanics.pipeline import solve_verified_equation_graph
 from engine.mechanics.validation import ValidationTerminal, validate_draft
-from engine.mechanics.verification.contracts import MechanicsSolveTerminal
+from engine.mechanics.verification.contracts import (
+    MechanicsSolveTerminal,
+    graph_required_check_kinds,
+)
 
 from evaluation.phase56_stage7.complete_profile_application import (
     close_projected_draft,
@@ -218,6 +221,10 @@ class LaneBResult:
     rejected_candidate_count: int = 0
     verified_candidate_count: int = 0
     verification_checks: tuple[tuple[str, str], ...] = ()
+    # What the graph and the surviving candidate *obliged*, recorded alongside
+    # what was actually run so the scorer can compare the two rather than
+    # accepting the presence of some check as proof that the right ones ran.
+    required_check_kinds: tuple[str, ...] = ()
     answer_value_si: float | None = None
     answer_query_symbol_id: str | None = None
     answer_unit: str | None = None
@@ -561,6 +568,9 @@ def _run_lane_b_from_closed_draft(
         execution_token,
         LaneBTerminal.solved,
         verification_checks=checks,
+        required_check_kinds=graph_required_check_kinds(
+            solved.plan, verified.candidate
+        ),
         answer_value_si=verified.query_value_si,
         answer_query_symbol_id=verified.query_symbol_id,
         **common,

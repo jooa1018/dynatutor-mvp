@@ -248,6 +248,22 @@ _TERMINAL_CODE = {
 }
 
 
+def graph_required_check_kinds(
+    plan: "SolvePlan", candidate: "SolverCandidate"
+) -> tuple[str, ...]:
+    """The verification kinds *this graph and candidate* oblige, sorted.
+
+    The verdict below already refuses a candidate whose checks omit one of
+    these.  Exposing the same derivation lets an independent scorer confirm the
+    obligation was met instead of trusting that it was: "some check passed" and
+    "every check this graph required passed" are different claims, and only the
+    second one means anything.  Derived from the plan and the candidate, never
+    from a case, a family, or an expected answer.
+    """
+
+    return tuple(sorted(kind.value for kind in _expected_check_provenance(plan, candidate)))
+
+
 class _CheckProvenance(FrozenModel):
     equation_ids: tuple[str, ...] = ()
     constraint_ids: tuple[str, ...] = ()
@@ -836,5 +852,6 @@ __all__ = [
     "EVIDENCE_ADAPTER_VERSION", "VERIFICATION_CONTRACT_VERSION", "VERIFICATION_POLICY_VERSION", "EvidenceAdapterV2",
     "EvidenceOutput", "EvidenceSubstitution", "MechanicsSolveResult", "MechanicsSolveTerminal",
     "VerificationCheck", "VerificationCheckKind", "VerificationCheckStatus",
-    "VerificationOutcome", "VerifiedCandidate", "render_canonical_si_unit",
+    "VerificationOutcome", "VerifiedCandidate", "graph_required_check_kinds",
+    "render_canonical_si_unit",
 ]

@@ -17,6 +17,19 @@ FORBIDDEN_RUNTIME_SOURCE_TOKENS = (
     "gold_graph",
     "corpus_family",
 )
+# The tokens above name *gold* members.  A production module that reads one has
+# reached into the evaluator's answer key, whatever it then does with it.
+#
+# The guard below distinguishes reading a gold member from *naming* one, because
+# the two look identical to a substring scan and only one is a leak.  A leak is
+# an identifier — `draft.expected_answer`, `expected_answer = ...`, a parameter
+# of that name — or a string used as a subscript key — `payload["gold_graph"]`.
+# A bare string constant in a collection literal is neither: that is how the
+# runtime's own denylists (`ANSWER_AUTHORITY_FORBIDDEN_FIELDS`,
+# `_FORBIDDEN_ENVELOPE_FIELDS`) spell the fields they exist to *reject*.  A
+# substring scan would flag the defence as the vulnerability, so this guard
+# reads the syntax instead of the text, and needs no allowlist to do it.
+_SUBSCRIPT_READ_CONTEXTS = (ast.Load, ast.Store, ast.Del)
 
 
 def _python_files(root: Path) -> Iterable[Path]:
@@ -50,6 +63,53 @@ def assert_production_runtime_isolated(repository_root: Path) -> None:
                         raise ValueError(
                             f"production runtime imports evaluator data: {path}:{module}"
                         )
+
+
+def _gold_token_use(node: ast.AST) -> str | None:
+    """The forbidden token this node *reads*, or None.
+
+    Identifier positions and subscript keys only.  Every other appearance of the
+    same characters — a set element, a docstring, a comment — is a name, not a
+    use, and naming a forbidden field is what a denylist is.
+    """
+
+    if isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_RUNTIME_SOURCE_TOKENS:
+        return node.attr
+    if isinstance(node, ast.Name) and node.id in FORBIDDEN_RUNTIME_SOURCE_TOKENS:
+        return node.id
+    if isinstance(node, ast.arg) and node.arg in FORBIDDEN_RUNTIME_SOURCE_TOKENS:
+        return node.arg
+    if isinstance(node, ast.keyword) and node.arg in FORBIDDEN_RUNTIME_SOURCE_TOKENS:
+        return node.arg
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if node.name in FORBIDDEN_RUNTIME_SOURCE_TOKENS:
+            return node.name
+    if isinstance(node, ast.Subscript) and isinstance(node.ctx, _SUBSCRIPT_READ_CONTEXTS):
+        key = node.slice
+        if isinstance(key, ast.Constant) and key.value in FORBIDDEN_RUNTIME_SOURCE_TOKENS:
+            return str(key.value)
+    return None
+
+
+def assert_runtime_source_does_not_read_gold_members(repository_root: Path) -> None:
+    """No production module may read a gold member by name.
+
+    The import guard above stops the evaluator package from being imported; this
+    stops the same data arriving through an untyped payload that happens to
+    carry the gold keys.
+    """
+
+    for relative_root in (Path("backend/app"), Path("backend/engine")):
+        root = repository_root / relative_root
+        for path in _python_files(root):
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(path))
+            for node in ast.walk(tree):
+                token = _gold_token_use(node)
+                if token is not None:
+                    raise ValueError(
+                        f"production runtime reads a gold member: {path}:{token}"
+                    )
 
 
 def assert_runtime_domain_does_not_import_gold(repository_root: Path) -> None:
