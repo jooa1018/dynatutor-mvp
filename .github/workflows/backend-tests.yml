@@ -47,6 +47,13 @@ jobs:
         run: python -m compileall -q app engine
       - name: Run backend fast wrapper
         run: bash ../scripts/check_backend_fast.sh
+      - name: Upload sanitized fast failure summary
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-fast-failure-summary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backend-fast-failure-summary.txt
+          if-no-files-found: warn
 
   backend_slow:
     name: backend slow
