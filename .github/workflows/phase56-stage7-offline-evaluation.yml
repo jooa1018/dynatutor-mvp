@@ -103,7 +103,16 @@ jobs:
 
       - name: Full backend regression
         working-directory: backend
-        run: python -m pytest -q
+        run: |
+          status=0
+          python -m pytest -q > "${RUNNER_TEMP}/stage7-full-backend.log" 2>&1 || status=$?
+          if [[ "$status" -eq 0 ]]; then
+            tail -n 40 "${RUNNER_TEMP}/stage7-full-backend.log"
+          else
+            echo "[stage7] full backend regression failed; compact tail follows" >&2
+            tail -n 300 "${RUNNER_TEMP}/stage7-full-backend.log" >&2
+          fi
+          exit "$status"
 
       - name: Assert the gate mutated no source
         run: |
