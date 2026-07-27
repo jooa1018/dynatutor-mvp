@@ -773,6 +773,210 @@ interactions, and no typed points, and the minimal force profile measured here
 is a law-emission counterfactual, not a pipeline run — nothing on that rung was
 validated, normalized, authorized, compiled, solved, or verified.
 
+## 6b. The exact blocking prerequisite of every profile, measured
+
+§6's ordering was derived from plan-formability. Planning every profile against
+every projected Draft and recording each prerequisite's own disposition gives
+the blocker directly. Only `missing`, `ambiguous`, and `unsupported` are
+failures; `explicit_source`, `server_derivable`, and `generated_unknown` are all
+satisfied.
+
+| Profile | Applicable | Closes | Blocking prerequisite(s) |
+|---|---:|---:|---|
+| `free_flight_gravity` | 8 | 2 | `authority_constant_acceleration: missing` ×6 |
+| `impulse_momentum` | 4 | 0 | `capability_event_scoped_solve_plan: unsupported` ×4 |
+| `relative_translating_frame` | 9 | 0 | `capability_relative_acceleration_readout: unsupported` ×9; also `axis_signed`/`component_binding: missing` ×6 |
+| `explicit_resultant_force` | 9 | 0 | `authority_force_is_resultant: missing` ×9 |
+| `rigid_fixed_axis` | 13 | 0 | `capability_rigid_point_authority` + `capability_body_fixed_frame: unsupported` ×13; `geometry_attached: missing` ×13; `quantity_radius: missing` ×7 |
+| `horizontal_contact` | 10 | 0 | `capability_horizontal_surface_profile: unsupported` ×10; contact/gravity/friction/frame/point/regime `missing` ×7 |
+| `work_energy` | 6 | 0 | `quantity_displacement` + `authority_constant_force: missing` ×6; mass/force `missing` ×3 |
+| `rolling_energy` | 6 | 0 | `quantity_gravity: missing` ×6 |
+| `collision_restitution` | 4 | 0 | `authority_external_impulse_negligible: missing` ×4 |
+| `fixed_pulley` | 6 | 3 | `authority_fixed_pulley` + `point_contact: missing` ×3 |
+| `incline_hanging_pulley` | 6 | 3 | `quantity_angle: missing` ×3 |
+| `incline_contact` | 3 | 0 | `quantity_mass`, `quantity_gravity`, `state_contact_regime: missing` ×3 |
+| `spring_vibration_deferred` | 3 | 0 | `capability_period_readout: unsupported` ×3 — correct; this profile is *meant* to defer |
+
+Two blocker families dominate: an **`authority_*` the source never states**
+(22 contexts) and a **declared `capability_*` the engine does not have**
+(39 contexts).
+
+### 6b-1. The §6 first-priority item does not survive measurement
+
+§6 named `free_flight_gravity`'s six `profile_plan_not_formable` contexts as the
+next package. A counterfactual settles it: grant those six the
+`constant_acceleration` authority they lack — the *only* prerequisite any of
+them fails — and run the real lane.
+
+```
+contexts blocked ONLY on authority_constant_acceleration
+  baseline terminals: {'compiler_unsupported': 6}
+  counterfactual    : {'compiler_unsupported': 6}
+  compiler codes    : {'requires_specialized_model': 6}
+```
+
+**Measured yield: zero additional solves.** Granting the authority is not what
+unblocks these contexts.
+
+The counterfactual was then instrumented a second time, to check *why* — and
+the second reading is the one that matters, because the first would have been
+misread as "a closed free flight yields nothing":
+
+```
+ctx1  plan=complete  applied=None                 rejected: profile_shape_not_closable
+ctx2  plan=complete  applied=None                 rejected: profile_shape_not_closable
+ctx3  plan=complete  applied=None                 rejected: profile_shape_not_closable
+ctx4  plan=complete  applied=None                 rejected: profile_shape_not_closable
+ctx5  plan=complete  applied=free_flight_gravity  frames 0->1  interactions 0->1  quantities 3->5
+ctx6  plan=complete  applied=None                 rejected: profile_shape_not_closable
+```
+
+Three separate facts, and they must not be collapsed:
+
+1. The authority genuinely was the only *plan* blocker — all six plans become
+   `complete` once it is granted.
+2. **The transaction then refuses five of the six** on its own narrowness
+   guards. `_free_flight_gravity_transaction` returns `None` — and so
+   `profile_shape_not_closable` — for a Draft that already carries a gravity
+   quantity, a gravity interaction, or an acceleration for this subject and
+   interval, or whose stated directions bind a horizontal axis. A complete plan
+   is therefore not a closable shape, and the two are measured separately.
+3. The one context that *did* close — a real closure: a frame, an interaction,
+   and two quantities created — still ended at
+   `compiler_unsupported :: requires_specialized_model`.
+
+So the honest conclusion is narrower than "free flight is worthless" and
+stronger than "free flight is next". It is: **the missing authority is not the
+binding constraint**, the transaction's shape guard is the next wall for five of
+these six, and for the one that clears both walls the compiler still declares a
+specialized model. Building the authority alone moves plan dispositions and not
+one terminal.
+
+This is the same lesson §4 records, one layer further in: a count is not a
+cause, and a *plan verdict* is not a cause either. The rule in the master
+instruction — rank by measured full-pipeline verified yield, not by structure
+counts — is what caught it, and the ranking in §6 is superseded to that extent.
+An earlier draft of this section read the first measurement alone and concluded
+that a closed free flight yields zero; instrumenting whether closure had
+actually run refuted it. The instrument, not the number, is the finding.
+
+Note also that the corpus never proposes `constant_acceleration` anywhere: its
+assumption vocabulary over the public 100 is `constant_gravity` 38,
+`frictionless` 18, `starts_from_rest` 13, `massless_rope` 12,
+`inextensible_rope` 12, `massless_pulley` 9, `pure_rolling` 6,
+`no_air_resistance` 5, `ends_at_rest` 2. The kind reaches a Draft only through
+`_MOTION_MODEL_ASSUMPTIONS`, from a source-declared
+`constant_acceleration_1d`/`projectile_free_flight` motion model. A prerequisite
+demanding it of a context whose model is `unknown` can never be satisfied from
+the source — but, per the counterfactual above, satisfying it changes nothing.
+
+### 6b-2. What the engine actually emits over the whole corpus
+
+| Signal | Measured over 100 |
+|---|---:|
+| Distinct laws that fire at all | **2** (`particle_constant_acceleration_position`, `state_at_rest`) |
+| Total equations produced | **12** |
+| Candidates generated / verified | 6 / 6 |
+| Rejected candidates | 0 |
+
+Twelve equations across ninety-seven executed contexts. Set against a backend
+regression of 3,941 passing tests, twelve passing compositional structures, and
+same-fixture parity suites for Atwood, inclines, pulleys, rolling, collisions,
+vertical circles, fixed-axis rotation, plane rigid bodies and polar kinematics,
+the conclusion is not that the engine lacks the physics. **The engine's laws are
+never made eligible.** The projected Drafts carry no reference frames, no typed
+axes, no interactions, and no contact points, and the complete-profile closure
+that exists to supply exactly that structure is built for 3 of 13 profiles.
+
+The remaining 75 supported solves are therefore blocked on profile
+*transactions*, not on new physics: each unbuilt profile must create, as one
+all-or-nothing transaction, the typed structure its already-implemented laws
+require. That is bounded, and the table above names the specific prerequisite
+each one must resolve — but it is thirteen transactions plus the two
+`capability_*` families, each needing its own positive control, near-miss
+negatives, authority attack, and physics-changing control before it may count.
+
+And per §6b-1, each one has **three** walls to clear, not one: the plan must
+form, the transaction must accept the shape, and the compiler must then have a
+law rather than a specialized-model declaration. A package that clears only the
+first two moves no terminal. Every future package on this list should be
+measured the way §6b-1 measures it — plan disposition, application outcome, and
+lane terminal reported separately — because any single one of the three read
+alone gives the wrong answer.
+
+### 6b-3. The blocked classes fail for the same reason, not their own
+
+The 19 non-supported cases were measured individually against what the runtime
+actually produces for them:
+
+| Expected class | Count | Reached |
+|---|---:|---|
+| `needs_figure` | 2 | `needs_figure` — exact |
+| `needs_confirmation` | 2 | `needs_confirmation` — exact |
+| `insufficient_information` | 1 | `insufficient_information` — exact |
+| `deferred_unsupported` | 3 | `verified_unsupported :: translating_frame_relative_acceleration_deferred` — exact |
+| `deferred_unsupported` | 3 | `verified_unsupported :: free_linear_vibration_readout_deferred` — exact |
+| `deferred_unsupported` | **6** | `compiler_failure :: underdetermined` |
+| `unsupported_other` | **2** | `compiler_failure :: underdetermined` |
+
+The eight failures are *not* a deferral-detection gap. The compiler carries
+`rotating_frame_relative_acceleration_deferred` and
+`slot_pin_relative_motion_deferred` already, and both detectors are written and
+exact. They never fire because they require a rotating frame with a
+`rotating_about_point_id`, radial/transverse component bindings, and matched
+angular-velocity carriers — none of which any projected Draft has, for the same
+reason §3 gives: the corpus schema cannot state a frame, and no transaction
+supplies one for these shapes. The graph is underdetermined before the deferral
+question is ever asked.
+
+So a single root cause explains the whole remaining gap — 75 supported, 6
+deferred, and 2 unsupported-other alike. Closing it is one body of work, not
+three, and it is the closure layer rather than the compiler, the solver, or the
+verifier.
+
+**Consequence for sequencing:** the deferred and unsupported-other classes must
+not be chased separately or early. Emitting a deferral for those eight from
+anything less than the same typed structure would be a shortcut to the target
+distribution — and the scorer added in `phase56-stage7-evaluator-v2` is
+specifically built to catch it, since a deferred case must carry an exact
+`COURSE_SCOPE_DEFERRED_ISSUE_CODES` proof and an unsupported-other case must not
+carry one.
+
+## 6c. Known non-blocking evaluator issues, carried forward
+
+An independent read-only Checker audited the evaluator changes of this session
+and returned two blocking findings, both fixed (hard safety blind to five
+blocked classes; a tolerance conversion that was not delta-safe for offset
+units). Four non-blocking observations are recorded here rather than fixed,
+because each would need its own code candidate, CI cycle and strict re-run, and
+none is reachable through the real pipeline today.
+
+1. **`residual_verification` and `candidate_coverage` add no independent
+   evidence.** `_score_supported` accepts any single non-empty, all-passing
+   check tuple; it never names the kinds a solved candidate must carry. A
+   fabricated record whose only check is `("anything_at_all", "passed")` passes
+   `strict_residual_verification_100_percent`. Unreachable in practice —
+   `engine/mechanics/verification/contracts.py` refuses an answer verdict
+   missing graph-required check kinds, and all six real solved cases carry
+   `equation_residual`, `unit_consistency`, `query_binding`, `source_evidence`,
+   `constraint` and `nonnegative_time`, all passed. **Fix:** require at minimum
+   `equation_residual`, `unit_consistency`, `query_binding` and
+   `source_evidence`, which §6.2 of the acceptance criteria already mandates;
+   leave `constraint` and `nonnegative_time` graph-dependent.
+2. **No float slack on the tolerance comparison.** `2.0 + 1e-4` scores *wrong*
+   against a declared `1e-4`, because `(a+t)-a > t` in binary floating point.
+   This errs strict and is documented by its test, but "applied exactly" is
+   very slightly overstated.
+3. **`_distribution_matched` never pins 81/12/2/2/2/1** — it checks internal
+   consistency only. The frozen counts are pinned in `_strict_requirements`
+   under `require_full`, and `verify_corpus_semantics` fails closed on
+   `scope_terminal_count_mismatch`, so it is not exploitable.
+4. **Three gaps in pre-existing hard-safety evidence**, listed in
+   `PHASE56_STAGE7_EVALUATION_CONTRACT.md`: an unreferenced
+   `FORBIDDEN_RUNTIME_SOURCE_TOKENS`, no static guard against logging image
+   bytes, and a correction-path attack test that never injects a graph-shaped
+   key. These belong to the per-signal instrument registry, which is not built.
+
 ## 7. What this document is not
 
 It is not a reason to lower the target, and the target has not been lowered. It
