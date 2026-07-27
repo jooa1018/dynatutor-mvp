@@ -13,6 +13,26 @@ if ! [[ "$SHARD_COUNT" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
+run_fast_shard() {
+  local shard_label="$1"
+  shift
+  local shard_log
+  shard_log="$(mktemp)"
+  local status=0
+  DYNATUTOR_RUN_CWD="$ROOT_DIR/backend" \
+    python scripts/run_with_timeout.py "$TIMEOUT_SECONDS" -- \
+      pytest -q -o addopts='' -m "$FAST_MARKER_EXPRESSION" "$@" \
+      >"$shard_log" 2>&1 || status=$?
+  if (( status == 0 )); then
+    tail -n 40 "$shard_log"
+  else
+    echo "[backend_fast] $shard_label failed; compact tail follows" >&2
+    tail -n 300 "$shard_log" >&2
+  fi
+  rm -f "$shard_log"
+  return "$status"
+}
+
 echo "[backend_fast] discover fast-only test nodes"
 if ! COLLECTION_OUTPUT="$(
   DYNATUTOR_RUN_CWD="$ROOT_DIR/backend" python scripts/run_with_timeout.py "$TIMEOUT_SECONDS" -- \
@@ -71,8 +91,7 @@ for (( file_index = 0; file_index < ${#SHARD_FILES[@]}; file_index++ )); do
 
   if (( current_shard < SHARD_COUNT && current_count >= current_target )); then
     echo "[backend_fast] pytest fast-only shard $current_shard/$SHARD_COUNT: $current_count tests"
-    DYNATUTOR_RUN_CWD="$ROOT_DIR/backend" python scripts/run_with_timeout.py "$TIMEOUT_SECONDS" -- \
-      pytest -q -o addopts='' -m "$FAST_MARKER_EXPRESSION" "${current_files[@]}"
+    run_fast_shard "shard $current_shard/$SHARD_COUNT" "${current_files[@]}"
     completed_count=$(( completed_count + current_count ))
     current_shard=$(( current_shard + 1 ))
     current_target=$(( current_shard * SELECTED_TEST_COUNT / SHARD_COUNT - completed_count ))
@@ -82,5 +101,4 @@ for (( file_index = 0; file_index < ${#SHARD_FILES[@]}; file_index++ )); do
 done
 
 echo "[backend_fast] pytest fast-only shard $current_shard/$SHARD_COUNT: $current_count tests"
-DYNATUTOR_RUN_CWD="$ROOT_DIR/backend" python scripts/run_with_timeout.py "$TIMEOUT_SECONDS" -- \
-  pytest -q -o addopts='' -m "$FAST_MARKER_EXPRESSION" "${current_files[@]}"
+run_fast_shard "shard $current_shard/$SHARD_COUNT" "${current_files[@]}"
