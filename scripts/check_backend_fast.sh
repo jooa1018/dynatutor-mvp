@@ -7,6 +7,8 @@ export PYTHONPATH="$ROOT_DIR/backend${PYTHONPATH:+:$PYTHONPATH}"
 TIMEOUT_SECONDS="${DYNATUTOR_BACKEND_FAST_TIMEOUT:-420}"
 SHARD_COUNT="${DYNATUTOR_BACKEND_FAST_SHARDS:-4}"
 FAST_MARKER_EXPRESSION="not benchmark and not audit and not frontend and not slow"
+FAILURE_SUMMARY="$ROOT_DIR/backend-fast-failure-summary.txt"
+rm -f "$FAILURE_SUMMARY"
 
 if ! [[ "$SHARD_COUNT" =~ ^[1-9][0-9]*$ ]]; then
   echo "[backend_fast] DYNATUTOR_BACKEND_FAST_SHARDS must be a positive integer" >&2
@@ -28,6 +30,18 @@ run_fast_shard() {
   else
     echo "[backend_fast] $shard_label failed; compact tail follows" >&2
     tail -n 300 "$shard_log" >&2
+    {
+      printf 'shard=%s\n' "$shard_label"
+      printf 'exit_status=%s\n' "$status"
+      # Keep only node identities and closed timeout diagnostics.  Assertion
+      # values, fixture text, stack traces, and environment data never enter
+      # the artifact produced from this file.
+      grep -E '^(FAILED|ERROR) [^ ]+' "$shard_log" \
+        | sed -E 's/[[:space:]]+-[[:space:]].*$//' \
+        | head -n 50 || true
+      grep -E '^\[run_with_timeout\].*(timed out|timeout|exit)' "$shard_log" \
+        | head -n 10 || true
+    } > "$FAILURE_SUMMARY"
   fi
   rm -f "$shard_log"
   return "$status"
