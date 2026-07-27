@@ -20,7 +20,7 @@ from engine.mechanics.math_ast import (
     SymbolRef,
 )
 
-DIRECT_IMPULSE_BOUNDARY_VERSION = "direct-impulse-boundary-v1"
+DIRECT_IMPULSE_BOUNDARY_VERSION = "direct-impulse-boundary-v2"
 
 _installed = False
 _original = None
@@ -131,7 +131,6 @@ def is_direct_impulse_momentum_boundary_graph(graph: Any) -> bool:
         or mass.event_id is not None
         or mass.frame_id is not None
         or mass.interval_id not in {None, next(iter(interval_ids))}
-        or impulse.event_id is not None
         or {item.event_id for item in velocities} != set(event_ids)
         or any(item.event_id is None for item in velocities)
         or (mass.known_si_value is not None and mass.known_si_value <= 0.0)
@@ -212,6 +211,18 @@ def is_direct_impulse_momentum_boundary_graph(graph: Any) -> bool:
     ):
         return False
 
+    # A stated impulse belongs to the whole interval.  The one safe event-scoped
+    # exception is an *unknown queried impulse* at the evidenced final rest
+    # boundary: it names the quantity the interval balance must determine, not a
+    # second impulse acting at an arbitrary instant.
+    if impulse.event_id is not None and (
+        not with_rest
+        or impulse.known_si_value is not None
+        or graph.query_symbol_id != impulse.symbol.symbol_id
+        or impulse.event_id != end_velocity.event_id
+    ):
+        return False
+
     if not with_rest:
         return True
 
@@ -227,8 +238,9 @@ def is_direct_impulse_momentum_boundary_graph(graph: Any) -> bool:
         or rest.scope.point_ids
         or rest.scope.frame_id != frame_id
         or rest.scope.interval_id != interval_id
-        or rest.scope.event_id not in event_ids
+        or rest.scope.event_id != end_velocity.event_id
         or set(rest.scope.event_ids) != {rest.scope.event_id}
+        or (impulse.event_id is not None and impulse.event_id != rest.scope.event_id)
         or rest.dimension != end_velocity.symbol.dimension
         or rest.source_quantity_ids != (end_velocity.quantity_id,)
         or constraint.constraint_id != rest.constraint_ids[0]
