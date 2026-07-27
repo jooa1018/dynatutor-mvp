@@ -21,8 +21,8 @@ from engine.mechanics.laws import core as _core
 # The typed IR stores magnitude and axis sign separately.  The historical
 # impulse--momentum emitter used bare symbol references, which made a source
 # statement such as "leftward impulse 9 N*s" numerically positive.  Replace only
-# that endpoint law with the coordinate-correct signed balance.  No text, case,
-# family, solver, root, or expected answer participates.
+# that endpoint law with the coordinate-correct signed balance.  Only typed IR
+# structure participates; no external routing label or reference result does.
 _original_momentum_emissions: Callable[[LawContext], list[LawEmission]] = (
     _core._momentum_emissions
 )
