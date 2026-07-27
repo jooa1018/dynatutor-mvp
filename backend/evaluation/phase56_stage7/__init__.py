@@ -16,10 +16,15 @@ from evaluation.phase56_stage7.contracts import (
 from evaluation.phase56_stage7.direct_impulse_profile import (
     install_direct_impulse_profile,
 )
+from evaluation.phase56_stage7.scoped_rest_assumption import (
+    install_scoped_rest_assumption_policy,
+)
 
-# Install before any Stage 7 runner imports ``close_projected_draft`` by value.
-# The bridge is evaluator-only and activates only after a verified immutable
-# authority bundle is supplied; production engine/app modules never import it.
+# Install source-scope policy before any projection runs, then install the
+# evaluator-only direct-impulse closure before a runner imports
+# ``close_projected_draft`` by value.  Neither bridge is imported by production
+# engine/app modules.
+install_scoped_rest_assumption_policy()
 install_direct_impulse_profile()
 
 __all__ = [
