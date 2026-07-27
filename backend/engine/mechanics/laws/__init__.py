@@ -59,7 +59,13 @@ def _direct_impulse_momentum_emissions(context: LawContext) -> list[LawEmission]
                 for item in _core._by_role(context, QuantityRole.impulse)
                 if item.subject_id == subject_id
                 and item.interval_id == interval.interval_id
-                and item.event_id is None
+                and (
+                    item.event_id is None
+                    or (
+                        item.event_id == interval.end_event_id
+                        and item.known_si_value is None
+                    )
+                )
             )
             if not (
                 len(masses) == len(starts) == len(ends) == len(impulses) == 1
