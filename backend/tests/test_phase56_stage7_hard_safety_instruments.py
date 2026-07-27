@@ -53,33 +53,35 @@ from tests.test_phase56_stage6_api_runtime_integration import (
 # previous test proved two entries of one list and left every other entry
 # asserted only by its presence in a frozenset, which is not evidence.
 # --------------------------------------------------------------------------
-@pytest.mark.parametrize("field", sorted(FORBIDDEN_AUTHORITY_FIELDS))
-def test_every_audited_authority_field_is_rejected_at_the_top_level(field: str) -> None:
-    result = audit_modeling_payload({"draft": {field: "seized"}})
-    assert not result.passed, field
-    assert field in {finding.field for finding in result.findings}
+def test_every_audited_authority_field_is_rejected_at_the_top_level() -> None:
+    """Every entry of the audit's denylist, driven rather than merely declared."""
+
+    for field in sorted(FORBIDDEN_AUTHORITY_FIELDS):
+        result = audit_modeling_payload({"draft": {field: "seized"}})
+        assert not result.passed, field
+        assert field in {finding.field for finding in result.findings}, field
 
 
-@pytest.mark.parametrize("field", sorted(FORBIDDEN_AUTHORITY_FIELDS))
-def test_every_audited_authority_field_is_rejected_when_buried(field: str) -> None:
+def test_every_audited_authority_field_is_rejected_when_buried() -> None:
     """Depth is not a loophole: the audit recurses, and this proves it does."""
 
-    payload = {"draft": {"objects": [{"nested": [{"deeper": {field: "seized"}}]}]}}
-    result = audit_modeling_payload(payload)
-    assert not result.passed, field
-    assert field in {finding.field for finding in result.findings}
+    for field in sorted(FORBIDDEN_AUTHORITY_FIELDS):
+        payload = {"draft": {"objects": [{"nested": [{"deeper": {field: "seized"}}]}]}}
+        result = audit_modeling_payload(payload)
+        assert not result.passed, field
+        assert field in {finding.field for finding in result.findings}, field
 
 
-@pytest.mark.parametrize("field", sorted(ANSWER_AUTHORITY_FORBIDDEN_FIELDS))
-def test_every_draft_answer_authority_field_is_found_when_buried(field: str) -> None:
-    payload = {"draft": {"objects": [{"nested": [{"deeper": {field: "seized"}}]}]}}
-    assert find_forbidden_fields(payload), field
+def test_every_draft_answer_authority_field_is_found_when_buried() -> None:
+    for field in sorted(ANSWER_AUTHORITY_FORBIDDEN_FIELDS):
+        payload = {"draft": {"objects": [{"nested": [{"deeper": {field: "seized"}}]}]}}
+        assert find_forbidden_fields(payload), field
 
 
-@pytest.mark.parametrize("field", sorted(_FORBIDDEN_ENVELOPE_FIELDS))
-def test_every_envelope_authority_field_is_found_when_buried(field: str) -> None:
-    payload = {"envelope": {"draft": [{"nested": {"deeper": {field: "seized"}}}]}}
-    assert find_forbidden_multimodal_fields(payload), field
+def test_every_envelope_authority_field_is_found_when_buried() -> None:
+    for field in sorted(_FORBIDDEN_ENVELOPE_FIELDS):
+        payload = {"envelope": {"draft": [{"nested": {"deeper": {field: "seized"}}}]}}
+        assert find_forbidden_multimodal_fields(payload), field
 
 
 def test_every_surface_effectively_refuses_the_authority_core() -> None:
@@ -163,50 +165,68 @@ def _seeded_revision(client: TestClient) -> tuple[str, str]:
     return initial["revision_id"], initial["revision_fingerprint"]
 
 
-@pytest.mark.parametrize(
-    "key", (*_GRAPH_SHAPED_KEYS, *_ANSWER_SHAPED_KEYS, *_SOLVER_SHAPED_KEYS)
-)
+_AUTHORITY_KEYS = (*_GRAPH_SHAPED_KEYS, *_ANSWER_SHAPED_KEYS, *_SOLVER_SHAPED_KEYS)
+
+
+# The four attacks below drive a real FastAPI application through the real
+# endpoint, which costs seconds rather than milliseconds.  `backend fast` shards
+# by test *count* under a per-shard wall-clock budget, so an integration test
+# living there spends budget the shard cannot see coming; the repository already
+# marks suites of this shape `slow`.  They still run in CI under `backend slow`,
+# and the strict gate runs them by exact node ID with `-o addopts=`, which clears
+# the default marker filter — so the hard-safety registry measures them in every
+# strict run regardless of this marker.
+
+
+@pytest.mark.slow
 def test_correction_cannot_carry_an_authority_key_at_the_top_level(
-    monkeypatch, key: str
+    monkeypatch,
 ) -> None:
+    """Every authority key, driven through one client.
+
+    Deliberately a loop rather than `parametrize`: each parametrisation would
+    build its own FastAPI app and seed its own revision, and `backend fast`
+    shards by *test count* with a per-shard time budget — so eight near-identical
+    app builds cost the shard far more than they add in coverage.  The loop
+    exercises the same eight payloads against the same guard and names the
+    failing key in the assertion.
+    """
+
     app = _app(monkeypatch)
     _install_fake(app)
     client = TestClient(app)
     revision_id, fingerprint = _seeded_revision(client)
 
-    response = client.post(
-        f"/api/mechanics/multimodal/revisions/{revision_id}/correct",
-        json=_correction(revision_id, fingerprint, **{key: {"seized": True}}),
-        headers=_headers(),
-    )
+    for key in _AUTHORITY_KEYS:
+        response = client.post(
+            f"/api/mechanics/multimodal/revisions/{revision_id}/correct",
+            json=_correction(revision_id, fingerprint, **{key: {"seized": True}}),
+            headers=_headers(),
+        )
+        assert response.status_code in (400, 409, 422), (key, response.text)
+        assert "verified_answer" not in response.json().get("detail", {}), key
 
-    assert response.status_code in (400, 409, 422), (key, response.text)
-    assert "verified_answer" not in response.json().get("detail", {})
 
-
-@pytest.mark.parametrize(
-    "key", (*_GRAPH_SHAPED_KEYS, *_ANSWER_SHAPED_KEYS, *_SOLVER_SHAPED_KEYS)
-)
+@pytest.mark.slow
 def test_correction_cannot_smuggle_an_authority_key_inside_an_operation(
-    monkeypatch, key: str
+    monkeypatch,
 ) -> None:
-    """The payload is a *valid* source correction with one extra nested key."""
+    """Each payload is a *valid* source correction with one extra nested key."""
 
     app = _app(monkeypatch)
     _install_fake(app)
     client = TestClient(app)
     revision_id, fingerprint = _seeded_revision(client)
 
-    payload = _correction(revision_id, fingerprint)
-    payload["operations"][0]["provenance"] = {"note": {key: "seized"}}
-
-    response = client.post(
-        f"/api/mechanics/multimodal/revisions/{revision_id}/correct",
-        json=payload,
-        headers=_headers(),
-    )
-
-    assert response.status_code in (400, 409, 422), (key, response.text)
+    for key in _AUTHORITY_KEYS:
+        payload = _correction(revision_id, fingerprint)
+        payload["operations"][0]["provenance"] = {"note": {key: "seized"}}
+        response = client.post(
+            f"/api/mechanics/multimodal/revisions/{revision_id}/correct",
+            json=payload,
+            headers=_headers(),
+        )
+        assert response.status_code in (400, 409, 422), (key, response.text)
 
 
 def test_every_forbidden_patch_field_is_covered_by_an_attack() -> None:
@@ -232,6 +252,7 @@ def _emitted_text(records: list[logging.LogRecord]) -> str:
     return "\n".join(parts)
 
 
+@pytest.mark.slow
 def test_no_log_record_carries_image_bytes_or_base64(monkeypatch, caplog) -> None:
     app = _app(monkeypatch)
     _install_fake(app)
@@ -258,6 +279,7 @@ def test_no_log_record_carries_image_bytes_or_base64(monkeypatch, caplog) -> Non
     assert "\\x89PNG" not in emitted and "iVBORw0" not in emitted
 
 
+@pytest.mark.slow
 def test_no_log_record_carries_raw_provider_output(monkeypatch, caplog) -> None:
     app = _app(monkeypatch)
     fake = _install_fake(app)
