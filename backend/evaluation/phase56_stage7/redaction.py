@@ -70,8 +70,8 @@ def assert_privacy_safe_artifact(value: Any) -> None:
 class Stage7AggregateArtifactV1(FrozenStrictModel):
     schema: Literal["dynatutor.phase56_stage7.report"] = STAGE7_ARTIFACT_SCHEMA
     version: Literal["1.0"] = STAGE7_ARTIFACT_VERSION
-    evaluator_version: Literal["phase56-stage7-evaluator-v1"] = (
-        "phase56-stage7-evaluator-v1"
+    evaluator_version: Literal["phase56-stage7-evaluator-v2"] = (
+        "phase56-stage7-evaluator-v2"
     )
     exact_head_sha: Sha256
     corpus_zip_sha256: Sha256
@@ -101,10 +101,15 @@ class Stage7AggregateArtifactV1(FrozenStrictModel):
         ).encode("utf-8")
 
 
+# Frozen at the evaluator version that first defined this hash and deliberately
+# *not* advanced with `STAGE7_EVALUATOR_VERSION`: the value is a correlation
+# label, so re-salting it on every semantic bump would rename every case in
+# every historical artifact for no gain.
+_CASE_HASH_SALT = "phase56-stage7-evaluator-v1"
+
+
 def privacy_safe_case_hash(*, case_id: str, problem_sha256: str) -> str:
-    # The salt is evaluator-version public metadata, not a secret.  The resulting
-    # hash is correlation-only and cannot enter the runtime input/cache/prompt.
-    material = f"phase56-stage7-evaluator-v1\0{case_id}\0{problem_sha256}".encode(
-        "utf-8"
-    )
+    # The salt is public evaluator metadata, not a secret.  The resulting hash
+    # is correlation-only and cannot enter the runtime input/cache/prompt.
+    material = f"{_CASE_HASH_SALT}\0{case_id}\0{problem_sha256}".encode("utf-8")
     return hashlib.sha256(material).hexdigest()

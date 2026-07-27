@@ -6,8 +6,34 @@ Authoritative implementation:
 
 - `backend/evaluation/phase56_stage7/contracts.py`
 - contract version: `phase56-stage7-evaluation-contract-v1`
-- evaluator version: `phase56-stage7-evaluator-v1`
+- evaluator version: `phase56-stage7-evaluator-v2`
 - report schema: `dynatutor.phase56_stage7.report` version `1.0`
+
+### Evaluator v1 → v2
+
+The **contract** — the frozen target distribution, the metric catalog, the
+hard-safety catalog, the failure taxonomy, the corpus SHA — is unchanged. What
+changed is how the evaluator *scores* against it. The target was never
+reinterpreted and no threshold was relaxed; three of the four changes make the
+gate strictly harder to pass.
+
+| | Previous behaviour (v1) | Defect | v2 behaviour |
+|---|---|---|---|
+| Lane B acceptance | one gate, `strict_lane_b_all_solved`, requiring `terminals["solved"] == executed_cases` | The frozen target is 81 solved plus 19 cases that must reach a safe **non-solved** terminal. A correct Stage 7 could never satisfy this, and a run that wrongly solved a deferred case scored *better*. | Case-level scoring against each case's own expected class, split into `strict_supported_81_solved`, `strict_deferred_12_verified_unsupported`, `strict_unsupported_other_2`, `strict_needs_figure_2`, `strict_needs_confirmation_2`, `strict_insufficient_information_1`, `strict_terminal_mapping_100_percent`, the six metric gates, `strict_wrong_solve_zero`, `strict_unscored_zero`, and `strict_deferred_silent_solve_zero`. |
+| Answer tolerance | `max(corpus_tolerance, 1e-6 * max(1, abs(expected)))` | The invented floor **widened** any corpus tolerance tighter than 1e-6 relative — the evaluator scoring its own engine. | The corpus's declared absolute tolerance, converted to SI in the answer's own unit, applied exactly. |
+| Unscored solves | counted and reported, but neither the Lane B gate nor hard safety rejected them | An output nobody could score has not been shown correct; treating it as safe shrinks the measured sample below the one being claimed. | `strict_unscored_zero`, and hard safety fails on any unscored solve. |
+| Scorer exceptions | propagated out of `build_report`, aborting the process with a traceback | Unstructured abort; no typed verdict, and a partial artifact could be misread. | Typed `SCORER_FAILURE`: sanitized reason only, Lane B FAILs, every distribution gate FAILs. |
+
+Safety impact: strictly positive. Wrong solves, unscored solves, silent solves
+of deferred cases, and supported cases downgraded to unsupported are now each
+measured separately and each fail the gate. Metric impact: the reported
+`answer_accuracy` denominator is the 81 supported cases rather than the count of
+whatever happened to be solved, so partial progress reads as partial. Target
+impact: none — `Stage7ExpectedTerminalCounts` is byte-identical.
+
+These defects were identified by running the public corpus and reading
+privacy-safe aggregate counts: `PUBLIC_EVALUATION_INFORMED_FIX: YES`. No
+private-corpus generalization is claimed from that evidence.
 
 The commit that first introduces this contract is the `STAGE7_PREFLIGHT_HEAD`.
 Its exact SHA is recorded in the Stage 7 evidence report after the commit is

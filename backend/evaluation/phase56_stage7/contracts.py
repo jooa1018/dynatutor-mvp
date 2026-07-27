@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 
-STAGE7_EVALUATOR_VERSION = "phase56-stage7-evaluator-v1"
+STAGE7_EVALUATOR_VERSION = "phase56-stage7-evaluator-v2"
 STAGE7_CONTRACT_VERSION = "phase56-stage7-evaluation-contract-v1"
 STAGE7_RUNTIME_INPUT_SCHEMA = "dynatutor.phase56_stage7.runtime_input"
 STAGE7_RUNTIME_INPUT_VERSION = "1.0"
@@ -358,7 +358,7 @@ class Stage7EvaluationContractV1(FrozenStrictModel):
         "phase56-stage7-evaluation-contract-v1"
     ] = STAGE7_CONTRACT_VERSION
     evaluator_version: Literal[
-        "phase56-stage7-evaluator-v1"
+        "phase56-stage7-evaluator-v2"
     ] = STAGE7_EVALUATOR_VERSION
     corpus: Stage7CorpusInputContract = Field(default_factory=Stage7CorpusInputContract)
     split_counts: Stage7PublicSplitCounts = Field(default_factory=Stage7PublicSplitCounts)

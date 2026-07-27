@@ -249,7 +249,16 @@ def test_strict_mode_refuses_a_lane_that_did_not_run(gate_runner) -> None:
     } <= failed
 
 
-def test_strict_mode_refuses_unsolved_lane_b_cases(gate_runner) -> None:
+def test_strict_mode_refuses_an_unscored_lane_b_run(gate_runner) -> None:
+    """A Lane B run the scorer never scored cannot satisfy any class gate.
+
+    This replaces the earlier `strict_lane_b_all_solved` assertion, which
+    encoded a target Stage 7 never had: 19 of the 100 public cases must reach a
+    safe *non-solved* terminal, so "every executed case solved" was a condition
+    a correct engine could not meet.  The refusal itself is unchanged — this
+    input still fails — but it now fails against the frozen distribution.
+    """
+
     report = {
         "public_corpus": {"supplied": True, "disposition": "PASS"},
         "lane_b": {
@@ -263,7 +272,21 @@ def test_strict_mode_refuses_unsolved_lane_b_cases(gate_runner) -> None:
         report, require_corpus=False, require_full=True
     )
     failed = {outcome.name for outcome in outcomes if not outcome.passed}
-    assert "strict_lane_b_all_solved" in failed
+    assert {
+        "strict_lane_b_scored",
+        "strict_supported_81_solved",
+        "strict_deferred_12_verified_unsupported",
+        "strict_unsupported_other_2",
+        "strict_needs_figure_2",
+        "strict_needs_confirmation_2",
+        "strict_insufficient_information_1",
+        "strict_terminal_mapping_100_percent",
+        "strict_wrong_solve_zero",
+        "strict_unscored_zero",
+    } <= failed
+    assert not any(
+        outcome.name == "strict_lane_b_all_solved" for outcome in outcomes
+    )
 
 
 def test_strict_mode_requires_the_exact_corpus_sha_and_counts(gate_runner) -> None:

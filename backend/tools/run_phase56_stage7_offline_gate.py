@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -66,6 +67,11 @@ from evaluation.phase56_stage7.query_readout_ownership import (  # noqa: E402
 )
 from evaluation.phase56_stage7.lane_b_failure_matrix import (  # noqa: E402
     build_pipeline_failure_matrix,
+)
+from evaluation.phase56_stage7.lane_b_scoring import (  # noqa: E402
+    LaneBScorecard,
+    ScoringFailure,
+    score_lane_b_cases,
 )
 from evaluation.phase56_stage7.law_prerequisites import (  # noqa: E402
     law_context_for_projection,
@@ -254,10 +260,14 @@ def _corpus_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutc
 
 
 def _lane_b_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutcome]:
-    """Execute the real public-corpus Lane B pipeline and aggregate it safely.
+    """Execute the real public-corpus Lane B pipeline and score it case by case.
 
     The archive is only supplied to a local run; a remote corpus-independent run
     reports ``NOT_RUN`` rather than claiming a pass it did not measure.
+
+    Order matters and is enforced by construction: the runtime matrix is built
+    to completion first — it never reads a gold member — and only then is the
+    frozen record handed to the gold-domain scorer.
     """
 
     if archive_path is None:
@@ -268,7 +278,8 @@ def _lane_b_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutc
     try:
         inventory = read_public_corpus_archive(archive_path)
         public_dev, public_adversarial = load_public_cases(inventory)
-        matrix = build_pipeline_failure_matrix((*public_dev, *public_adversarial))
+        cases = (*public_dev, *public_adversarial)
+        matrix = build_pipeline_failure_matrix(cases)
     except Exception as exc:  # only the exception type reaches the artifact
         return (
             {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__},
@@ -279,21 +290,66 @@ def _lane_b_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutc
 
     section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
     section.update(matrix.as_dict())
-    solved = dict(matrix.terminal_counts).get("solved", 0)
-    section["solved"] = solved
-    # Gold-domain answer scoring runs strictly after the runtime matrix is
-    # complete: the runtime loop never read a gold member, and the scorer
-    # reads only the runtime's own frozen solved outputs.
-    section["answer_scoring"] = _score_solved_outputs(
-        archive_path, matrix.solved_outputs
-    )
+    section["solved"] = dict(matrix.terminal_counts).get("solved", 0)
+
+    # --- the runtime snapshot is now complete and immutable; gold scoring begins
+    try:
+        scorecard = score_lane_b_cases(cases, matrix.case_records)
+    except ScoringFailure as exc:
+        # A scorer that cannot score is a typed FAIL.  The partial runtime
+        # aggregate above is kept for diagnosis but never presented as a pass.
+        section["scoring"] = {
+            "result": "FAIL",
+            "disposition": "SCORER_FAILURE",
+            "reason": exc.sanitized_reason,
+        }
+        return (
+            section,
+            GateOutcome(
+                name="lane_b_public_100", result="FAIL", detail="SCORER_FAILURE"
+            ),
+        )
+    except Exception as exc:  # only the exception type reaches the artifact
+        section["scoring"] = {
+            "result": "FAIL",
+            "disposition": "SCORER_FAILURE",
+            "reason": type(exc).__name__,
+        }
+        return (
+            section,
+            GateOutcome(
+                name="lane_b_public_100", result="FAIL", detail="SCORER_FAILURE"
+            ),
+        )
+
+    section["scoring"] = scorecard.as_dict()
+    section["answer_scoring"] = scorecard.answer_score.as_dict()
+    matched = _distribution_matched(scorecard)
     return (
         section,
         GateOutcome(
             name="lane_b_public_100",
-            result="PASS" if solved == matrix.executed_cases else "FAIL",
-            detail=None if solved == matrix.executed_cases else "unsolved_cases_remain",
+            result="PASS" if matched else "FAIL",
+            detail=None if matched else "frozen_distribution_not_met",
         ),
+    )
+
+
+def _distribution_matched(scorecard: LaneBScorecard) -> bool:
+    """Whether every public case landed in its own expected class, correctly."""
+
+    return (
+        scorecard.terminal_mapping_matches == scorecard.total_cases
+        and scorecard.supported_correct == scorecard.supported_expected
+        and scorecard.supported_wrong == 0
+        and scorecard.supported_unscored == 0
+        and scorecard.deferred_matched == scorecard.deferred_expected
+        and scorecard.unsupported_other_matched == scorecard.unsupported_other_expected
+        and scorecard.needs_figure_matched == scorecard.needs_figure_expected
+        and scorecard.needs_confirmation_matched
+        == scorecard.needs_confirmation_expected
+        and scorecard.insufficient_information_matched
+        == scorecard.insufficient_information_expected
     )
 
 
@@ -482,9 +538,7 @@ def _profile_feasibility_section(archive_path: Path | None) -> dict[str, Any]:
 
 _BACKEND_ROOT = REPOSITORY_ROOT / "backend"
 _SUITE_TIMEOUT_S = 1800
-_SUMMARY_PATTERN = __import__("re").compile(
-    r"(\d+) (passed|failed|errors?|deselected|skipped)"
-)
+_SUMMARY_PATTERN = re.compile(r"(\d+) (passed|failed|errors?|deselected|skipped)")
 
 # Lane C — recorded/fake modeler: deterministic fake provider contract, one
 # combined call, at most one sanitized repair, reconciliation, revisions,
@@ -728,63 +782,6 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
     }
 
 
-def _score_solved_outputs(
-    archive_path: Path | None, solved_outputs: tuple[tuple[int, float, str], ...]
-) -> dict[str, Any]:
-    """Gold-domain scoring of the runtime's frozen solved outputs.
-
-    Runs strictly after the runtime record is complete.  Answers are compared
-    in SI after converting the gold answer's own stated unit; a unit the
-    registry cannot convert is counted unscored rather than wrong.
-    """
-
-    if archive_path is None:
-        return {"scored": 0, "correct": 0, "wrong": 0, "unscored": 0}
-    import pint
-
-    registry = pint.UnitRegistry()
-    inventory = read_public_corpus_archive(archive_path)
-    public_dev, public_adversarial = load_public_cases(inventory)
-    cases = (*public_dev, *public_adversarial)
-    outputs_by_index = {index: (value, unit) for index, value, unit in solved_outputs}
-    correct = wrong = unscored = 0
-    for index, case in enumerate(cases):
-        if index not in outputs_by_index:
-            continue
-        value_si, _unit = outputs_by_index[index]
-        answers = case.gold.answers
-        if len(answers) != 1:
-            unscored += 1
-            continue
-        answer = answers[0]
-        try:
-            expected_si = (
-                registry.Quantity(answer.numeric, answer.unit or "")
-                .to_base_units()
-                .magnitude
-            )
-            tolerance_si = abs(
-                registry.Quantity(answer.tolerance_abs, answer.unit or "")
-                .to_base_units()
-                .magnitude
-            )
-        except Exception:
-            unscored += 1
-            continue
-        if abs(value_si - expected_si) <= max(
-            tolerance_si, 1.0e-6 * max(1.0, abs(expected_si))
-        ):
-            correct += 1
-        else:
-            wrong += 1
-    return {
-        "scored": correct + wrong,
-        "correct": correct,
-        "wrong": wrong,
-        "unscored": unscored,
-    }
-
-
 def _hard_safety_section(
     report: dict[str, Any], gates: "list[GateOutcome]"
 ) -> dict[str, Any]:
@@ -795,6 +792,14 @@ def _hard_safety_section(
     executed = bool(lane_b.get("executed"))
     answer_scoring = lane_b.get("answer_scoring", {})
     wrong_solves = answer_scoring.get("wrong")
+    # Safety asks about outputs the engine *produced* and nobody could check,
+    # not about supported cases it honestly declined — the latter is the Lane B
+    # yield gate's business, and binding safety to it would make an incomplete
+    # capability read as an unsafe one.
+    unscored_solves = answer_scoring.get("solved_but_unscored")
+    scoring = lane_b.get("scoring") or {}
+    scorer_ran = scoring.get("result") != "FAIL" and bool(scoring)
+    deferred_silent_solves = scoring.get("deferred_silent_solves")
     # Safety derives from the isolation/integrity gates; the public-100
     # solved-distribution gate is the yield target, not a safety signal —
     # an honestly blocked case is safe, a wrongly solved one is not.
@@ -808,7 +813,12 @@ def _hard_safety_section(
     # forbidden redaction substrings.
     passing = (
         executed
+        and scorer_ran
         and wrong_solves == 0
+        # An unscorable solved output is not a safe one: nothing proved it
+        # right, so it cannot contribute to a zero confident-wrong-solve claim.
+        and unscored_solves == 0
+        and deferred_silent_solves == 0
         and structural_pass
         and report.get("external_model_calls") == 0
         and report.get("private_heldout_accesses") == 0
@@ -820,8 +830,15 @@ def _hard_safety_section(
         "nonzero_signal_count": 0 if passing else None,
         "all_zero": bool(passing),
         "wrong_solves_measured": wrong_solves,
+        "solved_but_unscored_measured": unscored_solves,
+        "deferred_silent_solves_measured": deferred_silent_solves,
         "evidence": {
-            "wrong_solve": "gold-scored solved outputs",
+            "wrong_solve": "case-level gold scoring of the frozen runtime record",
+            "solved_but_unscored": (
+                "case-level gold scoring; a solved output nobody could compare "
+                "fails the gate"
+            ),
+            "deferred_silent_solve": "case-level expected-class comparison",
             "external_calls": "offline environment + socket guard",
             "private_access": "keys-only manifest audit",
             "isolation": "structural gates",
@@ -954,12 +971,114 @@ def _strict_requirements(
             lane_b.get("total_cases") == 100,
             "case_count_mismatch",
         )
-        terminals = lane_b.get("terminal_counts") or {}
-        require(
-            "strict_lane_b_all_solved",
+        # The frozen target is a distribution over classes, not "solve
+        # everything": requiring every executed case to be solved would fail a
+        # perfectly correct Stage 7, because 19 of the 100 are *supposed* to
+        # reach a safe non-solved terminal.  Each class is therefore its own
+        # gate, scored case by case after the runtime snapshot was frozen.
+        scoring = lane_b.get("scoring") or {}
+        # A missing scoring section is a scorer that never ran, which is exactly
+        # the NOT_RUN-as-PASS trap this gate exists to close: `scored` requires
+        # positive evidence, not the mere absence of a recorded failure.
+        scored = (
             bool(lane_b.get("executed"))
-            and terminals.get("solved", 0) == lane_b.get("executed_cases"),
-            "unsolved_cases_remain",
+            and bool(scoring)
+            and scoring.get("result") != "FAIL"
+            and scoring.get("version") is not None
+        )
+        require(
+            "strict_lane_b_scored",
+            scored,
+            scoring.get("reason") or "scorer_did_not_run",
+        )
+        expected = contract.expected_terminals
+        supported = scoring.get("supported") or {}
+        deferred = scoring.get("deferred") or {}
+        other = scoring.get("unsupported_other") or {}
+        figure = scoring.get("needs_figure") or {}
+        confirmation = scoring.get("needs_confirmation") or {}
+        insufficient = scoring.get("insufficient_information") or {}
+        metrics = scoring.get("metrics") or {}
+
+        def matched(section: dict[str, Any], target: int) -> bool:
+            return (
+                scored
+                and section.get("expected") == target
+                and section.get("matched") == target
+            )
+
+        require(
+            "strict_supported_81_solved",
+            scored
+            and supported.get("expected") == expected.supported_accepted
+            and supported.get("correct") == expected.supported_accepted,
+            "supported_class_incomplete",
+        )
+        require(
+            "strict_deferred_12_verified_unsupported",
+            matched(deferred, expected.deferred_unsupported),
+            "deferred_class_incomplete",
+        )
+        require(
+            "strict_unsupported_other_2",
+            matched(other, expected.unsupported_other),
+            "unsupported_other_class_incomplete",
+        )
+        require(
+            "strict_needs_figure_2",
+            matched(figure, expected.needs_figure),
+            "needs_figure_class_incomplete",
+        )
+        require(
+            "strict_needs_confirmation_2",
+            matched(confirmation, expected.needs_confirmation),
+            "needs_confirmation_class_incomplete",
+        )
+        require(
+            "strict_insufficient_information_1",
+            matched(insufficient, expected.insufficient_information),
+            "insufficient_information_class_incomplete",
+        )
+        require(
+            "strict_terminal_mapping_100_percent",
+            scored and scoring.get("terminal_mapping_accuracy") == 1.0,
+            "terminal_mapping_incomplete",
+        )
+        for metric_name in (
+            "answer_accuracy",
+            "unit_dimension_accuracy",
+            "query_binding_accuracy",
+            "direction_sign_accuracy",
+            "candidate_coverage",
+            "residual_verification",
+        ):
+            require(
+                f"strict_{metric_name}_100_percent",
+                scored and metrics.get(metric_name) == 1.0,
+                "metric_below_target",
+            )
+        require(
+            "strict_wrong_solve_zero",
+            scored and supported.get("wrong") == 0,
+            "wrong_solves_present",
+        )
+        # An output nobody could score has not been shown correct.  Leaving it
+        # out of the denominator would let the gate pass on a smaller,
+        # self-selected sample than the one it claims to have measured.
+        require(
+            "strict_unscored_zero",
+            scored and supported.get("unscored") == 0,
+            "unscored_outputs_present",
+        )
+        require(
+            "strict_solved_but_unscored_zero",
+            scored and supported.get("solved_but_unscored") == 0,
+            "unverifiable_solved_output_present",
+        )
+        require(
+            "strict_deferred_silent_solve_zero",
+            scored and scoring.get("deferred_silent_solves") == 0,
+            "deferred_case_silently_solved",
         )
         for lane in ("lane_c", "lane_d", "lane_e"):
             require(f"strict_{lane}_pass", report.get(lane, {}).get("result") == "PASS", "not_run")

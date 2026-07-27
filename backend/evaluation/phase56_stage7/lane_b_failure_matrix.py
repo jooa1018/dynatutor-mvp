@@ -23,6 +23,7 @@ from evaluation.phase56_stage7.lane_b_draft_projection import (
 )
 from evaluation.phase56_stage7.lane_b_runner import (
     LANE_B_RUNNER_VERSION,
+    LaneBResult,
     LaneBTerminal,
     deterministic_token,
     run_lane_b_case,
@@ -119,6 +120,18 @@ class LaneBPipelineMatrix:
     # gold domain scores it *after* this record is complete.  The runtime
     # loop that fills it never reads a gold member.
     solved_outputs: tuple[tuple[int, float, str], ...] = ()
+    # The complete per-case runtime record, in execution order.  Case-level
+    # scoring needs each case's own terminal and typed evidence, not just the
+    # histogram: a supported case answered as deferred and a deferred case
+    # silently solved cancel out in `terminal_counts` and are both failures.
+    #
+    # `LaneBResult` is already the privacy-safe record — closed terminals,
+    # closed diagnostic codes, identity-stripped paths, counts, and the
+    # runtime's own verified answer.  It carries no case ID, family, split,
+    # problem text, quote, or gold member, and it is deliberately *not* part of
+    # `as_dict()`: the artifact stays an aggregate, while the scorer gets the
+    # per-case truth in memory after the run is over.
+    case_records: tuple[LaneBResult, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -173,6 +186,7 @@ def build_pipeline_failure_matrix(cases: Iterable[Any]) -> LaneBPipelineMatrix:
     checks: Counter[tuple[str, str]] = Counter()
     structures: Counter[str] = Counter()
     solved_outputs: list[tuple[int, float, str]] = []
+    case_records: list[LaneBResult] = []
     total = 0
     executed = 0
 
@@ -195,6 +209,7 @@ def build_pipeline_failure_matrix(cases: Iterable[Any]) -> LaneBPipelineMatrix:
         result = run_lane_b_case(
             projection, execution_token=deterministic_token(index)
         )
+        case_records.append(result)
         terminals[result.terminal.value] += 1
         taxonomy[_TAXONOMY.get(result.terminal.value, "UNCLASSIFIED")] += 1
         if result.compiler_status is not None:
@@ -254,6 +269,7 @@ def build_pipeline_failure_matrix(cases: Iterable[Any]) -> LaneBPipelineMatrix:
         ),
         structure_counts=tuple(sorted(structures.items())),
         solved_outputs=tuple(solved_outputs),
+        case_records=tuple(case_records),
     )
 
 
