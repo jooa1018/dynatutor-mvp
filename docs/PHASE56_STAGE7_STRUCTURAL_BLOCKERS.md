@@ -942,40 +942,245 @@ specifically built to catch it, since a deferred case must carry an exact
 `COURSE_SCOPE_DEFERRED_ISSUE_CODES` proof and an unsupported-other case must not
 carry one.
 
+## 6b-4. The co-required bundle: why no single structure kind unlocks anything
+
+Measured this session by six independent read-only audits, each re-verified by
+running the real code against the frozen public 100.
+
+The temptation after §6b is to rank the missing structure kinds and build the
+biggest one first. That is refuted the same way §6b-1 refuted the plan-complete
+ranking. The repository's own counterfactual supplies a frame *together with*
+typed axes, scope rebinding and full component retyping, and measures how many
+laws that unlocks:
+
+```
+frame_alone_unlocks        = 0
+frame_does_not_close_the_law = 219
+```
+
+**A reference frame alone unlocks zero laws.** The blocking structure is not one
+record kind but a co-required bundle, and a law's emission predicate dereferences
+several members of it at once. Four things are missing nearly everywhere:
+
+| Missing record | Contexts without it |
+|---|---|
+| `IRReferenceFrame` | 90 / 95 |
+| `IRPoint` | 95 / 95 |
+| axis-typed signed direction | 379 of 386 quantities carry none |
+| force-bearing `IRInteraction` owning its quantities | 71 / 95 have no interaction at all |
+
+Only two laws — `particle_constant_acceleration_position` and `state_at_rest` —
+reach a retained graph, precisely because they are the only two whose predicates
+never dereference a frame, an axis, a signed component, a point, an interaction,
+or a geometry attachment. 67 of 100 cases compile to a graph with **zero**
+equations.
+
+The practical consequence for sequencing: a package that creates one of these
+kinds and measures no additional verified solve has not failed — it has paid part
+of the cost of a bundle. Yield must still be measured per §6b-1 (plan,
+application, full lane, separately), but a package must be *scoped to a bundle*
+rather than to a record kind, or every increment will measure zero.
+
+### 6b-5. Where the recoverable information actually is
+
+The same audits quantified what the source already states and the projection
+discards. This is the highest-value section for the next package, because
+structure present in source and dropped in projection is yield that costs no new
+physics.
+
+**`motion_segments.motion_model` — 9 of 13 declared values are dropped.**
+`_MOTION_MODEL_ASSUMPTIONS` has 4 entries; the corpus uses 13. Unmapped values
+and their record counts: `relative_motion` 12, `energy_interval` 9,
+`general_plane_motion` 9, `sliding_on_incline` 6, `rolling_without_slipping` 6,
+`collision_contact` 4, `impulse_interval` 4, `fixed_axis_rotation` 3.
+
+- 53 / 100 records name at least one physical regime the projection emits nothing for.
+- Of the **67 `underdetermined`** cases, **43** carry an unmapped non-`unknown`
+  motion model.
+
+This is a *source declaration*, not an inference: translating it into the typed
+frame, contact point, or event scope it names is source-grounded in the same
+sense the existing 4 mappings are.
+
+**`explicit_facts.direction` — 8 of 12 values lose their component.**
+`_DIRECTION_COMPONENTS` maps only `radial`, `tangential`, `clockwise`,
+`counterclockwise`. `right` (29 facts / 24 records), `upward` (11/10),
+`along_motion` (10/10), `left` (7/7), `downward` (4/4), `opposite_motion`,
+`negative` all carry a `SemanticDirection` with **no component** — which is
+exactly the `axis_signed` / `component_binding` prerequisite that blocks
+`relative_translating_frame` on 6 contexts.
+
+**Recoverability of each missing kind over the 100** (PRESENT in source /
+DERIVABLE by a general theorem / genuinely absent):
+
+| Structure | present | derivable | absent |
+|---|---:|---:|---:|
+| reference frame | 30 | 59 | 11 |
+| typed axes | 56 | 27 | 17 |
+| signed component binding | 43 | 25 | 32 |
+| interaction (force-bearing) | 22 | 42 | 36 |
+| contact point | 13 | 40 | 47 |
+| body-fixed frame | 18 | 23 | 59 |
+| event-scoped carrier | 48 | 45 | 7 |
+| rotating frame | 12 | 12 | 76 |
+| geometry attachment | 15 | 43 | 42 |
+| force authority | 44 | 20 | 36 |
+
+For all ten kinds `present + derivable ≥ 24/100`, and for six of them `≥ 64/100`.
+The information is overwhelmingly in the source or one theorem away; it is the
+*translation*, not the physics, that is missing.
+
+### 6b-6. A refuted shortcut for `unsupported_other`
+
+One audit reported that `unsupported_other 0/2` is "one line":
+`lane_b_draft_projection.py:1609` hardcodes `"unsupported_features": []`, and that
+list is the sole non-compiler route to `verified_unsupported`
+(`validation.py:2282` → `lane_b_runner.py:171`). The projection line is real.
+
+**The shortcut is not available, and was not taken.** The corpus record carries no
+source-side unsupported-feature declaration: `gold` holds `entities`, `events`,
+`explicit_facts`, `motion_segments`, `queries`, `relations`,
+`assumption_proposals` and `figure_dependency` — all structural and all already
+read — plus the answer key. The only members that identify those two cases are
+`expected_failure_codes` and `future_expected_terminal`, both on the projection's
+own `FORBIDDEN_MEMBERS` list. Populating that line would therefore be
+expected-terminal routing wearing a structural name.
+
+The admissible route is the one §15 of the acceptance criteria states: let the
+typed structure reach a real detector so the *compiler* proves the refusal, and
+score `compiler_unsupported` carrying a typed non-deferred code. The scorer now
+accepts exactly that (see below); the structure to reach it is still missing.
+
+### 6b-7. `unsupported_other` was unreachable by construction (fixed)
+
+Measured: both `unsupported_other` cases stop at `compiler_failure ::
+underdetermined`. But even a *correct* engine could not have scored them.
+`verified_unsupported` is produced in the compiler path only when a course-scope
+deferred code is present — and that same code disqualifies `unsupported_other` by
+design, since the two classes are separated by evidence. An engine that correctly
+proved a problem out of scope at the compiler reaches `compiler_unsupported`,
+which was not an accepted terminal for the class at all.
+
+So `strict_unsupported_other_2` and `strict_terminal_mapping_100_percent` were
+unsatisfiable — the same defect class as the removed `strict_lane_b_all_solved`.
+The scorer now accepts `compiler_unsupported` for this class **and** requires a
+typed compiler reason, still refuses any deferred evidence, and still refuses any
+numeric answer. Verified before landing: every class count and
+`terminal_mapping_accuracy` is byte-identical on the public 100, so this removes a
+trap without moving a number.
+
+**A refuted objection, recorded because it is superficially convincing.** One
+audit argued this widening is dangerous: 16 supported-expected cases currently
+reach `compiler_unsupported :: requires_specialized_model`, so accepting that
+terminal for `unsupported_other` would "convert all 16 into
+`verified_unsupported`, driving `supported_downgraded_to_unsupported` from 0 to
+16". **Measured, and false.** `_REQUIRED_TERMINALS` is consulted only for a case's
+*own* expected class: a case whose expected class is `accepted` is scored by
+`_score_supported` and can never be routed through `_score_blocked`, whatever
+terminal it reached. Scoring the public 100 immediately before and after the
+change gives identical results in every field, including
+`supported_downgraded_to_unsupported == 0` both times. The objection mistook a
+per-class acceptance table for a terminal-to-class reclassifier.
+
 ## 6c. Known non-blocking evaluator issues, carried forward
 
-An independent read-only Checker audited the evaluator changes of this session
-and returned two blocking findings, both fixed (hard safety blind to five
-blocked classes; a tolerance conversion that was not delta-safe for offset
-units). Four non-blocking observations are recorded here rather than fixed,
-because each would need its own code candidate, CI cycle and strict re-run, and
-none is reachable through the real pipeline today.
+An independent read-only Checker audited the evaluator changes of the previous
+session and returned two blocking findings, both fixed there (hard safety blind
+to five blocked classes; a tolerance conversion that was not delta-safe for
+offset units). It also left four non-blocking observations, deliberately not
+fixed at the time because each needed its own code candidate, CI cycle and
+strict re-run.
 
-1. **`residual_verification` and `candidate_coverage` add no independent
-   evidence.** `_score_supported` accepts any single non-empty, all-passing
-   check tuple; it never names the kinds a solved candidate must carry. A
-   fabricated record whose only check is `("anything_at_all", "passed")` passes
-   `strict_residual_verification_100_percent`. Unreachable in practice —
-   `engine/mechanics/verification/contracts.py` refuses an answer verdict
-   missing graph-required check kinds, and all six real solved cases carry
-   `equation_residual`, `unit_consistency`, `query_binding`, `source_evidence`,
-   `constraint` and `nonnegative_time`, all passed. **Fix:** require at minimum
-   `equation_residual`, `unit_consistency`, `query_binding` and
-   `source_evidence`, which §6.2 of the acceptance criteria already mandates;
-   leave `constraint` and `nonnegative_time` graph-dependent.
-2. **No float slack on the tolerance comparison.** `2.0 + 1e-4` scores *wrong*
-   against a declared `1e-4`, because `(a+t)-a > t` in binary floating point.
-   This errs strict and is documented by its test, but "applied exactly" is
-   very slightly overstated.
-3. **`_distribution_matched` never pins 81/12/2/2/2/1** — it checks internal
-   consistency only. The frozen counts are pinned in `_strict_requirements`
-   under `require_full`, and `verify_corpus_semantics` fails closed on
-   `scope_terminal_count_mismatch`, so it is not exploitable.
-4. **Three gaps in pre-existing hard-safety evidence**, listed in
-   `PHASE56_STAGE7_EVALUATION_CONTRACT.md`: an unreferenced
-   `FORBIDDEN_RUNTIME_SOURCE_TOKENS`, no static guard against logging image
-   bytes, and a correction-path attack test that never injects a graph-shaped
-   key. These belong to the per-signal instrument registry, which is not built.
+**All four are closed in evaluator v3.** They are kept here with their
+resolutions so the audit trail stays continuous:
+
+1. **`residual_verification` and `candidate_coverage` added no independent
+   evidence** — `_score_supported` accepted any single non-empty, all-passing
+   check tuple, so `("anything_at_all", "passed")` scored 100 %. **CLOSED:** the
+   scorer now requires a four-kind floor (`equation_residual`,
+   `unit_consistency`, `query_binding`, `source_evidence`) *plus* every kind the
+   case's own graph and candidate obliged, recorded in the frozen runtime
+   snapshot via `graph_required_check_kinds(plan, candidate)` — the same
+   derivation the verifier enforces, now confirmed independently instead of
+   trusted. Measured: all six real solves already satisfy it, so
+   `residual_verification` stays 6/81 rather than falling.
+2. **No float slack on the tolerance comparison** — a value exactly on the
+   declared boundary could score *wrong* because `(a+t)-a > t` in binary
+   floating point. **CLOSED:** the declared tolerance plus at most 4 ULP at the
+   operand scale (~2.2e-16 relative), which is eleven orders of magnitude below
+   the tightest declared tolerance. No `1e-6`, no `max(tolerance, …)`, no
+   magnitude-based slack; the exact boundary and just-outside negative controls
+   are both pinned.
+3. **`_distribution_matched` never pinned 81/12/2/2/2/1** — internal consistency
+   only. **CLOSED as verified, not changed:** both consumers already read the one
+   authoritative `stage7_evaluation_contract().expected_terminals`
+   (`corpus_semantics.py:381`, gate `_strict_requirements`), and the preflight
+   compares every class field individually rather than the sum. A test now pins
+   that both consumers name the contract and that no per-class comparison is
+   dropped, so the two cannot drift apart later.
+4. **Three gaps in pre-existing hard-safety evidence.** **ALL CLOSED**, and the
+   per-signal instrument registry they belonged to is now built: all 23 signals
+   measured, `unbound_signal_count` 0, three strict gates bound. See
+   `PHASE56_STAGE7_EVALUATION_CONTRACT.md` for each instrument and for the
+   syntax-aware gold-member guard, the logging-privacy attacks, and the
+   graph-shaped correction injections that replace them.
+
+### New non-blocking items opened by evaluator v3, carried forward
+
+Both are latent — neither can fire on the public 100 today, both were measured to
+confirm that — and each is recorded with the cheapest measurement that would
+catch it the moment it stops being latent.
+
+5. **The unconditional `source_evidence` floor may be stricter than the engine.**
+   `lane_b_scoring.py` requires `source_evidence` on every solved case; the
+   engine requires it only when `plan.allowed_source_evidence_ids` is non-empty
+   (`verification/contracts.py:294-297`). This is the reading §6.3 of the
+   acceptance criteria mandates, and all six current solves satisfy it
+   (measured), so the floor is not stricter *in fact* today. It could become so
+   once packages produce graphs with different provenance shapes.
+   **Guard to add:** over every solved case assert
+   `_REQUIRED_CHECK_KINDS ⊆ graph_required_check_kinds`, and split
+   `verification_check_kind_missing` into "the engine skipped a kind its graph
+   required" versus "the scorer's floor demanded a kind the graph never
+   required", so the attribution is unambiguous rather than the case simply
+   reading unscored.
+
+6. **The tampering-invariance tests are not gate-bound.** The 16 case/gold
+   mutation sweeps over `lane_b_draft_projection.py` exist and pass, but they are
+   not among the 37 node IDs in `bound_node_ids()` and not in the gate's suite
+   lists. Every package in the ranked plan edits exactly that file, so this
+   should be bound **before** the first structural package, not after.
+
+7. **`unit_dimension_accuracy` measures the evaluator's own lookup table, not
+   the engine.** The scorer compares `_runtime_dimensionality(record.answer_unit)`
+   against the gold answer's unit — but `record.answer_unit` is
+   `query.output_unit`, set by the projection from the hardcoded `_QUERY_ROLES`
+   table keyed on `gold.queries[].output_key`
+   (`lane_b_draft_projection.py:214-243`). Both sides are frozen corpus-derived
+   data, so the metric is a constant for this corpus and **cannot detect an
+   engine dimension error**. The engine's own SI unit exists and is never used:
+   `verification/contracts.py` computes
+   `render_canonical_si_unit(query_symbols[0].symbol.dimension)`, and
+   `LaneBResult` does not carry it.
+   **Fix:** carry the engine's canonical SI unit on the runtime record and
+   compare *that* to gold, keeping the declared output unit only as a
+   cross-check. This is the same defect class as the hard-safety catalog — a
+   gate measuring itself — and it currently makes
+   `strict_unit_dimension_accuracy_100_percent` vacuous.
+
+8. **`direction_sign_accuracy` is close to a tautology.** `direction_ok` is
+   `within and record.answer_component is not None`, and `answer_component` is
+   copied straight from the projected query target, so for any case whose query
+   declares a component the metric collapses onto `answer_accuracy`. It cannot
+   currently catch a sign error, which matters because `_SEMANTIC_AXIS_BINDING`
+   fixes `up = +y` as a *server convention the corpus never states*. Inert today
+   — no signed solve exists — but it is the one place a confident wrong answer
+   can originate once signed components are created.
+   **Fix, and it must land before any signed-component package:** require the
+   engine to have resolved the sign from typed structure, and add a
+   sign-inversion mutation control — flip the binding table, re-run, assert every
+   signed answer changes sign. Any answer that does not change is proof the
+   metric is still lying.
 
 ## 7. What this document is not
 

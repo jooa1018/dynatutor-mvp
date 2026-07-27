@@ -21,16 +21,25 @@ them and must not be re-attributed.
 | Role | SHA |
 |---|---|
 | Main baseline (unchanged) | `00b3a60de6e13756d089655879a02e4094122047` |
-| Prior authoritative head (session base) | `10f4829366c2e959429cd6405541803b6847b370` |
-| Session base candidate (exact 4-commit fast-forward of the above) | `d33c70bf16341ae06eb80bbf515333b52d92b59a` |
-| **Code candidate / tested head (this session)** | `b88a9eac06c8be16f53a909e63d0c15a044afdf9` |
-| Documentation head | this commit and later |
+| Session base (remote head at session start) | `bc5e0be81ba66c2551f0ef47fa05511167949624` |
+| Evaluator v3 package | `1954d14a58bf1b3135d3d42057354958de8a24e4` |
+| **CODE_CANDIDATE_HEAD (this session)** | `803b40c37389315a96d2819b4350cad2c00f892b` |
+| **STRICT_GATE_TESTED_HEAD** | `803b40c37389315a96d2819b4350cad2c00f892b` |
+| **FULL_REGRESSION_TESTED_HEAD** | `1954d14a58bf1b3135d3d42057354958de8a24e4` |
+| DOCUMENTATION_HEAD | this commit |
+
+`FULL_REGRESSION_TESTED_HEAD` is deliberately named separately and is **not**
+re-attributed to the code candidate. The 4,478-test local regression ran at
+`1954d14`; the only later change, `803b40c`, removes tests and adds none (86 → 15
+in one file, by collapsing parametrisation into loops). The whole backend is
+re-run independently at `803b40c` by CI — `backend fast`, `backend slow`,
+`backend quality`, `backend performance` and the release gate all SUCCESS.
 
 The candidate was reflected onto `codex/phase56-generic-mechanics-engine` by a
-verified-ancestor **fast-forward push only** (`10f4829 → b88a9ea`). No reset,
+verified-ancestor **fast-forward push only**
+(`7963de0 → 9918d47 → 47b99d2 → 9a6e4b9 → bc5e0be → 1954d14 → 803b40c`). No reset,
 rebase, amend, squash, force-push, or history rewrite occurred anywhere in the
-session. The four pre-existing candidate commits (`c1d2dd1`, `42fcc01`,
-`bfab131`, `d33c70b`) are preserved byte-identical; every change landed as a
+session. Every pre-session commit is preserved byte-identical; every change landed as a
 new atomic commit on top of them.
 
 ## Session packages (`d33c70b..b88a9ea`, 10 atomic commits)
@@ -46,7 +55,7 @@ new atomic commit on top of them.
 | Gate aggregation | `1770ea1` | The offline gate now measures every Stage 7 lane honestly: Lane C/D suites in fresh interpreters, compositional 12, synthetic 38, metamorphic, physics-changing controls, gold-scored answer scoring (pint, SI), counts-only hard-safety aggregate, redaction stamp, `--require-full-stage7` strict keys. |
 | Gate CI parity | `b88a9ea` | Lane E runs exactly the workflow's steps (pinned eslint toolchain, tests/lint/typecheck/build); hard-safety aggregate no longer inherits the Lane B yield gate — safety and yield are independent verdicts. |
 
-## Measured Lane B public-100 result (executed at `b88a9ea`)
+## Measured Lane B public-100 result (executed at `803b40c`)
 
 The full public corpus (SHA-256 `cc8d8b27…` verified, 84 dev / 16 adversarial)
 was executed through the complete pipeline: projection → authority →
@@ -64,15 +73,29 @@ independent verification → frozen snapshot → gold scoring.
 | `compiler_unsupported` (typed precise codes) | 16 |
 | Total | 100 |
 
-- **Answer scoring: 6 scored, 6 correct, 0 wrong, 0 unscored.** Every solved
-  value was converted to SI with `pint` and matched the gold reference within
-  tolerance. **Wrong solves: 0** — the hard requirement holds.
+- **Case-level scoring against the frozen distribution** (evaluator v3, scored
+  strictly after the runtime snapshot is frozen): supported **6/81 correct, 0
+  wrong, 75 unscored**; deferred **6/12**; unsupported-other **0/2**;
+  needs_figure **2/2**; needs_confirmation **2/2**;
+  insufficient_information **1/1**. Terminal mapping **0.17**; the six metrics
+  all **0.074** (6 / 81).
+
+  The denominator is the 81 supported cases the contract declares, not the six
+  that happened to solve, so partial progress reads as partial. An earlier
+  revision of this report said "6 scored, 6 correct, 0 unscored", which counted
+  only what the engine produced and made a 7 %-complete lane read as complete.
+- **Wrong solves: 0** — the hard requirement holds. Every solved value was
+  converted to SI with `pint` and matched its gold reference inside the corpus's
+  own declared tolerance.
 - All 6 solved candidates passed all six verification checks
   (`equation_residual`, `nonnegative_time`, `query_binding`,
-  `source_evidence`, `unit_consistency`, `constraint`).
-- The lane distribution was **byte-identical at every package head** of the
-  session — packages A–E and both gate commits changed no public-100 outcome,
-  which is the intended result of contract-hardening work.
+  `source_evidence`, `unit_consistency`, `constraint`), and each carries every
+  kind its own graph and candidate obliged — now required by the scorer rather
+  than assumed.
+- The lane distribution is **byte-identical to the session base** `bc5e0be`.
+  Evaluator v3 changed how the run is *judged*, not what the engine does, and the
+  three scorer changes were each measured before and after to confirm no count
+  moved. That is the intended result of contract-hardening work.
 
 **Frozen target comparison.** The frozen Lane B target is
 `81 solved / 12 verified deferred / 2 / 2 / 2 / 1, wrong 0`. The measured
@@ -117,26 +140,61 @@ selected-profile run** per applicable context:
 - 10 unimplemented profiles — reported `profile_not_implemented` =
   **not measured**. No definitional zeros.
 
-## Full strict gate result at `b88a9ea`
+## Full strict gate result at the code candidate `803b40c`
 
-`run_phase56_stage7_offline_gate.py --require-full-stage7` (authorised archive
-supplied out-of-tree via `STAGE7_PUBLIC_CORPUS_PATH`; exit code 2, as expected
-with exactly one failing requirement):
+```
+cd backend
+STAGE7_PUBLIC_CORPUS_PATH=/abs/external/dynatutor_beer12_ko_corpus_v1_public.zip \
+OPENAI_API_KEY="" ANTHROPIC_API_KEY="" OPENAI_BASE_URL="" ANTHROPIC_BASE_URL="" \
+MECHANICS_MODELER_BASE_URL="" MECHANICS_FIGURE_BASE_URL="" \
+python tools/run_phase56_stage7_offline_gate.py \
+  --require-public-corpus --require-full-stage7 --output /abs/external/report.json
+```
+
+`STAGE7_RUN_SCOPE=STRICT_PUBLIC_CORPUS_GATE`, **exit 2** — expected: Lane B has
+not met the frozen distribution. `exact_head_sha` in the report is
+`803b40c37389315a96d2819b4350cad2c00f892b`, the code candidate itself, so no
+documentation head is stamped with the candidate's evidence.
+
+- Report SHA-256: `be45b67ea163f0b376b94e880059b98fc612aaf5c705d644738bd82395742d46`
+- Evaluator `phase56-stage7-evaluator-v3`; contract `phase56-stage7-evaluation-contract-v1`
+- Archive SHA-256 matched; `public_dev` 84 / `public_adversarial` 16 / total 100
+- External model calls **0**; private held-out accesses **0**; measured cost **$0**
+
+39 strict gates, **11 failing** — every one of them Lane B yield, and nothing else:
 
 | Strict gate | Result |
 |---|---|
-| `strict_corpus_supplied` / `sha_match` / `84` / `16` / `100` | PASS |
-| `strict_lane_b_executed` / `strict_lane_b_100_executed` | PASS |
-| **`strict_lane_b_all_solved`** | **FAIL — `unsolved_cases_remain` (6/81)** |
-| `strict_lane_c_pass` (modeler 59 + contracts 19 + reconciliation 4 = 82) | PASS |
-| `strict_lane_d_pass` (API/runtime + security + image + idempotency + observability = 24) | PASS |
-| `strict_lane_e_pass` (toolchain, tests, lint, typecheck, build) | PASS |
-| `strict_compositional_12_pass` (12/12 structures) | PASS |
-| `strict_synthetic_38_pass` (manifest = 38) | PASS |
-| `strict_metamorphic_pass` | PASS |
-| `strict_physics_changing_controls_pass` | PASS |
-| `strict_hard_safety_pass` (23 signals all zero; wrong solves measured 0) | PASS |
+| corpus supplied / SHA / 84 / 16 / 100 | PASS |
+| `strict_lane_b_executed` / `_100_executed` / `_scored` | PASS |
+| **`strict_supported_81_solved`** | **FAIL — 6 correct of 81** |
+| **`strict_deferred_12_verified_unsupported`** | **FAIL — 6 of 12** |
+| **`strict_unsupported_other_2`** | **FAIL — 0 of 2** |
+| `strict_needs_figure_2` | PASS |
+| `strict_needs_confirmation_2` | PASS |
+| `strict_insufficient_information_1` | PASS |
+| **`strict_terminal_mapping_100_percent`** | **FAIL — 0.17** |
+| **six metric gates** (answer, unit/dimension, query binding, direction/sign, candidate coverage, residual verification) | **FAIL — 0.074 each (6/81)** |
+| **`strict_unscored_zero`** | **FAIL — 75** |
+| `strict_wrong_solve_zero` | **PASS — 0** |
+| `strict_solved_but_unscored_zero` | PASS — 0 |
+| `strict_deferred_silent_solve_zero` | PASS — 0 |
+| `strict_blocked_silent_solve_zero` | PASS — 0 |
+| `strict_blocked_numeric_answer_zero` | PASS — 0 |
+| `strict_lane_c_pass` / `strict_lane_d_pass` / `strict_lane_e_pass` | PASS |
+| `strict_compositional_12_pass` / `strict_synthetic_38_pass` | PASS |
+| `strict_metamorphic_pass` / `strict_physics_changing_controls_pass` | PASS |
 | `strict_redaction_pass` | PASS |
+| `strict_hard_safety_pass` | PASS |
+| **`strict_hard_safety_all_signals_measured`** | **PASS — 23 of 23** |
+| **`strict_hard_safety_unbound_zero`** | **PASS — 0** |
+| **`strict_hard_safety_nonzero_zero`** | **PASS — 0** |
+
+The last three gates are new in evaluator v3 and are the reason the hard-safety
+section now means something: `per_signal_instrument_registry: IMPLEMENTED`,
+`signal_count` 23, `measured_signal_count` 23, `unbound_signal_count` 0,
+`nonzero_signal_count` 0. Previously the catalog reported `all_zero` while 17 of
+its 23 signals had no instrument at all.
 
 Lane C remains contract/integration evidence over the deterministic recorded
 modeler only; **actual model quality is `NOT_RUN / N/A`** — no external model
@@ -144,70 +202,65 @@ call was made and measured cost is $0.
 
 ## Regression evidence
 
-| Suite | Result |
-|---|---|
-| Full backend regression (waiver head `84d1cb6`) | **3912 passed, 0 failed** (1 skipped, 430 deselected) |
-| Full backend regression (package E head `223c070`) | 3899 passed, 0 failed |
-| Stage 7 focused suite at `b88a9ea` | **794 passed** |
-| Solver + parity suites at waiver head | 203 passed |
-| Extremum-boundary solve controls (incl. 9 near-miss graph mutations + provenance-void control) | 13 passed |
+| Suite | Head | Result |
+|---|---|---|
+| Full backend regression (local) | `1954d14` | **4478 passed, 1 skipped, 0 failed** (43:05) |
+| Stage 7 offline gate runner | `803b40c` | 50 passed |
+| Hard-safety instrument attacks | `803b40c` | 15 passed |
+| Gold isolation + Lane B runner | `803b40c` | 49 passed |
+| Preflight + corpus integrity contracts | `803b40c` | 128 passed |
 
-No test was deleted, no assertion weakened, no threshold relaxed, no legacy
-fallback or case-specific patch introduced. Negative controls for package A
-were written first and confirmed red before the implementation landed.
+The full local regression is attributed to `1954d14` and **not** re-attributed to
+the code candidate. `803b40c` changes exactly one test file, removing 71 tests by
+collapsing parametrisation into loops and adding none; the entire backend is
+re-executed at `803b40c` by CI below.
 
-## Exact-head CI evidence for `b88a9ea`
+No test was deleted, no assertion weakened, no threshold relaxed, no shard budget
+widened, no legacy fallback or case-specific patch introduced.
 
-All four workflows executed at the exact candidate head on
+## Exact-head CI evidence for the code candidate `803b40c`
+
+All six workflows executed at the exact candidate head on
 `codex/phase56-generic-mechanics-engine`:
 
-| Workflow | Run | Result |
-|---|---:|---|
-| Phase 56 Stage 7 offline evaluation (push) | `30213405608` | **SUCCESS** |
-| Phase 56 Stage 7 offline evaluation (pull_request) | `30213406987` | **SUCCESS** |
-| Phase 56 Stage 6 multimodal (push) | `30213405564` | **SUCCESS** |
-| Phase 56 Stage 6 multimodal (pull_request) | `30213407012` | **SUCCESS** |
-| DynaTutor release tests (pull_request) | `30213406981` | **FAILURE** — `backend slow` shard timeout, analysed below |
-| Phase 55 textbook parser (pull_request) | `30213407014` | **SUCCESS** (`live-openai-smoke` skipped — no Live call) |
+| Workflow | Event | Run | Result |
+|---|---|---:|---|
+| Phase 56 Stage 7 offline evaluation | push | `30271934503` | **SUCCESS** |
+| Phase 56 Stage 7 offline evaluation | pull_request | `30271937974` | **SUCCESS** |
+| Phase 56 Stage 6 multimodal | push | `30271936141` | **SUCCESS** |
+| Phase 56 Stage 6 multimodal | pull_request | `30271937930` | **SUCCESS** |
+| DynaTutor release tests | pull_request | `30271938042` | **SUCCESS** |
+| Phase 55 textbook parser | pull_request | `30271937988` | **SUCCESS** (`live-openai-smoke` skipped — no Live call approved) |
 
-This evidence belongs to `b88a9ea` and must not be re-attributed to the later
-documentation-only head.
+Within `DynaTutor release tests`: `backend fast`, `backend slow`,
+`backend quality`, `backend performance`, `frontend` and `release gate` all
+SUCCESS.
 
-### Release-tests failure analysis (run `30213406981`)
+This evidence belongs to `803b40c` and must not be re-attributed to the
+documentation-only head that follows it.
 
-The `backend slow` job's `incline_hanging_same_fixture_parity` file shard was
-killed at the wrapper's 240 s per-shard budget, and the `release gate` job then
-failed as a consequence. The run's other five jobs — fast, quality (including
-the warm-solve latency and cold-import/RSS budgets), frontend, performance —
-all passed.
+### A shard-budget failure at the preceding candidate, and why it was not a test failure
 
-Measured evidence classifies this as the **documented recurring duration flake
-of a structurally marginal shard budget**, not a code regression:
+The first evaluator-v3 candidate, `1954d14`, failed `backend fast` — with **zero
+failing tests**. `scripts/check_backend_fast.sh` splits the suite into four
+contiguous shards **by test count** and gives each a 420 s wall clock; the 89
+tests the hard-safety attacks added moved every shard boundary, so shard 2
+inherited more of the same-fixture parity suites than before and was terminated
+at 78 % by `[run_with_timeout] timed out after 420s`.
 
-1. At the green base head `10f4829` the same shard passed CI at **215.82 s of
-   the 240 s budget** — 90 % consumed before any commit of this session.
-2. In the failed run, every slow shard was uniformly 6–12 % slower than in the
-   green run, including suites untouched by any commit in the window
-   (incline_friction 66.2 s vs 59.2 s, massive_pulley 52.0 vs 46.6,
-   rolling_general 49.3 vs 45.2, atwood 32.8 vs 30.5, vertical_circle 46.6 vs
-   44.1). That is runner-level slowness: 215.8 × ~1.10 ≈ 237 s, plus
-   two-worker contention, crossed 240 s.
-3. Same-hardware serial timing of the identical shard command on the session
-   container: base `10f4829` = **286.94 s**, head `b88a9ea` = **286.46 s** —
-   a 0.2 % delta, code-parity within noise. (This container is ~33 % slower
-   than CI runners, so both sides exceed 240 s locally; per-test durations are
-   statistically identical between the heads.)
-4. The identical shard timed out once before, at intermediate head `1c86986`,
-   and was classified a duration flake with parent-green and head-green CI
-   evidence (recorded in PR #17's body at the time).
-5. The `incline_hanging` fixtures carry zero events, so the session window's
-   event-scoped engine changes do not execute in this suite.
+The repair was to make the new tests cheap, never to widen the budget. Sixteen
+parametrised correction attacks each built their own FastAPI application and
+seeded their own revision to exercise one recursive guard; they are now two loops
+inside two tests. Three denylist sweeps contributed 52 more cases to assert a
+pure function over a frozenset; they are now loops. The four attacks that must
+drive a real application through the real endpoint are marked `slow` — what the
+marker exists for, and what parity suites of the same shape already do — so they
+run under `backend slow`, while the strict gate still runs them by exact node ID
+with `-o addopts=`, which clears the marker filter. All 37 registry-bound node
+IDs still resolve, and the file went from 86 tests / 85 s to 15 tests / 20 s.
 
-No threshold was changed and no test was altered in response. The structural
-fact — this shard's cost sits at ~90 % of its per-shard budget on a nominal
-runner — is recorded here as a typed infrastructure blocker for the maintainer
-to resolve deliberately (budget, shard split, or fixture cost), outside this
-session's scope.
+No threshold was raised, no budget widened, no assertion weakened and no attack
+removed: every key, denylist entry and guard attacked before is still attacked.
 
 ## Read-only audit (same-model, not an independent Checker)
 
@@ -242,25 +295,44 @@ patched here, to keep the CI-attributed code head exact):
 
 | Signal | Status |
 |---|---|
+| Catalog signals | 23 |
+| **Individually measured this run** | **23** |
+| **Unbound (NOT_MEASURED)** | **0** |
+| **Nonzero** | **0** |
+| Per-signal instrument registry | `IMPLEMENTED` (`phase56-stage7-hard-safety-registry-v1`) |
 | External model calls | 0 |
 | Measured cost | $0 |
 | Private held-out access | 0 |
 | Textbook PDF access | 0 |
 | Raw corpus committed | no (path-supplied archive only) |
-| Gold leakage in runtime material | 0 (enforced and tested) |
+| Gold leakage in runtime material | 0 (enforced by import guard **and** a syntax-aware source guard, both tested in each direction) |
 | Case-ID / family / filename / raw-text routing | 0 (enforced and tested) |
 | Wrong solves (gold-scored) | **0** |
 | Actual model quality | `NOT_RUN / N/A` |
 
-## Next exact task
+Six signals rest on scorer/runtime counters; the other seventeen on 37 exact
+attack node IDs the gate runs each strict run. A signal whose instrument does not
+run reports `NOT_MEASURED` and fails strict mode — it never inherits a zero.
 
-Continue Lane B from the measured matrix, not the census: extend the
-`free_flight_gravity` plan former so its 6 `profile_plan_not_formable`
-contexts become formable (the verified-solve path past the solver waiver is
-already proven), then re-measure; take `impulse_momentum` and
-`relative_translating_frame` next by the same rule. Each increment must keep
-wrong solves at 0 and the distribution honest. Then fold in the six
-non-blocking audit observations as small atomic commits, re-run the strict
-gate, and re-attribute CI at the new exact head.
+## Next exact task — B1, an implementation package
+
+The next session's first action is the **B1 cohesive implementation package**
+(slot-pin `radial_transverse` frame), not another audit, census or diagnostic.
+The measurement phase is complete: six independent read-only audits and the
+evaluator v3 package are done, and the ranked plan is recorded in
+`docs/PHASE56_CLAUDE_CODE_HANDOFF.md` with its evidence in
+`docs/PHASE56_STAGE7_STRUCTURAL_BLOCKERS.md` §6b-4 … §6b-7.
+
+B1 creates exactly one `IRReferenceFrame` with `frame_type = radial_transverse`
+and rebinds the query quantity's `frame_id` to it, inside a transaction following
+the working `_DEFERRAL_ONLY_PROFILES` pattern. Every other conjunct of
+`_slot_pin_relative_motion_issue` already holds 3/3; the frame is the only missing
+one, and its identity is read from the corpus's own `moves_in_slot` relation.
+Expected measured outcome: deferred **6/12 → 9/12**, supported unchanged, wrong
+solves 0, `supported_downgraded_to_unsupported` 0.
+
+Stated honestly: B1 raises the *deferred* class, not the supported count. The
+first package that can raise **supported** is the co-required bundle B5+B6+B7,
+because a frame alone unlocks zero laws (`frame_alone_unlocks = 0`, §6b-4).
 
 Stage 8 must not start.

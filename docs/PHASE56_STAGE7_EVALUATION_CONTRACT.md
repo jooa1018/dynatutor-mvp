@@ -36,26 +36,60 @@ These defects were identified by running the public corpus and reading
 privacy-safe aggregate counts: `PUBLIC_EVALUATION_INFORMED_FIX: YES`. No
 private-corpus generalization is claimed from that evidence.
 
-### Hard-safety catalog — evidence audit (NOT yet enforced per signal)
+### Evaluator v2 → v3
 
-`_hard_safety_section` derives its verdict from six named counters (wrong
-solves, solved-but-unscored, deferred silent solves, silent solves in any other
-blocked class, numeric answers carried by a blocked case, and supported cases
-downgraded to unsupported) plus the structural gates, zero external calls, and
-zero private accesses. It does **not** yet require
-each of the 23 `Stage7HardSafetySignal` members to carry its own instrument, so
-a signal with no instrument is still covered by an aggregate rather than being
-reported `NOT_MEASURED`. **This is an open evaluator gap**, recorded here rather
-than papered over.
+The contract is again unchanged — `Stage7ExpectedTerminalCounts` stays
+byte-identical and no threshold is relaxed. Three changes, all of which make the
+gate harder to pass or state its coverage more honestly.
 
-A read-only audit of the repository located, and verified by name, concrete
-existing evidence for **all 23** signals — no signal is at `NONE`. The evidence
-kinds present are runtime counters, dedicated attack tests, static source/import
-audits, negative-control suites, an out-of-process solver candidate audit, a
-privacy/redaction audit, and an environment guard. Six signals are now backed by named
-counters introduced with evaluator v2: `supported_wrong`,
+| | v2 behaviour | Defect | v3 behaviour |
+|---|---|---|---|
+| Verification checks on a solved case | `residual_ok = bool(checks) and all(status == "passed")` | Any non-empty all-passing tuple satisfied it, so a single `("anything", "passed")` would drive both `candidate_coverage` and `residual_verification` to 100 %. An engine that proved nothing but its own arithmetic scored identically to one that proved its units, its binding, and its evidence. | A required-kind floor — `equation_residual`, `unit_consistency`, `query_binding`, `source_evidence` — **plus** the kinds *this graph and candidate* obliged. The obligation is derived by `graph_required_check_kinds(plan, candidate)`, the same derivation the verifier already enforces at verdict construction, recorded in the frozen runtime snapshot so the scorer confirms it independently instead of trusting it. A graph with events must show its event ordering, one with constraints its constraints — without the scorer hard-coding physics it cannot see. |
+| Tolerance boundary | `abs(value - expected) <= tolerance` | Three roundings stand between the corpus's declaration and the compared number — the SI conversion of the value, the SI conversion of the tolerance delta, and the subtraction — so an answer *exactly* on the declared boundary could land a couple of ULP outside and be scored wrong for arithmetic reasons alone. | The declared tolerance plus at most 4 ULP **at the operand scale**. An ULP is a property of binary64 (~2.2e-16 relative), not of the corpus, so this is some eleven orders of magnitude below the tightest declared tolerance and cannot rescue a wrong answer. Explicitly **not** a floor: no `1e-6`, no `max(tolerance, …)`, no magnitude-based slack. A tolerance of 1e-6 still means 1e-6. |
+| Hard-safety coverage | six counters; seventeen signals unbound; `per_signal_instrument_registry: NOT_IMPLEMENTED` | Seventeen unexamined properties reported inside an `all_zero` claim is not a safety claim but the absence of one. | The per-signal registry below: all 23 measured, `unbound_signal_count` 0, and three strict gates that fail on an unmeasured or violated signal. |
+
+Verified against the public 100 before landing: all six currently solved cases
+already carry `equation_residual`, `unit_consistency`, `query_binding`,
+`source_evidence`, `constraint`, and `nonnegative_time`, and every graph-obliged
+kind is present, so the floor tightens the gate without discarding a solve —
+`residual_verification` stays 6/81 rather than falling.
+
+### Hard-safety catalog — per-signal instrument registry (enforced, evaluator v3)
+
+`evaluation/phase56_stage7/hard_safety_registry.py` binds **every one of the 23**
+`Stage7HardSafetySignal` members to a named instrument, and the gate measures all
+23 in each strict run. The rule the module exists to enforce is:
+
+> An unmeasured signal is `NOT_MEASURED`, and `NOT_MEASURED` fails strict mode.
+
+A signal reaches zero only through an instrument that ran *in that run* and could
+have said otherwise. Two binding kinds carry evidence:
+
+- **counters** — a number the Lane B scorer or the environment guard produced.
+  Absent or `None` is not zero: "the scorer never ran" and "the scorer found
+  none" are different states and only one is safe.
+- **attack nodes** — exact pytest node IDs. Measured requires every bound node to
+  have *run*; a failed node is a violation, a skipped or uncollected node is
+  `NOT_MEASURED`, never an implicit pass.
+
+The gate runs the 37 distinct bound node IDs once per run and maps each verdict
+back to its signals. Three strict gates bind the result:
+`strict_hard_safety_all_signals_measured` (measured == 23),
+`strict_hard_safety_unbound_zero`, and `strict_hard_safety_nonzero_zero`.
+
+Because several signal *names* are themselves forbidden redaction substrings —
+`private_heldout_access` contains `private_heldout` — the artifact identifies each
+signal by its **index into the frozen catalog**, which the evaluation contract
+pins in declaration order. The index is exact and reversible for a reader holding
+the contract and carries no marker substring. The reason a signal is unmeasured is
+a closed vocabulary (`counter_absent`, `attack_not_run`); no node ID or counter
+key reaches the artifact.
+
+Six signals rest on named counters introduced with evaluator v2: `supported_wrong`,
 `supported_solved_unscored`, `deferred_silent_solves`, `blocked_silent_solves`,
-`blocked_numeric_answers`, and `supported_downgraded_to_unsupported`.
+`blocked_numeric_answers`, and `supported_downgraded_to_unsupported`. The other
+seventeen rest on attack nodes, static source guards, API negative controls, a
+solver candidate audit, a privacy/logging audit, and revision/correction audits.
 
 The last three were added after an independent read-only audit demonstrated
 that hard safety reported `PASS` while the engine fabricated a numeric answer
@@ -67,32 +101,45 @@ found the tolerance conversion was not delta-safe for offset units, which would
 have widened a `± 0.1 degC` declaration to `± 273.25 K`; both are fixed and
 pinned by negative controls.
 
-Three weaknesses the audit found, which the per-signal registry must fix rather
-than inherit:
+Three weaknesses the earlier audit found, and how each is now closed rather than
+inherited:
 
 1. **`expected_answer_leakage`** — `isolation.py`'s
-   `FORBIDDEN_RUNTIME_SOURCE_TOKENS` is defined and *never referenced anywhere*.
-   Only the AST import audit runs across `backend/app` and `backend/engine`;
-   source-token auditing exists only for `engine/mechanics/modeler*.py` and the
-   runtime orchestrator. The declared guard is not a guard.
-2. **`raw_image_or_base64_logging`** — no static audit asserts that `app/` and
-   `engine/mechanics/` never log image bytes. Those modules contain zero logging
-   calls today, but nothing holds them to it, so a newly added
-   `logger.debug(image.content)` would fire the signal undetected.
-3. **`direct_graph_patch`** — shares its only correction-path attack test with
-   `direct_answer_patch`, and that test injects answer/solver/verification keys
-   only; no graph-shaped key (`equation_graph`, `equation_solution`,
-   `selected_equation_set`) is actually injected into a correction request.
-   Separately, `BenchmarkMetrics.unsafe_patch_bypass_rate` is fed by a
-   caller-supplied flag with no validator binding — declarative, not measured.
+   `FORBIDDEN_RUNTIME_SOURCE_TOKENS` was defined and never referenced anywhere:
+   a declared guard that was not a guard. It is now consumed by
+   `assert_runtime_source_does_not_read_gold_members`, which reads the *syntax*
+   rather than the text. A leak is an identifier (`draft.expected_answer`, a
+   parameter, a def/class name) or a subscript key (`payload["gold_graph"]`); a
+   bare string constant in a collection literal is not, which is how the runtime's
+   own denylists spell the fields they exist to reject. A substring scan would
+   have flagged the defence as the vulnerability. Both directions are pinned:
+   `test_the_gold_member_guard_can_actually_fail` and
+   `test_the_gold_member_guard_does_not_flag_a_denylist`.
+2. **`raw_image_or_base64_logging`** — nothing asserted that `app/` and
+   `engine/mechanics/` never log image bytes. Two runtime attacks now drive a real
+   PNG and a real envelope through the real endpoint with logging captured at
+   `DEBUG`, and assert that neither the base64, the `data:image` prefix, the PNG
+   magic bytes, nor any provider output reaches a log record. The closed-shape
+   telemetry audit is driven alongside them.
+3. **`direct_graph_patch`** — it shared its only correction-path attack with
+   `direct_answer_patch`, and that attack injected no graph-shaped key at all.
+   Graph-shaped (`equation_graph`, `solver_candidate`, `verified_candidate`),
+   answer-shaped (`final_answer`, `verification_result`) and solver-shaped
+   (`selected_solver`, `selected_root`, `executable_equation`) keys are now driven
+   through the real correction endpoint, both at the top level and nested inside
+   an otherwise-valid source correction, and
+   `test_every_forbidden_patch_field_is_covered_by_an_attack` stops the attack set
+   from falling behind the denylist it attacks.
 
-Until the registry exists, no Stage 7 report may describe the hard-safety
-catalog as "23 signals measured". The honest statement is: six measured
-counters, seventeen signals covered by existing tests and static guards that the
-gate does not yet bind per signal, and three named weaknesses above. The
-artifact says exactly that — `measured_signal_count`, `unbound_signal_count`,
-and `per_signal_instrument_registry: NOT_IMPLEMENTED` — rather than reporting
-`all_zero` over a catalog of 23.
+A related finding, recorded because it is defence-in-depth rather than a defect:
+four denylists guard four surfaces (`FORBIDDEN_AUTHORITY_FIELDS`,
+`ANSWER_AUTHORITY_FORBIDDEN_FIELDS`, `_FORBIDDEN_ENVELOPE_FIELDS`,
+`FORBIDDEN_PATCH_FIELDS`) and their vocabularies are deliberately not identical.
+The envelope pre-scan omits `equation_graph`; it is backstopped because
+`audit_modeling_payload` runs on the same envelope in `multimodal_modeler` and
+again on every confirmed and corrected envelope in `multimodal_revision`. The
+drift guard is stated over *effective* per-surface guards, so trimming a list
+without checking its backstop fails.
 
 The commit that first introduces this contract is the `STAGE7_PREFLIGHT_HEAD`.
 Its exact SHA is recorded in the Stage 7 evidence report after the commit is

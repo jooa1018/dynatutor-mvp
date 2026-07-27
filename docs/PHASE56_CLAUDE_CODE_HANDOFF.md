@@ -3,10 +3,16 @@
 ## Current authoritative state
 
 - Disposition: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`
-- Stage 7 code candidate / tested head: `b88a9eac06c8be16f53a909e63d0c15a044afdf9`
-- Branch: `codex/phase56-generic-mechanics-engine` (fast-forward only; the four
-  pre-session candidate commits `c1d2dd1`, `42fcc01`, `bfab131`, `d33c70b` are
-  preserved byte-identical)
+- **CODE_CANDIDATE_HEAD**: `803b40c37389315a96d2819b4350cad2c00f892b`
+- **STRICT_GATE_TESTED_HEAD**: `803b40c37389315a96d2819b4350cad2c00f892b`
+  (report SHA-256 `be45b67ea163f0b376b94e880059b98fc612aaf5c705d644738bd82395742d46`,
+  exit 2 on Lane B yield only)
+- **FULL_REGRESSION_TESTED_HEAD**: `1954d14a58bf1b3135d3d42057354958de8a24e4`
+  (4478 passed, 1 skipped, 0 failed) — not re-attributed to the candidate; the
+  candidate only removes tests, and CI re-runs the whole backend at it
+- Branch: `codex/phase56-generic-mechanics-engine` (fast-forward only:
+  `bc5e0be → 1954d14 → 803b40c`, every pre-session commit preserved
+  byte-identical)
 - PR #17: open, Draft, unmerged; stacked on Draft PR #16
 - Main: `00b3a60de6e13756d089655879a02e4094122047` (unchanged)
 - Stage 7: **IN PROGRESS** — see `docs/PHASE56_STAGE7_PROGRESS_REPORT.md` and
@@ -18,15 +24,23 @@
   `NOT_RUN / N/A`
 - Textbook PDF and private corpus: **UNTOUCHED**
 
-### Measured Lane B public-100 state (at `b88a9ea`)
+### Measured Lane B public-100 state
 
-`solved 6 / verified_unsupported 6 / needs_figure 2 / needs_confirmation 2 /
-insufficient_information 1 / compiler_failure 67 / compiler_unsupported 16`,
-answer scoring 6 correct / **0 wrong**, all six verification checks passed on
-every solved candidate. The frozen target (`81/12/2/2/2/1`, wrong 0) is **not
-met**; the single failing strict gate is `strict_lane_b_all_solved`. Every
-other strict Stage 7 gate passes (Lanes C/D/E, compositional 12, synthetic 38,
-metamorphic, physics-changing, hard-safety all-zero, redaction).
+Runtime terminals: `solved 6 / verified_unsupported 6 / needs_confirmation 2 /
+not_projected 3 / compiler_failure 67 / compiler_unsupported 16`. Compiler codes:
+`underdetermined 67`, `requires_specialized_model 16`,
+`nonlinear_verification_deferred 6`, `translating_frame_relative_acceleration_deferred 3`,
+`free_linear_vibration_readout_deferred 3`.
+
+Case-level scoring against the frozen distribution: supported **6/81 correct, 0
+wrong, 75 unscored**; deferred **6/12**; unsupported-other **0/2**; needs_figure
+**2/2**; needs_confirmation **2/2**; insufficient_information **1/1**; terminal
+mapping **0.17**; the six metrics all **0.074** (6/81).
+
+The engine emits **2 distinct laws** and **12 equations** across all 100 cases;
+67 cases compile to a graph with zero equations. Hard safety: **23/23 signals
+measured, 0 unbound, 0 nonzero**. Lanes C/D/E, compositional 12, synthetic 38,
+metamorphic, physics-changing and redaction all PASS.
 
 ### Stage 7 session packages completed and pushed (`d33c70b..b88a9ea`)
 
@@ -72,9 +86,41 @@ silently; it is a recorded infrastructure blocker.
   reset, rebase, amend, squash, or force-push existing history.
 - Preserve PR #16/#17 as Draft and unmerged; preserve main.
 
-## Next exact task
+## Next exact task — B1, an implementation package, not an analysis
 
-Reproduce the strict gate, then continue Lane B from the **measured**
+**The next session's first action is the B1 cohesive implementation package**
+(slot-pin `radial_transverse` frame), not another audit, census, diagnostic, or
+report. The measurement phase is finished: six independent read-only audits and
+the evaluator v3 package are complete, and the ranked plan below is the product
+of that work. Re-deriving it would spend a session and move the public-100
+supported count by zero.
+
+**B1 in one paragraph.** Create exactly one `IRReferenceFrame` with
+`frame_type = radial_transverse` and rebind the query quantity's `frame_id` to
+it, inside a transactional profile that follows the existing
+`_DEFERRAL_ONLY_PROFILES` pattern (`relative_translating_frame` is the working
+precedent and converts 3 undifferentiated `underdetermined` graphs into 3 exact
+typed deferrals today). Every other conjunct of
+`_slot_pin_relative_motion_issue` (`compiler.py:1232-1400`) already holds 3/3 —
+role/component/scalar/symbol/dimension, `len(pin_ids) == 1` with a `joint`
+subject, a `slot`-primitive entity in `relevant`, and exactly one qualifying
+`lies_on` relation. The frame is the only missing conjunct. The frame's identity
+is read from the corpus's own `moves_in_slot` relation; nothing is invented.
+Create **no** point, force, or interaction — the detector does not require one
+and creating it drags in B3's cost.
+
+**Expected measured outcome:** deferred **6/12 → 9/12**, supported unchanged at
+6/81, `wrong_solve` 0, `supported_downgraded_to_unsupported` 0. If the profile
+fires on any of the 81 supported cases, revert.
+
+Note honestly that B1 raises the *deferred* class, not the supported count. The
+first package that can raise **supported** is the co-required bundle B5+B6+B7,
+and the measured reason is in §6b-4: a frame alone unlocks zero laws. B1 is
+first because it is the highest measured yield-to-effort item and it exercises
+the transaction machinery every later package needs — not because it is the
+largest.
+
+Reproduce the strict gate first, then continue Lane B from the **measured**
 profile-isolated matrix (never the first-wins census):
 
 ```bash
@@ -88,10 +134,15 @@ python tools/run_phase56_stage7_offline_gate.py \
   --output "$TMPDIR/stage7_offline_gate_report.json"
 ```
 
-Expected today: exit `2` with exactly one failing strict gate
-(`strict_lane_b_all_solved`, 6/81) and everything else PASS.
+Expected today: exit `2` with **eleven** failing strict gates — the three class
+gates (`strict_supported_81_solved` 6/81, `strict_deferred_12_verified_unsupported`
+6/12, `strict_unsupported_other_2` 0/2), `strict_terminal_mapping_100_percent`
+(0.17), the six metric gates (all 6/81 = 0.074), and `strict_unscored_zero` (75).
+Everything else PASSes, including hard safety with **23/23 signals measured, 0
+unbound, 0 nonzero**. `strict_lane_b_all_solved` no longer exists; it was an
+unsatisfiable gate removed in evaluator v2.
 
-Then, in order of measured yield:
+Then, in order of **measured full-pipeline yield** (see below):
 
 1. `free_flight_gravity` — make its 6 `profile_plan_not_formable` contexts
    formable; the post-waiver verified-solve path is already proven by the
@@ -110,3 +161,59 @@ regression.
 Do not commit the archive or any raw split, do not report an unexecuted lane
 as passing, keep Live evaluation disabled, keep PR #16/#17 open, Draft, and
 unmerged, leave main unchanged, and do not start Stage 8.
+
+## Evaluator work that must land before the structural packages
+
+Four items, all measured, none able to fire on the public 100 today. They are
+listed before the structural plan because three of them are gates that currently
+measure nothing, and the fourth guards the file every structural package edits.
+
+| # | Item | Why it must precede structural work |
+|---|---|---|
+| E1 | `unit_dimension_accuracy` compares the evaluator's `_QUERY_ROLES` table to gold — both frozen data. Carry the engine's `render_canonical_si_unit(...)` on `LaneBResult` and compare that. | `strict_unit_dimension_accuracy_100_percent` is vacuous until fixed; it is one of the six metrics acceptance requires at 100 %. |
+| E2 | `direction_sign_accuracy` collapses onto `answer_accuracy`. Require the sign to be resolved from typed structure and add the sign-inversion mutation control. | `_SEMANTIC_AXIS_BINDING` fixes `up = +y` as a server convention the corpus never states. Inert today; the first signed solve makes it the likeliest source of a confident wrong answer. **Land before B6.** |
+| E3 | Bind the tampering-invariance sweeps (the 16 case/gold mutations over `lane_b_draft_projection.py`) into `bound_node_ids()` and the gate's suite lists. | Every structural package edits that file, and no gate currently watches it for case-specific routing. **Land before B1.** |
+| E4 | Split `verification_check_kind_missing` into "engine skipped a graph-required kind" vs "the scorer's floor demanded a kind the graph never required", and assert `_REQUIRED_CHECK_KINDS ⊆ graph_required_check_kinds` on every solve. | The `source_evidence` floor is unconditional while the engine requires it conditionally. Latent today (6/6 satisfy it); packages producing new provenance shapes could trip it, and the failure would read as an unscored case rather than as the floor. |
+
+## Ranked structural plan (measured, six independent read-only audits)
+
+The ranking rule is fixed and non-negotiable: **measured additional verified
+full-pipeline yield**, never plan-complete count, never application count, never
+compiler terminal alone. §6b-1 of `PHASE56_STAGE7_STRUCTURAL_BLOCKERS.md` records
+why each of those three misleads.
+
+Two measured facts govern everything below:
+
+- **A frame alone unlocks zero laws** (`frame_alone_unlocks = 0`). The blocking
+  structure is a co-required bundle — frame *and* point *and* signed axis binding
+  *and* a force-bearing interaction that owns its quantities. Scope packages to a
+  bundle, not to a record kind, or every increment measures zero.
+- **The information is in the source.** For all ten missing structure kinds,
+  `present + derivable ≥ 24/100`, and for six of them `≥ 64/100`. The largest
+  single discard is `motion_segments.motion_model`: 9 of 13 declared values are
+  dropped, 53/100 records name a regime the projection emits nothing for, and 43
+  of the 67 `underdetermined` cases carry one.
+
+| # | Package | Measured yield | Note |
+|---|---|---|---|
+| B1 | Slot-pin `radial_transverse` frame | deferred 6/12 → **9/12** | Highest yield-to-effort. Every conjunct of `_slot_pin_relative_motion_issue` already holds 3/3 except the frame itself. Uses the working `_DEFERRAL_ONLY_PROFILES` mechanism. Create **one** `IRReferenceFrame`; create no point, force, or interaction. |
+| B2 | `unsupported_other` detector | 0/2 → **2/2** | **Do not** populate `unsupported_features` from `expected_failure_codes` / `parse_status` / `expected_system_type` — all three are on `FORBIDDEN_MEMBERS` and reading them is expected-terminal routing in disguise. Derive from a total function over the Draft type vocabulary instead. See §6b-6. |
+| B3 | Coriolis `rotating` frame + typed points | deferred 9/12 → **12/12** | Same certainty as B1, four structures instead of one. |
+| B4 | `ProfileExecutionTraceV1` | 0 direct | Mandatory before B5+: plan / application / full-lane measured separately per profile, from a pristine Draft, order-invariant. |
+| B5 | Assumption-vocabulary widening | 8 contexts | Resurrects an existing transaction. |
+| B6 | Source-stated signed components | 63 quantities / 43 records | Pure source-carrying; `right`/`left`/`upward`/`downward`/`along_motion` currently lose their component. |
+| B7 | Relation → force-bearing interaction | 52 contact + 12 rope records | |
+| B8 | `fixed_pulley` + `incline_hanging_pulley` transactions | 3 + 3 plan-complete | Plan-complete today with **no builder**. Measure the full lane before trusting the count — §6b-1. |
+| B9 | `rigid_fixed_axis` capability package | 13 applicable | Largest population, largest effort. |
+
+Every package must carry, before it lands: a positive synthetic control,
+near-miss negative controls, an authority attack, a physics-changing control, ID
+rename invariance, evidence-order invariance, and the tamper-invariance sweep
+(the 16 case/gold mutations) proving the structure is not identified by any
+forbidden member.
+
+One claim in the synthesis is **refuted and must not be re-adopted**: that
+accepting `compiler_unsupported` for `unsupported_other` would downgrade the 16
+supported-expected cases that reach that terminal. It does not —
+`_REQUIRED_TERMINALS` is consulted only for a case's own expected class. Measured
+identical before and after, `supported_downgraded_to_unsupported == 0` both times.
