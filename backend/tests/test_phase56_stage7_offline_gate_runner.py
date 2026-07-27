@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -720,6 +722,68 @@ def test_unrequested_lanes_report_not_run(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 # The artifact stays privacy-safe.
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# A corpus-independent run must never read back as a public-100 result.
+# ---------------------------------------------------------------------------
+
+
+def test_corpus_independent_run_names_its_own_scope() -> None:
+    """The default CI run prints what it did and did not measure.
+
+    A green corpus-independent run is repository health, not Stage 7
+    acceptance.  Without the scope line on stdout the two are indistinguishable
+    to anyone reading a workflow log.
+    """
+
+    env = {
+        **os.environ,
+        "OPENAI_API_KEY": "",
+        "ANTHROPIC_API_KEY": "",
+        "OPENAI_BASE_URL": "",
+        "ANTHROPIC_BASE_URL": "",
+        "MECHANICS_MODELER_BASE_URL": "",
+        "MECHANICS_FIGURE_BASE_URL": "",
+    }
+    env.pop("STAGE7_PUBLIC_CORPUS_PATH", None)
+    with tempfile.TemporaryDirectory() as tmp:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(GATE_PATH),
+                "--output",
+                str(Path(tmp) / "report.json"),
+            ],
+            cwd=REPOSITORY_ROOT / "backend",
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=900,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert "STAGE7_RUN_SCOPE=CORPUS_INDEPENDENT_REGRESSION" in completed.stdout
+        assert "STAGE7_PUBLIC_CORPUS=NOT_RUN" in completed.stdout
+        assert "STAGE7_LANE_B=NOT_RUN" in completed.stdout
+        assert "NOT_RUN, not PASS" in completed.stdout
+
+        report = json.loads((Path(tmp) / "report.json").read_text(encoding="utf-8"))
+
+    # Every public-corpus-dependent lane must be NOT_RUN, never PASS.
+    for lane in (
+        "lane_b",
+        "lane_c",
+        "lane_d",
+        "lane_e",
+        "compositional_12",
+        "synthetic_38",
+        "metamorphic",
+        "physics_changing_controls",
+        "hard_safety",
+    ):
+        assert report[lane].get("result", "NOT_RUN") != "PASS", lane
+    # And it emits no strict verdict at all, so none can be quoted.
+    assert "strict_gates" not in report
 
 
 def test_scorecard_artifact_is_privacy_safe() -> None:

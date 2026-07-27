@@ -1,13 +1,23 @@
 """Permanent Stage 7 offline evaluation gate.
 
 The gate is read-only.  It never edits source, never pushes, never dispatches a
-finalizer, never modifies itself, never reads a secret, and never contacts an
-external endpoint: credentials and provider base URLs must be empty and socket
-creation is blocked for the whole evaluation phase.
+finalizer, never modifies itself, and never reads a secret.
+
+Network, stated exactly.  Credentials and provider base URLs must be empty and
+socket creation is blocked for the whole *evaluation* phase, so the following
+are zero and provably so: model endpoint calls, provider calls, search or web
+calls, private-data fetches, and secret reads.  That is not the same as "the
+gate touches no external endpoint": Lane E installs its frontend toolchain with
+``npm ci``/``npm install`` exactly as the permanent workflow's own install step
+does, and dependency installation uses the network.  It runs *outside* the
+socket guard for that reason and is deliberately not described as offline.
 
 Corpus integrity runs before any execution.  When the authorised public archive
 is not supplied to the runner, the public-100 lanes are reported as
-``NOT_RUN`` — they are never reported as passing.
+``NOT_RUN`` — they are never reported as passing.  A run without
+``--require-public-corpus --require-full-stage7`` is a corpus-independent
+regression run: its success says the repository is healthy, and says nothing
+whatsoever about the public-100 distribution.
 
 Only a redacted aggregate artifact is emitted; the redaction contract is
 enforced before the artifact is written, so a redaction failure blocks report
@@ -1143,6 +1153,20 @@ def main() -> int:
     print(f"STAGE7_OFFLINE_GATE={'PASS' if passed else 'FAIL'}")
     print(f"STAGE7_PUBLIC_CORPUS={report['public_corpus']['disposition']}")
     print(f"STAGE7_LANE_B={report['lane_b']['disposition']}")
+    # Name the run's own scope on the last line, so a green corpus-independent
+    # run can never be read back as a public-100 acceptance.
+    strict_scope = (
+        "STRICT_PUBLIC_CORPUS_GATE"
+        if args.require_public_corpus and args.require_full_stage7
+        else "CORPUS_INDEPENDENT_REGRESSION"
+    )
+    print(f"STAGE7_RUN_SCOPE={strict_scope}")
+    if strict_scope == "CORPUS_INDEPENDENT_REGRESSION":
+        print(
+            "STAGE7_NOTE=this run measures no public-100 lane; "
+            "Lane B/C/D/E, compositional, synthetic, metamorphic and "
+            "physics-changing results here are NOT_RUN, not PASS"
+        )
     return 0 if passed else 2
 
 

@@ -2,16 +2,31 @@ name: Phase 56 Stage 7 offline evaluation
 
 # Permanent, read-only Stage 7 offline gate.
 #
+# SCOPE OF A GREEN RUN HERE — read this before citing it as evidence.
+#
+# This workflow runs the gate WITHOUT `--require-public-corpus` and WITHOUT
+# `--require-full-stage7`, because the authorised public corpus archive is
+# never committed to this repository and is never stored in a GitHub secret,
+# so a GitHub-hosted runner cannot be given it safely.  A green run here is
+# therefore CORPUS_INDEPENDENT_EXACT_HEAD_CI: compile, structural isolation
+# gates, Stage 7 focused contracts, Stage 6 multimodal, full collection, and
+# the full backend regression.
+#
+# It is NOT the strict public-100 gate.  In this run the public corpus, Lane B,
+# Lane C, Lane D, Lane E, compositional 12, synthetic 38, metamorphic, and
+# hard-safety sections of the artifact are NOT_RUN.  NOT_RUN is not PASS.  A
+# success here must never be reported as a public-100 result, a Lane B
+# distribution result, or Stage 7 acceptance; the strict gate is a separate
+# STRICT_PUBLIC_CORPUS_GATE run whose exact command, code SHA, archive SHA-256,
+# and report digest are recorded alongside it.
+#
 # This workflow must never edit source, push, dispatch a finalizer, modify
 # itself, read a secret, use private or full corpus material, or call an
 # external model endpoint.  External model credentials and provider base URLs
 # are forced empty and the evaluation phase runs behind a fail-fast network
-# guard.  Only the redacted aggregate artifact is uploaded.
-#
-# The authorised public corpus archive is never committed to this repository
-# and is never stored in a GitHub secret.  When it is not supplied to the
-# runner, the public-100 lanes report NOT_RUN; they are never reported as
-# passing.
+# guard.  Dependency installation runs before that guard and does use the
+# network, which is why the guard is scoped to the evaluation phase rather
+# than to the whole job.  Only the redacted aggregate artifact is uploaded.
 
 on:
   push:
@@ -65,7 +80,11 @@ jobs:
 
       # Corpus integrity, gold isolation, and the offline network guard run
       # before any evaluation execution and emit the redacted artifact.
-      - name: Stage 7 offline gate
+      #
+      # No corpus is supplied here on purpose (see the scope note at the top),
+      # so this is the corpus-independent run: the public-100 lanes report
+      # NOT_RUN and the step prints its own scope on its last line.
+      - name: Stage 7 offline gate (corpus-independent scope)
         run: |
           python backend/tools/run_phase56_stage7_offline_gate.py \
             --output "${RUNNER_TEMP}/stage7_offline_gate_report.json"
