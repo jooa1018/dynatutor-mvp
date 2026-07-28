@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - tmp/stage7-finalize-rotating-constant-20260728
+  pull_request:
+    branches:
+      - tmp/stage7-finalize-rotating-constant-20260728
 
 permissions:
   contents: write
