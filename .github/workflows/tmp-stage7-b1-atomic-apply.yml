@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: tmp/stage7-b1-finalizer-base-35c6ca
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -60,19 +60,26 @@ jobs:
           EXPECTED_PARENT: 35c6ca194fd48578d0e887b5e7a5100e64808d9e
         run: |
           set -euo pipefail
-          git fetch origin "$TARGET_BRANCH"
-          actual_parent="$(git rev-parse "origin/$TARGET_BRANCH")"
+          printf 'APPLY_STAGE=resolve_parent\n'
+          actual_parent="$(git ls-remote --heads origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          printf 'ACTUAL_PARENT=%s\n' "$actual_parent"
           test "$actual_parent" = "$EXPECTED_PARENT"
-          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          printf 'APPLY_STAGE=fetch_target\n'
+          git fetch --quiet --depth=1 origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          git checkout --quiet --detach "refs/remotes/origin/$TARGET_BRANCH"
+          printf 'APPLY_STAGE=patch_check\n'
           git apply --check "$RUNNER_TEMP/b1.patch"
+          printf 'APPLY_STAGE=patch_apply\n'
           git apply "$RUNNER_TEMP/b1.patch"
           git diff --check
+          printf 'APPLY_STAGE=changed_paths\n'
           changed="$(git diff --name-only | sort)"
           expected="$(printf '%s\n' \
             backend/evaluation/phase56_stage7/complete_profile.py \
             backend/evaluation/phase56_stage7/complete_profile_application.py \
             backend/tests/test_phase56_stage7_profile_feasibility.py \
             backend/tests/test_phase56_stage7_slot_pin_frame.py | sort)"
+          printf '%s\n' "$changed"
           test "$changed" = "$expected"
 
       - name: Install backend dependencies
