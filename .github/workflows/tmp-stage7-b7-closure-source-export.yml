@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - tmp/stage7-b7-closure-source-8eab77c
+  pull_request:
+    branches:
+      - tmp/stage7-b7-closure-source-8eab77c
 
 permissions:
   contents: read
