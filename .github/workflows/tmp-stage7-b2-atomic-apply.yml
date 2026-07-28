@@ -1,0 +1,110 @@
+name: Temporary Stage 7 B2 atomic apply
+
+on:
+  pull_request:
+    branches:
+      - tmp/stage7-b2-finalizer-base-8451
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tmp-stage7-b2-atomic-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'tmp/stage7-b2-finalizer-trigger-8451'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out temporary finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/stage7-b2-finalizer-base-8451
+          fetch-depth: 1
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Decode and verify reviewed patch
+        env:
+          EXPECTED_PATCH_SHA256: e9196961d7adb55ab326f8468ef62c3b7e73aa5fb22e5e0a5f1684f63a510111
+        run: |
+          set -euo pipefail
+          test "$(find .stage7-tmp/b2-parts -maxdepth 1 -type f -name '*.part' | wc -l)" -eq 12
+          cat > "$RUNNER_TEMP/b2-parts.sha256" <<'EOF'
+          2a19e37e92a2d55f1f0d4dfe31dc1e99ffc9c2b1f7a1aab09b2af676fd1b9bd3  .stage7-tmp/b2-parts/00.part
+          25463817fcb7eb4a2aa04d3dc5d5ff6a2ccd17fdb629b48c6b9c6019859a59e9  .stage7-tmp/b2-parts/01.part
+          fbeb5970a034334e082d5c6192d2d630ce557486a730779f4153455fa6bc3aca  .stage7-tmp/b2-parts/02.part
+          3d20442ee248e9d8332aaf365a0363703bda0cdcb98fec3d982eddc39c03d64c  .stage7-tmp/b2-parts/03.part
+          0e7f273ad15455a5249ae7c4d74f65579be6b905a51183e43e412f862e7bb12d  .stage7-tmp/b2-parts/04.part
+          27fae1cd0dd2cbc809f1774130e13ebd1bc2fbeb881721f055d887a1a45d4a6e  .stage7-tmp/b2-parts/05.part
+          25d833c46d08dd9cd087caa41b5338a4d5c602621032bf7ecfb6311ce660d01a  .stage7-tmp/b2-parts/06.part
+          cf4369e613dc8bab834fbe0b16b927566eb0e8bf9639db1f9dfc1564e8af80a8  .stage7-tmp/b2-parts/07.part
+          55d87b25cbc59540cd07614f1ae96055f345cbbd9a9102b1e7dd7c314ec3a6b8  .stage7-tmp/b2-parts/08.part
+          e6afdc66941c75fa9d2788886bd2796eb36e1018a471221989b06677aa44366d  .stage7-tmp/b2-parts/09.part
+          527bf4218eb0b6dc533fbc7beb45c6c5dfa743c87e3c26cdda31b23c2c055254  .stage7-tmp/b2-parts/10.part
+          78688a189c9998cd1606b4eb0e184ea8c262396ddbd10cb5a4cda4ab26321cd8  .stage7-tmp/b2-parts/11.part
+          EOF
+          sha256sum -c "$RUNNER_TEMP/b2-parts.sha256"
+          cat .stage7-tmp/b2-parts/*.part | base64 -d | gzip -d > "$RUNNER_TEMP/b2.patch"
+          actual="$(sha256sum "$RUNNER_TEMP/b2.patch" | awk '{print $1}')"
+          printf 'PATCH_SHA256=%s\n' "$actual"
+          test "$actual" = "$EXPECTED_PATCH_SHA256"
+      - name: Verify exact parent and apply atomically
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 8451b665dfd0903a392128aa213284ebaa80711f
+        run: |
+          set -euo pipefail
+          actual_parent="$(git ls-remote --heads origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          printf 'ACTUAL_PARENT=%s\n' "$actual_parent"
+          test "$actual_parent" = "$EXPECTED_PARENT"
+          git fetch --quiet --depth=1 origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          git checkout --quiet --detach "refs/remotes/origin/$TARGET_BRANCH"
+          git apply --check "$RUNNER_TEMP/b2.patch"
+          git apply "$RUNNER_TEMP/b2.patch"
+          git diff --check
+          changed="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort)"
+          expected="$(printf '%s\n' \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py \
+            backend/tests/test_phase56_stage7_rotating_relative_frame.py | sort)"
+          test "$changed" = "$expected"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+      - name: Run B2 focused and adjacent regression tests
+        working-directory: backend
+        env:
+          PYTHONHASHSEED: '0'
+          OPENAI_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+        run: |
+          python -m compileall -q evaluation tests/test_phase56_stage7_rotating_relative_frame.py
+          python -m pytest -q \
+            tests/test_phase56_stage7_rotating_relative_frame.py \
+            tests/test_phase56_stage7_complete_profile.py \
+            tests/test_phase56_stage7_profile_application.py \
+            tests/test_phase56_stage7_profile_feasibility.py::test_the_profile_table_and_enum_cannot_drift
+      - name: Commit and fast-forward push exact four-file package
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 8451b665dfd0903a392128aa213284ebaa80711f
+        run: |
+          set -euo pipefail
+          git config user.name 'DynaTutor Stage 7 Finalizer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py \
+            backend/tests/test_phase56_stage7_rotating_relative_frame.py
+          git commit -m 'eval(stage7): derive rotating frame for precise Coriolis deferral'
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git push origin "HEAD:$TARGET_BRANCH"
+          printf 'B2_CODE_HEAD=%s\n' "$(git rev-parse HEAD)"
