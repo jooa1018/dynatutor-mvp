@@ -1,0 +1,46 @@
+name: Temporary Stage 7 B7 exact-source export
+
+on:
+  push:
+    branches:
+      - tmp/stage7-b7-closure-source-8eab77c
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Export exact source and Git bundle
+        env:
+          SOURCE_SHA: 8eab77c802c531d3196e84a2503a8373b91afe39
+        run: |
+          set -euo pipefail
+          git cat-file -e "${SOURCE_SHA}^{commit}"
+          git archive --format=tar.gz \
+            --output="${RUNNER_TEMP}/dynatutor-stage7-source-${SOURCE_SHA}.tar.gz" \
+            "${SOURCE_SHA}"
+          git branch --force stage7-b7-exact-source "${SOURCE_SHA}"
+          git bundle create \
+            "${RUNNER_TEMP}/dynatutor-stage7-${SOURCE_SHA}.bundle" \
+            refs/heads/stage7-b7-exact-source
+          {
+            printf 'source_sha=%s\n' "${SOURCE_SHA}"
+            sha256sum "${RUNNER_TEMP}/dynatutor-stage7-source-${SOURCE_SHA}.tar.gz"
+            sha256sum "${RUNNER_TEMP}/dynatutor-stage7-${SOURCE_SHA}.bundle"
+          } > "${RUNNER_TEMP}/dynatutor-stage7-${SOURCE_SHA}.manifest.txt"
+      - name: Upload exact-source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynatutor-stage7-source-8eab77c802c531d3196e84a2503a8373b91afe39
+          path: |
+            ${{ runner.temp }}/dynatutor-stage7-source-8eab77c802c531d3196e84a2503a8373b91afe39.tar.gz
+            ${{ runner.temp }}/dynatutor-stage7-8eab77c802c531d3196e84a2503a8373b91afe39.bundle
+            ${{ runner.temp }}/dynatutor-stage7-8eab77c802c531d3196e84a2503a8373b91afe39.manifest.txt
+          if-no-files-found: error
+          retention-days: 1
