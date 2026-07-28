@@ -72,6 +72,7 @@ class ProfileId(str, Enum):
     rigid_fixed_axis = "rigid_fixed_axis"
     # Declared in the order the closure step considers them, so the enum and the
     # signature table cannot drift apart.
+    slot_pin_relative_frame = "slot_pin_relative_frame"
     relative_translating_frame = "relative_translating_frame"
     spring_vibration_deferred = "spring_vibration_deferred"
 
@@ -469,6 +470,20 @@ def _observer_frame_entity(facts: _DraftFacts) -> PrerequisiteDisposition:
     return PrerequisiteDisposition.missing
 
 
+def _slot_pin_frame_derivable(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """The source's exact pin-on-slot topology names a radial frame shape.
+
+    This grants no equation and no answer authority.  It only writes the
+    radial/transverse frame record that lets the compiler reach its existing
+    precise out-of-scope terminal.  The transaction performs the exact
+    one-pin/one-slot/one-relation scope checks before creating anything.
+    """
+
+    return PrerequisiteDisposition.server_derivable
+
+
 def _relative_acceleration_capability(
     facts: _DraftFacts,
 ) -> PrerequisiteDisposition:
@@ -843,6 +858,33 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
     ),
     # The one profile the engine answers by *declining*: a free undamped linear
     # spring period/frequency readout is outside the declared course scope.
+    # A pin constrained to one source-declared slot, with a radial or
+    # transverse component query.  The frame is derivable from the exact typed
+    # topology, but the readout remains outside the declared course scope.
+    _ProfileSignature(
+        ProfileId.slot_pin_relative_frame,
+        lambda facts: (
+            bool(facts.geometry.get("lies_on"))
+            and bool(facts.primitives.get("slot"))
+            and bool(
+                facts.primitives.get("joint")
+                or facts.primitives.get("particle")
+                or facts.primitives.get("body_component")
+            )
+            and facts.query_role in {"velocity", "acceleration"}
+            and facts.query_component in {"radial", "transverse"}
+        ),
+        (
+            ("geometry_pin_slot", PrerequisiteKind.geometry,
+             _needs_geometry("lies_on")),
+            ("frame_radial_transverse", PrerequisiteKind.reference_frame,
+             _slot_pin_frame_derivable),
+            ("component_radial_transverse", PrerequisiteKind.axis,
+             lambda facts: PrerequisiteDisposition.explicit_source),
+            ("capability_slot_pin_relative_motion", PrerequisiteKind.capability,
+             _catalogue_has_no_capability),
+        ),
+    ),
     # A body whose motion the source states relative to a declared observer.
     # The typed frame record is derivable; the readout itself is deferred, and
     # building the frame is what lets the engine say so precisely.

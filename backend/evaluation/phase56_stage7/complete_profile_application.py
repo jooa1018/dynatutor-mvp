@@ -101,6 +101,7 @@ _COMPONENT_ROLES: frozenset[str] = frozenset(
 DERIVED_FRAME_ID = "frm_closure_axis"
 WORLD_FRAME_ID = "frm_closure_world"
 OBSERVER_FRAME_ID = "frm_closure_observer"
+SLOT_PIN_FRAME_ID = "frm_closure_slot_radial"
 
 # A source that said a quantity has no direction stated its *magnitude*, and a
 # magnitude is not a signed component of anything.  Restamping it onto an axis
@@ -307,6 +308,141 @@ def _impulse_momentum_transaction(
     closed["quantities"] = quantities
     closed["queries"] = queries
     return closed, (DERIVED_FRAME_ID,), tuple(rebound)
+
+
+def _slot_pin_relative_frame_transaction(
+    payload: dict[str, Any], _authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Derive one radial/transverse frame from one exact pin-slot relation.
+
+    The transaction creates no value, interaction, force, point, constraint,
+    state, or assumption.  It rebinds only the single unknown quantity named by
+    the single query and the query target itself.  Its only intended downstream
+    effect is the compiler's existing typed deferred terminal.
+    """
+
+    if len(payload["queries"]) != 1:
+        return None
+    query = payload["queries"][0]
+    target = query["target"]
+    if (
+        target.get("role") not in {"velocity", "acceleration"}
+        or target.get("component") not in {"radial", "transverse"}
+        or target.get("frame_id") is not None
+        or not target.get("target_quantity_id")
+        or not target.get("subject_id")
+        or not target.get("interval_id")
+    ):
+        return None
+
+    target_quantity_id = target["target_quantity_id"]
+    query_quantities = [
+        item
+        for item in payload["quantities"]
+        if item["quantity_id"] == target_quantity_id
+    ]
+    if len(query_quantities) != 1:
+        return None
+    query_quantity = query_quantities[0]
+    if (
+        query_quantity.get("role") != target.get("role")
+        or query_quantity.get("subject_id") != target.get("subject_id")
+        or query_quantity.get("point_id") != target.get("point_id")
+        or query_quantity.get("interval_id") != target.get("interval_id")
+        or query_quantity.get("event_id") != target.get("event_id")
+        or query_quantity.get("component") != target.get("component")
+        or query_quantity.get("frame_id") is not None
+        or query_quantity.get("direction") is not None
+        or query_quantity.get("raw_value") is not None
+        or query_quantity.get("raw_unit") is not None
+        or query_quantity.get("shape") != "scalar"
+    ):
+        return None
+
+    entities = {item["entity_id"]: item for item in payload["entities"]}
+    points = {item["point_id"]: item for item in payload["points"]}
+    subject_id = target["subject_id"]
+    query_point = points.get(target.get("point_id") or "")
+    point_owner = query_point.get("owner_entity_id") if query_point else None
+    allowed_pin_primitives = {"joint", "particle", "body_component"}
+    pin_candidates = {
+        entity_id
+        for entity_id in {subject_id, point_owner}
+        if entity_id in entities
+        and entities[entity_id]["primitive"] in allowed_pin_primitives
+    }
+    if len(pin_candidates) != 1:
+        return None
+    pin_id = next(iter(pin_candidates))
+    owned_point_ids = {
+        item["point_id"]
+        for item in payload["points"]
+        if item.get("owner_entity_id") == pin_id
+    }
+    slot_ids = {
+        item["entity_id"]
+        for item in payload["entities"]
+        if item["primitive"] == "slot"
+    }
+    relations = []
+    for relation in payload["geometry"]:
+        if (
+            relation.get("kind") != "lies_on"
+            or relation.get("interval_id") not in {None, target["interval_id"]}
+        ):
+            continue
+        participants = set(relation.get("participant_ids") or ())
+        matching_slots = participants & slot_ids
+        matching_pins = participants & {pin_id, *owned_point_ids}
+        if len(matching_slots) == 1 and matching_pins:
+            relations.append((relation, next(iter(matching_slots))))
+    if len(relations) != 1:
+        return None
+    relation, slot_id = relations[0]
+    if slot_id == pin_id:
+        return None
+
+    if SLOT_PIN_FRAME_ID in _authored_draft_ids(payload):
+        return None
+    frame = {
+        "frame_id": SLOT_PIN_FRAME_ID,
+        "frame_type": "radial_transverse",
+        "origin": {"kind": "entity", "entity_id": slot_id},
+        "axes": [
+            {
+                "axis": axis,
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": SLOT_PIN_FRAME_ID,
+                    "axis": axis,
+                    "sign": 1,
+                },
+            }
+            for axis in ("radial", "transverse")
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": list(relation.get("evidence_refs") or ()),
+    }
+
+    quantities = []
+    for original in payload["quantities"]:
+        quantity = dict(original)
+        if quantity["quantity_id"] == target_quantity_id:
+            quantity["frame_id"] = SLOT_PIN_FRAME_ID
+        quantities.append(quantity)
+    queries = [dict(query)]
+    query_target = dict(target)
+    query_target["frame_id"] = SLOT_PIN_FRAME_ID
+    queries[0]["target"] = query_target
+
+    closed = dict(payload)
+    closed["reference_frames"] = [*payload["reference_frames"], frame]
+    closed["quantities"] = quantities
+    closed["queries"] = queries
+    return closed, (SLOT_PIN_FRAME_ID,), (target_quantity_id,)
 
 
 def _relative_translating_frame_transaction(
@@ -727,6 +863,7 @@ def _free_flight_gravity_transaction(
 _TRANSACTIONS = {
     ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
+    ProfileId.slot_pin_relative_frame: _slot_pin_relative_frame_transaction,
     ProfileId.relative_translating_frame: _relative_translating_frame_transaction,
 }
 # A profile whose only unmet prerequisite is a declared engine capability may be
@@ -734,7 +871,7 @@ _TRANSACTIONS = {
 # produce an answer, it can only turn an undifferentiated underdetermined graph
 # into the precise refusal the engine already knows how to make.
 _DEFERRAL_ONLY_PROFILES: frozenset[ProfileId] = frozenset(
-    {ProfileId.relative_translating_frame}
+    {ProfileId.slot_pin_relative_frame, ProfileId.relative_translating_frame}
 )
 
 
@@ -917,6 +1054,7 @@ __all__ = [
     "close_projected_draft",
     "IMPLEMENTED_PROFILE_IDS",
     "OBSERVER_FRAME_ID",
+    "SLOT_PIN_FRAME_ID",
     "WORLD_FRAME_ID",
     "ApplicationOutcome",
     "ProfileApplication",

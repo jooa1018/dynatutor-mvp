@@ -534,6 +534,7 @@ def test_the_profile_table_and_enum_cannot_drift():
     assert IMPLEMENTED_PROFILE_IDS == {
         ProfileId.free_flight_gravity,
         ProfileId.impulse_momentum,
+        ProfileId.slot_pin_relative_frame,
         ProfileId.relative_translating_frame,
     }
 
