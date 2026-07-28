@@ -55,7 +55,7 @@ jobs:
           git apply --check "$RUNNER_TEMP/b5.patch"
           git apply "$RUNNER_TEMP/b5.patch"
           git diff --check
-          changed="$(git diff --name-only | sort)"
+          changed="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort)"
           expected="$(printf '%s\n' \
             backend/engine/mechanics/laws/core.py \
             backend/evaluation/phase56_stage7/blocked_law_diagnosis.py \
@@ -63,6 +63,7 @@ jobs:
             backend/evaluation/phase56_stage7/lane_b_draft_projection.py \
             backend/tests/test_phase56_stage7_fixed_pulley_profile.py \
             backend/tests/test_phase56_stage7_profile_feasibility.py | sort)"
+          printf 'CHANGED_PATHS=\n%s\n' "$changed"
           test "$changed" = "$expected"
 
       - name: Install backend dependencies
