@@ -508,6 +508,7 @@ _INCREMENTAL_EMITTERS: tuple[str, ...] = (
     "_horizontal_surface_contact_emissions",
     "_incline_hanging_rope_emissions",
     "_massive_pulley_atwood_emissions",
+    "_fixed_pulley_common_acceleration_readout_emissions",
     "_newton_emissions",
     "_primitive_interaction_emissions",
     "_work_energy_emissions",

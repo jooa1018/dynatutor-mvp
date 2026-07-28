@@ -534,6 +534,7 @@ def test_the_profile_table_and_enum_cannot_drift():
     assert IMPLEMENTED_PROFILE_IDS == {
         ProfileId.signed_constant_acceleration_1d,
         ProfileId.particle_work_energy_speed,
+        ProfileId.fixed_pulley,
         ProfileId.free_flight_gravity,
         ProfileId.impulse_momentum,
         ProfileId.slot_pin_relative_frame,
@@ -774,8 +775,8 @@ def test_an_unimplemented_profile_is_not_measured_and_carries_no_yield():
             assert set(row.status_counts) <= {"profile_not_implemented"}
 
 
-def test_one_context_distinguishes_unimplemented_from_implemented():
-    """The pulley overlap: two applicable profiles, two different truths."""
+def test_one_context_distinguishes_unformable_from_applied():
+    """The overlap is measured independently after fixed-pulley is implemented."""
 
     projection = _projection(_pulley_overlap_case())
     for profile_id in (ProfileId.free_flight_gravity, ProfileId.fixed_pulley):
@@ -787,9 +788,10 @@ def test_one_context_distinguishes_unimplemented_from_implemented():
         assert plan.disposition is not PlanDisposition.not_applicable
     matrix = measure_profile_feasibility([_pulley_overlap_case()])
     rows = {row.profile_id: row for row in matrix.rows}
-    assert rows[ProfileId.fixed_pulley].status_counts == {
-        "profile_not_implemented": 1
-    }
+    fixed = rows[ProfileId.fixed_pulley]
+    assert fixed.implemented is True
+    assert fixed.measured_contexts == 1
+    assert fixed.status_counts == {"profile_plan_not_formable": 1}
     free_flight = rows[ProfileId.free_flight_gravity]
     assert free_flight.measured_contexts == 1
     assert "profile_not_implemented" not in free_flight.status_counts

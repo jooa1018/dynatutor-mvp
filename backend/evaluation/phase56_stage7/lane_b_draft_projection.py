@@ -67,7 +67,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v5"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v6"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -457,6 +457,8 @@ _CLOSED_ASSUMPTION_KINDS: frozenset[str] = frozenset(
         "massless_rope",
         "inextensible_rope",
         "massless_pulley",
+        "fixed_pulley",
+        "ideal_massless_frictionless_pulley",
         "pure_rolling",
     }
 )
@@ -622,6 +624,213 @@ def _locate_quote(problem_text: str, quote: str | None) -> tuple[int, int] | Non
         return None
     occurrence = occurrences[0]
     return (occurrence.start, occurrence.end)
+
+
+_FIXED_PULLEY_DERIVED_ASSUMPTIONS: tuple[
+    tuple[str, str, str], ...
+] = (
+    (
+        "asm_closure_fixed_pulley_massless_rope",
+        "massless_rope",
+        "rope",
+    ),
+    (
+        "asm_closure_fixed_pulley_inextensible_rope",
+        "inextensible_rope",
+        "rope",
+    ),
+    (
+        "asm_closure_fixed_pulley_fixed",
+        "fixed_pulley",
+        "pulley",
+    ),
+    (
+        "asm_closure_fixed_pulley_ideal",
+        "ideal_massless_frictionless_pulley",
+        "pulley",
+    ),
+)
+
+
+def _derive_fixed_pulley_assumptions(
+    *,
+    entities: list[dict[str, Any]],
+    motion_intervals: list[dict[str, Any]],
+    geometry: list[dict[str, Any]],
+    quantities: list[dict[str, Any]],
+    assumptions: list[dict[str, Any]],
+    approved: list[str],
+) -> None:
+    """Narrow aggregate idealisations to one evidenced fixed-pulley topology.
+
+    The public structure sometimes attaches ``massless_rope``,
+    ``inextensible_rope``, ``massless_pulley`` and pulley frictionlessness to
+    the aggregate system.  The reusable rope laws correctly require those
+    statements on the rope and pulley they govern.  This derivation is allowed
+    only when the typed source structure identifies exactly one rope, one
+    pulley, two mass-carrying moving bodies and one matching wraps/connects
+    topology.  A pulley that is itself an interval actor, or that carries any
+    inertial/angular quantity, is not fixed and is rejected.
+
+    No value, equation, answer, family, or terminal participates.  The derived
+    assumptions inherit the exact source evidence of the aggregate
+    idealisations and add no proposed numeric value.
+    """
+
+    primitive_by_id = {
+        item["entity_id"]: item["primitive"] for item in entities
+    }
+    rope_ids = tuple(
+        sorted(
+            entity_id
+            for entity_id, primitive in primitive_by_id.items()
+            if primitive == "rope"
+        )
+    )
+    pulley_ids = tuple(
+        sorted(
+            entity_id
+            for entity_id, primitive in primitive_by_id.items()
+            if primitive == "pulley"
+        )
+    )
+    if len(rope_ids) != 1 or len(pulley_ids) != 1 or len(motion_intervals) != 1:
+        return
+    rope_id = rope_ids[0]
+    pulley_id = pulley_ids[0]
+    interval = motion_intervals[0]
+    interval_id = interval["interval_id"]
+
+    masses = tuple(
+        item
+        for item in quantities
+        if item["role"] == "mass"
+        and primitive_by_id.get(item["subject_id"])
+        in {"particle", "rigid_body", "body_component"}
+        and item.get("raw_value") is not None
+    )
+    moving_ids = tuple(sorted({item["subject_id"] for item in masses}))
+    if len(masses) != 2 or len(moving_ids) != 2:
+        return
+    if not set(moving_ids).issubset(interval["subject_ids"]):
+        return
+    # An inertial or explicitly moving pulley is not the ideal fixed topology.
+    if pulley_id in interval["subject_ids"]:
+        return
+    if any(
+        item["subject_id"] == pulley_id
+        and item["role"]
+        in {
+            "moment_of_inertia",
+            "angular_position",
+            "angular_velocity",
+            "angular_acceleration",
+        }
+        for item in quantities
+    ):
+        return
+
+    wraps = tuple(
+        item
+        for item in geometry
+        if item["kind"] == "wraps" and item["interval_id"] == interval_id
+    )
+    connects = tuple(
+        item
+        for item in geometry
+        if item["kind"] == "topology_connects"
+        and item["interval_id"] == interval_id
+    )
+    if len(wraps) != 1 or len(connects) != 1:
+        return
+    if (
+        set(connects[0]["participant_ids"]) != set(moving_ids)
+        or len(connects[0]["participant_ids"]) != 2
+        or set(wraps[0]["participant_ids"]) != {*moving_ids, pulley_id}
+        or len(wraps[0]["participant_ids"]) != 3
+    ):
+        return
+    topology_ids = {*moving_ids, rope_id, pulley_id}
+    if any(
+        item["interval_id"] == interval_id
+        and set(item["participant_ids"]) & topology_ids
+        and item is not wraps[0]
+        and item is not connects[0]
+        for item in geometry
+    ):
+        return
+
+    approved_set = set(approved)
+
+    def _approved_source(kind: str) -> dict[str, Any] | None:
+        matches = tuple(
+            item
+            for item in assumptions
+            if item["kind"] == kind
+            and item["disposition"] == "approved"
+            and item["assumption_id"] in approved_set
+            and item["interval_id"] in {None, interval_id}
+            and item["evidence_refs"]
+        )
+        return matches[0] if len(matches) == 1 else None
+
+    massless_rope = _approved_source("massless_rope")
+    inextensible_rope = _approved_source("inextensible_rope")
+    massless_pulley = _approved_source("massless_pulley")
+    frictionless = _approved_source("frictionless")
+    if any(
+        item is None
+        for item in (
+            massless_rope,
+            inextensible_rope,
+            massless_pulley,
+            frictionless,
+        )
+    ):
+        return
+    assert massless_rope is not None
+    assert inextensible_rope is not None
+    assert massless_pulley is not None
+    assert frictionless is not None
+
+    authored_ids = {item["assumption_id"] for item in assumptions}
+    derived_ids = {item[0] for item in _FIXED_PULLEY_DERIVED_ASSUMPTIONS}
+    if authored_ids & derived_ids:
+        return
+
+    evidence_by_kind = {
+        "massless_rope": tuple(massless_rope["evidence_refs"]),
+        "inextensible_rope": tuple(inextensible_rope["evidence_refs"]),
+        "fixed_pulley": tuple(
+            sorted(
+                set(massless_pulley["evidence_refs"])
+                | set(frictionless["evidence_refs"])
+            )
+        ),
+        "ideal_massless_frictionless_pulley": tuple(
+            sorted(
+                set(massless_pulley["evidence_refs"])
+                | set(frictionless["evidence_refs"])
+            )
+        ),
+    }
+    subject_by_marker = {"rope": rope_id, "pulley": pulley_id}
+    for assumption_id, kind, subject_marker in _FIXED_PULLEY_DERIVED_ASSUMPTIONS:
+        assumptions.append(
+            {
+                "assumption_id": assumption_id,
+                "kind": kind,
+                "subject_id": subject_by_marker[subject_marker],
+                "interval_id": interval_id,
+                "disposition": "approved",
+                "reason": (
+                    "closed server policy: unique source-declared ideal "
+                    "fixed-pulley topology"
+                ),
+                "evidence_refs": list(evidence_by_kind[kind]),
+            }
+        )
+        approved.append(assumption_id)
 
 
 def _direction_fields(direction: str | None, role: str) -> dict[str, Any]:
@@ -1457,6 +1666,15 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             if state_condition is not None:
                 state_conditions.append(state_condition["state"])
                 boundary_unknowns.append(state_condition["quantity"])
+
+    _derive_fixed_pulley_assumptions(
+        entities=entities,
+        motion_intervals=intervals,
+        geometry=geometry,
+        quantities=quantities,
+        assumptions=assumptions,
+        approved=approved,
+    )
 
     # A motion model the corpus declares on a segment is source-grounded
     # structure, so the typed kinematic assumption it implies is authorised on
