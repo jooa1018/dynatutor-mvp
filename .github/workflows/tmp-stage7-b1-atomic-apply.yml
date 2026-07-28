@@ -1,0 +1,97 @@
+name: Temporary Stage 7 B1 atomic apply
+
+on:
+  pull_request:
+    branches:
+      - tmp/stage7-b1-finalizer-base-35c6ca
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tmp-stage7-b1-atomic-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'tmp/stage7-b1-finalizer-trigger-35c6ca'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out temporary finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/stage7-b1-finalizer-base-35c6ca
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Decode and verify the reviewed patch
+        run: |
+          set -euo pipefail
+          base64 -d .stage7-tmp/b1-slot-pin.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/b1.patch"
+          printf '%s  %s\n' \
+            'e963551d90541efc46a462da05c2c34635959ba9deafa98971619ca31b49e886' \
+            "$RUNNER_TEMP/b1.patch" | sha256sum -c -
+
+      - name: Verify exact parent and apply atomically
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 35c6ca194fd48578d0e887b5e7a5100e64808d9e
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          actual_parent="$(git rev-parse "origin/$TARGET_BRANCH")"
+          test "$actual_parent" = "$EXPECTED_PARENT"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git apply --check "$RUNNER_TEMP/b1.patch"
+          git apply "$RUNNER_TEMP/b1.patch"
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py \
+            backend/tests/test_phase56_stage7_slot_pin_frame.py | sort)"
+          test "$changed" = "$expected"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Run B1 focused and adjacent regression tests
+        working-directory: backend
+        env:
+          PYTHONHASHSEED: '0'
+          OPENAI_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+        run: |
+          python -m compileall -q evaluation tests/test_phase56_stage7_slot_pin_frame.py
+          python -m pytest -q \
+            tests/test_phase56_stage7_slot_pin_frame.py \
+            tests/test_phase56_stage7_complete_profile.py \
+            tests/test_phase56_stage7_profile_application.py \
+            tests/test_phase56_stage7_profile_feasibility.py::test_the_profile_table_and_enum_cannot_drift
+
+      - name: Commit and fast-forward push the exact four-file package
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 35c6ca194fd48578d0e887b5e7a5100e64808d9e
+        run: |
+          set -euo pipefail
+          git config user.name 'DynaTutor Stage 7 Finalizer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py \
+            backend/tests/test_phase56_stage7_slot_pin_frame.py
+          git commit -m 'eval(stage7): derive slot-pin radial frame for precise deferral'
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git push origin "HEAD:$TARGET_BRANCH"
+          printf 'B1_CODE_HEAD=%s\n' "$(git rev-parse HEAD)"
