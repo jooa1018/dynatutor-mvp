@@ -67,6 +67,7 @@ class ProfileId(str, Enum):
     incline_hanging_pulley = "incline_hanging_pulley"
     rolling_energy = "rolling_energy"
     particle_work_energy_speed = "particle_work_energy_speed"
+    direct_constant_force_work = "direct_constant_force_work"
     work_energy = "work_energy"
     impulse_momentum = "impulse_momentum"
     horizontal_contact = "horizontal_contact"
@@ -843,6 +844,34 @@ def _static_particle_work_energy_capability(
     return PrerequisiteDisposition.explicit_source
 
 
+def _direct_constant_force_work_axis(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """One intrinsic path axis already named by the source's force direction.
+
+    ``along_motion`` says the force and the whole-interval path increment share
+    the positive sense of one one-dimensional work coordinate.  Writing that
+    coordinate down chooses no value and no sign the source did not state.
+    Any competing semantic direction is ambiguous and therefore refuses.
+    """
+
+    if facts.query_component != "magnitude":
+        return PrerequisiteDisposition.missing
+    if facts.semantic_directions == {"along_motion"}:
+        return PrerequisiteDisposition.server_derivable
+    if facts.semantic_directions:
+        return PrerequisiteDisposition.ambiguous
+    return PrerequisiteDisposition.missing
+
+
+def _direct_constant_force_work_capability(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """The existing force-work law and linear solver own this scalar balance."""
+
+    return PrerequisiteDisposition.explicit_source
+
+
 class _ProfileSignature:
     """One profile: when it applies, and what it would need to close."""
 
@@ -1086,6 +1115,51 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              PrerequisiteKind.capability,
              _static_particle_work_energy_capability),
             ("symbol_final_speed", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
+        ),
+    ),
+    # One body, one bounded energy interval, one source-stated force value
+    # scoped over that whole interval, and one whole-interval path length.  The
+    # projection's closed policy authorises ``constant_force`` only for this
+    # exact typed shape; the transaction then writes the intrinsic motion axis,
+    # retypes the path increment as displacement on that axis, and links the
+    # three existing quantities through one applied-force interaction.
+    _ProfileSignature(
+        ProfileId.direct_constant_force_work,
+        lambda facts: (
+            facts.query_role == "work"
+            and facts.query_component == "magnitude"
+            and facts.roles.get("force") == 1
+            and facts.roles.get("distance") == 1
+            and facts.roles.get("work") == 1
+            and sum(facts.roles.values()) == 3
+            and "constant_force" in facts.approved
+            and len(facts.bounded_intervals) == 1
+            and not facts.interactions
+            and not facts.geometry
+            and sum(facts.primitives.values()) == 1
+            and (
+                facts.primitives.get("particle") == 1
+                or facts.primitives.get("rigid_body") == 1
+                or facts.primitives.get("body_component") == 1
+            )
+        ),
+        (
+            ("interval_bounded", PrerequisiteKind.state_condition,
+             _bounded_interval),
+            ("quantity_force", PrerequisiteKind.interaction_quantity,
+             _needs_role("force")),
+            ("quantity_path_length", PrerequisiteKind.interaction_quantity,
+             _needs_role("distance")),
+            ("authority_constant_force", PrerequisiteKind.authority,
+             _needs_authority("constant_force")),
+            ("frame_intrinsic_work_axis", PrerequisiteKind.reference_frame,
+             _direct_constant_force_work_axis),
+            ("interaction_applied_force", PrerequisiteKind.interaction,
+             _derivable_from_authority("constant_force")),
+            ("capability_direct_force_work", PrerequisiteKind.capability,
+             _direct_constant_force_work_capability),
+            ("symbol_work", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
         ),
     ),

@@ -534,6 +534,7 @@ def test_the_profile_table_and_enum_cannot_drift():
     assert IMPLEMENTED_PROFILE_IDS == {
         ProfileId.signed_constant_acceleration_1d,
         ProfileId.particle_work_energy_speed,
+        ProfileId.direct_constant_force_work,
         ProfileId.fixed_pulley,
         ProfileId.free_flight_gravity,
         ProfileId.impulse_momentum,

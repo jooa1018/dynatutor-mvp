@@ -103,6 +103,9 @@ _COMPONENT_ROLES: frozenset[str] = frozenset(
 DERIVED_FRAME_ID = "frm_closure_axis"
 MOTION_AXIS_FRAME_ID = "frm_closure_motion_axis"
 ENERGY_SPEED_FRAME_ID = "frm_closure_energy_speed"
+DIRECT_WORK_FRAME_ID = "frm_closure_direct_work"
+DIRECT_WORK_INTERACTION_ID = "rel_closure_direct_work"
+DIRECT_WORK_ASSUMPTION_ID = "asm_closure_direct_constant_force_work"
 WORLD_FRAME_ID = "frm_closure_world"
 OBSERVER_FRAME_ID = "frm_closure_observer"
 SLOT_PIN_FRAME_ID = "frm_closure_slot_radial"
@@ -705,6 +708,226 @@ def _particle_work_energy_speed_transaction(
     closed["quantities"] = rewritten_quantities
     closed["queries"] = [rewritten_query]
     return closed, (ENERGY_SPEED_FRAME_ID,), tuple(sorted(rebound))
+
+
+def _direct_constant_force_work_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one direct constant-force work balance from exact typed structure.
+
+    No value is generated.  The transaction writes one intrinsic 1-D work
+    coordinate, retypes the source's whole-interval path length as displacement
+    on that coordinate, binds the source's ``along_motion`` force to its positive
+    axis, and links the three existing quantities through one applied-force
+    interaction.  Every value, unit, scope, subject, and evidence reference is
+    preserved.
+    """
+
+    if (
+        len(payload["queries"]) != 1
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["entities"]) != 1
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["geometry"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or payload["state_conditions"]
+        or payload["ambiguities"]
+        or payload["unsupported_features"]
+        or len(payload["assumptions"]) != 1
+        or len(payload["quantities"]) != 3
+        or {DIRECT_WORK_FRAME_ID, DIRECT_WORK_INTERACTION_ID}
+        & _authored_draft_ids(payload)
+    ):
+        return None
+
+    entity = payload["entities"][0]
+    if entity.get("primitive") not in {"particle", "rigid_body", "body_component"}:
+        return None
+    subject_id = entity.get("entity_id")
+    interval = payload["motion_intervals"][0]
+    interval_id = interval.get("interval_id")
+    if (
+        interval.get("subject_ids") != [subject_id]
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or interval.get("start_event_id") == interval.get("end_event_id")
+        or interval.get("frame_id") is not None
+    ):
+        return None
+
+    assumption = payload["assumptions"][0]
+    if (
+        assumption.get("assumption_id") != DIRECT_WORK_ASSUMPTION_ID
+        or assumption.get("kind") != "constant_force"
+        or assumption.get("subject_id") != subject_id
+        or assumption.get("interval_id") != interval_id
+        or assumption.get("disposition") != "approved"
+        or assumption.get("proposed_role") is not None
+        or assumption.get("proposed_value") is not None
+        or assumption.get("proposed_unit") is not None
+        or not assumption.get("evidence_refs")
+        or authority.approved_assumption_ids != frozenset({DIRECT_WORK_ASSUMPTION_ID})
+    ):
+        return None
+
+    query = payload["queries"][0]
+    target = query["target"]
+    if (
+        target.get("role") != "work"
+        or target.get("subject_id") != subject_id
+        or target.get("interval_id") != interval_id
+        or target.get("event_id") is not None
+        or target.get("component") != "magnitude"
+        or target.get("frame_id") is not None
+        or target.get("direction") not in (None, {})
+        or not target.get("target_quantity_id")
+    ):
+        return None
+
+    by_role: dict[str, list[dict[str, Any]]] = {}
+    for item in payload["quantities"]:
+        by_role.setdefault(item.get("role"), []).append(item)
+    if not all(len(by_role.get(role, ())) == 1 for role in ("force", "distance", "work")):
+        return None
+    force = by_role["force"][0]
+    distance = by_role["distance"][0]
+    work = by_role["work"][0]
+    if work.get("quantity_id") != target.get("target_quantity_id"):
+        return None
+
+    common_known = (
+        lambda item: (
+            item.get("subject_id") == subject_id
+            and item.get("interval_id") == interval_id
+            and item.get("event_id") is None
+            and item.get("shape") == "scalar"
+            and item.get("frame_id") is None
+            and item.get("raw_value") is not None
+            and item.get("raw_unit") is not None
+            and item.get("provenance") == "explicit_source"
+            and bool(item.get("evidence_refs"))
+        )
+    )
+    if (
+        not common_known(force)
+        or force.get("component") != "unspecified"
+        or force.get("direction")
+        != {"kind": "semantic", "direction": "along_motion"}
+        or not common_known(distance)
+        or distance.get("component") != "magnitude"
+        or distance.get("direction") is not None
+        or work.get("subject_id") != subject_id
+        or work.get("interval_id") != interval_id
+        or work.get("event_id") is not None
+        or work.get("shape") != "scalar"
+        or work.get("component") != "magnitude"
+        or work.get("frame_id") is not None
+        or work.get("direction") is not None
+        or work.get("raw_value") is not None
+        or work.get("raw_unit") is not None
+        or work.get("provenance") != "unknown"
+        or not work.get("symbol_id")
+    ):
+        return None
+    source_evidence = sorted(
+        set(force["evidence_refs"])
+        | set(distance["evidence_refs"])
+        | set(assumption["evidence_refs"])
+    )
+    if not set(assumption["evidence_refs"]).issubset(source_evidence):
+        return None
+
+    frame = {
+        "frame_id": DIRECT_WORK_FRAME_ID,
+        "frame_type": "cartesian_1d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {
+                "axis": "x",
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": DIRECT_WORK_FRAME_ID,
+                    "axis": "x",
+                    "sign": 1,
+                },
+            }
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": source_evidence,
+    }
+    interaction = {
+        "interaction_id": DIRECT_WORK_INTERACTION_ID,
+        "kind": "applied_force",
+        "participant_ids": [subject_id],
+        "point_ids": [],
+        "frame_id": DIRECT_WORK_FRAME_ID,
+        "interval_id": interval_id,
+        "event_id": None,
+        "quantity_ids": [
+            work["quantity_id"],
+            force["quantity_id"],
+            distance["quantity_id"],
+        ],
+        "evidence_refs": source_evidence,
+    }
+
+    rebound: list[str] = []
+    rewritten_quantities: list[dict[str, Any]] = []
+    for original in payload["quantities"]:
+        quantity = dict(original)
+        if quantity["quantity_id"] == force["quantity_id"]:
+            quantity.update(
+                frame_id=DIRECT_WORK_FRAME_ID,
+                component="x",
+                direction={
+                    "kind": "axis",
+                    "frame_id": DIRECT_WORK_FRAME_ID,
+                    "axis": "x",
+                    "sign": 1,
+                },
+            )
+            rebound.append(quantity["quantity_id"])
+        elif quantity["quantity_id"] == distance["quantity_id"]:
+            quantity.update(
+                role="displacement",
+                frame_id=DIRECT_WORK_FRAME_ID,
+                component="x",
+                direction={
+                    "kind": "axis",
+                    "frame_id": DIRECT_WORK_FRAME_ID,
+                    "axis": "x",
+                    "sign": 1,
+                },
+            )
+            rebound.append(quantity["quantity_id"])
+        elif quantity["quantity_id"] == work["quantity_id"]:
+            quantity["frame_id"] = DIRECT_WORK_FRAME_ID
+            rebound.append(quantity["quantity_id"])
+        rewritten_quantities.append(quantity)
+
+    rewritten_interval = dict(interval)
+    rewritten_interval["frame_id"] = DIRECT_WORK_FRAME_ID
+    rewritten_query = dict(query)
+    rewritten_target = dict(target)
+    rewritten_target["frame_id"] = DIRECT_WORK_FRAME_ID
+    rewritten_query["target"] = rewritten_target
+
+    closed = dict(payload)
+    closed["reference_frames"] = [frame]
+    closed["motion_intervals"] = [rewritten_interval]
+    closed["quantities"] = rewritten_quantities
+    closed["interactions"] = [interaction]
+    closed["queries"] = [rewritten_query]
+    return (
+        closed,
+        (DIRECT_WORK_FRAME_ID, DIRECT_WORK_INTERACTION_ID),
+        tuple(sorted(rebound)),
+    )
 
 
 def _slot_pin_relative_frame_transaction(
@@ -2012,6 +2235,9 @@ _TRANSACTIONS = {
     ProfileId.particle_work_energy_speed: (
         _particle_work_energy_speed_transaction
     ),
+    ProfileId.direct_constant_force_work: (
+        _direct_constant_force_work_transaction
+    ),
     ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.fixed_pulley: _fixed_pulley_acceleration_transaction,
@@ -2205,6 +2431,9 @@ __all__ = [
     "DERIVED_FRAME_ID",
     "MOTION_AXIS_FRAME_ID",
     "ENERGY_SPEED_FRAME_ID",
+    "DIRECT_WORK_ASSUMPTION_ID",
+    "DIRECT_WORK_FRAME_ID",
+    "DIRECT_WORK_INTERACTION_ID",
     "GRAVITY_INTERACTION_ID",
     "GRAVITY_QUANTITY_ID",
     "GRAVITY_SYMBOL_ID",

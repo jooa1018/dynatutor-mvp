@@ -626,6 +626,169 @@ def _locate_quote(problem_text: str, quote: str | None) -> tuple[int, int] | Non
     return (occurrence.start, occurrence.end)
 
 
+_DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID = (
+    "asm_closure_direct_constant_force_work"
+)
+
+
+def _derive_direct_constant_force_work_assumption(
+    *,
+    gold: Any,
+    entities: list[dict[str, Any]],
+    motion_intervals: list[dict[str, Any]],
+    quantities: list[dict[str, Any]],
+    assumptions: list[dict[str, Any]],
+    approved: list[str],
+) -> None:
+    """Authorise one force value over one exact source-declared energy interval.
+
+    The policy consumes only source-side typed structure: one actor, one bounded
+    ``energy_interval``, one force fact whose temporal scope is ``during`` and
+    whose direction is ``along_motion``, one whole-interval distance fact, and
+    one magnitude work query for that same actor and interval.  That structure
+    states one force value for the whole interval; no sentence keyword, case
+    identity, family, expected terminal, reference result, or numeric answer is
+    read.
+
+    The assumption contributes no value.  It only licenses the existing
+    ``force_work`` law to consume the source's own force and path-length values.
+    Any extra force, path value, relation, event, proposal, actor, or query makes
+    the shape inexact and the derivation refuses.
+    """
+
+    if (
+        len(entities) != 1
+        or len(motion_intervals) != 1
+        or len(gold.motion_segments) != 1
+        or gold.relations
+        or gold.assumption_proposals
+        or len(gold.queries) != 1
+        or len(gold.explicit_facts) != 2
+    ):
+        return
+    entity_id = entities[0]["entity_id"]
+    if entities[0]["primitive"] not in {"particle", "rigid_body", "body_component"}:
+        return
+    segment = gold.motion_segments[0]
+    interval = motion_intervals[0]
+    boundary_events = {item.role: item for item in gold.events}
+    if (
+        len(boundary_events) != 2
+        or set(boundary_events)
+        != {segment.start_event_role, segment.end_event_role}
+    ):
+        return
+    start_event = boundary_events[segment.start_event_role]
+    end_event = boundary_events[segment.end_event_role]
+    if (
+        start_event.kind != "start"
+        or end_event.kind != "finish"
+        or start_event.segment_role != segment.role
+        or end_event.segment_role != segment.role
+        or tuple(start_event.subject_roles) != tuple(segment.actor_roles)
+        or tuple(end_event.subject_roles) != tuple(segment.actor_roles)
+    ):
+        return
+    if (
+        segment.motion_model != "energy_interval"
+        or tuple(segment.actor_roles) != (entity_id,)
+        or segment.role != interval["interval_id"]
+        or interval["subject_ids"] != [entity_id]
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or interval["start_event_id"] == interval["end_event_id"]
+    ):
+        return
+    query = gold.queries[0]
+    if (
+        query.output_key != "work"
+        or query.subject_role != entity_id
+        or query.segment_role != interval["interval_id"]
+        or query.component != "magnitude"
+        or query.event_role is not None
+    ):
+        return
+
+    force_facts = tuple(
+        fact
+        for fact in gold.explicit_facts
+        if fact.semantic_key == "force"
+        and fact.subject_role == entity_id
+        and fact.segment_role == interval["interval_id"]
+        and fact.event_role is None
+        and fact.temporal_role == "during"
+        and fact.direction == "along_motion"
+    )
+    distance_facts = tuple(
+        fact
+        for fact in gold.explicit_facts
+        if fact.semantic_key == "distance"
+        and fact.subject_role == entity_id
+        and fact.segment_role == interval["interval_id"]
+        and fact.event_role is None
+        and fact.temporal_role == "interval"
+        and fact.direction == "not_applicable"
+    )
+    if len(force_facts) != 1 or len(distance_facts) != 1:
+        return
+    force_id = f"qty_{force_facts[0].role}"
+    distance_id = f"qty_{distance_facts[0].role}"
+    by_id = {item["quantity_id"]: item for item in quantities}
+    force = by_id.get(force_id)
+    distance = by_id.get(distance_id)
+    if (
+        force is None
+        or distance is None
+        or force.get("role") != "force"
+        or force.get("subject_id") != entity_id
+        or force.get("interval_id") != interval["interval_id"]
+        or force.get("event_id") is not None
+        or force.get("direction")
+        != {"kind": "semantic", "direction": "along_motion"}
+        or force.get("raw_value") is None
+        or force.get("raw_unit") is None
+        or not force.get("evidence_refs")
+        or distance.get("role") != "distance"
+        or distance.get("subject_id") != entity_id
+        or distance.get("interval_id") != interval["interval_id"]
+        or distance.get("event_id") is not None
+        or distance.get("component") != "magnitude"
+        or distance.get("direction") is not None
+        or distance.get("raw_value") is None
+        or distance.get("raw_unit") is None
+        or not distance.get("evidence_refs")
+    ):
+        return
+    if any(
+        item["assumption_id"] == _DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID
+        or (
+            item["kind"] == "constant_force"
+            and item["subject_id"] == entity_id
+            and item["interval_id"] in {None, interval["interval_id"]}
+        )
+        for item in assumptions
+    ):
+        return
+
+    assumptions.append(
+        {
+            "assumption_id": _DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID,
+            "kind": "constant_force",
+            "subject_id": entity_id,
+            "interval_id": interval["interval_id"],
+            "disposition": "approved",
+            "reason": (
+                "closed server policy: one source-valued force fact owns the "
+                "whole source-declared energy interval"
+            ),
+            "evidence_refs": sorted(
+                set(force["evidence_refs"]) | set(distance["evidence_refs"])
+            ),
+        }
+    )
+    approved.append(_DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID)
+
+
 _FIXED_PULLEY_DERIVED_ASSUMPTIONS: tuple[
     tuple[str, str, str], ...
 ] = (
@@ -1666,6 +1829,15 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
             if state_condition is not None:
                 state_conditions.append(state_condition["state"])
                 boundary_unknowns.append(state_condition["quantity"])
+
+    _derive_direct_constant_force_work_assumption(
+        gold=gold,
+        entities=entities,
+        motion_intervals=intervals,
+        quantities=quantities,
+        assumptions=assumptions,
+        approved=approved,
+    )
 
     _derive_fixed_pulley_assumptions(
         entities=entities,
