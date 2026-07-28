@@ -73,7 +73,7 @@ jobs:
           git apply "$RUNNER_TEMP/b1.patch"
           git diff --check
           printf 'APPLY_STAGE=changed_paths\n'
-          changed="$(git diff --name-only | sort)"
+          changed="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort)"
           expected="$(printf '%s\n' \
             backend/evaluation/phase56_stage7/complete_profile.py \
             backend/evaluation/phase56_stage7/complete_profile_application.py \
