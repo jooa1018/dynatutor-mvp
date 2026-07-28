@@ -28,9 +28,10 @@ jobs:
           git archive --format=tar.gz \
             --output="${RUNNER_TEMP}/dynatutor-stage7-source-${SOURCE_SHA}.tar.gz" \
             "${SOURCE_SHA}"
+          git branch --force stage7-exact-source "${SOURCE_SHA}"
           git bundle create \
             "${RUNNER_TEMP}/dynatutor-stage7-${SOURCE_SHA}.bundle" \
-            "${SOURCE_SHA}"
+            refs/heads/stage7-exact-source
           {
             printf 'source_sha=%s\n' "${SOURCE_SHA}"
             sha256sum "${RUNNER_TEMP}/dynatutor-stage7-source-${SOURCE_SHA}.tar.gz"
