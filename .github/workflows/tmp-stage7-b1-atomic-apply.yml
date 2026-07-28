@@ -36,7 +36,20 @@ jobs:
           EXPECTED_PATCH_SHA256: e963551d90541efc46a462da05c2c34635959ba9deafa98971619ca31b49e886
         run: |
           set -euo pipefail
-          base64 -d .stage7-tmp/b1-slot-pin.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/b1.patch"
+          test "$(find .stage7-tmp/b1-parts -maxdepth 1 -type f -name '*.part' | wc -l)" -eq 9
+          cat > "$RUNNER_TEMP/b1-parts.sha256" <<'EOF'
+          977b99a0f28da97a8b31b7554cb68c7e4bf8338c3c5894db84eba9ddc177302d  .stage7-tmp/b1-parts/00.part
+          4f93672fafbf3aeec871434c2f64f92504f00d121a20671f3315b7d59ba41b86  .stage7-tmp/b1-parts/01.part
+          affba2b91a31331af3fcf4774b8e48ca1b4e82b7d8d77ddfaa951efdb3d3b112  .stage7-tmp/b1-parts/02.part
+          7880bbfb19ffda5f907207eb4eee497c566863464beef154360095390df802b1  .stage7-tmp/b1-parts/03.part
+          8af63d205cdeb46ea461415f050a99b744b97a40e2f04d16da0a08f601f3928b  .stage7-tmp/b1-parts/04.part
+          d4f4df4a6d9a2fb3078f67541465bfb0e99ba23e656de0d9116189f13d7b127c  .stage7-tmp/b1-parts/05.part
+          90cb30fd18ab507fd438c6be5d0a69f4258f07f8dd6ec61b1a1de010577d2339  .stage7-tmp/b1-parts/06.part
+          d805241f7f8d7853051325bd6f4a9c7dd81230d7eebec2abe9c7d85aba13f6fe  .stage7-tmp/b1-parts/07.part
+          49acea76fadf4c1cf21a79171d2e29d9f0932c17a76445909e573d052e47fb55  .stage7-tmp/b1-parts/08.part
+          EOF
+          sha256sum -c "$RUNNER_TEMP/b1-parts.sha256"
+          cat .stage7-tmp/b1-parts/*.part | base64 -d | gzip -d > "$RUNNER_TEMP/b1.patch"
           actual_patch_sha256="$(sha256sum "$RUNNER_TEMP/b1.patch" | awk '{print $1}')"
           printf 'PATCH_SHA256=%s\n' "$actual_patch_sha256"
           test "$actual_patch_sha256" = "$EXPECTED_PATCH_SHA256"
