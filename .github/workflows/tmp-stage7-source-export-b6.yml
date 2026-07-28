@@ -1,7 +1,7 @@
 name: Temporary Stage 7 B6 exact-source export
 
 on:
-  push:
+  pull_request:
     branches:
       - tmp/stage7-source-export-b6-20260728
 
@@ -24,7 +24,6 @@ jobs:
           SOURCE_SHA: 9c1ec669320d399247297f419862352eb3bf76bb
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = "${SOURCE_SHA}"
           git cat-file -e "${SOURCE_SHA}^{commit}"
           git archive --format=tar.gz \
             --output="${RUNNER_TEMP}/dynatutor-stage7-source-${SOURCE_SHA}.tar.gz" \
