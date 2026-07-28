@@ -1,0 +1,3 @@
+base=b7aaaadcc07e322c4ff04d5e5a85177080157428
+package=particle-work-energy-speed
+public_score_sha256=1abfa5400899fd9ab847ebff5e0c5b581ada2d7f0be1eaf7c3538e93cedfd708
