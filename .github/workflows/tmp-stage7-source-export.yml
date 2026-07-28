@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - tmp/stage7-source-export-35c6ca
+  pull_request:
+    branches:
+      - tmp/stage7-source-export-35c6ca
 
 permissions:
   contents: read
