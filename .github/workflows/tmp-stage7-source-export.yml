@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
       - name: Export exact source, Git bundle, and pinned unit wheelhouse
         env:
-          SOURCE_SHA: 2b9680aafcf017adc8a0d8bc37b9c4563e6882d7
+          SOURCE_SHA: 25d02d1dc50810a7c5a53bfd18d151aa6b5f4662
         run: |
           set -euo pipefail
           git cat-file -e "${SOURCE_SHA}^{commit}"
@@ -52,11 +52,11 @@ jobs:
       - name: Upload exact-source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dynatutor-stage7-source-2b9680aafcf017adc8a0d8bc37b9c4563e6882d7
+          name: dynatutor-stage7-source-25d02d1dc50810a7c5a53bfd18d151aa6b5f4662
           path: |
-            ${{ runner.temp }}/dynatutor-stage7-source-2b9680aafcf017adc8a0d8bc37b9c4563e6882d7.tar.gz
-            ${{ runner.temp }}/dynatutor-stage7-2b9680aafcf017adc8a0d8bc37b9c4563e6882d7.bundle
-            ${{ runner.temp }}/dynatutor-stage7-2b9680aafcf017adc8a0d8bc37b9c4563e6882d7.manifest.txt
+            ${{ runner.temp }}/dynatutor-stage7-source-25d02d1dc50810a7c5a53bfd18d151aa6b5f4662.tar.gz
+            ${{ runner.temp }}/dynatutor-stage7-25d02d1dc50810a7c5a53bfd18d151aa6b5f4662.bundle
+            ${{ runner.temp }}/dynatutor-stage7-25d02d1dc50810a7c5a53bfd18d151aa6b5f4662.manifest.txt
             ${{ runner.temp }}/pint-0.25.3-wheelhouse.tar.gz
           if-no-files-found: error
           retention-days: 1
