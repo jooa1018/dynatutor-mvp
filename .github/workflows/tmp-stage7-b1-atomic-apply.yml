@@ -32,12 +32,14 @@ jobs:
           cache-dependency-path: backend/requirements-lock.txt
 
       - name: Decode and verify the reviewed patch
+        env:
+          EXPECTED_PATCH_SHA256: e963551d90541efc46a462da05c2c34635959ba9deafa98971619ca31b49e886
         run: |
           set -euo pipefail
           base64 -d .stage7-tmp/b1-slot-pin.patch.gz.b64 | gzip -d > "$RUNNER_TEMP/b1.patch"
-          printf '%s  %s\n' \
-            'e963551d90541efc46a462da05c2c34635959ba9deafa98971619ca31b49e886' \
-            "$RUNNER_TEMP/b1.patch" | sha256sum -c -
+          actual_patch_sha256="$(sha256sum "$RUNNER_TEMP/b1.patch" | awk '{print $1}')"
+          printf 'PATCH_SHA256=%s\n' "$actual_patch_sha256"
+          test "$actual_patch_sha256" = "$EXPECTED_PATCH_SHA256"
 
       - name: Verify exact parent and apply atomically
         env:
