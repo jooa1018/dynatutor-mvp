@@ -8,7 +8,13 @@ import math
 
 import pytest
 
+from engine.mechanics.compiler import (
+    MechanicsCompiler,
+    authorize_validated_mechanics_ir,
+)
 from engine.mechanics.contracts import MechanicsProblemDraftV1
+from engine.mechanics.normalization import normalize_draft
+from engine.mechanics.pipeline import solve_verified_equation_graph
 from evaluation.phase56_stage7.complete_profile import (
     PlanDisposition,
     ProfileId,
@@ -273,6 +279,73 @@ def _run(case: PublicCorpusCaseV1, nonce: str):
         _projection(case),
         execution_token=deterministic_token(0, run_nonce=nonce),
     )
+
+
+
+
+def _polar_draft_with_assumption(
+    *,
+    kind: str = "unrelated_note",
+    disposition: str = "approved",
+    subject_id: str = "moving_point",
+    interval_id: str | None = "motion",
+    proposed_role: str | None = None,
+    proposed_value: str | None = None,
+    proposed_unit: str | None = None,
+    with_evidence: bool = True,
+) -> MechanicsProblemDraftV1:
+    projection = _projection(_case())
+    payload = projection.draft.model_dump(mode="json")
+    evidence_id = next(
+        item["evidence_refs"][0]
+        for item in payload["quantities"]
+        if item["role"] == "radius"
+    )
+    payload["assumptions"] = [
+        {
+            "assumption_id": "asm_b7_unrelated_approved",
+            "kind": kind,
+            "subject_id": subject_id,
+            "interval_id": interval_id,
+            "disposition": disposition,
+            "proposed_role": proposed_role,
+            "proposed_value": proposed_value,
+            "proposed_unit": proposed_unit,
+            "reason": "source-evidenced but irrelevant value-free note",
+            "evidence_refs": [evidence_id] if with_evidence else [],
+        }
+    ]
+    return MechanicsProblemDraftV1.model_validate(payload)
+
+
+def _compile_polar_graph(
+    draft: MechanicsProblemDraftV1,
+    *,
+    approved_assumption_ids: tuple[str, ...] = (),
+):
+    projection = _projection(_case())
+    application = apply_selected_profile(
+        draft,
+        ProfileId.polar_kinematics_state,
+        approved_assumption_ids=approved_assumption_ids,
+        authorized_assumptions={},
+    )
+    assert application.outcome is ApplicationOutcome.applied
+    normalized = normalize_draft(
+        projection.problem_text,
+        application.draft,
+        approved_assumption_ids=approved_assumption_ids,
+        authorized_assumptions={},
+    )
+    assert normalized.accepted and normalized.ir is not None
+    compiled = MechanicsCompiler().compile(
+        normalized.ir,
+        validated_ir_authorization=authorize_validated_mechanics_ir(normalized.ir),
+        approved_assumption_ids=approved_assumption_ids,
+        authorized_assumptions={},
+    )
+    assert compiled.graph is not None
+    return compiled.graph
 
 
 def _si(value: tuple[str, str], role: str) -> float:
@@ -784,6 +857,7 @@ def test_irrelevant_value_free_source_assumption_does_not_change_the_answer() ->
     assert changed.applied_law_ids == baseline.applied_law_ids
 
 
+
 def test_gold_expected_answer_tampering_cannot_change_runtime() -> None:
     case = _case()
     payload = case.model_dump(mode="json")
@@ -846,3 +920,57 @@ def test_malformed_provenance_or_evidence_free_source_fact_is_rejected(
             source["evidence_refs"] = []
 
     _assert_not_applied(_mutated_draft(mutate))
+
+
+def test_approved_unrelated_value_free_assumption_is_never_answer_authority() -> None:
+    baseline_graph = _compile_polar_graph(_projection(_case()).draft)
+    assumption_id = "asm_b7_unrelated_approved"
+    changed_graph = _compile_polar_graph(
+        _polar_draft_with_assumption(kind="solver_root_override"),
+        approved_assumption_ids=(assumption_id,),
+    )
+
+    baseline_result = solve_verified_equation_graph(baseline_graph)
+    changed_result = solve_verified_equation_graph(changed_graph)
+    assert baseline_result.terminal.value == changed_result.terminal.value == "solved"
+    assert len(baseline_result.verified_candidates) == 1
+    assert len(changed_result.verified_candidates) == 1
+    baseline_candidate = baseline_result.verified_candidates[0].candidate
+    changed_candidate = changed_result.verified_candidates[0].candidate
+    assert changed_candidate.query_value_si == pytest.approx(
+        baseline_candidate.query_value_si
+    )
+    assert tuple(item.law_id for item in changed_graph.equations) == tuple(
+        item.law_id for item in baseline_graph.equations
+    )
+    assert all(item.assumption_ids == () for item in changed_graph.equations)
+    assert all(item.assumption_ids == () for item in changed_graph.applications)
+    assert assumption_id not in {
+        assumption_id
+        for item in changed_graph.equations
+        for assumption_id in item.assumption_ids
+    }
+
+
+@pytest.mark.parametrize(
+    "updates",
+    (
+        {"proposed_role": "acceleration"},
+        {"proposed_value": "123", "proposed_unit": "m/s^2"},
+        {"subject_id": "foreign_subject"},
+        {"interval_id": "foreign_interval"},
+        {"with_evidence": False},
+    ),
+)
+def test_nonlocal_value_bearing_or_unevidenced_assumption_fails_closed(
+    updates: dict[str, object],
+) -> None:
+    draft = _polar_draft_with_assumption(**updates)
+    application = apply_selected_profile(
+        draft,
+        ProfileId.polar_kinematics_state,
+        approved_assumption_ids=("asm_b7_unrelated_approved",),
+        authorized_assumptions={},
+    )
+    assert application.outcome is not ApplicationOutcome.applied
+    assert application.draft == draft
