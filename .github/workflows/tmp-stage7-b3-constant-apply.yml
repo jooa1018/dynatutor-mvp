@@ -1,0 +1,118 @@
+name: Temporary Stage 7 B3 constant-acceleration apply
+
+on:
+  pull_request:
+    branches:
+      - tmp/stage7-b3-constant-base-389f
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tmp-stage7-b3-constant-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'tmp/stage7-b3-constant-trigger-389f'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out temporary finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/stage7-b3-constant-base-389f
+          fetch-depth: 1
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Decode and verify reviewed patch
+        env:
+          EXPECTED_PATCH_SHA256: a18cc313722f61935f2aa24827112edc94dee72539391dfb1cf598b0da2e3628
+        run: |
+          set -euo pipefail
+          test "$(find .stage7-tmp/b3-constant -maxdepth 1 -type f -name '*.part' | wc -l)" -eq 6
+          cat > "$RUNNER_TEMP/parts.sha256" <<'EOF'
+          e5165457e029ab010b6e54c771e896d42ca0d253b8a73ee328e25314da2ed9e1  .stage7-tmp/b3-constant/00.part
+          a3a10b6d4821ec605dcae09dfce1bfca37814e3c910c5d1c30d3c11f2d07ef2f  .stage7-tmp/b3-constant/01.part
+          f03b9e288bb141ff9fbcb6850156a6736559ff641922991812f990c81de5cb35  .stage7-tmp/b3-constant/02.part
+          12e3a3427d20897daca7e4b05155a47ba30dac25d9a3b45d5f76eff82dd169f6  .stage7-tmp/b3-constant/03.part
+          5316389bfca49caf14fcbb207ba370c28f19e5a1e2a9727541dab07d5d0c60fa  .stage7-tmp/b3-constant/04.part
+          e2ef884accf3c999b6dd9cb245199fbebde97b9aa9b8deeaf2669aef0b6e8ffe  .stage7-tmp/b3-constant/05.part
+          EOF
+          sha256sum -c "$RUNNER_TEMP/parts.sha256"
+          cat .stage7-tmp/b3-constant/*.part | base64 -d | gzip -d > "$RUNNER_TEMP/b3.patch"
+          actual="$(sha256sum "$RUNNER_TEMP/b3.patch" | awk '{print $1}')"
+          printf 'PATCH_SHA256=%s\n' "$actual"
+          test "$actual" = "$EXPECTED_PATCH_SHA256"
+      - name: Verify exact parent and apply atomically
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 389ffbdffedc29068404c72fe39e23d5f5515056
+        run: |
+          set -euo pipefail
+          actual_parent="$(git ls-remote --heads origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          printf 'ACTUAL_PARENT=%s\n' "$actual_parent"
+          test "$actual_parent" = "$EXPECTED_PARENT"
+          git fetch --quiet --depth=1 origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
+          git checkout --quiet --detach "refs/remotes/origin/$TARGET_BRANCH"
+          git apply --check "$RUNNER_TEMP/b3.patch"
+          git apply "$RUNNER_TEMP/b3.patch"
+          git diff --check
+          changed="$({ git diff --name-only; git ls-files --others --exclude-standard; } | sort)"
+          expected="$(printf '%s\n' \
+            backend/engine/mechanics/laws/core.py \
+            backend/engine/mechanics/solver/__init__.py \
+            backend/engine/mechanics/solver/constant_acceleration_stop_boundary.py \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/evaluation/phase56_stage7/lane_b_draft_projection.py \
+            backend/tests/test_phase56_stage7_constant_acceleration_1d_yield.py \
+            backend/tests/test_phase56_stage7_lane_b_path_length.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py | sort)"
+          test "$changed" = "$expected"
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+      - name: Run B3 focused and adjacent regression tests
+        working-directory: backend
+        env:
+          PYTHONHASHSEED: '0'
+          OPENAI_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+        run: |
+          python -m compileall -q engine evaluation tests/test_phase56_stage7_constant_acceleration_1d_yield.py
+          python -m pytest -q \
+            tests/test_phase56_stage7_constant_acceleration_1d_yield.py \
+            tests/test_phase56_stage7_lane_b_path_length.py \
+            tests/test_phase56_stage7_complete_profile.py \
+            tests/test_phase56_stage7_profile_application.py \
+            tests/test_phase56_stage7_profile_feasibility.py::test_the_profile_table_and_enum_cannot_drift \
+            'tests/test_phase56_mechanics_constant_acceleration_same_fixture_parity.py::test_constant_acceleration_limits_signs_reversal_and_units[direction-reversal]' \
+            tests/test_phase56_mechanics_constant_acceleration_same_fixture_parity.py::test_static_endpoint_waiver_rejects_graph_spoofs_and_keeps_timed_events \
+            'tests/test_phase56_mechanics_constant_acceleration_same_fixture_parity.py::test_constant_acceleration_each_unknown_is_solved_from_the_same_graph[query-duration-two-roots]'
+      - name: Commit and fast-forward push exact nine-file package
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 389ffbdffedc29068404c72fe39e23d5f5515056
+        run: |
+          set -euo pipefail
+          git config user.name 'DynaTutor Stage 7 Finalizer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            backend/engine/mechanics/laws/core.py \
+            backend/engine/mechanics/solver/__init__.py \
+            backend/engine/mechanics/solver/constant_acceleration_stop_boundary.py \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/evaluation/phase56_stage7/lane_b_draft_projection.py \
+            backend/tests/test_phase56_stage7_constant_acceleration_1d_yield.py \
+            backend/tests/test_phase56_stage7_lane_b_path_length.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py
+          git commit -m 'engine(stage7): solve signed constant-acceleration stop intervals'
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git push origin "HEAD:$TARGET_BRANCH"
+          printf 'B3_CODE_HEAD=%s\n' "$(git rev-parse HEAD)"
