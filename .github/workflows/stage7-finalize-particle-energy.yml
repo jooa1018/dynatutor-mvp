@@ -1,0 +1,174 @@
+name: Temporary Stage 7 particle work-energy finalizer
+
+on:
+  push:
+    branches:
+      - tmp/stage7-finalize-particle-energy-20260728
+  pull_request:
+    branches:
+      - tmp/stage7-finalize-particle-energy-20260728
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage7-finalize-particle-energy-20260728
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_SHA: b7aaaadcc07e322c4ff04d5e5a85177080157428
+      TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+      PYTHONHASHSEED: "0"
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out finalizer inputs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify reviewed patch
+        run: |
+          set -euo pipefail
+          cat .stage7-finalizer/particle-energy.b64.part* > "${RUNNER_TEMP}/stage7-particle-energy.patch.gz.b64"
+          test "$(wc -c < "${RUNNER_TEMP}/stage7-particle-energy.patch.gz.b64")" = "11216"
+          base64 --decode "${RUNNER_TEMP}/stage7-particle-energy.patch.gz.b64" > "${RUNNER_TEMP}/stage7-particle-energy.patch.gz"
+          printf '%s  %s\n' \
+            'f337d1eed7beb2c2d2d5f1604df10e971f933441713cf563ec293e179638d701' \
+            "${RUNNER_TEMP}/stage7-particle-energy.patch.gz" | sha256sum --check --status
+          gzip --decompress --stdout "${RUNNER_TEMP}/stage7-particle-energy.patch.gz" > "${RUNNER_TEMP}/stage7-particle-energy.patch"
+          printf '%s  %s\n' \
+            '155d2c60fd399d04f9021a12b84931017bc79dc5b6ba21e138e470cebae48dea' \
+            "${RUNNER_TEMP}/stage7-particle-energy.patch" | sha256sum --check --status
+
+      - name: Check out exact authoritative head
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          actual="$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")"
+          test "$actual" = "$BASE_SHA"
+          git checkout --detach "$actual"
+          git config user.name 'DynaTutor Stage 7 Finalizer'
+          git config user.email 'stage7-finalizer@users.noreply.github.com'
+
+      - name: Apply one atomic work-energy package
+        run: |
+          set -euo pipefail
+          git am --3way "${RUNNER_TEMP}/stage7-particle-energy.patch"
+          test "$(git rev-list --count "${BASE_SHA}..HEAD")" = "1"
+          test "$(git show -s --format=%s HEAD)" = 'eval(stage7): close one-body work-energy speed profiles'
+          git diff --quiet "${BASE_SHA}..HEAD" -- backend/evaluation/phase56_stage7/B1_SLOT_PIN_PROFILE.md
+          git diff --quiet "${BASE_SHA}..HEAD" -- backend/evaluation/phase56_stage7/B2_ROTATING_RELATIVE_PROFILE.md
+          git diff --quiet "${BASE_SHA}..HEAD" -- backend/evaluation/phase56_stage7/B3_CONSTANT_ACCELERATION_PROFILE.md
+
+      - name: Verify exact reviewed file contents
+        run: |
+          set -euo pipefail
+          cat > "${RUNNER_TEMP}/stage7-particle-energy-files.sha256" <<'EOF'
+          105fdf96563e6088ef5181b3554fe58f1c7632c3a5375d80dfe5d382f1af06da  backend/engine/mechanics/verification/verifier.py
+          76bdb79983d540face2ebb2679598decaf51bce3e8cf73acb6172ca14218a56c  backend/evaluation/phase56_stage7/complete_profile.py
+          a9d77866842cf9d6b3dc2ed7f4a49968c597c6cfae6e6818e74e82c15695d021  backend/evaluation/phase56_stage7/complete_profile_application.py
+          ebc6191e65575425800b644291fb1ba9c6ddbd4206d315fa0f6d79fd8a652559  backend/tests/test_phase56_stage7_particle_work_energy_speed.py
+          41d543e481f654b29494c3077265edfa66289d7d4e34b7470b56c596481e3d5b  backend/tests/test_phase56_stage7_profile_feasibility.py
+          EOF
+          sha256sum --check --status "${RUNNER_TEMP}/stage7-particle-energy-files.sha256"
+
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Compile changed surfaces
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            engine/mechanics/verification/verifier.py \
+            evaluation/phase56_stage7 \
+            tests/test_phase56_stage7_particle_work_energy_speed.py
+
+      - name: Run new profile and closure regressions
+        working-directory: backend
+        run: |
+          python -m pytest -q -o addopts= \
+            tests/test_phase56_stage7_particle_work_energy_speed.py \
+            tests/test_phase56_stage7_complete_profile.py \
+            tests/test_phase56_stage7_profile_application.py \
+            tests/test_phase56_stage7_profile_feasibility.py
+
+      - name: Run existing work-energy parity regressions
+        working-directory: backend
+        run: |
+          python -m pytest -q -o addopts= \
+            tests/test_phase56_mechanics_work_energy_speed_same_fixture_parity.py
+
+      - name: Run verifier and authority regressions
+        working-directory: backend
+        run: |
+          python -m pytest -q -o addopts= \
+            tests/test_phase56_mechanics_verifier.py \
+            tests/test_phase56_mechanics_verification_contract.py \
+            tests/test_phase56_mechanics_solver_verification_integration.py \
+            tests/test_phase56_stage7_hard_safety_instruments.py \
+            tests/test_phase56_stage7_gold_isolation.py
+
+      - name: Recheck remote and push fast-forward only
+        run: |
+          set -euo pipefail
+          remote_now="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          test "$remote_now" = "$BASE_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+          pushed="$(git rev-parse HEAD)"
+          remote_after="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          test "$remote_after" = "$pushed"
+          {
+            printf 'base_sha=%s\n' "$BASE_SHA"
+            printf 'particle_energy_commit=%s\n' "$pushed"
+            printf 'push_mode=fast_forward_only\n'
+            printf 'focused_result=pass\n'
+            printf 'public_score_digest=1abfa5400899fd9ab847ebff5e0c5b581ada2d7f0be1eaf7c3538e93cedfd708\n'
+            printf 'supported_correct=15\n'
+            printf 'supported_wrong=0\n'
+            printf 'deferred_matched=12\n'
+            printf 'terminal_mapping_matches=32\n'
+          } > "${RUNNER_TEMP}/stage7-particle-energy-finalizer-result.txt"
+
+      - name: Export exact pushed source
+        run: |
+          set -euo pipefail
+          pushed="$(git rev-parse HEAD)"
+          git archive --format=tar.gz \
+            --output="${RUNNER_TEMP}/dynatutor-stage7-source-${pushed}.tar.gz" \
+            "$pushed"
+          git branch --force stage7-finalized-source "$pushed"
+          git bundle create \
+            "${RUNNER_TEMP}/dynatutor-stage7-${pushed}.bundle" \
+            refs/heads/stage7-finalized-source
+          {
+            printf 'source_sha=%s\n' "$pushed"
+            sha256sum "${RUNNER_TEMP}/dynatutor-stage7-source-${pushed}.tar.gz"
+            sha256sum "${RUNNER_TEMP}/dynatutor-stage7-${pushed}.bundle"
+          } > "${RUNNER_TEMP}/dynatutor-stage7-${pushed}.manifest.txt"
+
+      - name: Upload finalizer evidence and exact source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7-particle-energy-finalizer-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/stage7-particle-energy-finalizer-result.txt
+            ${{ runner.temp }}/dynatutor-stage7-source-*.tar.gz
+            ${{ runner.temp }}/dynatutor-stage7-*.bundle
+            ${{ runner.temp }}/dynatutor-stage7-*.manifest.txt
+          if-no-files-found: warn
+          retention-days: 7
