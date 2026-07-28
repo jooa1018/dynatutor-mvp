@@ -99,6 +99,7 @@ _COMPONENT_ROLES: frozenset[str] = frozenset(
 )
 
 DERIVED_FRAME_ID = "frm_closure_axis"
+MOTION_AXIS_FRAME_ID = "frm_closure_motion_axis"
 WORLD_FRAME_ID = "frm_closure_world"
 OBSERVER_FRAME_ID = "frm_closure_observer"
 SLOT_PIN_FRAME_ID = "frm_closure_slot_radial"
@@ -311,6 +312,198 @@ def _impulse_momentum_transaction(
     closed["quantities"] = quantities
     closed["queries"] = queries
     return closed, (DERIVED_FRAME_ID,), tuple(rebound)
+
+
+def _signed_constant_acceleration_1d_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Bind a source-stated braking interval to its intrinsic motion axis.
+
+    The source already states the positive sign (``along_motion``), the
+    negative sign (``opposite_motion``), and an evidenced final rest boundary.
+    The transaction writes one Cartesian axis and re-expresses those same
+    statements on it.  It creates no value, force, equation, or answer.
+    """
+
+    if (
+        len(payload["queries"]) != 1
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["entities"]) != 1
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["geometry"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or len(payload["quantities"]) != 4
+        or MOTION_AXIS_FRAME_ID in _authored_draft_ids(payload)
+    ):
+        return None
+
+    query = payload["queries"][0]
+    target = query["target"]
+    interval = payload["motion_intervals"][0]
+    subject_ids = interval.get("subject_ids") or []
+    if (
+        target.get("role") != "duration"
+        or target.get("interval_id") != interval.get("interval_id")
+        or target.get("subject_id") not in subject_ids
+        or len(subject_ids) != 1
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or target.get("event_id") is not None
+        or target.get("frame_id") is not None
+        or target.get("direction") not in (None, {})
+        or target.get("component") not in {"magnitude", "unspecified"}
+    ):
+        return None
+    subject_id = subject_ids[0]
+    interval_id = interval["interval_id"]
+    start_event_id = interval["start_event_id"]
+    end_event_id = interval["end_event_id"]
+
+    quantities = {item["quantity_id"]: item for item in payload["quantities"]}
+    query_quantity = quantities.get(target.get("target_quantity_id"))
+    if (
+        query_quantity is None
+        or query_quantity.get("role") != "duration"
+        or query_quantity.get("subject_id") != subject_id
+        or query_quantity.get("interval_id") != interval_id
+        or query_quantity.get("event_id") is not None
+        or query_quantity.get("raw_value") is not None
+        or query_quantity.get("raw_unit") is not None
+    ):
+        return None
+
+    velocities = [
+        item
+        for item in payload["quantities"]
+        if item.get("role") == "velocity"
+        and item.get("subject_id") == subject_id
+        and item.get("interval_id") == interval_id
+    ]
+    accelerations = [
+        item
+        for item in payload["quantities"]
+        if item.get("role") == "acceleration"
+        and item.get("subject_id") == subject_id
+        and item.get("interval_id") == interval_id
+        and item.get("event_id") is None
+    ]
+    if len(velocities) != 2 or len(accelerations) != 1:
+        return None
+    by_event = {item.get("event_id"): item for item in velocities}
+    start = by_event.get(start_event_id)
+    end = by_event.get(end_event_id)
+    acceleration = accelerations[0]
+    if start is None or end is None:
+        return None
+
+    start_direction = start.get("direction") or {}
+    acceleration_direction = acceleration.get("direction") or {}
+    if (
+        start_direction
+        != {"kind": "semantic", "direction": "along_motion"}
+        or acceleration_direction
+        != {"kind": "semantic", "direction": "opposite_motion"}
+        or start.get("raw_value") is None
+        or start.get("raw_unit") is None
+        or acceleration.get("raw_value") is None
+        or acceleration.get("raw_unit") is None
+        or end.get("raw_value") is not None
+        or end.get("raw_unit") is not None
+        or end.get("direction") not in (None, {})
+        or end.get("component") != "magnitude"
+    ):
+        return None
+
+    rest_states = [
+        item
+        for item in payload["state_conditions"]
+        if item.get("state") == "at_rest"
+        and item.get("kind") == "final"
+        and item.get("subject_id") == subject_id
+        and item.get("interval_id") == interval_id
+        and item.get("event_id") == end_event_id
+        and item.get("quantity_ids") == [end["quantity_id"]]
+        and item.get("evidence_refs")
+    ]
+    if len(rest_states) != 1:
+        return None
+    if not any(
+        item.get("kind") == "constant_acceleration"
+        and item.get("subject_id") == subject_id
+        and item.get("interval_id") == interval_id
+        and item.get("assumption_id") in authority.approved_assumption_ids
+        for item in payload["assumptions"]
+    ):
+        return None
+
+    frame = {
+        "frame_id": MOTION_AXIS_FRAME_ID,
+        "frame_type": "cartesian_1d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {
+                "axis": "x",
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": MOTION_AXIS_FRAME_ID,
+                    "axis": "x",
+                    "sign": 1,
+                },
+            }
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": [],
+    }
+
+    rebound: list[str] = []
+    rewritten_quantities: list[dict[str, Any]] = []
+    for original in payload["quantities"]:
+        quantity = dict(original)
+        if quantity["quantity_id"] == start["quantity_id"]:
+            quantity.update(
+                frame_id=MOTION_AXIS_FRAME_ID,
+                component="x",
+                direction={
+                    "kind": "axis",
+                    "frame_id": MOTION_AXIS_FRAME_ID,
+                    "axis": "x",
+                    "sign": 1,
+                },
+            )
+            rebound.append(quantity["quantity_id"])
+        elif quantity["quantity_id"] == acceleration["quantity_id"]:
+            quantity.update(
+                frame_id=MOTION_AXIS_FRAME_ID,
+                component="x",
+                direction={
+                    "kind": "axis",
+                    "frame_id": MOTION_AXIS_FRAME_ID,
+                    "axis": "x",
+                    "sign": -1,
+                },
+            )
+            rebound.append(quantity["quantity_id"])
+        elif quantity["quantity_id"] == end["quantity_id"]:
+            quantity.update(
+                frame_id=MOTION_AXIS_FRAME_ID,
+                component="x",
+                direction=None,
+            )
+            rebound.append(quantity["quantity_id"])
+        rewritten_quantities.append(quantity)
+
+    rewritten_interval = dict(interval)
+    rewritten_interval["frame_id"] = MOTION_AXIS_FRAME_ID
+    closed = dict(payload)
+    closed["reference_frames"] = [frame]
+    closed["motion_intervals"] = [rewritten_interval]
+    closed["quantities"] = rewritten_quantities
+    return closed, (MOTION_AXIS_FRAME_ID,), tuple(sorted(rebound))
 
 
 def _slot_pin_relative_frame_transaction(
@@ -1118,6 +1311,9 @@ def _free_flight_gravity_transaction(
 # negative controls, or which creates no force at all, may appear here.
 # Everything else plans, is measured by the census, and is not built.
 _TRANSACTIONS = {
+    ProfileId.signed_constant_acceleration_1d: (
+        _signed_constant_acceleration_1d_transaction
+    ),
     ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.slot_pin_relative_frame: _slot_pin_relative_frame_transaction,
@@ -1308,6 +1504,7 @@ def close_projected_draft(
 __all__ = [
     "COMPLETE_PROFILE_APPLICATION_VERSION",
     "DERIVED_FRAME_ID",
+    "MOTION_AXIS_FRAME_ID",
     "GRAVITY_INTERACTION_ID",
     "GRAVITY_QUANTITY_ID",
     "GRAVITY_SYMBOL_ID",

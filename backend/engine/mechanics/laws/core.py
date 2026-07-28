@@ -489,9 +489,9 @@ def _constant_acceleration_emissions(context: LawContext) -> list[LawEmission]:
                     end = matching_ends[0]
                     velocity_change = Add(
                         terms=(
-                            start.expression,
+                            _signed(start),
                             Multiply(
-                                factors=(acceleration.expression, duration.expression),
+                                factors=(_signed(acceleration), duration.expression),
                                 dimension=end.dimension,
                             ),
                         ),
@@ -501,7 +501,7 @@ def _constant_acceleration_emissions(context: LawContext) -> list[LawEmission]:
                         _emit(
                             context,
                             "particle_constant_acceleration_velocity",
-                            Equality(left=end.expression, right=velocity_change),
+                            Equality(left=_signed(end), right=velocity_change),
                             (start, end, acceleration, duration),
                             assumption_ids=assumptions,
                         )
@@ -528,11 +528,11 @@ def _constant_acceleration_emissions(context: LawContext) -> list[LawEmission]:
                 position_change = Add(
                     terms=(
                         Multiply(
-                            factors=(start.expression, duration.expression),
+                            factors=(_signed(start), duration.expression),
                             dimension=displacement.dimension,
                         ),
                         Multiply(
-                            factors=(half, acceleration.expression, duration_squared),
+                            factors=(half, _signed(acceleration), duration_squared),
                             dimension=displacement.dimension,
                         ),
                     ),
@@ -542,7 +542,7 @@ def _constant_acceleration_emissions(context: LawContext) -> list[LawEmission]:
                     _emit(
                         context,
                         "particle_constant_acceleration_position",
-                        Equality(left=displacement.expression, right=position_change),
+                        Equality(left=_signed(displacement), right=position_change),
                         (displacement, start, acceleration, duration),
                         assumption_ids=assumptions,
                     )

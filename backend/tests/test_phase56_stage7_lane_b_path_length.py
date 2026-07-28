@@ -271,6 +271,37 @@ def test_a_path_length_pinned_to_an_instant_is_never_retyped() -> None:
     assert _quantity(projection, "qty_travel").role.value == "distance"
 
 
+def test_an_interval_path_length_may_name_its_own_end_boundary() -> None:
+    projection = _projected(
+        _with_rest(
+            _with_distance(
+                _with_model(_case(), "constant_acceleration_1d"),
+                temporal_role="interval",
+                event_role="finish",
+            )
+        )
+    )
+    quantity = _quantity(projection, "qty_travel")
+    assert quantity.role.value == "displacement"
+    assert quantity.interval_id == "motion_1"
+    assert quantity.event_id is None
+
+
+def test_an_interval_path_length_at_the_start_boundary_is_not_retyped() -> None:
+    projection = _projected(
+        _with_rest(
+            _with_distance(
+                _with_model(_case(), "constant_acceleration_1d"),
+                temporal_role="interval",
+                event_role="start",
+            )
+        )
+    )
+    quantity = _quantity(projection, "qty_travel")
+    assert quantity.role.value == "distance"
+    assert quantity.event_id == "start"
+
+
 def test_an_unapproved_rest_assumption_licenses_nothing() -> None:
     case = _with_distance(_with_model(_case(), "constant_acceleration_1d"))
     unapproved = _with_gold(

@@ -6,11 +6,16 @@ from engine.mechanics.solver.direct_impulse_boundary import (
     install_direct_impulse_boundary_waiver,
     is_direct_impulse_momentum_boundary_graph,
 )
+from engine.mechanics.solver.constant_acceleration_stop_boundary import (
+    install_constant_acceleration_stop_boundary_waiver,
+    is_static_constant_acceleration_stop_boundary_graph,
+)
 
 # Install before engine/planner imports: both consult the contracts module's
 # exact static-boundary recognizer. The extension only admits the reviewed
 # direct-impulse algebraic shape and leaves the existing recognizer intact.
 install_direct_impulse_boundary_waiver()
+install_constant_acceleration_stop_boundary_waiver()
 
 from engine.mechanics.solver.engine import (
     SolverExecutionError,
@@ -50,6 +55,7 @@ __all__ = [
     "create_solve_plan",
     "execute_solve_plan",
     "is_direct_impulse_momentum_boundary_graph",
+    "is_static_constant_acceleration_stop_boundary_graph",
     "plan_equation_graph",
     "solve_equation_graph",
     "solve_graph",

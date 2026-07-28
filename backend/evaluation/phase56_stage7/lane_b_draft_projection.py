@@ -702,6 +702,39 @@ def _retype_path_lengths(
         item["role"] = "displacement"
 
 
+def _interval_aggregate_event_role(
+    fact: Any,
+    intervals_by_id: Mapping[str, dict[str, Any]],
+) -> str | None:
+    """Return the event that truly belongs to a fact's physical identity.
+
+    A path length can name the interval's terminal event merely to say *how far
+    the actor had travelled by that boundary*.  When the corpus also types the
+    fact as an interval aggregate, the quantity is owned by the whole interval,
+    not by the zero-duration instant at its end.  Keeping that endpoint on the
+    quantity prevented the already-reviewed reversal-free path-length theorem
+    from retyping it as displacement.
+
+    Only the exact typed shape is narrowed here: ``distance`` + interval
+    temporal scope + the same interval's own end event.  An internal event, the
+    start event, an instant-scoped fact, or any other quantity keeps its event.
+    No text, family, expected terminal, or reference answer participates.
+    """
+
+    event_role = fact.event_role
+    if (
+        fact.semantic_key != _PATH_LENGTH_ROLE
+        or fact.segment_role is None
+        or event_role is None
+        or (fact.temporal_role or "") not in _INTERVAL_TEMPORAL_ROLES
+    ):
+        return event_role
+    interval = intervals_by_id.get(fact.segment_role)
+    if interval is None or interval.get("end_event_id") != event_role:
+        return event_role
+    return None
+
+
 # The physical identity a symbol names.  A value, a raw unit, an evidence
 # reference, a corpus ID, an array position, and every gold member are excluded
 # by construction: two quantities that describe the same physical thing must
@@ -1223,7 +1256,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         fact_event_role = _stated_endpoint(
             _ENDPOINT_TEMPORAL_ROLES.get(fact.temporal_role or ""),
             fact.segment_role,
-            fact.event_role,
+            _interval_aggregate_event_role(fact, intervals_by_id),
             intervals_by_id,
         )
         interval_id, event_id = _typed_scope(

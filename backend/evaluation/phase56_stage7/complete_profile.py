@@ -59,6 +59,7 @@ class ProfileId(str, Enum):
     and one family can reach different profiles case by case.
     """
 
+    signed_constant_acceleration_1d = "signed_constant_acceleration_1d"
     free_flight_gravity = "free_flight_gravity"
     explicit_resultant_force = "explicit_resultant_force"
     collision_restitution = "collision_restitution"
@@ -306,6 +307,31 @@ def _directed_axis_families(draft: Any) -> frozenset[str]:
     return frozenset(families)
 
 
+def _semantic_directions(draft: Any) -> frozenset[str]:
+    """Every source-stated semantic direction carried by a quantity."""
+
+    out: set[str] = set()
+    for quantity in draft.quantities:
+        direction = quantity.direction
+        if direction is None or getattr(direction, "kind", None) != "semantic":
+            continue
+        value = getattr(getattr(direction, "direction", None), "value", None)
+        if value is not None:
+            out.add(value)
+    return frozenset(out)
+
+
+def _rest_boundary_count(draft: Any) -> int:
+    return sum(
+        1
+        for item in draft.state_conditions
+        if item.state.value == "at_rest"
+        and item.interval_id is not None
+        and item.event_id is not None
+        and item.evidence_refs
+    )
+
+
 def _observer_entities(draft: Any) -> tuple[str, ...]:
     """Entities the source itself declares to be reference frames."""
 
@@ -517,7 +543,9 @@ class _DraftFacts:
         "query_component",
         "query_role",
         "roles",
+        "rest_boundary_count",
         "rotating_relative_profile",
+        "semantic_directions",
     )
 
     def __init__(self, draft: Any, approved_assumption_ids: Iterable[str]) -> None:
@@ -530,6 +558,8 @@ class _DraftFacts:
         self.query_role = _query_role(draft)
         self.query_component = _query_component(draft)
         self.axis_families = _directed_axis_families(draft)
+        self.semantic_directions = _semantic_directions(draft)
+        self.rest_boundary_count = _rest_boundary_count(draft)
         self.observer_count = len(_observer_entities(draft))
         self.has_blocking_ambiguity = _blocking_ambiguity(draft)
         self.rotating_relative_profile = _rotating_relative_profile_evidence(draft)
@@ -748,6 +778,41 @@ def _signed_axis_frame(facts: _DraftFacts) -> PrerequisiteDisposition:
     return PrerequisiteDisposition.server_derivable
 
 
+def _intrinsic_motion_axis(facts: _DraftFacts) -> PrerequisiteDisposition:
+    """The signed axis explicitly named by along/opposite-motion directions.
+
+    ``along_motion`` defines the positive direction and ``opposite_motion`` the
+    negative direction of one intrinsic 1-D axis.  The policy writes that axis
+    down only when both signs are present and no unrelated semantic direction
+    competes with them.  It chooses no physical value and reads no text.
+    """
+
+    required = {"along_motion", "opposite_motion"}
+    if not required.issubset(facts.semantic_directions):
+        return PrerequisiteDisposition.missing
+    if facts.semantic_directions - required:
+        return PrerequisiteDisposition.ambiguous
+    return PrerequisiteDisposition.server_derivable
+
+
+def _one_evidenced_rest_boundary(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    if facts.rest_boundary_count == 1:
+        return PrerequisiteDisposition.explicit_source
+    if facts.rest_boundary_count > 1:
+        return PrerequisiteDisposition.ambiguous
+    return PrerequisiteDisposition.missing
+
+
+def _static_stop_time_capability(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """The engine carries an exact graph-only waiver for this algebraic shape."""
+
+    return PrerequisiteDisposition.explicit_source
+
+
 class _ProfileSignature:
     """One profile: when it applies, and what it would need to close."""
 
@@ -765,6 +830,42 @@ class _ProfileSignature:
 
 
 _PROFILES: tuple[_ProfileSignature, ...] = (
+    # A bounded one-dimensional braking interval.  The source itself states
+    # the positive motion direction, the opposite acceleration direction, and
+    # the final rest boundary.  The transaction merely gives those statements
+    # one named axis so the existing constant-acceleration velocity law can be
+    # used; it creates no numerical value.
+    _ProfileSignature(
+        ProfileId.signed_constant_acceleration_1d,
+        lambda facts: (
+            "constant_acceleration" in facts.approved
+            and facts.query_role == "duration"
+            and facts.roles.get("velocity") == 2
+            and facts.roles.get("acceleration") == 1
+            and facts.roles.get("duration") == 1
+            and len(facts.bounded_intervals) == 1
+            and not facts.interactions
+            and not facts.geometry
+        ),
+        (
+            ("authority_constant_acceleration", PrerequisiteKind.authority,
+             _needs_authority("constant_acceleration")),
+            ("interval_bounded", PrerequisiteKind.state_condition,
+             _bounded_interval),
+            ("state_final_rest", PrerequisiteKind.state_condition,
+             _one_evidenced_rest_boundary),
+            ("quantity_velocity", PrerequisiteKind.interaction_quantity,
+             _needs_role("velocity")),
+            ("quantity_acceleration", PrerequisiteKind.interaction_quantity,
+             _needs_role("acceleration")),
+            ("quantity_duration", PrerequisiteKind.interaction_quantity,
+             _needs_role("duration")),
+            ("frame_intrinsic_motion_axis", PrerequisiteKind.reference_frame,
+             _intrinsic_motion_axis),
+            ("capability_static_stop_time", PrerequisiteKind.capability,
+             _static_stop_time_capability),
+        ),
+    ),
     # Free flight under gravity alone.  Recognised by an approved uniform-gravity
     # authority on an interval with no force-bearing contact, rope, spring, or
     # collision interaction.  The frame and the gravity interaction are both
