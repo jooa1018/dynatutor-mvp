@@ -35,6 +35,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, replace
 from enum import Enum
+import json
 from typing import Any, Iterable
 
 from engine.mechanics.contracts import (
@@ -58,7 +59,7 @@ from evaluation.phase56_stage7.law_prerequisites import (
     topology_tier,
 )
 
-BLOCKED_LAW_DIAGNOSIS_VERSION = "stage7-blocked-law-diagnosis-v1"
+BLOCKED_LAW_DIAGNOSIS_VERSION = "stage7-blocked-law-diagnosis-v2"
 
 # Identifiers for the evaluator-only counterfactual structures.  They exist for
 # the duration of one diagnosis and are discarded with it.
@@ -234,12 +235,15 @@ def _with_frame(
 
     ``scope_quantities`` expresses the kinematic description in the new frame:
     every quantity and every motion interval that names *no* frame now names
-    this one.  Both matter — the law profiles check ``interval.frame_id`` as
-    well as each quantity's, so binding only the quantities leaves the frame
-    half-supplied and the counterfactual would under-report what a real frame
-    projection achieves.  A record that already names a frame keeps it: filling
-    an absent binding is what adding a frame does, overwriting a stated one is
-    rewriting the source.
+    this one.  A pre-typed radial/transverse component also names that exact
+    axis with positive basis sign; without that reciprocal binding the
+    counterfactual has not actually expressed the component in the frame.
+    Both matter — the law profiles check ``interval.frame_id`` as well as each
+    quantity's, so binding only the quantities leaves the frame half-supplied
+    and the counterfactual would under-report what a real frame projection
+    achieves.  A record that already names a frame keeps it: filling an absent
+    binding is what adding a frame does, overwriting a stated one is rewriting
+    the source.
 
     ``component_topology`` additionally retypes each component-bearing quantity
     onto one of the frame's axes.  That is a further claim about the model — it
@@ -256,6 +260,27 @@ def _with_frame(
             update: dict[str, Any] = {}
             if quantity.frame_id is None:
                 update["frame_id"] = frame.frame_id
+                if (
+                    frame_type is ReferenceFrameType.radial_transverse
+                    and quantity.component
+                    in {
+                        QuantityComponent.radial,
+                        QuantityComponent.transverse,
+                    }
+                ):
+                    update.update(
+                        direction_bound=True,
+                        direction_sign=1,
+                        direction_key=json.dumps(
+                            {
+                                "axis": quantity.component.value,
+                                "frame_id": frame.frame_id,
+                                "kind": "axis",
+                            },
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                    )
             if component_topology and quantity.role in _COMPONENT_ROLES:
                 axis = axes[index % len(axes)]
                 update["component"] = _COMPONENT_FOR_AXIS[axis]

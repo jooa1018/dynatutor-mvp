@@ -9780,7 +9780,7 @@ def _wave_f_contract(
         return None, failure("requires one evidenced event-free interval in the exact frame")
 
     expected_counts = {
-        "polar_kinematics": (11, 0, 1, 0, 0, 0),
+        "polar_kinematics": (11, 0, 1, 0, 0, len(ir.assumptions)),
         "instant_center_velocity": (4, 2, 1, 0, 1, 1),
         "plane_rigid_body_acceleration": (9, 2, 1, 0, 0, 0),
         "plane_rigid_body_velocity": (8, 2, 1, 0, 0, 0),
@@ -9868,8 +9868,23 @@ def _wave_f_contract(
             )
 
     if kind == "polar_kinematics":
-        if ir.assumptions or ir.state_conditions or ir.interactions or ir.points:
-            return None, failure("does not permit hidden zero-derivative assumptions")
+        if ir.state_conditions or ir.interactions or ir.points:
+            return None, failure("does not permit hidden state or interaction structure")
+        if any(
+            item.subject_id
+            != next(
+                entity.entity_id
+                for entity in ir.entities
+                if entity.primitive is EntityPrimitive.particle
+            )
+            or item.interval_id
+            not in {None, ir.motion_intervals[0].interval_id}
+            or item.proposed_role is not None
+            or item.proposed_value is not None
+            or item.proposed_unit is not None
+            for item in ir.assumptions
+        ):
+            return None, failure("contains a nonlocal or value-bearing assumption")
         required_components = {
             (QuantityRole.velocity, QuantityComponent.radial),
             (QuantityRole.velocity, QuantityComponent.transverse),

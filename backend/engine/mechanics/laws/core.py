@@ -10751,6 +10751,39 @@ def _exact_component_quantity(
     )
 
 
+def _exact_polar_axis_direction(
+    item: BoundQuantity,
+    *,
+    frame_id: str,
+    component: QuantityComponent,
+    radius: bool = False,
+) -> bool:
+    """Require the component's exact typed polar axis and admissible sign."""
+
+    expected_key = json.dumps(
+        {
+            "axis": component.value,
+            "frame_id": frame_id,
+            "kind": "axis",
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return (
+        item.direction_bound
+        and item.direction_key == expected_key
+        and item.direction_sign in ({1} if radius else {-1, 1})
+    )
+
+
+def _exact_polar_magnitude(item: BoundQuantity) -> bool:
+    return (
+        item.component is QuantityComponent.magnitude
+        and not item.direction_bound
+        and item.direction_key is None
+    )
+
+
 def _plane_rigid_velocity_profile(
     context: LawContext,
 ) -> _PlaneRigidVelocityLawProfile | None:
@@ -10883,7 +10916,6 @@ def _polar_kinematics_profile(context: LawContext) -> _PolarKinematicsLawProfile
         or context.events
         or context.interactions
         or context.state_conditions
-        or context.assumptions
 
     ):
         return None
@@ -10962,6 +10994,31 @@ def _polar_kinematics_profile(context: LawContext) -> _PolarKinematicsLawProfile
         or any(item.known_si_value is None for item in known)
         or any(item.known_si_value is not None for item in inferred)
         or set(relation.quantity_ids) != {radius.quantity_id}
+        or not _exact_polar_axis_direction(
+            radius,
+            frame_id=frame.frame_id,
+            component=QuantityComponent.radial,
+            radius=True,
+        )
+        or not all(
+            _exact_polar_axis_direction(
+                item,
+                frame_id=frame.frame_id,
+                component=component,
+            )
+            for item, component in (
+                (radial_rate, QuantityComponent.radial),
+                (radial_acceleration, QuantityComponent.radial),
+                (omega, QuantityComponent.transverse),
+                (alpha, QuantityComponent.transverse),
+                (velocity_radial, QuantityComponent.radial),
+                (velocity_transverse, QuantityComponent.transverse),
+                (acceleration_radial, QuantityComponent.radial),
+                (acceleration_transverse, QuantityComponent.transverse),
+            )
+        )
+        or not _exact_polar_magnitude(speed)
+        or not _exact_polar_magnitude(acceleration_magnitude)
     ):
         return None
     return _PolarKinematicsLawProfile(
@@ -11217,12 +11274,18 @@ def _wave_f_emissions(context: LawContext) -> list[LawEmission]:
         velocity_squared_dimension = polar.speed.dimension.plus(polar.speed.dimension)
         acceleration_squared_dimension = polar.acceleration_magnitude.dimension.plus(polar.acceleration_magnitude.dimension)
         assert velocity_squared_dimension is not None and acceleration_squared_dimension is not None
-        omega_squared = Power(base=polar.omega.expression, exponent=LiteralNode(value=2.0))
+        omega_squared = Power(
+            base=_signed(polar.omega),
+            exponent=LiteralNode(value=2.0),
+        )
         return [
             _emit(
                 context,
                 "polar_velocity_radial",
-                Equality(left=polar.velocity_radial.expression, right=polar.radial_rate.expression),
+                Equality(
+                    left=_signed(polar.velocity_radial),
+                    right=_signed(polar.radial_rate),
+                ),
                 (polar.velocity_radial, polar.radial_rate),
                 constraint_ids=(polar.relation_id,),
             ),
@@ -11230,9 +11293,9 @@ def _wave_f_emissions(context: LawContext) -> list[LawEmission]:
                 context,
                 "polar_velocity_transverse",
                 Equality(
-                    left=polar.velocity_transverse.expression,
+                    left=_signed(polar.velocity_transverse),
                     right=Multiply(
-                        factors=(polar.radius.expression, polar.omega.expression),
+                        factors=(polar.radius.expression, _signed(polar.omega)),
                         dimension=polar.velocity_transverse.dimension,
                     ),
                 ),
@@ -11257,9 +11320,9 @@ def _wave_f_emissions(context: LawContext) -> list[LawEmission]:
                 context,
                 "polar_acceleration_radial",
                 Equality(
-                    left=polar.acceleration_radial.expression,
+                    left=_signed(polar.acceleration_radial),
                     right=Subtract(
-                        left=polar.radial_acceleration.expression,
+                        left=_signed(polar.radial_acceleration),
                         right=Multiply(
                             factors=(polar.radius.expression, omega_squared),
                             dimension=polar.acceleration_radial.dimension,
@@ -11277,18 +11340,21 @@ def _wave_f_emissions(context: LawContext) -> list[LawEmission]:
                 context,
                 "polar_acceleration_transverse",
                 Equality(
-                    left=polar.acceleration_transverse.expression,
+                    left=_signed(polar.acceleration_transverse),
                     right=Add(
                         terms=(
                             Multiply(
-                                factors=(polar.radius.expression, polar.alpha.expression),
+                                factors=(
+                                    polar.radius.expression,
+                                    _signed(polar.alpha),
+                                ),
                                 dimension=polar.acceleration_transverse.dimension,
                             ),
                             Multiply(
                                 factors=(
                                     LiteralNode(value=2.0),
-                                    polar.radial_rate.expression,
-                                    polar.omega.expression,
+                                    _signed(polar.radial_rate),
+                                    _signed(polar.omega),
                                 ),
                                 dimension=polar.acceleration_transverse.dimension,
                             ),

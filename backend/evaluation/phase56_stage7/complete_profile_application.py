@@ -51,7 +51,7 @@ from evaluation.phase56_stage7.complete_profile import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v5"
+    "phase56-stage7-complete-profile-application-v6"
 )
 
 
@@ -106,6 +106,9 @@ ENERGY_SPEED_FRAME_ID = "frm_closure_energy_speed"
 DIRECT_WORK_FRAME_ID = "frm_closure_direct_work"
 DIRECT_WORK_INTERACTION_ID = "rel_closure_direct_work"
 DIRECT_WORK_ASSUMPTION_ID = "asm_closure_direct_constant_force_work"
+POLAR_COORDINATE_ENTITY_ID = "entity_closure_polar_coordinate"
+POLAR_FRAME_ID = "frm_closure_polar_state"
+POLAR_RADIUS_RELATION_ID = "geo_closure_polar_radius"
 WORLD_FRAME_ID = "frm_closure_world"
 OBSERVER_FRAME_ID = "frm_closure_observer"
 SLOT_PIN_FRAME_ID = "frm_closure_slot_radial"
@@ -132,6 +135,33 @@ _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
 }
 _MASS_DIMENSION = DimensionVector(mass=1)
 _FORCE_DIMENSION: dict[str, int] = {"mass": 1, "length": 1, "time": -2}
+
+_POLAR_COMPONENT_IDS: Mapping[tuple[str, str], tuple[str, str]] = {
+    ("velocity", "radial"): (
+        "qty_closure_polar_velocity_radial",
+        "sym_closure_polar_velocity_radial",
+    ),
+    ("velocity", "transverse"): (
+        "qty_closure_polar_velocity_transverse",
+        "sym_closure_polar_velocity_transverse",
+    ),
+    ("speed", "magnitude"): (
+        "qty_closure_polar_speed",
+        "sym_closure_polar_speed",
+    ),
+    ("acceleration", "radial"): (
+        "qty_closure_polar_acceleration_radial",
+        "sym_closure_polar_acceleration_radial",
+    ),
+    ("acceleration", "transverse"): (
+        "qty_closure_polar_acceleration_transverse",
+        "sym_closure_polar_acceleration_transverse",
+    ),
+    ("acceleration", "magnitude"): (
+        "qty_closure_polar_acceleration_magnitude",
+        "sym_closure_polar_acceleration_magnitude",
+    ),
+}
 
 # A source that said a quantity has no direction stated its *magnitude*, and a
 # magnitude is not a signed component of anything.  Restamping it onto an axis
@@ -928,6 +958,448 @@ def _direct_constant_force_work_transaction(
         (DIRECT_WORK_FRAME_ID, DIRECT_WORK_INTERACTION_ID),
         tuple(sorted(rebound)),
     )
+
+
+def _polar_kinematics_state_transaction(
+    payload: dict[str, Any], _authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one exact, source-typed instantaneous polar state.
+
+    The transaction creates no value, equation, force, assumption, solver
+    choice, candidate, or answer.  It preserves all five source values and
+    writes only the polar coordinate/frame/radius topology, six value-free
+    component unknowns, and the query binding consumed by the existing verified
+    polar law graph.
+    """
+
+    reserved_ids = {
+        POLAR_COORDINATE_ENTITY_ID,
+        POLAR_FRAME_ID,
+        POLAR_RADIUS_RELATION_ID,
+        *(
+            item
+            for pair in _POLAR_COMPONENT_IDS.values()
+            for item in pair
+        ),
+    }
+    if (
+        len(payload["entities"]) != 1
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["queries"]) != 1
+        or len(payload["events"]) != 3
+        or len(payload["quantities"]) != 6
+        or len(payload["symbols"]) != 6
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["geometry"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or payload["state_conditions"]
+        or payload["principle_hints"]
+        or payload["ambiguities"]
+        or payload["unsupported_features"]
+        or payload["figure_dependency"] != {
+            "level": "none",
+            "missing_information": [],
+            "evidence_refs": [],
+        }
+        or reserved_ids & _authored_draft_ids(payload)
+    ):
+        return None
+
+    particle = payload["entities"][0]
+    if particle.get("primitive") != "particle":
+        return None
+    particle_id = particle.get("entity_id")
+    interval = payload["motion_intervals"][0]
+    interval_id = interval.get("interval_id")
+    start_id = interval.get("start_event_id")
+    finish_id = interval.get("end_event_id")
+    if (
+        interval.get("subject_ids") != [particle_id]
+        or interval.get("frame_id") is not None
+        or start_id is None
+        or finish_id is None
+        or start_id == finish_id
+    ):
+        return None
+
+    source_evidence_ids = {
+        item.get("evidence_id") for item in payload["source_evidence"]
+    }
+    if not set(interval.get("evidence_refs", ())).issubset(source_evidence_ids):
+        return None
+    if any(
+        item.get("subject_id") != particle_id
+        or item.get("interval_id") not in {None, interval_id}
+        or item.get("proposed_role") is not None
+        or item.get("proposed_value") is not None
+        or item.get("proposed_unit") is not None
+        or not item.get("evidence_refs")
+        or not set(item["evidence_refs"]).issubset(source_evidence_ids)
+        for item in payload["assumptions"]
+    ):
+        return None
+
+    events = {item.get("event_id"): item for item in payload["events"]}
+    if len(events) != 3:
+        return None
+    start = events.get(start_id)
+    finish = events.get(finish_id)
+    occurrences = [
+        item for item in payload["events"]
+        if item.get("event_id") not in {start_id, finish_id}
+    ]
+    if (
+        start is None
+        or finish is None
+        or len(occurrences) != 1
+        or start.get("kind") != "start"
+        or finish.get("kind") != "finish"
+        or occurrences[0].get("kind") != "other"
+        or any(
+            item.get("subject_ids") != [particle_id]
+            or item.get("time_quantity_id") is not None
+            or item.get("evidence_refs")
+            for item in payload["events"]
+        )
+        or start.get("interval_ids") != [interval_id]
+        or finish.get("interval_ids") != [interval_id]
+        or start.get("occurs_in_interval_ids")
+        or finish.get("occurs_in_interval_ids")
+        or occurrences[0].get("interval_ids")
+        or occurrences[0].get("occurs_in_interval_ids") != [interval_id]
+    ):
+        return None
+    instant_id = occurrences[0]["event_id"]
+
+    query = payload["queries"][0]
+    target = query["target"]
+    target_quantity_id = target.get("target_quantity_id")
+    target_quantities = [
+        item for item in payload["quantities"]
+        if item.get("quantity_id") == target_quantity_id
+    ]
+    query_key = (target.get("role"), target.get("component"))
+    if query_key == ("velocity", "magnitude"):
+        closed_query_key = ("speed", "magnitude")
+    else:
+        closed_query_key = query_key
+    if (
+        len(target_quantities) != 1
+        or closed_query_key not in _POLAR_COMPONENT_IDS
+        or query.get("shape") != "scalar"
+        or query.get("evidence_refs")
+        or target.get("subject_id") != particle_id
+        or target.get("point_id") is not None
+        or target.get("frame_id") is not None
+        or target.get("interval_id") != interval_id
+        or target.get("event_id") != instant_id
+        or target.get("direction") not in (None, {})
+    ):
+        return None
+    query_quantity = target_quantities[0]
+    if (
+        query_quantity.get("role") != query_key[0]
+        or query_quantity.get("subject_id") != particle_id
+        or query_quantity.get("point_id") is not None
+        or query_quantity.get("frame_id") is not None
+        or query_quantity.get("interval_id") != interval_id
+        or query_quantity.get("event_id") != instant_id
+        or query_quantity.get("component") != query_key[1]
+        or query_quantity.get("direction") not in (None, {})
+        or query_quantity.get("shape") != "scalar"
+        or query_quantity.get("raw_value") is not None
+        or query_quantity.get("raw_unit") is not None
+        or query_quantity.get("provenance") != "unknown"
+        or not query_quantity.get("symbol_id")
+        or query_quantity.get("evidence_refs")
+        or query.get("output_dimension") != query_quantity.get("dimension")
+    ):
+        return None
+
+    known = [
+        item for item in payload["quantities"]
+        if item.get("quantity_id") != target_quantity_id
+    ]
+
+    def source_quantity(
+        role: str,
+        component: str | None,
+        directions: frozenset[str],
+    ) -> dict[str, Any] | None:
+        matches = [
+            item
+            for item in known
+            if item.get("role") == role
+            and (component is None or item.get("component") == component)
+            and (item.get("direction") or {}).get("kind") == "semantic"
+            and (item.get("direction") or {}).get("direction") in directions
+        ]
+        if len(matches) != 1:
+            return None
+        item = matches[0]
+        stated_direction = item["direction"]["direction"]
+        expected_component = (
+            stated_direction if role.startswith("angular_") else component
+        )
+        refs = set(item.get("evidence_refs", ()))
+        if (
+            item.get("subject_id") != particle_id
+            or item.get("point_id") is not None
+            or item.get("frame_id") is not None
+            or item.get("interval_id") != interval_id
+            or item.get("event_id") != instant_id
+            or item.get("component") != expected_component
+            or item.get("shape") != "scalar"
+            or item.get("raw_value") is None
+            or item.get("raw_unit") is None
+            or item.get("provenance") != "explicit_source"
+            or not item.get("symbol_id")
+            or not refs
+            or not refs.issubset(source_evidence_ids)
+        ):
+            return None
+        return item
+
+    radius = source_quantity("radius", "radial", frozenset({"radial"}))
+    radial_rate = source_quantity(
+        "velocity", "radial", frozenset({"radial"})
+    )
+    radial_acceleration = source_quantity(
+        "acceleration", "radial", frozenset({"radial"})
+    )
+    omega = source_quantity(
+        "angular_velocity", None, frozenset({"clockwise", "counterclockwise"})
+    )
+    alpha = source_quantity(
+        "angular_acceleration",
+        None,
+        frozenset({"clockwise", "counterclockwise"}),
+    )
+    source_state = (
+        radius,
+        radial_rate,
+        radial_acceleration,
+        omega,
+        alpha,
+    )
+    if (
+        any(item is None for item in source_state)
+        or len({item["quantity_id"] for item in source_state if item is not None}) != 5
+        or omega["direction"]["direction"] != alpha["direction"]["direction"]
+    ):
+        return None
+    state_evidence = sorted(
+        {
+            evidence_id
+            for item in source_state
+            for evidence_id in item["evidence_refs"]
+        }
+    )
+    if not state_evidence or len(state_evidence) > 16:
+        return None
+
+    symbols_by_quantity: dict[str, list[dict[str, Any]]] = {}
+    for symbol in payload["symbols"]:
+        symbols_by_quantity.setdefault(symbol.get("quantity_id"), []).append(symbol)
+    if any(
+        len(symbols_by_quantity.get(item.get("quantity_id"), ())) != 1
+        or symbols_by_quantity[item["quantity_id"]][0].get("symbol_id")
+        != item.get("symbol_id")
+        or symbols_by_quantity[item["quantity_id"]][0].get("dimension")
+        != item.get("dimension")
+        or symbols_by_quantity[item["quantity_id"]][0].get("shape") != "scalar"
+        for item in payload["quantities"]
+    ):
+        return None
+
+    def axis_direction(axis: str, sign: int = 1) -> dict[str, Any]:
+        return {
+            "kind": "axis",
+            "frame_id": POLAR_FRAME_ID,
+            "axis": axis,
+            "sign": sign,
+        }
+
+    frame = {
+        "frame_id": POLAR_FRAME_ID,
+        "frame_type": "radial_transverse",
+        "origin": {"kind": "world"},
+        "axes": [
+            {"axis": axis, "direction": axis_direction(axis)}
+            for axis in ("radial", "transverse")
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": state_evidence,
+    }
+    coordinate = {
+        "entity_id": POLAR_COORDINATE_ENTITY_ID,
+        "primitive": "reference_frame",
+        "label": "polar coordinate",
+        "aliases": [],
+        "component_of_entity_id": None,
+        "evidence_refs": state_evidence,
+        "model_confidence": None,
+    }
+
+    rewritten_particle = dict(particle)
+    rewritten_particle["evidence_refs"] = sorted(
+        set(particle.get("evidence_refs", ())) | set(state_evidence)
+    )
+    if len(rewritten_particle["evidence_refs"]) > 16:
+        return None
+
+    angular_sign = (
+        -1 if omega["direction"]["direction"] == "clockwise" else 1
+    )
+    source_by_id = {
+        radius["quantity_id"]: ("radial", 1),
+        radial_rate["quantity_id"]: ("radial", 1),
+        radial_acceleration["quantity_id"]: ("radial", 1),
+        omega["quantity_id"]: ("transverse", angular_sign),
+        alpha["quantity_id"]: ("transverse", angular_sign),
+    }
+    rewritten_quantities: list[dict[str, Any]] = []
+    rebound: list[str] = []
+    for original in payload["quantities"]:
+        if original["quantity_id"] == target_quantity_id:
+            continue
+        quantity = dict(original)
+        axis, sign = source_by_id[quantity["quantity_id"]]
+        quantity.update(
+            subject_id=POLAR_COORDINATE_ENTITY_ID,
+            frame_id=POLAR_FRAME_ID,
+            interval_id=interval_id,
+            event_id=None,
+            component=axis,
+            direction=axis_direction(axis, sign),
+        )
+        rewritten_quantities.append(quantity)
+        rebound.append(quantity["quantity_id"])
+
+    generated_quantities: list[dict[str, Any]] = []
+    generated_symbols: list[dict[str, Any]] = []
+    created: set[str] = {
+        POLAR_COORDINATE_ENTITY_ID,
+        POLAR_FRAME_ID,
+        POLAR_RADIUS_RELATION_ID,
+    }
+    component_dimensions = {
+        ("velocity", "radial"): radial_rate["dimension"],
+        ("velocity", "transverse"): radial_rate["dimension"],
+        ("speed", "magnitude"): radial_rate["dimension"],
+        ("acceleration", "radial"): radial_acceleration["dimension"],
+        ("acceleration", "transverse"): radial_acceleration["dimension"],
+        ("acceleration", "magnitude"): radial_acceleration["dimension"],
+    }
+    closed_query_quantity: dict[str, Any] | None = None
+    for component_key, (quantity_id, symbol_id) in _POLAR_COMPONENT_IDS.items():
+        role, component = component_key
+        direction = (
+            axis_direction(component)
+            if component in {"radial", "transverse"} else None
+        )
+        if component_key == closed_query_key:
+            item = dict(query_quantity)
+            item.update(
+                role=role,
+                subject_id=particle_id,
+                point_id=None,
+                frame_id=POLAR_FRAME_ID,
+                interval_id=interval_id,
+                event_id=None,
+                component=component,
+                direction=direction,
+                evidence_refs=state_evidence,
+            )
+            closed_query_quantity = item
+            rebound.append(item["quantity_id"])
+            rewritten_quantities.append(item)
+            continue
+        item = {
+            "quantity_id": quantity_id,
+            "symbol_id": symbol_id,
+            "role": role,
+            "subject_id": particle_id,
+            "point_id": None,
+            "frame_id": POLAR_FRAME_ID,
+            "interval_id": interval_id,
+            "event_id": None,
+            "component": component,
+            "direction": direction,
+            "shape": "scalar",
+            "dimension": component_dimensions[component_key],
+            "provenance": "inferred",
+            "evidence_refs": state_evidence,
+            "assumption_policy_ref": None,
+            "correction_id": None,
+            "model_confidence": None,
+            "raw_value": None,
+            "raw_unit": None,
+        }
+        generated_quantities.append(item)
+        generated_symbols.append(
+            {
+                "symbol_id": symbol_id,
+                "quantity_id": quantity_id,
+                "dimension": component_dimensions[component_key],
+                "shape": "scalar",
+                "vector_length": None,
+            }
+        )
+        created.update({quantity_id, symbol_id})
+    if closed_query_quantity is None:
+        return None
+
+    rewritten_interval = dict(interval)
+    rewritten_interval.update(
+        subject_ids=[particle_id, POLAR_COORDINATE_ENTITY_ID],
+        frame_id=POLAR_FRAME_ID,
+        start_event_id=None,
+        end_event_id=None,
+        evidence_refs=state_evidence,
+    )
+    rewritten_query = dict(query)
+    rewritten_target = dict(target)
+    rewritten_target.update(
+        role=closed_query_key[0],
+        subject_id=particle_id,
+        point_id=None,
+        frame_id=POLAR_FRAME_ID,
+        interval_id=interval_id,
+        event_id=None,
+        component=closed_query_key[1],
+        direction=closed_query_quantity["direction"],
+        target_quantity_id=target_quantity_id,
+    )
+    rewritten_query.update(
+        target=rewritten_target,
+        evidence_refs=state_evidence,
+    )
+    radius_relation = {
+        "relation_id": POLAR_RADIUS_RELATION_ID,
+        "kind": "radius",
+        "participant_ids": [particle_id, POLAR_COORDINATE_ENTITY_ID],
+        "expression": None,
+        "quantity_ids": [radius["quantity_id"]],
+        "interval_id": interval_id,
+        "evidence_refs": list(radius["evidence_refs"]),
+    }
+
+    closed = dict(payload)
+    closed["entities"] = [rewritten_particle, coordinate]
+    closed["reference_frames"] = [frame]
+    closed["motion_intervals"] = [rewritten_interval]
+    closed["events"] = []
+    closed["symbols"] = [*payload["symbols"], *generated_symbols]
+    closed["quantities"] = [*rewritten_quantities, *generated_quantities]
+    closed["geometry"] = [radius_relation]
+    closed["queries"] = [rewritten_query]
+    return closed, tuple(sorted(created)), tuple(sorted(rebound))
 
 
 def _slot_pin_relative_frame_transaction(
@@ -2238,6 +2710,7 @@ _TRANSACTIONS = {
     ProfileId.direct_constant_force_work: (
         _direct_constant_force_work_transaction
     ),
+    ProfileId.polar_kinematics_state: _polar_kinematics_state_transaction,
     ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.fixed_pulley: _fixed_pulley_acceleration_transaction,
@@ -2434,6 +2907,9 @@ __all__ = [
     "DIRECT_WORK_ASSUMPTION_ID",
     "DIRECT_WORK_FRAME_ID",
     "DIRECT_WORK_INTERACTION_ID",
+    "POLAR_COORDINATE_ENTITY_ID",
+    "POLAR_FRAME_ID",
+    "POLAR_RADIUS_RELATION_ID",
     "GRAVITY_INTERACTION_ID",
     "GRAVITY_QUANTITY_ID",
     "GRAVITY_SYMBOL_ID",

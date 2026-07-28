@@ -45,7 +45,7 @@ from pydantic import Field
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel, VersionToken
 
-COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v2"
+COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v3"
 COMPLETE_PROFILE_CENSUS_VERSION = "phase56-stage7-complete-profile-census-v1"
 COMPLETE_PROFILE_PLAN_SCHEMA = "dynatutor.phase56_stage7.complete_profile_plan"
 COMPLETE_PROFILE_PLAN_VERSION = "1.0"
@@ -68,6 +68,7 @@ class ProfileId(str, Enum):
     rolling_energy = "rolling_energy"
     particle_work_energy_speed = "particle_work_energy_speed"
     direct_constant_force_work = "direct_constant_force_work"
+    polar_kinematics_state = "polar_kinematics_state"
     work_energy = "work_energy"
     impulse_momentum = "impulse_momentum"
     horizontal_contact = "horizontal_contact"
@@ -530,6 +531,298 @@ def _rotating_relative_profile_evidence(
     }
 
 
+def _polar_kinematics_state_profile_evidence(
+    draft: Any,
+) -> Mapping[str, PrerequisiteDisposition] | None:
+    """Classify one exact source-typed instantaneous polar state.
+
+    The projected source carries five scalar state quantities at one explicit
+    occurrence inside one otherwise artificial start/finish wrapper.  This
+    reader authorises only structural closure: removing that evidence-free
+    wrapper, writing the polar frame and radius topology, and creating the six
+    value-free component unknowns the existing polar laws require.
+
+    No value, equation, assumption, solver choice, answer metadata, text, or
+    corpus identity is read here.  A real boundary/event distinction, competing
+    subject or interval, missing direction, or extra typed authority refuses.
+    """
+
+    if (
+        len(draft.entities) != 1
+        or draft.entities[0].primitive.value != "particle"
+        or len(draft.motion_intervals) != 1
+        or len(draft.queries) != 1
+        or draft.reference_frames
+        or draft.points
+        or draft.geometry
+        or draft.interactions
+        or draft.constraints
+        or draft.state_conditions
+        or draft.principle_hints
+        or draft.ambiguities
+        or draft.unsupported_features
+        or draft.figure_dependency.level.value != "none"
+        or draft.figure_dependency.missing_information
+        or draft.figure_dependency.evidence_refs
+    ):
+        return None
+
+    particle_id = draft.entities[0].entity_id
+    interval = draft.motion_intervals[0]
+    interval_id = interval.interval_id
+    if (
+        tuple(interval.subject_ids) != (particle_id,)
+        or interval.frame_id is not None
+        or interval.start_event_id is None
+        or interval.end_event_id is None
+        or interval.start_event_id == interval.end_event_id
+    ):
+        return None
+
+    evidence_ids = {item.evidence_id for item in draft.source_evidence}
+
+    def evidenced(item: Any) -> bool:
+        refs = set(item.evidence_refs)
+        return bool(refs) and refs.issubset(evidence_ids)
+
+    if any(
+        item.subject_id != particle_id
+        or item.interval_id not in {None, interval_id}
+        or item.proposed_role is not None
+        or item.proposed_value is not None
+        or item.proposed_unit is not None
+        or not evidenced(item)
+        for item in draft.assumptions
+    ):
+        return None
+
+    events = {item.event_id: item for item in draft.events}
+    if len(events) != 3 or len(events) != len(draft.events):
+        return None
+    start = events.get(interval.start_event_id)
+    finish = events.get(interval.end_event_id)
+    occurrences = tuple(
+        item
+        for item in draft.events
+        if item.event_id not in {interval.start_event_id, interval.end_event_id}
+    )
+    event_shape_exact = (
+        start is not None
+        and finish is not None
+        and len(occurrences) == 1
+        and start.kind.value == "start"
+        and finish.kind.value == "finish"
+        and occurrences[0].kind.value == "other"
+        and all(
+            tuple(item.subject_ids) == (particle_id,)
+            and item.time_quantity_id is None
+            and not item.evidence_refs
+            for item in draft.events
+        )
+        and tuple(start.interval_ids) == (interval_id,)
+        and tuple(finish.interval_ids) == (interval_id,)
+        and not start.occurs_in_interval_ids
+        and not finish.occurs_in_interval_ids
+        and not occurrences[0].interval_ids
+        and tuple(occurrences[0].occurs_in_interval_ids) == (interval_id,)
+    )
+    instant_id = occurrences[0].event_id if len(occurrences) == 1 else None
+
+    query = draft.queries[0]
+    target = query.target
+    target_quantity = next(
+        (
+            item
+            for item in draft.quantities
+            if item.quantity_id == target.target_quantity_id
+        ),
+        None,
+    )
+    query_key = (target.role.value, target.component.value)
+    allowed_query_keys = {
+        ("velocity", "radial"),
+        ("velocity", "transverse"),
+        ("velocity", "magnitude"),
+        ("speed", "magnitude"),
+        ("acceleration", "radial"),
+        ("acceleration", "transverse"),
+        ("acceleration", "magnitude"),
+    }
+    query_exact = (
+        query.shape.value == "scalar"
+        and query_key in allowed_query_keys
+        and target.subject_id == particle_id
+        and target.point_id is None
+        and target.frame_id is None
+        and target.interval_id == interval_id
+        and target.event_id == instant_id
+        and target.direction is None
+        and target_quantity is not None
+        and target_quantity.subject_id == particle_id
+        and target_quantity.point_id is None
+        and target_quantity.frame_id is None
+        and target_quantity.interval_id == interval_id
+        and target_quantity.event_id == instant_id
+        and target_quantity.role is target.role
+        and target_quantity.component is target.component
+        and target_quantity.direction is None
+        and target_quantity.shape.value == "scalar"
+        and target_quantity.raw_value is None
+        and target_quantity.raw_unit is None
+        and target_quantity.provenance.value == "unknown"
+        and target_quantity.symbol_id is not None
+        and not target_quantity.evidence_refs
+        and query.output_dimension == target_quantity.dimension
+        and not query.evidence_refs
+    )
+    if not query_exact:
+        return None
+
+    symbols_by_quantity: Counter[str | None] = Counter(
+        item.quantity_id for item in draft.symbols
+    )
+    reciprocal_symbols = (
+        len(draft.symbols) == len(draft.quantities)
+        and all(
+            item.symbol_id is not None
+            and symbols_by_quantity[item.quantity_id] == 1
+            for item in draft.quantities
+        )
+    )
+    if not reciprocal_symbols:
+        return None
+
+    known = tuple(
+        item
+        for item in draft.quantities
+        if item.quantity_id != target_quantity.quantity_id
+    )
+    temporal_exact = (
+        event_shape_exact
+        and set(interval.evidence_refs).issubset(evidence_ids)
+        and instant_id is not None
+        and all(
+            item.subject_id == particle_id
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id == interval_id
+            and item.event_id == instant_id
+            and item.shape.value == "scalar"
+            for item in known
+        )
+    )
+
+    expected: Mapping[str, tuple[str, str, frozenset[str]]] = {
+        "radius": ("radius", "radial", frozenset({"radial"})),
+        "radial_rate": ("velocity", "radial", frozenset({"radial"})),
+        "radial_acceleration": (
+            "acceleration",
+            "radial",
+            frozenset({"radial"}),
+        ),
+        "omega": (
+            "angular_velocity",
+            "",
+            frozenset({"clockwise", "counterclockwise"}),
+        ),
+        "alpha": (
+            "angular_acceleration",
+            "",
+            frozenset({"clockwise", "counterclockwise"}),
+        ),
+    }
+    dispositions: dict[str, PrerequisiteDisposition] = {}
+    selected: dict[str, Any] = {}
+    for name, (role, component, directions) in expected.items():
+        matches = tuple(
+            item
+            for item in known
+            if item.role.value == role
+            and (not component or item.component.value == component)
+            and getattr(
+                getattr(item.direction, "direction", None), "value", None
+            )
+            in directions
+        )
+        if len(matches) != 1:
+            dispositions[name] = (
+                PrerequisiteDisposition.missing
+                if not matches else PrerequisiteDisposition.ambiguous
+            )
+            continue
+        item = matches[0]
+        direction = getattr(
+            getattr(item.direction, "direction", None), "value", None
+        )
+        exact_component = (
+            item.component.value == (
+                direction if role.startswith("angular_") else component
+            )
+        )
+        exact_source = (
+            temporal_exact
+            and exact_component
+            and item.raw_value is not None
+            and item.raw_unit is not None
+            and item.provenance.value == "explicit_source"
+            and item.symbol_id is not None
+            and evidenced(item)
+        )
+        dispositions[name] = (
+            PrerequisiteDisposition.explicit_source
+            if exact_source else PrerequisiteDisposition.missing
+        )
+        selected[name] = item
+
+    accounted = {
+        item.quantity_id for item in selected.values()
+    } | {target_quantity.quantity_id}
+    if len(accounted) != len(draft.quantities):
+        for name in dispositions:
+            if dispositions[name] is PrerequisiteDisposition.explicit_source:
+                dispositions[name] = PrerequisiteDisposition.ambiguous
+
+    angular_directions = {
+        getattr(
+            getattr(selected.get(name), "direction", None),
+            "direction",
+            None,
+        )
+        for name in ("omega", "alpha")
+        if name in selected
+    }
+    angular_direction_values = {
+        getattr(item, "value", None) for item in angular_directions
+    }
+    direction_exact = (
+        len(angular_direction_values) == 1
+        and angular_direction_values
+        <= {"clockwise", "counterclockwise"}
+        and all(
+            dispositions.get(name)
+            is PrerequisiteDisposition.explicit_source
+            for name in ("radius", "radial_rate", "radial_acceleration", "omega", "alpha")
+        )
+    )
+    dispositions.update(
+        temporal_scope=(
+            PrerequisiteDisposition.server_derivable
+            if temporal_exact else PrerequisiteDisposition.ambiguous
+        ),
+        direction_binding=(
+            PrerequisiteDisposition.server_derivable
+            if direction_exact else PrerequisiteDisposition.ambiguous
+        ),
+        coordinate_entity=PrerequisiteDisposition.server_derivable,
+        frame=PrerequisiteDisposition.server_derivable,
+        radius_relation=PrerequisiteDisposition.server_derivable,
+        query_binding=PrerequisiteDisposition.server_derivable,
+        derived_components=PrerequisiteDisposition.generated_unknown,
+        capability=PrerequisiteDisposition.explicit_source,
+    )
+    return dispositions
+
+
 class _DraftFacts:
     """One pass of typed readings, shared by every profile signature."""
 
@@ -541,6 +834,7 @@ class _DraftFacts:
         "has_blocking_ambiguity",
         "interactions",
         "observer_count",
+        "polar_kinematics_state_profile",
         "primitives",
         "query_component",
         "query_role",
@@ -565,6 +859,9 @@ class _DraftFacts:
         self.observer_count = len(_observer_entities(draft))
         self.has_blocking_ambiguity = _blocking_ambiguity(draft)
         self.rotating_relative_profile = _rotating_relative_profile_evidence(draft)
+        self.polar_kinematics_state_profile = (
+            _polar_kinematics_state_profile_evidence(draft)
+        )
 
 
 # --------------------------------------------------------------------------
@@ -746,6 +1043,15 @@ def _rotating_relative_prerequisite(name: str) -> _Resolver:
         if facts.rotating_relative_profile is None:
             return PrerequisiteDisposition.missing
         return facts.rotating_relative_profile[name]
+
+    return resolve
+
+
+def _polar_kinematics_state_prerequisite(name: str) -> _Resolver:
+    def resolve(facts: _DraftFacts) -> PrerequisiteDisposition:
+        if facts.polar_kinematics_state_profile is None:
+            return PrerequisiteDisposition.missing
+        return facts.polar_kinematics_state_profile[name]
 
     return resolve
 
@@ -1161,6 +1467,43 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _direct_constant_force_work_capability),
             ("symbol_work", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
+        ),
+    ),
+    # Five source-backed scalar polar state quantities at one occurrence inside
+    # an evidence-free artificial start/finish wrapper.  The transaction
+    # removes only that wrapper, writes one radial/transverse coordinate and
+    # radius topology, and creates value-free component unknowns.  The existing
+    # polar laws, compiler, solver, and verifier remain the sole answer authority.
+    _ProfileSignature(
+        ProfileId.polar_kinematics_state,
+        lambda facts: facts.polar_kinematics_state_profile is not None,
+        (
+            ("quantity_radius", PrerequisiteKind.interaction_quantity,
+             _polar_kinematics_state_prerequisite("radius")),
+            ("quantity_radial_rate", PrerequisiteKind.interaction_quantity,
+             _polar_kinematics_state_prerequisite("radial_rate")),
+            ("quantity_radial_acceleration", PrerequisiteKind.interaction_quantity,
+             _polar_kinematics_state_prerequisite("radial_acceleration")),
+            ("quantity_angular_velocity", PrerequisiteKind.interaction_quantity,
+             _polar_kinematics_state_prerequisite("omega")),
+            ("quantity_angular_acceleration", PrerequisiteKind.interaction_quantity,
+             _polar_kinematics_state_prerequisite("alpha")),
+            ("scope_single_instant", PrerequisiteKind.state_condition,
+             _polar_kinematics_state_prerequisite("temporal_scope")),
+            ("direction_polar_axes", PrerequisiteKind.axis,
+             _polar_kinematics_state_prerequisite("direction_binding")),
+            ("entity_polar_coordinate", PrerequisiteKind.reference_frame,
+             _polar_kinematics_state_prerequisite("coordinate_entity")),
+            ("frame_radial_transverse", PrerequisiteKind.reference_frame,
+             _polar_kinematics_state_prerequisite("frame")),
+            ("geometry_radius", PrerequisiteKind.geometry,
+             _polar_kinematics_state_prerequisite("radius_relation")),
+            ("query_component_binding", PrerequisiteKind.constraint,
+             _polar_kinematics_state_prerequisite("query_binding")),
+            ("symbols_polar_components", PrerequisiteKind.unknown_symbol,
+             _polar_kinematics_state_prerequisite("derived_components")),
+            ("capability_verified_polar_kinematics", PrerequisiteKind.capability,
+             _polar_kinematics_state_prerequisite("capability")),
         ),
     ),
     _ProfileSignature(
