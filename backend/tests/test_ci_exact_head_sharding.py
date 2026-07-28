@@ -44,7 +44,8 @@ def test_release_fast_suite_is_four_parallel_jobs_with_a_partition_gate() -> Non
 
 def test_stage6_focused_and_default_regression_are_a_complete_disjoint_partition() -> None:
     text = _text(STAGE6)
-    assert "shard_index: [0, 1, 2, 3]" in text
+    assert "shard_index: [0, 1, 2, 3, 4, 5, 6, 7]" in text
+    assert 'DYNATUTOR_BACKEND_FAST_SHARD_COUNT: "8"' in text
     assert "DYNATUTOR_BACKEND_FAST_EXCLUDE_GLOB: tests/test_phase56_stage6*.py" in text
     assert "stage6-focused-manifest" in text
     assert "partition_audit:" in text
