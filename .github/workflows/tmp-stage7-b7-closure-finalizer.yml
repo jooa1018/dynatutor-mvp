@@ -1,0 +1,141 @@
+name: Temporary Stage 7 B7 closure finalizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/stage7-b7-closure-finalizer-base-8eab77c
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tmp-stage7-b7-closure-finalizer
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'tmp/stage7-b7-closure-finalizer-trigger-8eab77c'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out temporary finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/stage7-b7-closure-finalizer-base-8eab77c
+          fetch-depth: 0
+
+      - name: Decode and verify reviewed two-commit series
+        env:
+          EXPECTED_MBOX_SHA256: 131218b243597800f7ef1dc4a4362f3865c5341386239623513e48e939695b0b
+        run: |
+          set -euo pipefail
+          cat .stage7-tmp/b7-closure.part-* | base64 -d | gzip -d > "$RUNNER_TEMP/b7-closure.mbox"
+          actual="$(sha256sum "$RUNNER_TEMP/b7-closure.mbox" | awk '{print $1}')"
+          printf 'MBOX_SHA256=%s\n' "$actual"
+          test "$actual" = "$EXPECTED_MBOX_SHA256"
+
+      - name: Verify exact parent and apply both commits
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 8eab77c802c531d3196e84a2503a8373b91afe39
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          actual_parent="$(git rev-parse "origin/$TARGET_BRANCH")"
+          printf 'ACTUAL_PARENT=%s\n' "$actual_parent"
+          test "$actual_parent" = "$EXPECTED_PARENT"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git config user.name 'DynaTutor Stage 7 Finalizer'
+          git config user.email 'actions@users.noreply.github.com'
+          git am "$RUNNER_TEMP/b7-closure.mbox"
+          test "$(git rev-parse HEAD^^)" = "$EXPECTED_PARENT"
+          changed="$(git diff --name-only "$EXPECTED_PARENT"..HEAD | sort)"
+          expected="$(printf '%s\n' \
+            .github/workflows/backend-tests.yml \
+            .github/workflows/phase55-textbook-parser.yml \
+            .github/workflows/phase56-stage6-multimodal.yml \
+            .github/workflows/phase56-stage7-offline-evaluation.yml \
+            backend/scripts/pytest_file_shards.py \
+            backend/tests/test_ci_exact_head_sharding.py \
+            backend/tests/test_phase56_stage7_b7_polar_kinematics_state.py \
+            backend/tests/test_pytest_file_shards.py \
+            scripts/check_backend_fast.sh | sort)"
+          test "$changed" = "$expected"
+          git diff --check "$EXPECTED_PARENT"..HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
+
+      - name: Validate workflows, helper, and B7 authority isolation
+        working-directory: backend
+        env:
+          PYTHONHASHSEED: '0'
+          OPENAI_API_KEY: ''
+          ANTHROPIC_API_KEY: ''
+          OPENAI_BASE_URL: ''
+          ANTHROPIC_BASE_URL: ''
+          MECHANICS_MODELER_BASE_URL: ''
+          MECHANICS_FIGURE_BASE_URL: ''
+        run: |
+          python -m compileall -q scripts/pytest_file_shards.py tests/test_pytest_file_shards.py tests/test_ci_exact_head_sharding.py tests/test_phase56_stage7_b7_polar_kinematics_state.py
+          python -m pytest -q -o addopts= \
+            tests/test_pytest_file_shards.py \
+            tests/test_ci_exact_head_sharding.py \
+            tests/test_phase56_stage7_offline_workflow.py \
+            tests/test_phase56_stage7_gold_isolation.py \
+            tests/test_phase56_stage7_hard_safety_instruments.py \
+            tests/test_phase56_stage7_b7_polar_kinematics_state.py::test_approved_unrelated_value_free_assumption_is_never_answer_authority \
+            tests/test_phase56_stage7_b7_polar_kinematics_state.py::test_nonlocal_value_bearing_or_unevidenced_assumption_fails_closed
+          cd ..
+          bash -n scripts/check_backend_fast.sh
+          for file in \
+            .github/workflows/backend-tests.yml \
+            .github/workflows/phase55-textbook-parser.yml \
+            .github/workflows/phase56-stage6-multimodal.yml \
+            .github/workflows/phase56-stage7-offline-evaluation.yml; do
+            ruby -e 'require "yaml"; YAML.load_file(ARGV[0])' "$file"
+          done
+
+      - name: Verify deterministic complete partitions
+        working-directory: backend
+        run: |
+          python scripts/pytest_file_shards.py \
+            --marker 'not benchmark and not audit and not frontend and not slow' \
+            --shard-count 4 --shard-index 0 --timeout-seconds 420 \
+            --manifest-output "$RUNNER_TEMP/release-fast.json" --verify-only
+          python scripts/pytest_file_shards.py \
+            --marker 'not benchmark and not audit and not frontend and not slow' \
+            --shard-count 4 --shard-index 0 --timeout-seconds 420 \
+            --exclude-glob 'tests/test_phase56_stage6*.py' \
+            --manifest-output "$RUNNER_TEMP/stage6-default.json" --verify-only
+          python - <<'PY'
+          import json, os, pathlib
+          release = json.loads(pathlib.Path(os.environ['RUNNER_TEMP'], 'release-fast.json').read_text())
+          stage6 = json.loads(pathlib.Path(os.environ['RUNNER_TEMP'], 'stage6-default.json').read_text())
+          for payload in (release, stage6):
+              files = [path for shard in payload['shards'] for path in shard['files']]
+              assert len(files) == len(set(files)) == payload['selected_file_count']
+              assert sum(item['test_count'] for item in payload['shards']) == payload['selected_test_count']
+          assert release['excluded_test_count'] == 0
+          assert stage6['excluded_test_count'] > 0
+          print('RELEASE_SHARDS=' + ','.join(str(item['test_count']) for item in release['shards']))
+          print('STAGE6_SHARDS=' + ','.join(str(item['test_count']) for item in stage6['shards']))
+          PY
+
+      - name: Fast-forward push reviewed commits
+        env:
+          TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+          EXPECTED_PARENT: 8eab77c802c531d3196e84a2503a8373b91afe39
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^^)" = "$EXPECTED_PARENT"
+          git push origin "HEAD:$TARGET_BRANCH"
+          printf 'CI_ORCHESTRATION_HEAD=%s\n' "$(git rev-parse HEAD^)"
+          printf 'B7_HARDENING_HEAD=%s\n' "$(git rev-parse HEAD)"
