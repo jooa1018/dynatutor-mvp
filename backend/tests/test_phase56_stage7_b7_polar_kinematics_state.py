@@ -414,6 +414,7 @@ def test_transaction_adds_only_typed_topology_and_value_free_unknowns() -> None:
     )
 
 
+@pytest.mark.slow
 def test_clockwise_reverses_signed_transverse_values_but_not_magnitudes() -> None:
     ccw_component = _run(
         _case(angular_direction="counterclockwise", query_component="transverse"),
@@ -449,6 +450,7 @@ def test_clockwise_reverses_signed_transverse_values_but_not_magnitudes() -> Non
     )
 
 
+@pytest.mark.slow
 def test_different_numbers_and_units_reuse_the_same_law_graph() -> None:
     baseline = _run(
         _case(query_component="magnitude"), "b7-units-baseline"
@@ -472,6 +474,7 @@ def test_different_numbers_and_units_reuse_the_same_law_graph() -> None:
     )
 
 
+@pytest.mark.slow
 def test_entity_names_ids_and_source_array_order_are_not_authority() -> None:
     baseline = _run(_case(), "b7-identity-baseline")
     changed = _run(
@@ -489,6 +492,7 @@ def test_entity_names_ids_and_source_array_order_are_not_authority() -> None:
     assert changed.applied_law_ids == baseline.applied_law_ids
 
 
+@pytest.mark.slow
 def test_projected_quantity_symbol_evidence_and_event_order_are_invariant() -> None:
     projection = _projection(_case())
     payload = projection.draft.model_dump(mode="json")
@@ -738,6 +742,7 @@ def test_irrelevant_transaction_authority_does_not_change_the_closed_draft() -> 
     assert baseline.draft == with_irrelevant_authority.draft
 
 
+@pytest.mark.slow
 def test_irrelevant_value_free_source_assumption_does_not_change_the_answer() -> None:
     projection = _projection(_case())
     payload = projection.draft.model_dump(mode="json")
@@ -781,6 +786,7 @@ def test_irrelevant_value_free_source_assumption_does_not_change_the_answer() ->
     assert changed.applied_law_ids == baseline.applied_law_ids
 
 
+@pytest.mark.slow
 def test_gold_expected_answer_tampering_cannot_change_runtime() -> None:
     case = _case()
     payload = case.model_dump(mode="json")
@@ -793,6 +799,7 @@ def test_gold_expected_answer_tampering_cannot_change_runtime() -> None:
     assert tampered.answer_value_si == pytest.approx(baseline.answer_value_si)
 
 
+@pytest.mark.slow
 def test_case_family_and_order_metadata_cannot_change_runtime() -> None:
     baseline = _run(_case(), "b7-metadata-baseline")
     changed = _run(
@@ -807,6 +814,7 @@ def test_case_family_and_order_metadata_cannot_change_runtime() -> None:
     assert changed.answer_value_si == pytest.approx(baseline.answer_value_si)
 
 
+@pytest.mark.slow
 def test_physics_changing_input_changes_the_verified_answer_correctly() -> None:
     changed_values = {
         "radius": ("3.5", "m"),
