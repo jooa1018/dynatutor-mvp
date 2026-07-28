@@ -5,114 +5,51 @@ cd "$ROOT_DIR"
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 export PYTHONPATH="$ROOT_DIR/backend${PYTHONPATH:+:$PYTHONPATH}"
 TIMEOUT_SECONDS="${DYNATUTOR_BACKEND_FAST_TIMEOUT:-420}"
-SHARD_COUNT="${DYNATUTOR_BACKEND_FAST_SHARDS:-4}"
+SHARD_COUNT="${DYNATUTOR_BACKEND_FAST_SHARD_COUNT:-4}"
+SHARD_INDEX="${DYNATUTOR_BACKEND_FAST_SHARD_INDEX:-}"
 FAST_MARKER_EXPRESSION="not benchmark and not audit and not frontend and not slow"
-FAILURE_SUMMARY="$ROOT_DIR/backend-fast-failure-summary.txt"
-rm -f "$FAILURE_SUMMARY"
+EXCLUDE_GLOB="${DYNATUTOR_BACKEND_FAST_EXCLUDE_GLOB:-}"
+VERIFY_ONLY="${DYNATUTOR_BACKEND_FAST_VERIFY_ONLY:-0}"
+MANIFEST_OUTPUT="${DYNATUTOR_BACKEND_FAST_MANIFEST_OUTPUT:-$ROOT_DIR/backend-fast-shard-manifest.json}"
+FAILURE_SUMMARY_BASE="${DYNATUTOR_BACKEND_FAST_FAILURE_SUMMARY:-$ROOT_DIR/backend-fast-failure-summary.txt}"
 
 if ! [[ "$SHARD_COUNT" =~ ^[1-9][0-9]*$ ]]; then
-  echo "[backend_fast] DYNATUTOR_BACKEND_FAST_SHARDS must be a positive integer" >&2
+  echo "[backend_fast] DYNATUTOR_BACKEND_FAST_SHARD_COUNT must be a positive integer" >&2
+  exit 1
+fi
+if [[ -n "$SHARD_INDEX" ]] && ! [[ "$SHARD_INDEX" =~ ^[0-9]+$ ]]; then
+  echo "[backend_fast] DYNATUTOR_BACKEND_FAST_SHARD_INDEX must be a non-negative integer" >&2
   exit 1
 fi
 
-run_fast_shard() {
-  local shard_label="$1"
-  shift
-  local shard_log
-  shard_log="$(mktemp)"
-  local status=0
-  DYNATUTOR_RUN_CWD="$ROOT_DIR/backend" \
-    python scripts/run_with_timeout.py "$TIMEOUT_SECONDS" -- \
-      pytest -q -o addopts='' -m "$FAST_MARKER_EXPRESSION" "$@" \
-      >"$shard_log" 2>&1 || status=$?
-  if (( status == 0 )); then
-    tail -n 40 "$shard_log"
-  else
-    echo "[backend_fast] $shard_label failed; compact tail follows" >&2
-    tail -n 300 "$shard_log" >&2
-    {
-      printf 'shard=%s\n' "$shard_label"
-      printf 'exit_status=%s\n' "$status"
-      # Keep only node identities and closed timeout diagnostics.  Assertion
-      # values, fixture text, stack traces, and environment data never enter
-      # the artifact produced from this file.
-      grep -E '^(FAILED|ERROR) [^ ]+' "$shard_log" \
-        | sed -E 's/[[:space:]]+-[[:space:]].*$//' \
-        | head -n 50 || true
-      grep -E '^\[run_with_timeout\].*(timed out|timeout|exit)' "$shard_log" \
-        | head -n 10 || true
-    } > "$FAILURE_SUMMARY"
+run_shard() {
+  local index="$1"
+  local failure_summary="$FAILURE_SUMMARY_BASE"
+  if [[ -z "${DYNATUTOR_BACKEND_FAST_FAILURE_SUMMARY:-}" && -z "$SHARD_INDEX" ]]; then
+    failure_summary="$ROOT_DIR/backend-fast-failure-summary-shard-${index}.txt"
   fi
-  rm -f "$shard_log"
-  return "$status"
+  local args=(
+    python backend/scripts/pytest_file_shards.py
+    --marker "$FAST_MARKER_EXPRESSION"
+    --shard-count "$SHARD_COUNT"
+    --shard-index "$index"
+    --timeout-seconds "$TIMEOUT_SECONDS"
+    --manifest-output "$MANIFEST_OUTPUT"
+    --failure-summary "$failure_summary"
+  )
+  if [[ -n "$EXCLUDE_GLOB" ]]; then
+    args+=(--exclude-glob "$EXCLUDE_GLOB")
+  fi
+  if [[ "$VERIFY_ONLY" == "1" ]]; then
+    args+=(--verify-only)
+  fi
+  "${args[@]}"
 }
 
-echo "[backend_fast] discover fast-only test nodes"
-if ! COLLECTION_OUTPUT="$(
-  DYNATUTOR_RUN_CWD="$ROOT_DIR/backend" python scripts/run_with_timeout.py "$TIMEOUT_SECONDS" -- \
-    pytest -qq --disable-warnings --collect-only -o addopts='' -m "$FAST_MARKER_EXPRESSION"
-)"; then
-  printf '%s\n' "$COLLECTION_OUTPUT"
-  echo "[backend_fast] fast-only collection failed" >&2
-  exit 1
+if [[ -n "$SHARD_INDEX" ]]; then
+  run_shard "$SHARD_INDEX"
+else
+  for (( index = 0; index < SHARD_COUNT; index++ )); do
+    run_shard "$index"
+  done
 fi
-printf '%s\n' "$COLLECTION_OUTPUT"
-
-SHARD_FILES=()
-SHARD_FILE_COUNTS=()
-SELECTED_TEST_COUNT=0
-while IFS= read -r collection_line; do
-  case "$collection_line" in
-    ""|"[run_with_timeout] "*)
-      continue
-      ;;
-  esac
-
-  if [[ ! "$collection_line" =~ ^(.+\.py):[[:space:]]+([1-9][0-9]*)$ ]]; then
-    echo "[backend_fast] unexpected collection output: $collection_line" >&2
-    exit 1
-  fi
-
-  shard_file="${BASH_REMATCH[1]}"
-  shard_test_count="${BASH_REMATCH[2]}"
-  if [[ ! -f "$ROOT_DIR/backend/$shard_file" ]]; then
-    echo "[backend_fast] collected shard does not exist: $shard_file" >&2
-    exit 1
-  fi
-  SHARD_FILES+=("$shard_file")
-  SHARD_FILE_COUNTS+=("$shard_test_count")
-  SELECTED_TEST_COUNT=$(( SELECTED_TEST_COUNT + shard_test_count ))
-done <<< "$COLLECTION_OUTPUT"
-
-if (( ${#SHARD_FILES[@]} == 0 || SELECTED_TEST_COUNT == 0 )); then
-  echo "[backend_fast] collection produced no fast-only test files" >&2
-  exit 1
-fi
-
-if (( SHARD_COUNT > ${#SHARD_FILES[@]} )); then
-  SHARD_COUNT=${#SHARD_FILES[@]}
-fi
-
-echo "[backend_fast] collected $SELECTED_TEST_COUNT tests across $SHARD_COUNT contiguous shards"
-current_shard=1
-completed_count=0
-current_target=$(( current_shard * SELECTED_TEST_COUNT / SHARD_COUNT - completed_count ))
-current_count=0
-current_files=()
-for (( file_index = 0; file_index < ${#SHARD_FILES[@]}; file_index++ )); do
-  current_files+=("${SHARD_FILES[file_index]}")
-  current_count=$(( current_count + SHARD_FILE_COUNTS[file_index] ))
-
-  if (( current_shard < SHARD_COUNT && current_count >= current_target )); then
-    echo "[backend_fast] pytest fast-only shard $current_shard/$SHARD_COUNT: $current_count tests"
-    run_fast_shard "shard $current_shard/$SHARD_COUNT" "${current_files[@]}"
-    completed_count=$(( completed_count + current_count ))
-    current_shard=$(( current_shard + 1 ))
-    current_target=$(( current_shard * SELECTED_TEST_COUNT / SHARD_COUNT - completed_count ))
-    current_count=0
-    current_files=()
-  fi
-done
-
-echo "[backend_fast] pytest fast-only shard $current_shard/$SHARD_COUNT: $current_count tests"
-run_fast_shard "shard $current_shard/$SHARD_COUNT" "${current_files[@]}"
