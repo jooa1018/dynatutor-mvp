@@ -1,3 +1,3 @@
-source_sha=2b9680aafcf017adc8a0d8bc37b9c4563e6882d7
-attempt=6
+source_sha=25d02d1dc50810a7c5a53bfd18d151aa6b5f4662
+attempt=7
 artifact=pint-wheelhouse
