@@ -108,8 +108,6 @@ jobs:
             backend/evaluation/phase56_stage7/blocked_law_diagnosis.py \
             backend/evaluation/phase56_stage7/complete_profile_application.py \
             backend/evaluation/phase56_stage7/lane_b_draft_projection.py \
-            backend/tests/test_phase56_stage7/fixed_pulley_profile.py 2>/dev/null || true
-          git add \
             backend/tests/test_phase56_stage7_fixed_pulley_profile.py \
             backend/tests/test_phase56_stage7_profile_feasibility.py
           git commit -m 'eval(stage7): close ideal fixed-pulley acceleration profiles'
