@@ -174,4 +174,122 @@ jobs:
   partition_audit:
     name: Stage 6 complete partition audit
     if: always()
-    needs$—P–ÄL@≈9»HÚ¿
+    needs:
+      - focused
+      - backend_regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download every regression manifest
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage6-backend-manifest-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: manifests
+      - name: Download focused inventory
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage6-focused-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: focused-manifest
+      - name: Prove complete, disjoint, identical partition
+        env:
+          FOCUSED_RESULT: ${{ needs.focused.result }}
+          REGRESSION_RESULT: ${{ needs.backend_regression.result }}
+        run: |
+          python - <<'PY_AUDIT'
+          import fnmatch, json, os, pathlib
+          assert os.environ['FOCUSED_RESULT'] == 'success'
+          assert os.environ['REGRESSION_RESULT'] == 'success'
+          paths = sorted(pathlib.Path('manifests').rglob('stage6-backend-manifest-*.json'))
+          assert len(paths) == 8, paths
+          manifests = [json.loads(path.read_text()) for path in paths]
+          assert len({item['sha256'] for item in manifests}) == 1
+          baseline = manifests[0]
+          assert baseline['selected_test_count'] + baseline['excluded_test_count'] == baseline['collected_test_count']
+          assert baseline['selected_file_count'] + baseline['excluded_file_count'] == baseline['collected_file_count']
+          files = [path for shard in baseline['shards'] for path in shard['files']]
+          assert len(files) == len(set(files)) == baseline['selected_file_count']
+          assert sum(shard['test_count'] for shard in baseline['shards']) == baseline['selected_test_count']
+          excluded = set(baseline['excluded_files'])
+          focused_paths = list(pathlib.Path('focused-manifest').rglob('stage6-focused-manifest.json'))
+          assert len(focused_paths) == 1, focused_paths
+          focused = json.loads(focused_paths[0].read_text())
+          assert focused['exact_head_sha'] == os.environ['EXACT_HEAD_SHA']
+          actual = {item['path'] for item in focused['files']}
+          assert excluded == actual, (sorted(excluded), sorted(actual))
+          assert focused['test_count'] == baseline['excluded_test_count']
+          assert all(fnmatch.fnmatchcase(path, 'tests/test_phase56_stage6*.py') for path in excluded)
+          print(json.dumps({
+              'exact_head_sha': os.environ['EXACT_HEAD_SHA'],
+              'manifest_sha256': baseline['sha256'],
+              'collected_tests': baseline['collected_test_count'],
+              'focused_tests': baseline['excluded_test_count'],
+              'regression_tests': baseline['selected_test_count'],
+              'shard_test_counts': [item['test_count'] for item in baseline['shards']],
+          }, sort_keys=True))
+          PY_AUDIT
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact checkout
+        working-directory: .
+        run: |
+          actual="$(git rev-parse HEAD)"
+          printf 'EXACT_HEAD_SHA=%s\nACTUAL_CHECKOUT_SHA=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Install exact lint tooling
+        run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund eslint@9.39.5 eslint-config-next@15.5.18
+      - name: Frontend tests
+        run: npm test
+        env:
+          CI: "true"
+      - name: Frontend lint
+        run: npm run lint
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Frontend production build
+        run: npm run build
+
+  stage6_gate:
+    name: Stage 6 gate
+    if: always()
+    needs: [focused, backend_regression, partition_audit, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require focused, complete regression, and frontend success
+        env:
+          FOCUSED: ${{ needs.focused.result }}
+          REGRESSION: ${{ needs.backend_regression.result }}
+          PARTITION: ${{ needs.partition_audit.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+        run: |
+          printf 'head=%s focused=%s regression=%s partition=%s frontend=%s\n' "$EXACT_HEAD_SHA" "$FOCUSED" "$REGRESSION" "$PARTITION" "$FRONTEND"
+          [[ "$FOCUSED" == success ]]
+          [[ "$REGRESSION" == success ]]
+          [[ "$PARTITION" == success ]]
+          [[ "$FRONTEND" == success ]]
