@@ -1,0 +1,3 @@
+base=389ffbdffedc29068404c72fe39e23d5f5515056
+package=constant-acceleration-stop
+public_score_sha256=e35e8178c25a4f361af3a6bb2bbbc7b7b7609eec35a8dc672236f9440fe1d628
