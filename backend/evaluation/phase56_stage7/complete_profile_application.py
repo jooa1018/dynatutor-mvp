@@ -102,6 +102,9 @@ DERIVED_FRAME_ID = "frm_closure_axis"
 WORLD_FRAME_ID = "frm_closure_world"
 OBSERVER_FRAME_ID = "frm_closure_observer"
 SLOT_PIN_FRAME_ID = "frm_closure_slot_radial"
+ROTATING_WORLD_FRAME_ID = "frm_closure_coriolis_world"
+ROTATING_FRAME_ID = "frm_closure_coriolis_rotating"
+ROTATION_POINT_ID = "pt_closure_coriolis_pivot"
 
 # A source that said a quantity has no direction stated its *magnitude*, and a
 # magnitude is not a signed component of anything.  Restamping it onto an axis
@@ -443,6 +446,260 @@ def _slot_pin_relative_frame_transaction(
     closed["quantities"] = quantities
     closed["queries"] = queries
     return closed, (SLOT_PIN_FRAME_ID,), (target_quantity_id,)
+
+
+def _rotating_relative_frame_transaction(
+    payload: dict[str, Any], _authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Write one exact source-implied rotating frame, without an answer.
+
+    One point-like subject, one rigid carrier, one topology edge, one signed
+    carrier angular velocity, one radial/transverse relative velocity, and one
+    radius are required.  The transaction creates only a world frame, a
+    rotating child frame, and its reference point; it re-expresses the source's
+    own directions in those frames and binds the existing unknown query.
+    """
+
+    if len(payload["queries"]) != 1 or payload["reference_frames"] or payload["points"]:
+        return None
+    query = payload["queries"][0]
+    target = query["target"]
+    target_quantity_id = target.get("target_quantity_id")
+    interval_id = target.get("interval_id")
+    if (
+        query.get("shape") != "scalar"
+        or target.get("role") != "acceleration"
+        or target.get("component") not in {"magnitude", "unspecified"}
+        or target.get("frame_id") is not None
+        or target.get("direction") is not None
+        or target.get("point_id") is not None
+        or target_quantity_id is None
+        or interval_id is None
+    ):
+        return None
+
+    entities = {item["entity_id"]: item for item in payload["entities"]}
+    moving_id = target.get("subject_id")
+    if (
+        moving_id not in entities
+        or entities[moving_id]["primitive"]
+        not in {"joint", "particle", "body_component"}
+    ):
+        return None
+    observers = [
+        item["entity_id"] for item in payload["entities"]
+        if item["primitive"] == "reference_frame"
+    ]
+    if len(observers) != 1:
+        return None
+    intervals = [
+        item for item in payload["motion_intervals"]
+        if item["interval_id"] == interval_id
+    ]
+    if (
+        len(intervals) != 1
+        or moving_id not in intervals[0]["subject_ids"]
+        or intervals[0].get("frame_id") is not None
+    ):
+        return None
+
+    targets = [
+        item for item in payload["quantities"]
+        if item["quantity_id"] == target_quantity_id
+    ]
+    if len(targets) != 1:
+        return None
+    target_quantity = targets[0]
+    if (
+        target_quantity.get("role") != "acceleration"
+        or target_quantity.get("subject_id") != moving_id
+        or target_quantity.get("point_id") is not None
+        or target_quantity.get("interval_id") != interval_id
+        or target_quantity.get("event_id") != target.get("event_id")
+        or target_quantity.get("component") != target.get("component")
+        or target_quantity.get("shape") != "scalar"
+        or target_quantity.get("frame_id") is not None
+        or target_quantity.get("direction") is not None
+        or target_quantity.get("raw_value") is not None
+        or target_quantity.get("raw_unit") is not None
+        or target_quantity.get("provenance") != "unknown"
+        or target_quantity.get("symbol_id") is None
+    ):
+        return None
+
+    angular = [
+        item for item in payload["quantities"]
+        if item["role"] == "angular_velocity"
+        and item.get("interval_id") == interval_id
+        and item.get("event_id") == target.get("event_id")
+        and item.get("raw_value") is not None
+        and item.get("raw_unit") is not None
+        and item.get("symbol_id") is not None
+        and item.get("frame_id") is None
+        and item.get("shape") == "scalar"
+        and item.get("subject_id") in entities
+        and entities[item["subject_id"]]["primitive"] == "rigid_body"
+        and (item.get("direction") or {}).get("kind") == "semantic"
+        and (item.get("direction") or {}).get("direction")
+        in {"clockwise", "counterclockwise"}
+    ]
+    relatives = [
+        item for item in payload["quantities"]
+        if item["role"] in {"velocity", "speed"}
+        and item.get("subject_id") == moving_id
+        and item.get("point_id") is None
+        and item.get("interval_id") == interval_id
+        and item.get("event_id") == target.get("event_id")
+        and item.get("raw_value") is not None
+        and item.get("raw_unit") is not None
+        and item.get("symbol_id") is not None
+        and item.get("frame_id") is None
+        and item.get("shape") == "scalar"
+        and item.get("component") in {"radial", "transverse"}
+        and (item.get("direction") or {}).get("kind") == "semantic"
+        and (item.get("direction") or {}).get("direction")
+        == item.get("component")
+    ]
+    radii = [
+        item for item in payload["quantities"]
+        if item["role"] == "radius"
+        and item.get("subject_id") == moving_id
+        and item.get("interval_id") == interval_id
+        and item.get("event_id") == target.get("event_id")
+        and item.get("raw_value") is not None
+        and item.get("raw_unit") is not None
+        and item.get("symbol_id") is not None
+        and item.get("shape") == "scalar"
+    ]
+    if len(angular) != 1 or len(relatives) != 1 or len(radii) != 1:
+        return None
+    carrier_id = angular[0]["subject_id"]
+    if carrier_id == moving_id or carrier_id not in intervals[0]["subject_ids"]:
+        return None
+    relations = [
+        item for item in payload["geometry"]
+        if item["kind"] == "topology_connects"
+        and item.get("interval_id") in {None, interval_id}
+        and not item.get("quantity_ids")
+        and item.get("expression") is None
+        and len(item["participant_ids"]) == 2
+        and set(item["participant_ids"]) == {moving_id, carrier_id}
+    ]
+    if len(relations) != 1:
+        return None
+
+    created = {ROTATING_WORLD_FRAME_ID, ROTATING_FRAME_ID, ROTATION_POINT_ID}
+    if _authored_draft_ids(payload) & created:
+        return None
+    world = {
+        "frame_id": ROTATING_WORLD_FRAME_ID,
+        "frame_type": "cartesian_3d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {
+                "axis": axis,
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": ROTATING_WORLD_FRAME_ID,
+                    "axis": axis,
+                    "sign": 1,
+                },
+            }
+            for axis in ("x", "y", "z")
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": [],
+    }
+    point = {
+        "point_id": ROTATION_POINT_ID,
+        "role": "reference",
+        "owner_entity_id": carrier_id,
+        "frame_id": ROTATING_WORLD_FRAME_ID,
+        "label": None,
+        "evidence_refs": list(relations[0].get("evidence_refs") or []),
+    }
+    rotating = {
+        "frame_id": ROTATING_FRAME_ID,
+        "frame_type": "rotating",
+        "origin": {"kind": "point", "point_id": ROTATION_POINT_ID},
+        "axes": [
+            {
+                "axis": axis,
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": ROTATING_FRAME_ID,
+                    "axis": axis,
+                    "sign": 1,
+                },
+            }
+            for axis in ("radial", "transverse", "z")
+        ],
+        "parent_frame_id": ROTATING_WORLD_FRAME_ID,
+        "translating_with_entity_id": carrier_id,
+        "rotating_about_point_id": ROTATION_POINT_ID,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": list(relations[0].get("evidence_refs") or []),
+    }
+
+    angular_id = angular[0]["quantity_id"]
+    relative_id = relatives[0]["quantity_id"]
+    rebound: list[str] = []
+    quantities: list[dict[str, Any]] = []
+    for original in payload["quantities"]:
+        quantity = dict(original)
+        if quantity["quantity_id"] == angular_id:
+            semantic = (quantity.get("direction") or {}).get("direction")
+            quantity["frame_id"] = ROTATING_FRAME_ID
+            quantity["component"] = "z"
+            quantity["direction"] = {
+                "kind": "axis",
+                "frame_id": ROTATING_FRAME_ID,
+                "axis": "z",
+                "sign": 1 if semantic == "counterclockwise" else -1,
+            }
+            rebound.append(quantity["quantity_id"])
+        elif quantity["quantity_id"] == relative_id:
+            axis = quantity["component"]
+            quantity["frame_id"] = ROTATING_FRAME_ID
+            quantity["direction"] = {
+                "kind": "axis",
+                "frame_id": ROTATING_FRAME_ID,
+                "axis": axis,
+                "sign": 1,
+            }
+            rebound.append(quantity["quantity_id"])
+        elif quantity["quantity_id"] == target_quantity_id:
+            quantity["frame_id"] = ROTATING_FRAME_ID
+            rebound.append(quantity["quantity_id"])
+        quantities.append(quantity)
+    if set(rebound) != {angular_id, relative_id, target_quantity_id}:
+        return None
+
+    intervals_out: list[dict[str, Any]] = []
+    for original in payload["motion_intervals"]:
+        interval = dict(original)
+        if interval["interval_id"] == interval_id:
+            interval["frame_id"] = ROTATING_FRAME_ID
+        intervals_out.append(interval)
+    queries = [dict(item) for item in payload["queries"]]
+    target_out = dict(queries[0]["target"])
+    target_out["frame_id"] = ROTATING_FRAME_ID
+    queries[0]["target"] = target_out
+
+    closed = dict(payload)
+    closed["points"] = [*payload["points"], point]
+    closed["reference_frames"] = [*payload["reference_frames"], world, rotating]
+    closed["motion_intervals"] = intervals_out
+    closed["quantities"] = quantities
+    closed["queries"] = queries
+    return (
+        closed,
+        (ROTATING_WORLD_FRAME_ID, ROTATING_FRAME_ID, ROTATION_POINT_ID),
+        tuple(sorted(rebound)),
+    )
 
 
 def _relative_translating_frame_transaction(
@@ -864,6 +1121,7 @@ _TRANSACTIONS = {
     ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.slot_pin_relative_frame: _slot_pin_relative_frame_transaction,
+    ProfileId.rotating_relative_frame: _rotating_relative_frame_transaction,
     ProfileId.relative_translating_frame: _relative_translating_frame_transaction,
 }
 # A profile whose only unmet prerequisite is a declared engine capability may be
@@ -871,7 +1129,11 @@ _TRANSACTIONS = {
 # produce an answer, it can only turn an undifferentiated underdetermined graph
 # into the precise refusal the engine already knows how to make.
 _DEFERRAL_ONLY_PROFILES: frozenset[ProfileId] = frozenset(
-    {ProfileId.slot_pin_relative_frame, ProfileId.relative_translating_frame}
+    {
+        ProfileId.slot_pin_relative_frame,
+        ProfileId.rotating_relative_frame,
+        ProfileId.relative_translating_frame,
+    }
 )
 
 
@@ -1054,6 +1316,9 @@ __all__ = [
     "close_projected_draft",
     "IMPLEMENTED_PROFILE_IDS",
     "OBSERVER_FRAME_ID",
+    "ROTATING_FRAME_ID",
+    "ROTATING_WORLD_FRAME_ID",
+    "ROTATION_POINT_ID",
     "SLOT_PIN_FRAME_ID",
     "WORLD_FRAME_ID",
     "ApplicationOutcome",

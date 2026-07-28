@@ -73,6 +73,7 @@ class ProfileId(str, Enum):
     # Declared in the order the closure step considers them, so the enum and the
     # signature table cannot drift apart.
     slot_pin_relative_frame = "slot_pin_relative_frame"
+    rotating_relative_frame = "rotating_relative_frame"
     relative_translating_frame = "relative_translating_frame"
     spring_vibration_deferred = "spring_vibration_deferred"
 
@@ -323,6 +324,184 @@ def _query_component(draft: Any) -> str | None:
     return draft.queries[0].target.component.value
 
 
+def _rotating_relative_profile_evidence(
+    draft: Any,
+) -> Mapping[str, PrerequisiteDisposition] | None:
+    """Classify one exact source-grounded rotating-relative frame shape.
+
+    The source must already identify a moving point-like subject, a rigid
+    carrier, one relative-motion topology edge between them, the carrier's
+    signed angular velocity, the subject's radial/transverse relative velocity,
+    and a radius.  The evaluator may then write down the frame records and the
+    otherwise unnamed rotation point; it creates no value and no equation.
+
+    ``None`` means this is not the profile.  Ambiguous carriers, observers,
+    motion quantities, or topology edges are represented explicitly so no
+    near-miss receives a frame.
+    """
+
+    if len(draft.queries) != 1:
+        return None
+    query = draft.queries[0]
+    target = query.target
+    if (
+        query.shape.value != "scalar"
+        or target.role.value != "acceleration"
+        or target.component.value not in {"magnitude", "unspecified"}
+        or target.frame_id is not None
+        or target.direction is not None
+        or target.target_quantity_id is None
+        or target.interval_id is None
+        or target.point_id is not None
+    ):
+        return None
+
+    targets = tuple(
+        item for item in draft.quantities
+        if item.quantity_id == target.target_quantity_id
+    )
+    if len(targets) != 1:
+        return None
+    target_quantity = targets[0]
+    if (
+        target_quantity.role is not target.role
+        or target_quantity.subject_id != target.subject_id
+        or target_quantity.point_id is not None
+        or target_quantity.interval_id != target.interval_id
+        or target_quantity.event_id != target.event_id
+        or target_quantity.component is not target.component
+        or target_quantity.shape.value != "scalar"
+        or target_quantity.frame_id is not None
+        or target_quantity.direction is not None
+        or target_quantity.raw_value is not None
+        or target_quantity.raw_unit is not None
+        or target_quantity.provenance.value != "unknown"
+        or target_quantity.symbol_id is None
+    ):
+        return None
+
+    entities = {item.entity_id: item for item in draft.entities}
+    moving = entities.get(target.subject_id)
+    if moving is None or moving.primitive.value not in {
+        "joint", "particle", "body_component"
+    }:
+        return None
+    if draft.reference_frames or draft.points:
+        return None
+
+    interval = next(
+        (item for item in draft.motion_intervals if item.interval_id == target.interval_id),
+        None,
+    )
+    if interval is None or target.subject_id not in interval.subject_ids:
+        return None
+
+    observers = tuple(
+        item.entity_id for item in draft.entities
+        if item.primitive.value == "reference_frame"
+    )
+    if len(observers) != 1:
+        disposition = (
+            PrerequisiteDisposition.missing
+            if not observers else PrerequisiteDisposition.ambiguous
+        )
+        return {
+            "relation": disposition,
+            "observer": disposition,
+            "point": disposition,
+            "frame": disposition,
+            "binding": disposition,
+        }
+
+    angular = tuple(
+        item for item in draft.quantities
+        if item.role.value == "angular_velocity"
+        and item.interval_id == target.interval_id
+        and item.event_id == target.event_id
+        and item.raw_value is not None
+        and item.raw_unit is not None
+        and item.symbol_id is not None
+        and item.frame_id is None
+        and item.shape.value == "scalar"
+        and item.subject_id in entities
+        and entities[item.subject_id].primitive.value == "rigid_body"
+        and getattr(getattr(item.direction, "direction", None), "value", None)
+        in {"clockwise", "counterclockwise"}
+    )
+    relatives = tuple(
+        item for item in draft.quantities
+        if item.role.value in {"velocity", "speed"}
+        and item.subject_id == target.subject_id
+        and item.point_id is None
+        and item.interval_id == target.interval_id
+        and item.event_id == target.event_id
+        and item.raw_value is not None
+        and item.raw_unit is not None
+        and item.symbol_id is not None
+        and item.frame_id is None
+        and item.shape.value == "scalar"
+        and item.component.value in {"radial", "transverse"}
+        and getattr(getattr(item.direction, "direction", None), "value", None)
+        == item.component.value
+    )
+    radii = tuple(
+        item for item in draft.quantities
+        if item.role.value == "radius"
+        and item.subject_id == target.subject_id
+        and item.interval_id == target.interval_id
+        and item.event_id == target.event_id
+        and item.raw_value is not None
+        and item.raw_unit is not None
+        and item.symbol_id is not None
+        and item.shape.value == "scalar"
+    )
+    if len(angular) != 1 or len(relatives) != 1 or len(radii) != 1:
+        disposition = (
+            PrerequisiteDisposition.missing
+            if not angular or not relatives or not radii
+            else PrerequisiteDisposition.ambiguous
+        )
+        return {
+            "relation": disposition,
+            "observer": PrerequisiteDisposition.explicit_source,
+            "point": disposition,
+            "frame": disposition,
+            "binding": disposition,
+        }
+    carrier_id = angular[0].subject_id
+    if carrier_id == target.subject_id or carrier_id not in interval.subject_ids:
+        return None
+
+    matching_relations = tuple(
+        item for item in draft.geometry
+        if item.kind.value == "topology_connects"
+        and item.interval_id in {None, target.interval_id}
+        and not item.quantity_ids
+        and item.expression is None
+        and len(item.participant_ids) == 2
+        and set(item.participant_ids) == {target.subject_id, carrier_id}
+    )
+    if len(matching_relations) != 1:
+        disposition = (
+            PrerequisiteDisposition.missing
+            if not matching_relations else PrerequisiteDisposition.ambiguous
+        )
+        return {
+            "relation": disposition,
+            "observer": PrerequisiteDisposition.explicit_source,
+            "point": disposition,
+            "frame": disposition,
+            "binding": disposition,
+        }
+    return {
+        "relation": PrerequisiteDisposition.explicit_source,
+        "observer": PrerequisiteDisposition.explicit_source,
+        "point": PrerequisiteDisposition.server_derivable,
+        "frame": PrerequisiteDisposition.server_derivable,
+        "binding": PrerequisiteDisposition.server_derivable,
+    }
+
+
 class _DraftFacts:
     """One pass of typed readings, shared by every profile signature."""
 
@@ -338,6 +517,7 @@ class _DraftFacts:
         "query_component",
         "query_role",
         "roles",
+        "rotating_relative_profile",
     )
 
     def __init__(self, draft: Any, approved_assumption_ids: Iterable[str]) -> None:
@@ -352,6 +532,7 @@ class _DraftFacts:
         self.axis_families = _directed_axis_families(draft)
         self.observer_count = len(_observer_entities(draft))
         self.has_blocking_ambiguity = _blocking_ambiguity(draft)
+        self.rotating_relative_profile = _rotating_relative_profile_evidence(draft)
 
 
 # --------------------------------------------------------------------------
@@ -526,6 +707,23 @@ def _event_scoped_solve_plan(facts: _DraftFacts) -> PrerequisiteDisposition:
         if has_shape
         else PrerequisiteDisposition.unsupported
     )
+
+
+def _rotating_relative_prerequisite(name: str) -> _Resolver:
+    def resolve(facts: _DraftFacts) -> PrerequisiteDisposition:
+        if facts.rotating_relative_profile is None:
+            return PrerequisiteDisposition.missing
+        return facts.rotating_relative_profile[name]
+
+    return resolve
+
+
+def _rotating_relative_readout_capability(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """The compiler intentionally owns this rotating-frame deferral."""
+
+    return PrerequisiteDisposition.unsupported
 
 
 def _signed_axis_frame(facts: _DraftFacts) -> PrerequisiteDisposition:
@@ -883,6 +1081,29 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              lambda facts: PrerequisiteDisposition.explicit_source),
             ("capability_slot_pin_relative_motion", PrerequisiteKind.capability,
              _catalogue_has_no_capability),
+        ),
+    ),
+    # One point-like subject moving radially/transversely relative to one
+    # rotating carrier already names a rotating coordinate frame.  The
+    # transaction writes down only the frame pair and rotation point so the
+    # compiler can issue its existing precise course-scope deferral.
+    _ProfileSignature(
+        ProfileId.rotating_relative_frame,
+        lambda facts: facts.rotating_relative_profile is not None,
+        (
+            ("geometry_relative_rotation", PrerequisiteKind.geometry,
+             _rotating_relative_prerequisite("relation")),
+            ("entity_rotating_observer", PrerequisiteKind.reference_frame,
+             _rotating_relative_prerequisite("observer")),
+            ("point_rotation_origin", PrerequisiteKind.point,
+             _rotating_relative_prerequisite("point")),
+            ("frame_world_and_rotating", PrerequisiteKind.reference_frame,
+             _rotating_relative_prerequisite("frame")),
+            ("component_binding", PrerequisiteKind.constraint,
+             _rotating_relative_prerequisite("binding")),
+            ("capability_rotating_relative_acceleration",
+             PrerequisiteKind.capability,
+             _rotating_relative_readout_capability),
         ),
     ),
     # A body whose motion the source states relative to a declared observer.
