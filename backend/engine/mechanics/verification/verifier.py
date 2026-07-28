@@ -10,6 +10,7 @@ from engine.mechanics.math_ast import (
     Equality,
     Inequality,
     InequalityRelation,
+    LiteralNode,
     SymbolRef,
     SymbolShape,
     validate_math_expression,
@@ -209,6 +210,63 @@ def _query_binding(plan: SolvePlan, candidate: SolverCandidate) -> _CheckDecisio
     return _CheckDecision(VerificationCheckStatus.passed)
 
 
+def _is_intrinsic_nonnegative_quantity_equation(plan: SolvePlan, equation: object) -> bool:
+    """Recognize the exact definition-level nonnegative scalar predicates.
+
+    Speed magnitudes are nonnegative by type, not because a sentence supplies a
+    second quotation.  The compiler emits these predicates from one typed
+    quantity.  This narrow recognizer admits only that canonical AST and scope;
+    relabelling another evidence-free equation with the same law ID is refused.
+    """
+
+    law_roles = {
+        "translational_speed_nonnegative": "speed",
+        "angular_speed_nonnegative": "angular_velocity",
+    }
+    expected_role = law_roles.get(getattr(equation, "law_id", None))
+    expression = getattr(equation, "expression", None)
+    source_quantity_ids = getattr(equation, "source_quantity_ids", ())
+    if (
+        expected_role is None
+        or not isinstance(expression, Inequality)
+        or getattr(expression.relation, "value", expression.relation) != "ge"
+        or not isinstance(expression.left, SymbolRef)
+        or not isinstance(expression.right, LiteralNode)
+        or expression.right.value != 0.0
+        or len(source_quantity_ids) != 1
+        or getattr(equation, "assumption_ids", ())
+        or getattr(equation, "constraint_ids", ())
+        or getattr(equation, "generated_unknown_symbol_ids", ())
+    ):
+        return False
+    symbol = next(
+        (
+            item
+            for item in plan.graph.symbols
+            if item.symbol.symbol_id == expression.left.symbol_id
+        ),
+        None,
+    )
+    if (
+        symbol is None
+        or symbol.quantity_id != source_quantity_ids[0]
+        or symbol.quantity_role != expected_role
+        or symbol.symbol.shape is not SymbolShape.scalar
+        or expression.right.dimension != symbol.symbol.dimension
+        or getattr(equation, "dimension", None) != symbol.symbol.dimension
+    ):
+        return False
+    scope = equation.scope
+    return (
+        scope.entity_ids == ((symbol.subject_id,) if symbol.subject_id else ())
+        and scope.point_ids == ((symbol.point_id,) if symbol.point_id else ())
+        and scope.frame_id == symbol.frame_id
+        and scope.interval_id == symbol.interval_id
+        and scope.event_id == symbol.event_id
+        and scope.event_ids == ((symbol.event_id,) if symbol.event_id else ())
+    )
+
+
 def _source_evidence(plan: SolvePlan, candidate: SolverCandidate) -> _CheckDecision:
     graph = plan.graph
     equation_by_id = {item.equation_id: item for item in graph.equations}
@@ -260,7 +318,11 @@ def _source_evidence(plan: SolvePlan, candidate: SolverCandidate) -> _CheckDecis
                 for assumption_id in application.assumption_ids
             ),
         }
-        if not sources and not cited_assumptions:
+        if (
+            not sources
+            and not cited_assumptions
+            and not _is_intrinsic_nonnegative_quantity_equation(plan, equation)
+        ):
             return _CheckDecision(VerificationCheckStatus.failed)
     if any(
         not condition.source_evidence_ids

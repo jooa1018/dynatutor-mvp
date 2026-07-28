@@ -49,7 +49,7 @@ from evaluation.phase56_stage7.complete_profile import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v3"
+    "phase56-stage7-complete-profile-application-v4"
 )
 
 
@@ -100,6 +100,7 @@ _COMPONENT_ROLES: frozenset[str] = frozenset(
 
 DERIVED_FRAME_ID = "frm_closure_axis"
 MOTION_AXIS_FRAME_ID = "frm_closure_motion_axis"
+ENERGY_SPEED_FRAME_ID = "frm_closure_energy_speed"
 WORLD_FRAME_ID = "frm_closure_world"
 OBSERVER_FRAME_ID = "frm_closure_observer"
 SLOT_PIN_FRAME_ID = "frm_closure_slot_radial"
@@ -504,6 +505,184 @@ def _signed_constant_acceleration_1d_transaction(
     closed["motion_intervals"] = [rewritten_interval]
     closed["quantities"] = rewritten_quantities
     return closed, (MOTION_AXIS_FRAME_ID,), tuple(sorted(rebound))
+
+
+def _particle_work_energy_speed_transaction(
+    payload: dict[str, Any], _authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one scalar endpoint work--energy balance without inventing data.
+
+    The source provides a positive scalar along the motion at the start and
+    explicitly requests the endpoint magnitude.  Those are speed magnitudes,
+    not signed components.  This transaction writes one intrinsic Cartesian
+    1-D frame, reclassifies only those two scalar velocity records as `speed`,
+    and restores mass to its source-declared timeless scope.  Raw values,
+    units, evidence, and every unrelated record remain unchanged.
+    """
+
+    if (
+        len(payload["queries"]) != 1
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["entities"]) != 1
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["geometry"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or payload["state_conditions"]
+        or payload["assumptions"]
+        or payload["ambiguities"]
+        or payload["unsupported_features"]
+        or len(payload["quantities"]) != 4
+        or ENERGY_SPEED_FRAME_ID in _authored_draft_ids(payload)
+    ):
+        return None
+
+    entity = payload["entities"][0]
+    if entity.get("primitive") not in {"particle", "rigid_body"}:
+        return None
+
+    interval = payload["motion_intervals"][0]
+    subject_ids = interval.get("subject_ids") or []
+    start_event_id = interval.get("start_event_id")
+    end_event_id = interval.get("end_event_id")
+    if (
+        len(subject_ids) != 1
+        or subject_ids[0] != entity.get("entity_id")
+        or start_event_id is None
+        or end_event_id is None
+        or start_event_id == end_event_id
+        or interval.get("frame_id") is not None
+    ):
+        return None
+    subject_id = subject_ids[0]
+    interval_id = interval["interval_id"]
+
+    query = payload["queries"][0]
+    target = query["target"]
+    if (
+        target.get("role") != "velocity"
+        or target.get("subject_id") != subject_id
+        or target.get("interval_id") != interval_id
+        or target.get("event_id") != end_event_id
+        or target.get("component") != "magnitude"
+        or target.get("frame_id") is not None
+        or target.get("direction") not in (None, {})
+    ):
+        return None
+
+    by_id = {item["quantity_id"]: item for item in payload["quantities"]}
+    query_quantity = by_id.get(target.get("target_quantity_id"))
+    masses = [item for item in payload["quantities"] if item.get("role") == "mass"]
+    works = [item for item in payload["quantities"] if item.get("role") == "work"]
+    velocities = [
+        item for item in payload["quantities"] if item.get("role") == "velocity"
+    ]
+    if (
+        query_quantity is None
+        or len(masses) != 1
+        or len(works) != 1
+        or len(velocities) != 2
+    ):
+        return None
+    mass = masses[0]
+    work = works[0]
+    velocity_by_event = {item.get("event_id"): item for item in velocities}
+    start = velocity_by_event.get(start_event_id)
+    end = velocity_by_event.get(end_event_id)
+    if end is not query_quantity or start is None:
+        return None
+
+    if (
+        mass.get("subject_id") != subject_id
+        or mass.get("event_id") is not None
+        or mass.get("frame_id") is not None
+        or mass.get("raw_value") is None
+        or mass.get("raw_unit") is None
+        or work.get("subject_id") != subject_id
+        or work.get("interval_id") != interval_id
+        or work.get("event_id") is not None
+        or work.get("frame_id") is not None
+        or work.get("raw_value") is None
+        or work.get("raw_unit") is None
+        or start.get("subject_id") != subject_id
+        or start.get("interval_id") != interval_id
+        or start.get("frame_id") is not None
+        or start.get("component") != "unspecified"
+        or start.get("direction")
+        != {"kind": "semantic", "direction": "along_motion"}
+        or start.get("raw_value") is None
+        or start.get("raw_unit") is None
+        or end.get("subject_id") != subject_id
+        or end.get("interval_id") != interval_id
+        or end.get("frame_id") is not None
+        or end.get("component") != "magnitude"
+        or end.get("direction") not in (None, {})
+        or end.get("raw_value") is not None
+        or end.get("raw_unit") is not None
+    ):
+        return None
+
+    frame = {
+        "frame_id": ENERGY_SPEED_FRAME_ID,
+        "frame_type": "cartesian_1d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {
+                "axis": "x",
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": ENERGY_SPEED_FRAME_ID,
+                    "axis": "x",
+                    "sign": 1,
+                },
+            }
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": [],
+    }
+
+    rewritten_quantities: list[dict[str, Any]] = []
+    rebound: list[str] = []
+    for original in payload["quantities"]:
+        quantity = dict(original)
+        if quantity["quantity_id"] == mass["quantity_id"]:
+            quantity["interval_id"] = None
+            rebound.append(quantity["quantity_id"])
+        elif quantity["quantity_id"] in {
+            start["quantity_id"],
+            end["quantity_id"],
+        }:
+            quantity.update(
+                role="speed",
+                frame_id=ENERGY_SPEED_FRAME_ID,
+                component="magnitude",
+                direction=None,
+            )
+            rebound.append(quantity["quantity_id"])
+        rewritten_quantities.append(quantity)
+
+    rewritten_interval = dict(interval)
+    rewritten_interval["frame_id"] = ENERGY_SPEED_FRAME_ID
+    rewritten_query = dict(query)
+    rewritten_target = dict(target)
+    rewritten_target.update(
+        role="speed",
+        frame_id=ENERGY_SPEED_FRAME_ID,
+        component="magnitude",
+        direction=None,
+    )
+    rewritten_query["target"] = rewritten_target
+
+    closed = dict(payload)
+    closed["reference_frames"] = [frame]
+    closed["motion_intervals"] = [rewritten_interval]
+    closed["quantities"] = rewritten_quantities
+    closed["queries"] = [rewritten_query]
+    return closed, (ENERGY_SPEED_FRAME_ID,), tuple(sorted(rebound))
 
 
 def _slot_pin_relative_frame_transaction(
@@ -1314,6 +1493,9 @@ _TRANSACTIONS = {
     ProfileId.signed_constant_acceleration_1d: (
         _signed_constant_acceleration_1d_transaction
     ),
+    ProfileId.particle_work_energy_speed: (
+        _particle_work_energy_speed_transaction
+    ),
     ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.slot_pin_relative_frame: _slot_pin_relative_frame_transaction,
@@ -1505,6 +1687,7 @@ __all__ = [
     "COMPLETE_PROFILE_APPLICATION_VERSION",
     "DERIVED_FRAME_ID",
     "MOTION_AXIS_FRAME_ID",
+    "ENERGY_SPEED_FRAME_ID",
     "GRAVITY_INTERACTION_ID",
     "GRAVITY_QUANTITY_ID",
     "GRAVITY_SYMBOL_ID",

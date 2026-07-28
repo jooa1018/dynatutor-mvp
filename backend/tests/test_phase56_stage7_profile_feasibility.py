@@ -533,6 +533,7 @@ def test_the_profile_table_and_enum_cannot_drift():
     ) == tuple(ProfileId)
     assert IMPLEMENTED_PROFILE_IDS == {
         ProfileId.signed_constant_acceleration_1d,
+        ProfileId.particle_work_energy_speed,
         ProfileId.free_flight_gravity,
         ProfileId.impulse_momentum,
         ProfileId.slot_pin_relative_frame,

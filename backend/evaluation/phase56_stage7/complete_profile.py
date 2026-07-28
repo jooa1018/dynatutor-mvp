@@ -45,7 +45,7 @@ from pydantic import Field
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel, VersionToken
 
-COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v1"
+COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v2"
 COMPLETE_PROFILE_CENSUS_VERSION = "phase56-stage7-complete-profile-census-v1"
 COMPLETE_PROFILE_PLAN_SCHEMA = "dynatutor.phase56_stage7.complete_profile_plan"
 COMPLETE_PROFILE_PLAN_VERSION = "1.0"
@@ -66,6 +66,7 @@ class ProfileId(str, Enum):
     fixed_pulley = "fixed_pulley"
     incline_hanging_pulley = "incline_hanging_pulley"
     rolling_energy = "rolling_energy"
+    particle_work_energy_speed = "particle_work_energy_speed"
     work_energy = "work_energy"
     impulse_momentum = "impulse_momentum"
     horizontal_contact = "horizontal_contact"
@@ -813,6 +814,35 @@ def _static_stop_time_capability(
     return PrerequisiteDisposition.explicit_source
 
 
+def _scalar_speed_frame(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """A magnitude query plus one along-motion start value defines speed.
+
+    The source has already said that the known scalar is along the motion and
+    that the requested endpoint is a magnitude.  Re-expressing those two
+    scalars as nonnegative speeds in one named 1-D frame changes no value and
+    chooses no sign.  Any competing semantic direction makes the derivation
+    ambiguous instead of guessed.
+    """
+
+    if facts.query_component != "magnitude":
+        return PrerequisiteDisposition.missing
+    if facts.semantic_directions == {"along_motion"}:
+        return PrerequisiteDisposition.server_derivable
+    if facts.semantic_directions:
+        return PrerequisiteDisposition.ambiguous
+    return PrerequisiteDisposition.missing
+
+
+def _static_particle_work_energy_capability(
+    facts: _DraftFacts,
+) -> PrerequisiteDisposition:
+    """The solver has an exact graph recognizer for this endpoint balance."""
+
+    return PrerequisiteDisposition.explicit_source
+
+
 class _ProfileSignature:
     """One profile: when it applies, and what it would need to close."""
 
@@ -1018,6 +1048,45 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
             ("quantity_moment_of_inertia", PrerequisiteKind.interaction_quantity,
              _needs_role("moment_of_inertia")),
             ("symbol_speed", PrerequisiteKind.unknown_symbol, _generated_unknown),
+        ),
+    ),
+    # One body, one bounded interval, one stated net work, and scalar endpoint
+    # speed magnitudes.  The transaction only gives those quantities the exact
+    # `speed` identity and one intrinsic 1-D frame required by the existing
+    # particle-work-energy law and its graph-only solver waiver.
+    _ProfileSignature(
+        ProfileId.particle_work_energy_speed,
+        lambda facts: (
+            facts.query_role == "velocity"
+            and facts.query_component == "magnitude"
+            and facts.roles.get("mass") == 1
+            and facts.roles.get("work") == 1
+            and facts.roles.get("velocity") == 2
+            and len(facts.bounded_intervals) == 1
+            and not facts.interactions
+            and not facts.geometry
+            and sum(facts.primitives.values()) == 1
+            and (
+                facts.primitives.get("particle") == 1
+                or facts.primitives.get("rigid_body") == 1
+            )
+        ),
+        (
+            ("interval_bounded", PrerequisiteKind.state_condition,
+             _bounded_interval),
+            ("quantity_mass", PrerequisiteKind.interaction_quantity,
+             _needs_role("mass")),
+            ("quantity_work", PrerequisiteKind.interaction_quantity,
+             _needs_role("work")),
+            ("quantity_endpoint_speeds", PrerequisiteKind.interaction_quantity,
+             _needs_role("velocity")),
+            ("frame_scalar_speed", PrerequisiteKind.reference_frame,
+             _scalar_speed_frame),
+            ("capability_static_particle_work_energy",
+             PrerequisiteKind.capability,
+             _static_particle_work_energy_capability),
+            ("symbol_final_speed", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
         ),
     ),
     _ProfileSignature(
