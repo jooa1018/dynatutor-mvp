@@ -1,0 +1,3 @@
+base=8451b665dfd0903a392128aa213284ebaa80711f
+packages=rotating-relative,constant-acceleration-stop
+public_score_sha256=e35e8178c25a4f361af3a6bb2bbbc7b7b7609eec35a8dc672236f9440fe1d628
