@@ -1,0 +1,140 @@
+name: Temporary Stage 7 rotating and constant finalizer
+
+on:
+  push:
+    branches:
+      - tmp/stage7-finalize-rotating-constant-20260728
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage7-finalize-rotating-constant-20260728
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_SHA: 8451b665dfd0903a392128aa213284ebaa80711f
+      TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+      PYTHONHASHSEED: "0"
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out finalizer inputs
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reassemble and verify the reviewed patch
+        run: |
+          set -euo pipefail
+          cat .stage7-finalizer/patch.b64.part* > "${RUNNER_TEMP}/stage7-packages.patch.gz.b64"
+          test "$(wc -c < "${RUNNER_TEMP}/stage7-packages.patch.gz.b64")" = "27256"
+          base64 --decode "${RUNNER_TEMP}/stage7-packages.patch.gz.b64" > "${RUNNER_TEMP}/stage7-packages.patch.gz"
+          printf '%s  %s\n' \
+            'a232aca713ec43a1a0633ef99d0a6d71399598055edebc19345423c47e1f9e75' \
+            "${RUNNER_TEMP}/stage7-packages.patch.gz" | sha256sum --check --status
+          gzip --decompress --stdout "${RUNNER_TEMP}/stage7-packages.patch.gz" > "${RUNNER_TEMP}/stage7-packages.patch"
+          printf '%s  %s\n' \
+            '9a1836815ca2e9abb236ba8f589c1531810aa3f8626ec5406c435e20a158c6a7' \
+            "${RUNNER_TEMP}/stage7-packages.patch" | sha256sum --check --status
+
+      - name: Check out the exact authoritative head
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/heads/${TARGET_BRANCH}:refs/remotes/origin/${TARGET_BRANCH}"
+          actual="$(git rev-parse "refs/remotes/origin/${TARGET_BRANCH}")"
+          test "$actual" = "$BASE_SHA"
+          git checkout --detach "$actual"
+          git config user.name 'DynaTutor Stage 7 Finalizer'
+          git config user.email 'stage7-finalizer@users.noreply.github.com'
+
+      - name: Apply the two atomic packages
+        run: |
+          set -euo pipefail
+          git am --3way "${RUNNER_TEMP}/stage7-packages.patch"
+          test "$(git rev-list --count "${BASE_SHA}..HEAD")" = "2"
+          test "$(git show -s --format=%s HEAD^)" = 'eval(stage7): derive rotating frame for precise Coriolis deferral'
+          test "$(git show -s --format=%s HEAD)" = 'engine(stage7): solve signed constant-acceleration stop intervals'
+          git diff --quiet "${BASE_SHA}..HEAD" -- backend/evaluation/phase56_stage7/B1_SLOT_PIN_PROFILE.md
+
+      - name: Verify exact reviewed file contents
+        run: |
+          set -euo pipefail
+          cat > "${RUNNER_TEMP}/stage7-files.sha256" <<'EOF'
+          cf1cad5c635f5973a8ffbca7b4bac3a66041dab44c4cc45f94f7a18985f3f6e7  backend/engine/mechanics/laws/core.py
+          d27bf515ab871df68330a3135234879f1e2c868eabbb5ee7929b207e6d3c670e  backend/engine/mechanics/solver/__init__.py
+          80cf6e1bf0d5b1b6713e11d0bc59603dee14713e5b1aad9bdc4578d939840124  backend/engine/mechanics/solver/constant_acceleration_stop_boundary.py
+          6f2f54d4aee2b5feb572c5cd3e9561d743c5b7319c0aeefd8b87d2ace9b82261  backend/evaluation/phase56_stage7/complete_profile.py
+          bfac64289974bb1e00f0b08d632b97776edad2313cb66bb090cde644c8d7f010  backend/evaluation/phase56_stage7/complete_profile_application.py
+          af8dfaddc5a9c70dc8d0d2c182190d9e9260ffc936735e48cc1d2cfc1ca11ef0  backend/evaluation/phase56_stage7/lane_b_draft_projection.py
+          52304d34e27badccb393b1c3a81cff1f3df9cd3385894da6e81ee1b736e50e39  backend/tests/test_phase56_stage7_constant_acceleration_1d_yield.py
+          fdbbf486a512062c178e633e83423a8fc8602236a3ad3532689031fdc7527d74  backend/tests/test_phase56_stage7_lane_b_path_length.py
+          0cd4c95b437d0159f5688f8b222f03a656112f0304ccf9fd38cf3f83011df755  backend/tests/test_phase56_stage7_profile_feasibility.py
+          c2b9ec1bd25ef903410f64f23958db6d4b0070f739c09bcdebaf6379ddc05908  backend/tests/test_phase56_stage7_rotating_relative_frame.py
+          EOF
+          sha256sum --check --status "${RUNNER_TEMP}/stage7-files.sha256"
+
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Compile changed surfaces
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            engine/mechanics/laws/core.py \
+            engine/mechanics/solver \
+            evaluation/phase56_stage7 \
+            tests/test_phase56_stage7_rotating_relative_frame.py \
+            tests/test_phase56_stage7_constant_acceleration_1d_yield.py
+
+      - name: Run package and closure regressions
+        working-directory: backend
+        run: |
+          python -m pytest -q -o addopts= \
+            tests/test_phase56_stage7_slot_pin_frame.py \
+            tests/test_phase56_stage7_rotating_relative_frame.py \
+            tests/test_phase56_stage7_constant_acceleration_1d_yield.py \
+            tests/test_phase56_stage7_lane_b_path_length.py \
+            tests/test_phase56_stage7_complete_profile.py \
+            tests/test_phase56_stage7_profile_application.py \
+            tests/test_phase56_stage7_structural_blockers.py \
+            tests/test_phase56_stage7_profile_feasibility.py
+
+      - name: Recheck remote head and push fast-forward only
+        run: |
+          set -euo pipefail
+          remote_now="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          test "$remote_now" = "$BASE_SHA"
+          git merge-base --is-ancestor "$BASE_SHA" HEAD
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+          pushed="$(git rev-parse HEAD)"
+          remote_after="$(git ls-remote origin "refs/heads/${TARGET_BRANCH}" | cut -f1)"
+          test "$remote_after" = "$pushed"
+          {
+            printf 'base_sha=%s\n' "$BASE_SHA"
+            printf 'rotating_commit=%s\n' "$(git rev-parse HEAD^)"
+            printf 'constant_acceleration_commit=%s\n' "$pushed"
+            printf 'push_mode=fast_forward_only\n'
+            printf 'focused_result=pass\n'
+          } > "${RUNNER_TEMP}/stage7-finalizer-result.txt"
+
+      - name: Upload finalizer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage7-rotating-constant-finalizer-${{ github.run_id }}
+          path: ${{ runner.temp }}/stage7-finalizer-result.txt
+          if-no-files-found: warn
+          retention-days: 7
