@@ -19,7 +19,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Export exact source and Git bundle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Export exact source, Git bundle, and pinned unit wheelhouse
         env:
           SOURCE_SHA: 35c6ca194fd48578d0e887b5e7a5100e64808d9e
         run: |
@@ -32,10 +35,19 @@ jobs:
           git bundle create \
             "${RUNNER_TEMP}/dynatutor-stage7-${SOURCE_SHA}.bundle" \
             refs/heads/stage7-exact-source
+          mkdir -p "${RUNNER_TEMP}/pint-wheelhouse"
+          python -m pip download \
+            --only-binary=:all: \
+            --dest "${RUNNER_TEMP}/pint-wheelhouse" \
+            pint==0.25.3
+          tar -C "${RUNNER_TEMP}" -czf \
+            "${RUNNER_TEMP}/pint-0.25.3-wheelhouse.tar.gz" \
+            pint-wheelhouse
           {
             printf 'source_sha=%s\n' "${SOURCE_SHA}"
             sha256sum "${RUNNER_TEMP}/dynatutor-stage7-source-${SOURCE_SHA}.tar.gz"
             sha256sum "${RUNNER_TEMP}/dynatutor-stage7-${SOURCE_SHA}.bundle"
+            sha256sum "${RUNNER_TEMP}/pint-0.25.3-wheelhouse.tar.gz"
           } > "${RUNNER_TEMP}/dynatutor-stage7-${SOURCE_SHA}.manifest.txt"
       - name: Upload exact-source artifact
         uses: actions/upload-artifact@v4
@@ -45,5 +57,6 @@ jobs:
             ${{ runner.temp }}/dynatutor-stage7-source-35c6ca194fd48578d0e887b5e7a5100e64808d9e.tar.gz
             ${{ runner.temp }}/dynatutor-stage7-35c6ca194fd48578d0e887b5e7a5100e64808d9e.bundle
             ${{ runner.temp }}/dynatutor-stage7-35c6ca194fd48578d0e887b5e7a5100e64808d9e.manifest.txt
+            ${{ runner.temp }}/pint-0.25.3-wheelhouse.tar.gz
           if-no-files-found: error
           retention-days: 1
