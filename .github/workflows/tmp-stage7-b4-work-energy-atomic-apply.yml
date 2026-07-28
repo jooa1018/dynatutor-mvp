@@ -1,0 +1,116 @@
+name: Temporary Stage 7 B4 work-energy atomic apply
+
+on:
+  pull_request:
+    branches:
+      - tmp/stage7-b4-work-energy-base-b7aaaad
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tmp-stage7-b4-work-energy-atomic-apply
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'tmp/stage7-b4-work-energy-trigger-b7aaaad'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      TARGET_BRANCH: codex/phase56-generic-mechanics-engine
+      EXPECTED_PARENT: b7aaaadcc07e322c4ff04d5e5a85177080157428
+      EXPECTED_PATCH_SHA256: b7553c9f885ba98ff21ce61fbdf6a05829b38e74f58a292e51d0fad2acd6f7c9
+      PYTHONHASHSEED: '0'
+      OPENAI_API_KEY: ''
+      ANTHROPIC_API_KEY: ''
+      OPENAI_BASE_URL: ''
+      ANTHROPIC_BASE_URL: ''
+      MECHANICS_MODELER_BASE_URL: ''
+      MECHANICS_FIGURE_BASE_URL: ''
+    steps:
+      - name: Check out temporary finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/stage7-b4-work-energy-base-b7aaaad
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Decode and verify reviewed patch
+        run: |
+          set -euo pipefail
+          cat .stage7-tmp/b4-work-energy.patch.gz.b64.part* \
+            | base64 -d \
+            | gzip -d \
+            > "$RUNNER_TEMP/b4-work-energy.patch"
+          actual="$(sha256sum "$RUNNER_TEMP/b4-work-energy.patch" | awk '{print $1}')"
+          printf 'PATCH_SHA256=%s\n' "$actual"
+          test "$actual" = "$EXPECTED_PATCH_SHA256"
+
+      - name: Verify exact parent and apply atomically
+        run: |
+          set -euo pipefail
+          git fetch origin "$TARGET_BRANCH"
+          actual_parent="$(git rev-parse "origin/$TARGET_BRANCH")"
+          printf 'AUTHORITATIVE_PARENT=%s\n' "$actual_parent"
+          test "$actual_parent" = "$EXPECTED_PARENT"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+          git apply --check "$RUNNER_TEMP/b4-work-energy.patch"
+          git apply "$RUNNER_TEMP/b4-work-energy.patch"
+          git diff --check
+          changed="$(git diff --name-only | sort)"
+          expected="$(printf '%s\n' \
+            backend/engine/mechanics/verification/verifier.py \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/tests/test_phase56_stage7_particle_work_energy_speed.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py | sort)"
+          test "$changed" = "$expected"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Run B4 focused and adjacent regressions
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m compileall -q \
+            engine/mechanics/verification/verifier.py \
+            evaluation/phase56_stage7/complete_profile.py \
+            evaluation/phase56_stage7/complete_profile_application.py \
+            tests/test_phase56_stage7_particle_work_energy_speed.py
+          python -m pytest -q -o addopts='' \
+            tests/test_phase56_stage7_particle_work_energy_speed.py \
+            tests/test_phase56_stage7_complete_profile.py \
+            tests/test_phase56_stage7_profile_application.py \
+            tests/test_phase56_stage7_profile_feasibility.py::test_the_profile_table_and_enum_cannot_drift \
+            tests/test_phase56_mechanics_work_energy_speed_same_fixture_parity.py \
+            tests/test_phase56_mechanics_constant_force_work_same_fixture_parity.py \
+            tests/test_phase56_mechanics_spring_energy_speed_same_fixture_parity.py \
+            tests/test_phase56_mechanics_verifier.py \
+            tests/test_phase56_mechanics_solver_verification_integration.py
+
+      - name: Commit and fast-forward push exact B4 package
+        run: |
+          set -euo pipefail
+          git config user.name 'DynaTutor Stage 7 Finalizer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            backend/engine/mechanics/verification/verifier.py \
+            backend/evaluation/phase56_stage7/complete_profile.py \
+            backend/evaluation/phase56_stage7/complete_profile_application.py \
+            backend/tests/test_phase56_stage7_particle_work_energy_speed.py \
+            backend/tests/test_phase56_stage7_profile_feasibility.py
+          git commit -m 'eval(stage7): close one-body work-energy speed profiles'
+          test "$(git rev-parse HEAD^)" = "$EXPECTED_PARENT"
+          git push origin "HEAD:$TARGET_BRANCH"
+          printf 'B4_CODE_HEAD=%s\n' "$(git rev-parse HEAD)"
