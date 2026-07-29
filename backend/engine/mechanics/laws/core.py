@@ -5932,6 +5932,11 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
                             extra_entity_ids=(rigid_id,),
                         )
                     )
+    axis_joint_point_ids = {
+        point.point_id
+        for point in context.points
+        if point.role is PointRole.joint
+    }
     for speed in _by_role(context, QuantityRole.speed):
         if speed.subject_id not in rigid_ids or speed.shape is not QuantityShape.scalar:
             continue
@@ -5942,6 +5947,16 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
             continue
         for angular in _by_role(context, QuantityRole.angular_velocity):
             if not _scope_compatible_without_component(speed, angular):
+                continue
+            # A body-wide angular speed or one measured about a physically
+            # pinned joint axis licenses v = |omega| r on its own.  An
+            # angular speed bound to a merely geometric centre — an
+            # instantaneous centre — keeps needing that law's own approved
+            # authority, so it never pairs here.
+            if (
+                angular.point_id is not None
+                and angular.point_id not in axis_joint_point_ids
+            ):
                 continue
             for radius in _by_role(context, QuantityRole.radius):
                 if not _scope_compatible_without_component(speed, radius) or any(
