@@ -828,17 +828,46 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
     if not (frontend / "node_modules").exists():
         if not run_step("install", ["npm", "ci"], timeout_s=1800):
             return {"result": "NOT_RUN", "executed": False, "steps": steps, "reason": "install_unavailable"}
-    # The lint toolchain is installed exactly as the permanent workflows'
-    # own lint step does (they pin it outside package.json on purpose).
-    lint_ready = run_step(
-        "lint_toolchain",
-        [
-            "npm", "install", "--no-save", "--no-package-lock",
-            "--ignore-scripts", "--no-audit", "--no-fund",
-            "eslint@9.39.5", "eslint-config-next@15.5.18",
-        ],
-        timeout_s=1800,
+    # The lint toolchain is pinned outside package.json on purpose.  An
+    # out-of-tree strict run may receive an exact, already-verified node_modules
+    # tree from the same source HEAD; reuse it only when both package versions
+    # match the permanent workflow exactly.  Otherwise perform the normal
+    # network-capable install and fail closed if that is unavailable.
+    def installed_package_version(package: str) -> str | None:
+        try:
+            payload = json.loads(
+                (frontend / "node_modules" / package / "package.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, ValueError, TypeError):
+            return None
+        version = payload.get("version")
+        return version if isinstance(version, str) else None
+
+    exact_lint_toolchain = (
+        installed_package_version("eslint") == "9.39.5"
+        and installed_package_version("eslint-config-next") == "15.5.18"
     )
+    if exact_lint_toolchain:
+        steps.append(
+            {
+                "step": "lint_toolchain",
+                "result": "PASS",
+                "reason": "exact_installed_toolchain",
+            }
+        )
+        lint_ready = True
+    else:
+        lint_ready = run_step(
+            "lint_toolchain",
+            [
+                "npm", "install", "--no-save", "--no-package-lock",
+                "--ignore-scripts", "--no-audit", "--no-fund",
+                "eslint@9.39.5", "eslint-config-next@15.5.18",
+            ],
+            timeout_s=1800,
+        )
     ok = lint_ready
     for name, command in (
         ("tests", ["npm", "test"]),

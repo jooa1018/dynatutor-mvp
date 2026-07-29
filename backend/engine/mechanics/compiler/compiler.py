@@ -3099,6 +3099,21 @@ def _fixed_pulley_incline_contact_contract(
             f"quantities.{bad_positive.quantity_id}.si_value",
             bad_positive.quantity_id,
         )
+    shared_gravity = (
+        gravity_a
+        if gravity_a is not None
+        and gravity_b is gravity_a
+        and type(getattr(gravity_a, "si_value", None)) is float
+        and math.isfinite(getattr(gravity_a, "si_value"))
+        else None
+    )
+    if shared_gravity is not None and shared_gravity.si_value <= 0.0:
+        return None, _issue(
+            CompilerIssueCode.invalid_domain,
+            "incline/hanging masses and gravity must be positive",
+            f"quantities.{shared_gravity.quantity_id}.si_value",
+            shared_gravity.quantity_id,
+        )
     gravity_subject_primitives = {
         entity_by_id[item].primitive.value
         for item in (getattr(gravity_a, "subject_id", None),)

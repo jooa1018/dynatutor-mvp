@@ -1116,6 +1116,49 @@ def test_lane_e_install_failure_is_not_run_not_pass(monkeypatch, tmp_path) -> No
     assert section["reason"] == "install_unavailable"
 
 
+def test_lane_e_reuses_exact_installed_lint_toolchain_without_network_install(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(gate, "REPOSITORY_ROOT", tmp_path)
+    frontend = tmp_path / "frontend"
+    for package, version in (
+        ("eslint", "9.39.5"),
+        ("eslint-config-next", "15.5.18"),
+    ):
+        package_dir = frontend / "node_modules" / package
+        package_dir.mkdir(parents=True, exist_ok=True)
+        (package_dir / "package.json").write_text(
+            json.dumps({"name": package, "version": version}),
+            encoding="utf-8",
+        )
+
+    commands: list[tuple[str, ...]] = []
+
+    def _run(command, **_kwargs):
+        commands.append(tuple(command))
+        return subprocess.CompletedProcess(
+            args=command, returncode=0, stdout="", stderr=""
+        )
+
+    monkeypatch.setattr(gate.subprocess, "run", _run)
+    section = gate._lane_e_section(True)
+
+    assert section["result"] == "PASS"
+    assert section["executed"] is True
+    assert {item["step"] for item in section["steps"]} == {
+        "lint_toolchain",
+        "tests",
+        "lint",
+        "typecheck",
+        "build",
+    }
+    assert next(
+        item for item in section["steps"] if item["step"] == "lint_toolchain"
+    )["reason"] == "exact_installed_toolchain"
+    assert all(command[:2] != ("npm", "install") for command in commands)
+    assert all(command[:2] != ("npm", "ci") for command in commands)
+
+
 def test_unrequested_lanes_report_not_run(monkeypatch) -> None:
     for builder in (
         gate._lane_c_section,
