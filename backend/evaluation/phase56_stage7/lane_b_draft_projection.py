@@ -67,7 +67,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v6"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v7"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -789,6 +789,8 @@ def _derive_direct_constant_force_work_assumption(
     approved.append(_DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID)
 
 
+_FIXED_PULLEY_IMPLICIT_ROPE_ID = "entity_closure_fixed_pulley_rope"
+
 _FIXED_PULLEY_DERIVED_ASSUMPTIONS: tuple[
     tuple[str, str, str], ...
 ] = (
@@ -824,32 +826,27 @@ def _derive_fixed_pulley_assumptions(
     assumptions: list[dict[str, Any]],
     approved: list[str],
 ) -> None:
-    """Narrow aggregate idealisations to one evidenced fixed-pulley topology.
+    """Scope aggregate idealisations to one exact fixed-pulley topology.
 
-    The public structure sometimes attaches ``massless_rope``,
-    ``inextensible_rope``, ``massless_pulley`` and pulley frictionlessness to
-    the aggregate system.  The reusable rope laws correctly require those
-    statements on the rope and pulley they govern.  This derivation is allowed
-    only when the typed source structure identifies exactly one rope, one
-    pulley, two mass-carrying moving bodies and one matching wraps/connects
-    topology.  A pulley that is itself an interval actor, or that carries any
-    inertial/angular quantity, is not fixed and is rejected.
+    ``connected_by_rope`` is itself typed source evidence that one rope exists,
+    even when the parser represents that rope only as a relation instead of an
+    entity.  For one unambiguous two-body wrap/connect topology this adapter may
+    therefore materialise one value-free rope entity and scope the source's
+    massless/inextensible authority to it.  One optional ``lies_on`` relation is
+    admitted for the incline-hanging variant; no other overlapping geometry is.
 
-    No value, equation, answer, family, or terminal participates.  The derived
-    assumptions inherit the exact source evidence of the aggregate
-    idealisations and add no proposed numeric value.
+    A pulley that is an interval actor or carries rotational/inertial data is
+    never treated as fixed.  No value, equation, answer, family, terminal, or
+    corpus identity participates.
     """
 
+    if len(motion_intervals) != 1:
+        return
+    interval = motion_intervals[0]
+    interval_id = interval["interval_id"]
     primitive_by_id = {
         item["entity_id"]: item["primitive"] for item in entities
     }
-    rope_ids = tuple(
-        sorted(
-            entity_id
-            for entity_id, primitive in primitive_by_id.items()
-            if primitive == "rope"
-        )
-    )
     pulley_ids = tuple(
         sorted(
             entity_id
@@ -857,12 +854,9 @@ def _derive_fixed_pulley_assumptions(
             if primitive == "pulley"
         )
     )
-    if len(rope_ids) != 1 or len(pulley_ids) != 1 or len(motion_intervals) != 1:
+    if len(pulley_ids) != 1:
         return
-    rope_id = rope_ids[0]
     pulley_id = pulley_ids[0]
-    interval = motion_intervals[0]
-    interval_id = interval["interval_id"]
 
     masses = tuple(
         item
@@ -871,13 +865,13 @@ def _derive_fixed_pulley_assumptions(
         and primitive_by_id.get(item["subject_id"])
         in {"particle", "rigid_body", "body_component"}
         and item.get("raw_value") is not None
+        and item.get("evidence_refs")
     )
     moving_ids = tuple(sorted({item["subject_id"] for item in masses}))
     if len(masses) != 2 or len(moving_ids) != 2:
         return
     if not set(moving_ids).issubset(interval["subject_ids"]):
         return
-    # An inertial or explicitly moving pulley is not the ideal fixed topology.
     if pulley_id in interval["subject_ids"]:
         return
     if any(
@@ -888,6 +882,8 @@ def _derive_fixed_pulley_assumptions(
             "angular_position",
             "angular_velocity",
             "angular_acceleration",
+            "torque",
+            "moment",
         }
         for item in quantities
     ):
@@ -904,7 +900,12 @@ def _derive_fixed_pulley_assumptions(
         if item["kind"] == "topology_connects"
         and item["interval_id"] == interval_id
     )
-    if len(wraps) != 1 or len(connects) != 1:
+    lies_on = tuple(
+        item
+        for item in geometry
+        if item["kind"] == "lies_on" and item["interval_id"] == interval_id
+    )
+    if len(wraps) != 1 or len(connects) != 1 or len(lies_on) > 1:
         return
     if (
         set(connects[0]["participant_ids"]) != set(moving_ids)
@@ -913,12 +914,33 @@ def _derive_fixed_pulley_assumptions(
         or len(wraps[0]["participant_ids"]) != 3
     ):
         return
-    topology_ids = {*moving_ids, rope_id, pulley_id}
+    incline_ids = tuple(
+        sorted(
+            entity_id
+            for entity_id, primitive in primitive_by_id.items()
+            if primitive == "incline"
+        )
+    )
+    if lies_on:
+        if len(incline_ids) != 1:
+            return
+        if (
+            len(lies_on[0]["participant_ids"]) != 2
+            or set(lies_on[0]["participant_ids"])
+            != {incline_ids[0], next((item for item in moving_ids if item in lies_on[0]["participant_ids"]), "")}
+            or len(set(lies_on[0]["participant_ids"]) & set(moving_ids)) != 1
+        ):
+            return
+    allowed_geometry_ids = {
+        wraps[0]["relation_id"],
+        connects[0]["relation_id"],
+        *(item["relation_id"] for item in lies_on),
+    }
+    topology_ids = {*moving_ids, pulley_id, *incline_ids}
     if any(
         item["interval_id"] == interval_id
         and set(item["participant_ids"]) & topology_ids
-        and item is not wraps[0]
-        and item is not connects[0]
+        and item["relation_id"] not in allowed_geometry_ids
         for item in geometry
     ):
         return
@@ -955,6 +977,32 @@ def _derive_fixed_pulley_assumptions(
     assert inextensible_rope is not None
     assert massless_pulley is not None
     assert frictionless is not None
+
+    rope_ids = tuple(
+        sorted(
+            entity_id
+            for entity_id, primitive in primitive_by_id.items()
+            if primitive == "rope"
+        )
+    )
+    if not rope_ids:
+        if any(item["entity_id"] == _FIXED_PULLEY_IMPLICIT_ROPE_ID for item in entities):
+            return
+        rope_evidence = sorted(
+            set(massless_rope["evidence_refs"])
+            | set(inextensible_rope["evidence_refs"])
+        )
+        entities.append(
+            {
+                "entity_id": _FIXED_PULLEY_IMPLICIT_ROPE_ID,
+                "primitive": "rope",
+                "evidence_refs": rope_evidence,
+            }
+        )
+        rope_ids = (_FIXED_PULLEY_IMPLICIT_ROPE_ID,)
+    if len(rope_ids) != 1:
+        return
+    rope_id = rope_ids[0]
 
     authored_ids = {item["assumption_id"] for item in assumptions}
     derived_ids = {item[0] for item in _FIXED_PULLEY_DERIVED_ASSUMPTIONS}
@@ -994,7 +1042,6 @@ def _derive_fixed_pulley_assumptions(
             }
         )
         approved.append(assumption_id)
-
 
 def _direction_fields(direction: str | None, role: str) -> dict[str, Any]:
     """Carry a source-stated direction into the typed Draft fields.

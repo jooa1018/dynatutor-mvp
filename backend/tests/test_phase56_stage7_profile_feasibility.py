@@ -537,6 +537,7 @@ def test_the_profile_table_and_enum_cannot_drift():
         ProfileId.direct_constant_force_work,
         ProfileId.polar_kinematics_state,
         ProfileId.fixed_pulley,
+        ProfileId.incline_hanging_pulley,
         ProfileId.free_flight_gravity,
         ProfileId.impulse_momentum,
         ProfileId.slot_pin_relative_frame,

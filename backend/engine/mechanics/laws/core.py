@@ -2639,6 +2639,11 @@ def _fixed_pulley_incline_contact_profile(
 ) -> _FixedPulleyInclineContactLawProfile | None:
     """Recognize only the closed two-frame incline/hanging rope contract."""
 
+    body_ids = tuple(
+        item.entity_id
+        for item in context.entities
+        if item.primitive in _FREE_BODY_PRIMITIVES
+    )
     primitive_ids = {
         primitive: tuple(
             item.entity_id
@@ -2646,30 +2651,52 @@ def _fixed_pulley_incline_contact_profile(
             if item.primitive is primitive
         )
         for primitive in (
-            EntityPrimitive.particle,
             EntityPrimitive.incline,
             EntityPrimitive.rope,
             EntityPrimitive.pulley,
             EntityPrimitive.environment,
+            EntityPrimitive.system,
         )
     }
     if (
-        {key: len(value) for key, value in primitive_ids.items()}
-        != {
-            EntityPrimitive.particle: 2,
-            EntityPrimitive.incline: 1,
-            EntityPrimitive.rope: 1,
-            EntityPrimitive.pulley: 1,
-            EntityPrimitive.environment: 1,
-        }
-        or len(context.entities) != 6
+        len(body_ids) != 2
+        or {key: len(value) for key, value in primitive_ids.items()}
+        not in (
+            {
+                EntityPrimitive.incline: 1,
+                EntityPrimitive.rope: 1,
+                EntityPrimitive.pulley: 1,
+                EntityPrimitive.environment: 1,
+                EntityPrimitive.system: 0,
+            },
+            {
+                EntityPrimitive.incline: 1,
+                EntityPrimitive.rope: 1,
+                EntityPrimitive.pulley: 1,
+                EntityPrimitive.environment: 1,
+                EntityPrimitive.system: 1,
+            },
+        )
+        or len(context.entities) not in {6, 7}
         or any(
             not item.evidence_refs or item.component_of_entity_id is not None
             for item in context.entities
         )
+        or any(
+            item.subject_id in set(body_ids)
+            and item.role in {
+                QuantityRole.moment_of_inertia,
+                QuantityRole.angular_position,
+                QuantityRole.angular_velocity,
+                QuantityRole.angular_acceleration,
+                QuantityRole.moment,
+                QuantityRole.torque,
+            }
+            for item in context.quantities
+        )
     ):
         return None
-    particle_ids = set(primitive_ids[EntityPrimitive.particle])
+    body_ids = set(body_ids)
     incline_id = primitive_ids[EntityPrimitive.incline][0]
     rope_id = primitive_ids[EntityPrimitive.rope][0]
     pulley_id = primitive_ids[EntityPrimitive.pulley][0]
@@ -2774,7 +2801,7 @@ def _fixed_pulley_incline_contact_profile(
         return None
     contact = contacts[0]
     rope_interaction = rope_interactions[0]
-    incline_body_ids = set(contact.participant_ids) & particle_ids
+    incline_body_ids = set(contact.participant_ids) & body_ids
     if (
         len(incline_body_ids) != 1
         or len(contact.participant_ids) != 2
@@ -2788,7 +2815,7 @@ def _fixed_pulley_incline_contact_profile(
     ):
         return None
     incline_body_id = next(iter(incline_body_ids))
-    hanging_body_id = next(iter(particle_ids - {incline_body_id}))
+    hanging_body_id = next(iter(body_ids - {incline_body_id}))
     if len(context.points) != 1:
         return None
     point = context.points[0]
@@ -2829,7 +2856,7 @@ def _fixed_pulley_incline_contact_profile(
         )
         or len(rope_interaction.participant_ids) != 4
         or set(rope_interaction.participant_ids)
-        != particle_ids | {rope_id, pulley_id}
+        != body_ids | {rope_id, pulley_id}
         or rope_interaction.point_ids
         or rope_interaction.frame_id is not None
         or rope_interaction.interval_id != interval.interval_id
@@ -2928,12 +2955,14 @@ def _fixed_pulley_incline_contact_profile(
     mass_hanging = one_quantity(
         hanging_linked, role=QuantityRole.mass, subject_id=hanging_body_id
     )
-    gravity_a = one_quantity(
-        incline_linked, role=QuantityRole.gravity, subject_id=environment_id
+    gravity_candidates_a = tuple(
+        item for item in incline_linked if item.role is QuantityRole.gravity
     )
-    gravity_b = one_quantity(
-        hanging_linked, role=QuantityRole.gravity, subject_id=environment_id
+    gravity_candidates_b = tuple(
+        item for item in hanging_linked if item.role is QuantityRole.gravity
     )
+    gravity_a = gravity_candidates_a[0] if len(gravity_candidates_a) == 1 else None
+    gravity_b = gravity_candidates_b[0] if len(gravity_candidates_b) == 1 else None
     angle = quantities.get(angles[0].quantity_ids[0])
     gravity_tangent = one_quantity(
         incline_linked,
@@ -3013,7 +3042,14 @@ def _fixed_pulley_incline_contact_profile(
         normal,
         normal_acceleration,
     )
-    if any(item is None for item in required) or gravity_b is not gravity_a:
+    if (
+        any(item is None for item in required)
+        or gravity_b is not gravity_a
+        or gravity_a.subject_id not in {
+            environment_id,
+            *primitive_ids[EntityPrimitive.system],
+        }
+    ):
         return None
 
     def exact_known(item: BoundQuantity, *, positive: bool) -> bool:
@@ -3034,10 +3070,26 @@ def _fixed_pulley_incline_contact_profile(
             and (value > 0.0 if positive else value >= 0.0)
         )
 
+    gravity_value = gravity_a.known_si_value
+    gravity_valid = (
+        gravity_a.role is QuantityRole.gravity
+        and gravity_a.shape is QuantityShape.scalar
+        and gravity_a.symbol_id is not None
+        and gravity_a.evidence_ids
+        and gravity_a.point_id is None
+        and gravity_a.frame_id is None
+        and gravity_a.interval_id in {None, interval.interval_id}
+        and gravity_a.event_id is None
+        and not gravity_a.direction_bound
+        and gravity_a.component in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        and type(gravity_value) is float
+        and math.isfinite(gravity_value)
+        and gravity_value > 0.0
+    )
     if (
         not exact_known(mass_incline, positive=True)
         or not exact_known(mass_hanging, positive=True)
-        or not exact_known(gravity_a, positive=True)
+        or not gravity_valid
         or angle.role is not QuantityRole.angle
         or angle.subject_id != incline_id
         or not exact_known(angle, positive=False)
@@ -3427,9 +3479,8 @@ def _fixed_pulley_incline_contact_profile(
         item for item in context.assumptions if item.assumption_id in approved_ids
     )
     if (
-        len(context.assumptions) != len(required_assumptions)
+        len(approved_ids) != len(required_assumptions)
         or len(approved_records) != len(required_assumptions)
-        or approved_ids != frozenset(item.assumption_id for item in context.assumptions)
         or {(item.kind, item.subject_id) for item in approved_records}
         != required_assumptions
         or any(
@@ -3665,7 +3716,7 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
     ):
         body_id = _one(
             item for item in gravity_link.participant_ids
-            if kinds.get(item) is EntityPrimitive.particle
+            if kinds.get(item) in _FREE_BODY_PRIMITIVES
         )
         environment_id = _one(
             item for item in gravity_link.participant_ids
@@ -3691,7 +3742,7 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
         )
         gravity = _one(
             item for item in linked
-            if item.role is QuantityRole.gravity and item.subject_id == environment_id
+            if item.role is QuantityRole.gravity and (item.subject_id == environment_id or kinds.get(item.subject_id) is EntityPrimitive.system)
         )
         gravity_tangent = _one(
             item for item in linked
@@ -3754,7 +3805,7 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
         )
         if (
             body_entity is None
-            or body_entity.primitive is not EntityPrimitive.particle
+            or body_entity.primitive not in _FREE_BODY_PRIMITIVES
             or not body_entity.evidence_refs
             or incline_entity is None
             or incline_entity.primitive is not EntityPrimitive.incline
@@ -4104,8 +4155,12 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
                 or item.frame_id is not None
                 or item.interval_id is not None
                 or item.event_id is not None
-                for item in (mass, gravity, angle)
+                for item in (mass, angle)
             )
+            or gravity.point_id is not None
+            or gravity.frame_id is not None
+            or gravity.interval_id not in {None, contact.interval_id}
+            or gravity.event_id is not None
             or mass.component not in {
                 QuantityComponent.magnitude,
                 QuantityComponent.unspecified,

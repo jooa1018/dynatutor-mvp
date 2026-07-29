@@ -51,7 +51,7 @@ from evaluation.phase56_stage7.complete_profile import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v6"
+    "phase56-stage7-complete-profile-application-v7"
 )
 
 
@@ -126,6 +126,14 @@ FIXED_PULLEY_ATTACH_LIGHT_ID = "geo_closure_fixed_pulley_attach_light"
 FIXED_PULLEY_ATTACH_HEAVY_ID = "geo_closure_fixed_pulley_attach_heavy"
 FIXED_PULLEY_TAUT_STATE_ID = "state_closure_fixed_pulley_rope_taut"
 FIXED_PULLEY_FIXED_STATE_ID = "state_closure_fixed_pulley_fixed"
+
+INCLINE_HANGING_ROPE_ID = "entity_closure_fixed_pulley_rope"
+INCLINE_HANGING_WORLD_ID = "entity_closure_incline_hanging_world"
+INCLINE_HANGING_WORLD_FRAME_ID = "frm_closure_incline_hanging_world"
+INCLINE_HANGING_INCLINE_FRAME_ID = "frm_closure_incline_hanging_slope"
+INCLINE_HANGING_CONTACT_POINT_ID = "pt_closure_incline_hanging_contact"
+INCLINE_HANGING_GRAVITY_ID = "qty_closure_incline_hanging_gravity"
+INCLINE_HANGING_GRAVITY_SYMBOL_ID = "sym_closure_incline_hanging_gravity"
 
 _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
     "massless_rope": "asm_closure_fixed_pulley_massless_rope",
@@ -2697,6 +2705,552 @@ def _fixed_pulley_acceleration_transaction(
     return closed, tuple(sorted(created_ids)), ()
 
 
+
+def _incline_hanging_pulley_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one exact frictionless incline/hanging fixed-pulley graph.
+
+    The source already supplies two masses, one incline angle, one unique
+    connected/wrapped/lying-on topology and the idealisations.  This adapter
+    derives only the frames, force-bearing interactions, contact/rope state and
+    unknown component quantities required by the existing generic laws.  The
+    aggregate acceleration-magnitude query is rebound to one rope-constrained
+    body axis whose sign is fixed by the source-valued drive comparison; no
+    acceleration value or answer is written here.
+    """
+
+    if (
+        len(payload["queries"]) != 1
+        or len(payload["motion_intervals"]) != 1
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or payload["state_conditions"]
+    ):
+        return None
+    query = payload["queries"][0]
+    target = query["target"]
+    interval = payload["motion_intervals"][0]
+    interval_id = interval["interval_id"]
+    if (
+        target.get("role") != "acceleration"
+        or target.get("component") != "magnitude"
+        or target.get("frame_id") is not None
+        or target.get("point_id") is not None
+        or target.get("event_id") is not None
+        or target.get("direction") is not None
+        or target.get("interval_id") != interval_id
+        or query.get("shape") != "scalar"
+    ):
+        return None
+
+    primitive_by_id = {
+        item["entity_id"]: item["primitive"] for item in payload["entities"]
+    }
+    system_id = target.get("subject_id")
+    if primitive_by_id.get(system_id) != "system":
+        return None
+    rope_ids = tuple(
+        item["entity_id"]
+        for item in payload["entities"]
+        if item["primitive"] == "rope"
+    )
+    pulley_ids = tuple(
+        item["entity_id"]
+        for item in payload["entities"]
+        if item["primitive"] == "pulley"
+    )
+    incline_ids = tuple(
+        item["entity_id"]
+        for item in payload["entities"]
+        if item["primitive"] == "incline"
+    )
+    if len(rope_ids) != 1 or len(pulley_ids) != 1 or len(incline_ids) != 1:
+        return None
+    rope_id = rope_ids[0]
+    pulley_id = pulley_ids[0]
+    incline_id = incline_ids[0]
+    if pulley_id in interval["subject_ids"]:
+        return None
+
+    query_quantity = next(
+        (
+            item
+            for item in payload["quantities"]
+            if item["quantity_id"] == target.get("target_quantity_id")
+        ),
+        None,
+    )
+    if (
+        query_quantity is None
+        or query_quantity["role"] != "acceleration"
+        or query_quantity["subject_id"] != system_id
+        or query_quantity.get("raw_value") is not None
+        or query_quantity.get("raw_unit") is not None
+        or query_quantity.get("evidence_refs")
+    ):
+        return None
+
+    mass_records: list[tuple[float, dict[str, Any]]] = []
+    for item in payload["quantities"]:
+        if item["role"] != "mass":
+            continue
+        if primitive_by_id.get(item["subject_id"]) not in {
+            "particle", "rigid_body", "body_component"
+        }:
+            continue
+        value = _fixed_pulley_mass_value(item)
+        if value is None or not item.get("evidence_refs"):
+            return None
+        mass_records.append((value, item))
+    if len(mass_records) != 2:
+        return None
+    mass_by_id = {item[1]["subject_id"]: item for item in mass_records}
+
+    angle_records = tuple(
+        item for item in payload["quantities"]
+        if item["role"] == "angle" and item["subject_id"] == incline_id
+    )
+    if len(angle_records) != 1 or not angle_records[0].get("evidence_refs"):
+        return None
+    angle_quantity = angle_records[0]
+    try:
+        angle_value = normalize_quantity(
+            angle_quantity["raw_value"],
+            angle_quantity["raw_unit"],
+            "scalar",
+            DimensionVector.dimensionless(),
+        ).value
+    except Exception:
+        return None
+    if type(angle_value) is not float or not 0.0 <= angle_value < 1.5707963267948966:
+        return None
+
+    wraps = tuple(item for item in payload["geometry"] if item["kind"] == "wraps")
+    connects = tuple(
+        item for item in payload["geometry"] if item["kind"] == "topology_connects"
+    )
+    supports = tuple(item for item in payload["geometry"] if item["kind"] == "lies_on")
+    if (
+        len(payload["geometry"]) != 3
+        or len(wraps) != 1
+        or len(connects) != 1
+        or len(supports) != 1
+        or any(item.get("interval_id") != interval_id for item in payload["geometry"])
+    ):
+        return None
+    moving_ids = set(mass_by_id)
+    if (
+        set(connects[0]["participant_ids"]) != moving_ids
+        or set(wraps[0]["participant_ids"]) != {*moving_ids, pulley_id}
+        or len(set(supports[0]["participant_ids"]) & moving_ids) != 1
+        or incline_id not in supports[0]["participant_ids"]
+    ):
+        return None
+    incline_body_id = next(iter(set(supports[0]["participant_ids"]) & moving_ids))
+    hanging_body_id = next(iter(moving_ids - {incline_body_id}))
+    mass_incline_value, mass_incline = mass_by_id[incline_body_id]
+    mass_hanging_value, mass_hanging = mass_by_id[hanging_body_id]
+    drive = mass_incline_value * __import__("math").sin(angle_value) - mass_hanging_value
+    scale = max(1.0, abs(mass_incline_value), abs(mass_hanging_value))
+    if abs(drive) <= 1.0e-12 * scale:
+        return None
+    incline_sign = 1 if drive > 0.0 else -1
+    hanging_sign = -incline_sign
+
+    if any(
+        item["role"] in {"force", "gravity", "coefficient_friction"}
+        or (
+            item["role"] == "acceleration"
+            and item["quantity_id"] != query_quantity["quantity_id"]
+        )
+        or (
+            item["subject_id"] == pulley_id
+            and item["role"] in {
+                "moment_of_inertia", "angular_position", "angular_velocity",
+                "angular_acceleration", "moment", "torque",
+            }
+        )
+        for item in payload["quantities"]
+    ):
+        return None
+
+    assumption_by_kind: dict[str, dict[str, Any]] = {}
+    for kind, assumption_id in _FIXED_PULLEY_SCOPED_ASSUMPTIONS.items():
+        matches = tuple(
+            item for item in payload["assumptions"]
+            if item["assumption_id"] == assumption_id
+            and item["kind"] == kind
+            and item["disposition"] == "approved"
+            and assumption_id in authority.approved_assumption_ids
+            and item["interval_id"] == interval_id
+            and item.get("evidence_refs")
+        )
+        if len(matches) != 1:
+            return None
+        assumption_by_kind[kind] = matches[0]
+    if (
+        assumption_by_kind["massless_rope"]["subject_id"] != rope_id
+        or assumption_by_kind["inextensible_rope"]["subject_id"] != rope_id
+        or assumption_by_kind["fixed_pulley"]["subject_id"] != pulley_id
+        or assumption_by_kind["ideal_massless_frictionless_pulley"]["subject_id"] != pulley_id
+    ):
+        return None
+
+    gravity_assumptions = tuple(
+        item for item in payload["assumptions"]
+        if item["kind"] == "constant_gravity"
+        and item["disposition"] == "approved"
+        and item["assumption_id"] in authority.approved_assumption_ids
+        and item["interval_id"] == interval_id
+        and item["subject_id"] == system_id
+        and item.get("evidence_refs")
+    )
+    frictionless = tuple(
+        item for item in payload["assumptions"]
+        if item["kind"] == "frictionless"
+        and item["disposition"] == "approved"
+        and item["assumption_id"] in authority.approved_assumption_ids
+        and item["interval_id"] == interval_id
+        and item["subject_id"] == system_id
+        and item.get("evidence_refs")
+    )
+    if len(gravity_assumptions) != 1 or len(frictionless) != 1:
+        return None
+    gravity_assumption = gravity_assumptions[0]
+    gravity_authorization = authority.authorized_assumptions.get(
+        gravity_assumption["assumption_id"]
+    )
+    if (
+        type(gravity_authorization) is not AssumptionAuthorization
+        or gravity_authorization.assumption_id != gravity_assumption["assumption_id"]
+        or gravity_authorization.subject_id != system_id
+        or gravity_authorization.interval_id != interval_id
+        or str(getattr(gravity_authorization.role, "value", gravity_authorization.role)) != "gravity"
+        or gravity_assumption.get("proposed_value") != gravity_authorization.raw_value
+        or gravity_assumption.get("proposed_unit") != gravity_authorization.raw_unit
+    ):
+        return None
+
+    ids = {
+        "world": INCLINE_HANGING_WORLD_ID,
+        "world_frame": INCLINE_HANGING_WORLD_FRAME_ID,
+        "incline_frame": INCLINE_HANGING_INCLINE_FRAME_ID,
+        "point": INCLINE_HANGING_CONTACT_POINT_ID,
+        "gravity": INCLINE_HANGING_GRAVITY_ID,
+        "gravity_symbol": INCLINE_HANGING_GRAVITY_SYMBOL_ID,
+        "gravity_tangent": "qty_closure_incline_hanging_gravity_tangent",
+        "gravity_tangent_symbol": "sym_closure_incline_hanging_gravity_tangent",
+        "gravity_normal": "qty_closure_incline_hanging_gravity_normal",
+        "gravity_normal_symbol": "sym_closure_incline_hanging_gravity_normal",
+        "weight_hanging": "qty_closure_incline_hanging_weight",
+        "weight_hanging_symbol": "sym_closure_incline_hanging_weight",
+        "normal": "qty_closure_incline_hanging_normal",
+        "normal_symbol": "sym_closure_incline_hanging_normal",
+        "tension_incline": "qty_closure_incline_hanging_tension_incline",
+        "tension_incline_symbol": "sym_closure_incline_hanging_tension_incline",
+        "tension_hanging": "qty_closure_incline_hanging_tension_hanging",
+        "tension_hanging_symbol": "sym_closure_incline_hanging_tension_hanging",
+        "rope_tension": "qty_closure_incline_hanging_rope_tension",
+        "rope_tension_symbol": "sym_closure_incline_hanging_rope_tension",
+        "accel_incline": "qty_closure_incline_hanging_accel_incline",
+        "accel_incline_symbol": "sym_closure_incline_hanging_accel_incline",
+        "accel_normal": "qty_closure_incline_hanging_accel_normal",
+        "accel_normal_symbol": "sym_closure_incline_hanging_accel_normal",
+        "rope_accel": "qty_closure_incline_hanging_rope_accel",
+        "rope_accel_symbol": "sym_closure_incline_hanging_rope_accel",
+        "angle_relation": "geo_closure_incline_hanging_angle",
+        "wrap": "geo_closure_incline_hanging_wrap",
+        "attach_incline": "geo_closure_incline_hanging_attach_incline",
+        "attach_hanging": "geo_closure_incline_hanging_attach_hanging",
+        "gravity_incline": "rel_closure_incline_hanging_gravity_incline",
+        "gravity_hanging": "rel_closure_incline_hanging_gravity_hanging",
+        "contact": "rel_closure_incline_hanging_contact",
+        "rope_interaction": "rel_closure_incline_hanging_rope",
+        "rope_state": "state_closure_incline_hanging_rope_taut",
+        "pulley_state": "state_closure_incline_hanging_pulley_fixed",
+        "contact_state": "state_closure_incline_hanging_contact",
+        "incline_state": "state_closure_incline_hanging_incline_fixed",
+        "friction_state": "state_closure_incline_hanging_frictionless",
+    }
+    if _authored_draft_ids(payload) & set(ids.values()):
+        return None
+
+    rope_evidence = tuple(sorted(
+        set(assumption_by_kind["massless_rope"]["evidence_refs"])
+        | set(assumption_by_kind["inextensible_rope"]["evidence_refs"])
+    ))
+    pulley_evidence = tuple(sorted(
+        set(assumption_by_kind["fixed_pulley"]["evidence_refs"])
+        | set(assumption_by_kind["ideal_massless_frictionless_pulley"]["evidence_refs"])
+    ))
+    gravity_evidence = tuple(gravity_assumption["evidence_refs"])
+    contact_evidence = tuple(frictionless[0]["evidence_refs"])
+    angle_evidence = tuple(angle_quantity["evidence_refs"])
+    mass_incline_evidence = tuple(mass_incline["evidence_refs"])
+    mass_hanging_evidence = tuple(mass_hanging["evidence_refs"])
+    orientation_evidence = tuple(sorted(
+        set(rope_evidence) | set(pulley_evidence) | set(contact_evidence)
+        | set(angle_evidence) | set(gravity_evidence)
+    ))
+    query_evidence = tuple(sorted(
+        set(orientation_evidence) | set(mass_incline_evidence) | set(mass_hanging_evidence)
+    ))
+
+    def axis_direction(frame_id: str, axis: str, sign: int) -> dict[str, Any]:
+        return {"kind": "axis", "frame_id": frame_id, "axis": axis, "sign": sign}
+
+    world_frame = {
+        "frame_id": ids["world_frame"], "frame_type": "cartesian_2d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {"axis": "x", "direction": axis_direction(ids["world_frame"], "x", 1)},
+            {"axis": "y", "direction": axis_direction(ids["world_frame"], "y", 1)},
+        ],
+        "evidence_refs": list(orientation_evidence),
+    }
+    incline_frame = {
+        "frame_id": ids["incline_frame"], "frame_type": "tangential_normal",
+        "origin": {"kind": "entity", "entity_id": incline_id},
+        "axes": [
+            {"axis": "tangent", "direction": axis_direction(ids["incline_frame"], "tangent", 1)},
+            {"axis": "normal", "direction": axis_direction(ids["incline_frame"], "normal", 1)},
+        ],
+        "parent_frame_id": ids["world_frame"],
+        "evidence_refs": list(orientation_evidence),
+    }
+
+    generated_quantities: list[dict[str, Any]] = []
+    generated_symbols: list[dict[str, Any]] = []
+    def add_unknown(key: str, role: str, subject: str, dimension: dict[str, int], *,
+                    frame: str | None = None, component: str = "magnitude",
+                    sign: int | None = None, point: str | None = None,
+                    evidence: tuple[str, ...] = ()) -> None:
+        qid=ids[key]; sid=ids[f"{key}_symbol"]
+        item={
+            "quantity_id": qid, "symbol_id": sid, "role": role,
+            "subject_id": subject, "point_id": point, "frame_id": frame,
+            "interval_id": interval_id, "event_id": None,
+            "component": component, "shape": "scalar",
+            "dimension": dict(dimension), "provenance": "unknown",
+            "evidence_refs": list(evidence),
+        }
+        if sign is not None and frame is not None:
+            axis = "tangent" if component == "tangential" else component
+            item["direction"] = axis_direction(frame, axis, sign)
+        generated_quantities.append(item)
+        generated_symbols.append({
+            "symbol_id": sid, "quantity_id": qid,
+            "dimension": dict(dimension), "shape": "scalar",
+        })
+
+    gravity_quantity = {
+        "quantity_id": ids["gravity"], "symbol_id": ids["gravity_symbol"],
+        "role": "gravity", "subject_id": system_id,
+        "point_id": None, "frame_id": None, "interval_id": interval_id,
+        "event_id": None, "component": "magnitude", "shape": "scalar",
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "provenance": "server_default",
+        "raw_value": gravity_authorization.raw_value,
+        "raw_unit": gravity_authorization.raw_unit,
+        "assumption_policy_ref": gravity_authorization.assumption_id,
+        "evidence_refs": list(gravity_evidence),
+    }
+    generated_quantities.append(gravity_quantity)
+    generated_symbols.append({
+        "symbol_id": ids["gravity_symbol"], "quantity_id": ids["gravity"],
+        "dimension": dict(_ACCELERATION_DIMENSION), "shape": "scalar",
+    })
+    add_unknown("gravity_tangent", "force", incline_body_id, _FORCE_DIMENSION,
+                frame=ids["incline_frame"], component="tangential", sign=1,
+                evidence=tuple(sorted(set(gravity_evidence)|set(angle_evidence)|set(orientation_evidence))))
+    add_unknown("gravity_normal", "force", incline_body_id, _FORCE_DIMENSION,
+                frame=ids["incline_frame"], component="normal", sign=-1,
+                evidence=tuple(sorted(set(gravity_evidence)|set(angle_evidence)|set(orientation_evidence))))
+    add_unknown("weight_hanging", "force", hanging_body_id, _FORCE_DIMENSION,
+                frame=ids["world_frame"], component="y", sign=1,
+                evidence=tuple(sorted(set(gravity_evidence)|set(orientation_evidence))))
+    add_unknown("normal", "force", incline_body_id, _FORCE_DIMENSION,
+                frame=ids["incline_frame"], component="normal", sign=1,
+                point=ids["point"], evidence=contact_evidence)
+    add_unknown("tension_incline", "force", incline_body_id, _FORCE_DIMENSION,
+                frame=ids["incline_frame"], component="tangential", sign=-1,
+                evidence=rope_evidence)
+    add_unknown("tension_hanging", "force", hanging_body_id, _FORCE_DIMENSION,
+                frame=ids["world_frame"], component="y", sign=-1,
+                evidence=rope_evidence)
+    add_unknown("rope_tension", "force", rope_id, _FORCE_DIMENSION,
+                evidence=rope_evidence)
+    add_unknown("accel_incline", "acceleration", incline_body_id, _ACCELERATION_DIMENSION,
+                frame=ids["incline_frame"], component="tangential", sign=incline_sign,
+                evidence=query_evidence)
+    add_unknown("accel_normal", "acceleration", incline_body_id, _ACCELERATION_DIMENSION,
+                frame=ids["incline_frame"], component="normal", sign=1,
+                evidence=contact_evidence)
+    add_unknown("rope_accel", "acceleration", rope_id, _ACCELERATION_DIMENSION,
+                evidence=rope_evidence)
+
+    rebound_query_quantity = dict(query_quantity)
+    rebound_query_quantity.update({
+        "subject_id": hanging_body_id,
+        "frame_id": ids["world_frame"],
+        "interval_id": interval_id,
+        "event_id": None,
+        "component": "y",
+        "direction": axis_direction(ids["world_frame"], "y", hanging_sign),
+        "evidence_refs": list(query_evidence),
+    })
+    quantities = []
+    unscoped_source_ids = {
+        mass_incline["quantity_id"],
+        mass_hanging["quantity_id"],
+        angle_quantity["quantity_id"],
+    }
+    for item in payload["quantities"]:
+        if item["quantity_id"] == query_quantity["quantity_id"]:
+            quantities.append(rebound_query_quantity)
+        elif item["quantity_id"] in unscoped_source_ids:
+            entry = dict(item)
+            entry["interval_id"] = None
+            entry["event_id"] = None
+            quantities.append(entry)
+        else:
+            quantities.append(item)
+    quantities.extend(generated_quantities)
+
+    entities=[]
+    evidence_by_entity={
+        system_id: query_evidence,
+        incline_body_id: tuple(sorted(set(mass_incline_evidence)|set(contact_evidence))),
+        hanging_body_id: tuple(sorted(set(mass_hanging_evidence)|set(rope_evidence))),
+        incline_id: tuple(sorted(set(angle_evidence)|set(contact_evidence)|set(orientation_evidence))),
+        pulley_id: pulley_evidence,
+        rope_id: rope_evidence,
+    }
+    for item in payload["entities"]:
+        entry=dict(item)
+        entry["evidence_refs"]=list(evidence_by_entity.get(item["entity_id"], tuple(item.get("evidence_refs",()))))
+        entities.append(entry)
+    entities.append({
+        "entity_id": ids["world"], "primitive": "environment",
+        "evidence_refs": list(tuple(sorted(set(gravity_evidence)|set(orientation_evidence)))),
+    })
+
+    updated_interval=dict(interval)
+    updated_interval.update({
+        "subject_ids": sorted({item["entity_id"] for item in entities}),
+        "frame_id": None, "start_event_id": None, "end_event_id": None,
+        "evidence_refs": list(query_evidence),
+    })
+    events=payload["events"]
+    if (
+        len(events) != 2
+        or {item["event_id"] for item in events} != {interval.get("start_event_id"), interval.get("end_event_id")}
+        or any(item.get("evidence_refs") or item.get("time_quantity_id") for item in events)
+        or any(item.get("event_id") is not None for item in payload["quantities"])
+    ):
+        return None
+
+    geometry=[
+        {"relation_id": ids["angle_relation"], "kind": "angle",
+         "participant_ids": [incline_id, ids["world"]],
+         "expression": None, "quantity_ids": [angle_quantity["quantity_id"]],
+         "interval_id": None, "evidence_refs": list(angle_evidence)},
+        {"relation_id": ids["wrap"], "kind": "wraps",
+         "participant_ids": [rope_id, pulley_id], "expression": None,
+         "quantity_ids": [ids["rope_tension"], ids["rope_accel"]],
+         "interval_id": interval_id, "evidence_refs": list(pulley_evidence)},
+        {"relation_id": ids["attach_incline"], "kind": "attached",
+         "participant_ids": [rope_id, incline_body_id], "expression": None,
+         "quantity_ids": [ids["tension_incline"], ids["accel_incline"], ids["rope_tension"], ids["rope_accel"]],
+         "interval_id": interval_id, "evidence_refs": list(rope_evidence)},
+        {"relation_id": ids["attach_hanging"], "kind": "attached",
+         "participant_ids": [rope_id, hanging_body_id], "expression": None,
+         "quantity_ids": [ids["tension_hanging"], query_quantity["quantity_id"], ids["rope_tension"], ids["rope_accel"]],
+         "interval_id": interval_id, "evidence_refs": list(rope_evidence)},
+    ]
+    interactions=[
+        {"interaction_id": ids["gravity_incline"], "kind": "gravity",
+         "participant_ids": [incline_body_id, ids["world"]], "point_ids": [],
+         "frame_id": ids["incline_frame"], "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [mass_incline["quantity_id"], ids["gravity"], ids["gravity_tangent"], ids["gravity_normal"]],
+         "evidence_refs": list(tuple(sorted(set(mass_incline_evidence)|set(gravity_evidence)|set(angle_evidence)|set(orientation_evidence))))},
+        {"interaction_id": ids["gravity_hanging"], "kind": "gravity",
+         "participant_ids": [hanging_body_id, ids["world"]], "point_ids": [],
+         "frame_id": ids["world_frame"], "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [mass_hanging["quantity_id"], ids["gravity"], ids["weight_hanging"]],
+         "evidence_refs": list(tuple(sorted(set(mass_hanging_evidence)|set(gravity_evidence)|set(orientation_evidence))))},
+        {"interaction_id": ids["contact"], "kind": "contact",
+         "participant_ids": [incline_body_id, incline_id], "point_ids": [ids["point"]],
+         "frame_id": ids["incline_frame"], "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [ids["normal"], ids["accel_normal"]],
+         "evidence_refs": list(contact_evidence)},
+        {"interaction_id": ids["rope_interaction"], "kind": "rope_tension",
+         "participant_ids": [incline_body_id, hanging_body_id, rope_id, pulley_id],
+         "point_ids": [], "frame_id": None, "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [ids["tension_incline"], ids["tension_hanging"], ids["accel_incline"], query_quantity["quantity_id"], ids["rope_tension"], ids["rope_accel"]],
+         "evidence_refs": list(tuple(sorted(set(rope_evidence)|set(pulley_evidence)|set(orientation_evidence))))},
+    ]
+    states=[
+        {"state_condition_id": ids["rope_state"], "kind": "rope", "state": "taut",
+         "subject_id": rope_id, "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [], "evidence_refs": list(rope_evidence)},
+        {"state_condition_id": ids["pulley_state"], "kind": "motion", "state": "at_rest",
+         "subject_id": pulley_id, "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [], "evidence_refs": list(pulley_evidence)},
+        {"state_condition_id": ids["contact_state"], "kind": "contact", "state": "touching",
+         "subject_id": incline_body_id, "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [ids["normal"], ids["accel_normal"]], "evidence_refs": list(contact_evidence)},
+        {"state_condition_id": ids["incline_state"], "kind": "motion", "state": "at_rest",
+         "subject_id": incline_id, "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [], "evidence_refs": list(contact_evidence)},
+        {"state_condition_id": ids["friction_state"], "kind": "friction", "state": "inactive",
+         "subject_id": incline_body_id, "interval_id": interval_id, "event_id": None,
+         "quantity_ids": [], "evidence_refs": list(contact_evidence)},
+    ]
+    queries=[dict(item) for item in payload["queries"]]
+    query_target=dict(queries[0]["target"])
+    query_target.update({
+        "subject_id": hanging_body_id, "frame_id": ids["world_frame"],
+        "interval_id": interval_id, "event_id": None, "component": "y",
+        "direction": axis_direction(ids["world_frame"], "y", hanging_sign),
+        "target_quantity_id": query_quantity["quantity_id"],
+    })
+    queries[0]["target"]=query_target
+    queries[0]["evidence_refs"]=list(query_evidence)
+
+    closed=dict(payload)
+    closed.update({
+        "entities": entities,
+        "points": [{"point_id": ids["point"], "role": "contact", "owner_entity_id": incline_body_id,
+                    "frame_id": ids["incline_frame"], "evidence_refs": list(contact_evidence)}],
+        "reference_frames": [world_frame, incline_frame],
+        "motion_intervals": [updated_interval],
+        "events": [],
+        "symbols": [*payload["symbols"], *generated_symbols],
+        "quantities": quantities,
+        "geometry": geometry,
+        "interactions": interactions,
+        "state_conditions": states,
+        "queries": queries,
+        # The aggregate source assumptions have been consumed to create exact
+        # rope/pulley scope.  Retain the authorized gravity policy because the
+        # server-default quantity references it; retain only the four derived
+        # structural assumptions for the law graph.
+        "assumptions": [
+            gravity_assumption,
+            *(assumption_by_kind[kind] for kind in (
+                "massless_rope",
+                "inextensible_rope",
+                "fixed_pulley",
+                "ideal_massless_frictionless_pulley",
+            )),
+        ],
+    })
+    return closed, tuple(sorted(ids.values())), (query_quantity["quantity_id"],)
+
 # Only a profile whose partial-attachment hazards already have engine-level
 # negative controls, or which creates no force at all, may appear here.
 # Everything else plans, is measured by the census, and is not built.
@@ -2714,6 +3268,7 @@ _TRANSACTIONS = {
     ProfileId.free_flight_gravity: _free_flight_gravity_transaction,
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.fixed_pulley: _fixed_pulley_acceleration_transaction,
+    ProfileId.incline_hanging_pulley: _incline_hanging_pulley_transaction,
     ProfileId.slot_pin_relative_frame: _slot_pin_relative_frame_transaction,
     ProfileId.rotating_relative_frame: _rotating_relative_frame_transaction,
     ProfileId.relative_translating_frame: _relative_translating_frame_transaction,

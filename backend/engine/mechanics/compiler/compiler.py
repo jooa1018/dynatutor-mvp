@@ -2598,6 +2598,11 @@ def _fixed_pulley_incline_contact_contract(
 
     entities = tuple(item for item in ir.entities if item.entity_id in relevant)
     entity_by_id = {item.entity_id: item for item in entities}
+    body_ids = tuple(
+        item.entity_id
+        for item in entities
+        if item.primitive.value in {"particle", "rigid_body", "body_component"}
+    )
     primitive_ids = {
         primitive: tuple(
             item.entity_id
@@ -2605,11 +2610,11 @@ def _fixed_pulley_incline_contact_contract(
             if item.primitive.value == primitive
         )
         for primitive in (
-            "particle",
             "incline",
             "rope",
             "pulley",
             "environment",
+            "system",
         )
     }
     interactions = tuple(
@@ -2643,15 +2648,9 @@ def _fixed_pulley_incline_contact_contract(
     # relation that the exact contract must require.  Otherwise deleting two
     # complementary topology records can erase the recognizer's own signal and
     # let the remaining gravity/contact fragment fall through to generic laws.
-    candidate = all(
+    candidate = bool(body_ids) and all(
         primitive_ids[primitive]
-        for primitive in (
-            "particle",
-            "incline",
-            "rope",
-            "pulley",
-            "environment",
-        )
+        for primitive in ("incline", "rope", "pulley", "environment")
     )
     if not candidate:
         return None, None
@@ -2672,9 +2671,9 @@ def _fixed_pulley_incline_contact_contract(
             "allows only scalar local-body acceleration or rope-tension queries",
             query.query_id,
         )
-    if query_entity.primitive.value != "particle":
+    if query_entity.primitive.value not in {"particle", "rigid_body", "body_component"}:
         return None, failure(
-            "keeps every non-particle topology quantity non-queryable",
+            "keeps every non-free-body topology quantity non-queryable",
             query.target.target_quantity_id or query.query_id,
         )
     if query.target.role not in {QuantityRole.acceleration, QuantityRole.force}:
@@ -2688,26 +2687,40 @@ def _fixed_pulley_incline_contact_contract(
             query.target.target_quantity_id or query.query_id,
         )
 
-    expected_counts = {
-        "particle": 2,
+    counts = {key: len(value) for key, value in primitive_ids.items()}
+    expected_base = {
         "incline": 1,
         "rope": 1,
         "pulley": 1,
         "environment": 1,
     }
     if (
-        {key: len(value) for key, value in primitive_ids.items()}
-        != expected_counts
-        or len(entities) != 6
+        len(body_ids) != 2
+        or any(counts[key] != value for key, value in expected_base.items())
+        or counts["system"] not in {0, 1}
+        or len(entities) != 6 + counts["system"]
         or any(
             not item.evidence_refs or item.component_of_entity_id is not None
             for item in entities
         )
+        or any(
+            item.subject_id in set(body_ids)
+            and item.role in {
+                QuantityRole.moment_of_inertia,
+                QuantityRole.angular_position,
+                QuantityRole.angular_velocity,
+                QuantityRole.angular_acceleration,
+                QuantityRole.moment,
+                QuantityRole.torque,
+            }
+            for item in ir.quantities
+            if item.quantity_id in relevant
+        )
     ):
         return None, failure(
-            "requires exactly two particles, one incline, one rope, one pulley, and one environment"
+            "requires exactly two translation-only free bodies, one incline, one rope, one pulley, one environment, and at most one aggregate system"
         )
-    particle_ids = set(primitive_ids["particle"])
+    body_ids = set(body_ids)
     incline_id = primitive_ids["incline"][0]
     rope_id = primitive_ids["rope"][0]
     pulley_id = primitive_ids["pulley"][0]
@@ -2793,7 +2806,7 @@ def _fixed_pulley_incline_contact_contract(
     if len(contacts) != 1:
         return None, failure("requires one incline contact")
     contact = contacts[0]
-    incline_body_ids = set(contact.participant_ids) & particle_ids
+    incline_body_ids = set(contact.participant_ids) & body_ids
     if (
         len(contact.participant_ids) != 2
         or len(set(contact.participant_ids)) != 2
@@ -2807,7 +2820,7 @@ def _fixed_pulley_incline_contact_contract(
     ):
         return None, failure("requires one exact evidenced particle/incline contact", contact.interaction_id)
     incline_body_id = next(iter(incline_body_ids))
-    hanging_body_id = next(iter(particle_ids - {incline_body_id}))
+    hanging_body_id = next(iter(body_ids - {incline_body_id}))
     points = tuple(item for item in ir.points if item.point_id in relevant)
     if len(points) != 1:
         return None, failure("requires one evidenced contact point")
@@ -2840,7 +2853,7 @@ def _fixed_pulley_incline_contact_contract(
         or len(set(wraps[0].quantity_ids)) != 2
         or wraps[0].interval_id != interval.interval_id
         or {frozenset(item.participant_ids) for item in attached}
-        != {frozenset((rope_id, item)) for item in particle_ids}
+        != {frozenset((rope_id, item)) for item in body_ids}
         or any(
             len(item.quantity_ids) != 4
             or len(set(item.quantity_ids)) != 4
@@ -2930,9 +2943,17 @@ def _fixed_pulley_incline_contact_contract(
             ("acceleration_not_opposite_motion", incline_body_id),
         ) if regime == "sliding" else ()),
     }
+    structural_assumptions = tuple(
+        item for item in scoped_assumptions
+        if (item.kind, item.subject_id) in expected_assumptions
+    )
+    gravity_assumptions = tuple(
+        item for item in scoped_assumptions if item.kind == "constant_gravity"
+    )
+    system_ids = set(primitive_ids["system"])
     if (
-        len(scoped_assumptions) != len(expected_assumptions)
-        or {(item.kind, item.subject_id) for item in scoped_assumptions}
+        len(structural_assumptions) != len(expected_assumptions)
+        or {(item.kind, item.subject_id) for item in structural_assumptions}
         != expected_assumptions
         or any(
             item.disposition is not AssumptionDisposition.approved
@@ -2942,11 +2963,24 @@ def _fixed_pulley_incline_contact_contract(
             or item.proposed_value is not None
             or item.proposed_unit is not None
             or not item.evidence_refs
-            for item in scoped_assumptions
+            for item in structural_assumptions
         )
+        or len(gravity_assumptions) not in {0, 1}
+        or any(
+            item.disposition is not AssumptionDisposition.approved
+            or item.assumption_id not in approved_assumption_ids
+            or item.subject_id not in system_ids
+            or item.interval_id != interval.interval_id
+            or getattr(item.proposed_role, "value", item.proposed_role) != "gravity"
+            or item.proposed_value is None
+            or item.proposed_unit is None
+            or not item.evidence_refs
+            for item in gravity_assumptions
+        )
+        or len(scoped_assumptions) != len(structural_assumptions) + len(gravity_assumptions)
     ):
         return None, failure(
-            "requires exact externally approved evidenced rope, pulley, and motion assumptions",
+            "requires exact externally approved evidenced rope, pulley, gravity, and motion assumptions",
             rope_id,
         )
 
@@ -2985,7 +3019,7 @@ def _fixed_pulley_incline_contact_contract(
         )
         or len(rope_interaction.participant_ids) != 4
         or set(rope_interaction.participant_ids)
-        != particle_ids | {rope_id, pulley_id}
+        != body_ids | {rope_id, pulley_id}
         or rope_interaction.point_ids
         or rope_interaction.frame_id is not None
         or rope_interaction.interval_id != interval.interval_id
@@ -3015,8 +3049,18 @@ def _fixed_pulley_incline_contact_contract(
 
     mass_incline = one_linked(incline_gravity[0], QuantityRole.mass, incline_body_id)
     mass_hanging = one_linked(hanging_gravity[0], QuantityRole.mass, hanging_body_id)
-    gravity_a = one_linked(incline_gravity[0], QuantityRole.gravity, environment_id)
-    gravity_b = one_linked(hanging_gravity[0], QuantityRole.gravity, environment_id)
+    gravity_values_a = tuple(
+        item for item in quantities.values()
+        if item.quantity_id in set(incline_gravity[0].quantity_ids)
+        and item.role is QuantityRole.gravity
+    )
+    gravity_values_b = tuple(
+        item for item in quantities.values()
+        if item.quantity_id in set(hanging_gravity[0].quantity_ids)
+        and item.role is QuantityRole.gravity
+    )
+    gravity_a = gravity_values_a[0] if len(gravity_values_a) == 1 else None
+    gravity_b = gravity_values_b[0] if len(gravity_values_b) == 1 else None
     angle = quantities.get(angles[0].quantity_ids[0])
 
     def exact_known(item: object, *, positive: bool) -> bool:
@@ -3038,7 +3082,7 @@ def _fixed_pulley_incline_contact_contract(
             and (value > 0.0 if positive else value >= 0.0)
         )
 
-    known_positive = (mass_incline, mass_hanging, gravity_a)
+    known_positive = (mass_incline, mass_hanging)
     bad_positive = next(
         (
             item for item in known_positive
@@ -3055,14 +3099,39 @@ def _fixed_pulley_incline_contact_contract(
             f"quantities.{bad_positive.quantity_id}.si_value",
             bad_positive.quantity_id,
         )
+    gravity_subject_primitives = {
+        entity_by_id[item].primitive.value
+        for item in (getattr(gravity_a, "subject_id", None),)
+        if item in entity_by_id
+    }
+    gravity_value = getattr(gravity_a, "si_value", None)
+    gravity_valid = (
+        gravity_a is not None
+        and gravity_b is gravity_a
+        and gravity_a.role is QuantityRole.gravity
+        and gravity_a.shape is QuantityShape.scalar
+        and gravity_a.symbol_id is not None
+        and gravity_a.provenance in {Provenance.explicit_source, Provenance.server_default}
+        and bool(gravity_a.evidence_refs)
+        and gravity_a.point_id is None
+        and gravity_a.frame_id is None
+        and gravity_a.interval_id in {None, interval.interval_id}
+        and gravity_a.event_id is None
+        and gravity_a.direction is None
+        and gravity_a.component.value in {"magnitude", "unspecified"}
+        and type(gravity_value) is float
+        and math.isfinite(gravity_value)
+        and gravity_value > 0.0
+        and gravity_subject_primitives <= {"environment", "system"}
+        and bool(gravity_subject_primitives)
+    )
     if (
         any(item is None or not exact_known(item, positive=True) for item in known_positive)
-        or gravity_b is not gravity_a
+        or not gravity_valid
         or mass_incline.role is not QuantityRole.mass
         or mass_hanging.role is not QuantityRole.mass
-        or gravity_a.role is not QuantityRole.gravity
     ):
-        return None, failure("requires exact source-backed masses and one shared gravity magnitude")
+        return None, failure("requires exact source-backed masses and one authorized shared gravity magnitude")
     if (
         angle is None
         or angle.role is not QuantityRole.angle
@@ -3192,7 +3261,7 @@ def _fixed_pulley_incline_contact_contract(
     )
     accelerations = tuple(
         item for item in quantities.values()
-        if item.role is QuantityRole.acceleration and item.subject_id in particle_ids
+        if item.role is QuantityRole.acceleration and item.subject_id in body_ids
     )
     incline_tangent_accelerations = tuple(
         item for item in accelerations
@@ -4851,12 +4920,18 @@ def _rolling_energy_candidate(ir: MechanicsProblemIRV1) -> bool:
     """Use redundant physical signals, never the query or diagnostics."""
 
     primitives = {item.primitive for item in ir.entities}
+    rigid_body_ids = tuple(
+        item.entity_id
+        for item in ir.entities
+        if item.primitive is EntityPrimitive.rigid_body
+    )
     has_cartesian_2d_frame = any(
         item.frame_type is ReferenceFrameType.cartesian_2d
         for item in ir.reference_frames
     )
     intact_rigid_candidate = (
-        EntityPrimitive.rigid_body in primitives
+        len(rigid_body_ids) == 1
+        and not ({EntityPrimitive.rope, EntityPrimitive.pulley, EntityPrimitive.system} & primitives)
         and has_cartesian_2d_frame
         and (
             EntityPrimitive.incline in primitives
