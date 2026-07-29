@@ -1,0 +1,40 @@
+name: Temporary Stage 7 B8 exact-source export b8dd0ee
+
+on:
+  pull_request:
+    branches:
+      - tmp/stage7-b8-source-b8dd0ee
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact authoritative source
+        uses: actions/checkout@v4
+        with:
+          ref: b8dd0ee4853a12ad97cd865e8a2068e548a814b1
+          fetch-depth: 1
+      - name: Export exact source
+        run: |
+          set -euo pipefail
+          expected=b8dd0ee4853a12ad97cd865e8a2068e548a814b1
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          git archive --format=tar.gz --output "${RUNNER_TEMP}/dynatutor-stage7-source-${expected}.tar.gz" "$expected"
+          {
+            printf 'exact_head_sha=%s\n' "$expected"
+            sha256sum "${RUNNER_TEMP}/dynatutor-stage7-source-${expected}.tar.gz"
+          } > "${RUNNER_TEMP}/dynatutor-stage7-${expected}.manifest.txt"
+      - name: Upload exact-source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynatutor-stage7-source-b8dd0ee4853a12ad97cd865e8a2068e548a814b1
+          path: |
+            ${{ runner.temp }}/dynatutor-stage7-source-b8dd0ee4853a12ad97cd865e8a2068e548a814b1.tar.gz
+            ${{ runner.temp }}/dynatutor-stage7-b8dd0ee4853a12ad97cd865e8a2068e548a814b1.manifest.txt
+          retention-days: 1
+          if-no-files-found: error
