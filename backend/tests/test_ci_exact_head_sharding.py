@@ -16,6 +16,8 @@ STAGE7 = ROOT / ".github/workflows/phase56-stage7-offline-evaluation.yml"
 PHASE55 = ROOT / ".github/workflows/phase55-textbook-parser.yml"
 FAST_WRAPPER = ROOT / "scripts/check_backend_fast.sh"
 SHARDER = ROOT / "backend/scripts/pytest_file_shards.py"
+SLOW_WRAPPER = ROOT / "scripts/check_backend_slow.sh"
+NODE_SHARDER = ROOT / "backend/scripts/pytest_node_shards.py"
 
 
 def _text(path: Path) -> str:
@@ -41,6 +43,21 @@ def test_release_fast_suite_is_four_parallel_jobs_with_a_partition_gate() -> Non
     assert "- backend_fast_audit" in text
     assert "cancel-in-progress: false" in text
 
+
+
+def test_release_slow_suite_is_eight_parallel_node_shards_with_a_partition_gate() -> None:
+    text = _text(RELEASE)
+    assert "name: backend slow shard ${{ matrix.shard_index }}" in text
+    assert "shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]" in text
+    assert "DYNATUTOR_BACKEND_SLOW_SHARD_INDEX: ${{ matrix.shard_index }}" in text
+    assert "backend_slow_audit:" in text
+    assert "backend-slow-manifest-${{ github.run_id }}" in text
+    assert "- backend_slow_audit" in text
+    wrapper = _text(SLOW_WRAPPER)
+    assert 'SLOW_MARKER_EXPRESSION="slow and not benchmark and not audit and not frontend"' in wrapper
+    assert 'DYNATUTOR_BACKEND_SLOW_SHARD_COUNT:-16' in wrapper
+    assert "pytest_node_shards.py" in wrapper
+    assert NODE_SHARDER.is_file()
 
 def test_stage6_focused_and_default_regression_are_a_complete_disjoint_partition() -> None:
     text = _text(STAGE6)

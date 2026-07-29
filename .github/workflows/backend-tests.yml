@@ -126,9 +126,13 @@ jobs:
           PY_AUDIT
 
   backend_slow:
-    name: backend slow
+    name: backend slow shard ${{ matrix.shard_index }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     defaults:
       run:
         working-directory: backend
@@ -153,8 +157,66 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -r requirements-lock.txt
       - name: Compile backend modules
         run: python -m compileall -q app engine
-      - name: Run complete backend slow wrapper
+      - name: Run one deterministic backend slow shard
+        env:
+          DYNATUTOR_BACKEND_SLOW_SHARD_COUNT: "16"
+          DYNATUTOR_BACKEND_SLOW_SHARD_INDEX: ${{ matrix.shard_index }}
+          DYNATUTOR_BACKEND_SLOW_MANIFEST_OUTPUT: ${{ runner.temp }}/backend-slow-manifest-${{ matrix.shard_index }}.json
+          DYNATUTOR_BACKEND_SLOW_FAILURE_SUMMARY: ${{ runner.temp }}/backend-slow-failure-${{ matrix.shard_index }}.txt
         run: bash ../scripts/check_backend_slow.sh
+      - name: Upload sanitized slow failure summary
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-slow-failure-summary-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard_index }}
+          path: ${{ runner.temp }}/backend-slow-failure-${{ matrix.shard_index }}.txt
+          if-no-files-found: warn
+      - name: Upload deterministic slow manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-slow-manifest-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard_index }}
+          path: ${{ runner.temp }}/backend-slow-manifest-${{ matrix.shard_index }}.json
+          if-no-files-found: error
+
+  backend_slow_audit:
+    name: backend slow complete partition audit
+    if: always()
+    needs:
+      - backend_slow
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Download every exact slow shard manifest
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-slow-manifest-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: manifests
+      - name: Prove complete, disjoint, identical slow partition
+        env:
+          SLOW_RESULT: ${{ needs.backend_slow.result }}
+        run: |
+          python - <<'PY_AUDIT'
+          import json, os, pathlib
+          assert os.environ['SLOW_RESULT'] == 'success'
+          paths = sorted(pathlib.Path('manifests').rglob('backend-slow-manifest-*.json'))
+          assert len(paths) == 16, paths
+          manifests = [json.loads(path.read_text()) for path in paths]
+          assert len({item['sha256'] for item in manifests}) == 1
+          baseline = manifests[0]
+          nodes = [node for shard in baseline['shards'] for node in shard['nodes']]
+          assert len(nodes) == len(set(nodes)) == baseline['collected_test_count']
+          assert sum(shard['test_count'] for shard in baseline['shards']) == baseline['collected_test_count']
+          print(json.dumps({
+              'exact_head_sha': os.environ['EXACT_HEAD_SHA'],
+              'manifest_sha256': baseline['sha256'],
+              'selected_tests': baseline['collected_test_count'],
+              'shard_test_counts': [item['test_count'] for item in baseline['shards']],
+          }, sort_keys=True))
+          PY_AUDIT
 
   backend_quality:
     name: backend quality
@@ -337,6 +399,7 @@ jobs:
       - backend_fast
       - backend_fast_audit
       - backend_slow
+      - backend_slow_audit
       - backend_quality
       - backend_performance
       - frontend
@@ -348,15 +411,17 @@ jobs:
           FAST: ${{ needs.backend_fast.result }}
           FAST_AUDIT: ${{ needs.backend_fast_audit.result }}
           SLOW: ${{ needs.backend_slow.result }}
+          SLOW_AUDIT: ${{ needs.backend_slow_audit.result }}
           QUALITY: ${{ needs.backend_quality.result }}
           PERFORMANCE: ${{ needs.backend_performance.result }}
           FRONTEND: ${{ needs.frontend.result }}
         run: |
-          printf 'head=%s fast=%s fast_audit=%s slow=%s quality=%s performance=%s frontend=%s\n' \
-            "$EXACT_HEAD_SHA" "$FAST" "$FAST_AUDIT" "$SLOW" "$QUALITY" "$PERFORMANCE" "$FRONTEND"
+          printf 'head=%s fast=%s fast_audit=%s slow=%s slow_audit=%s quality=%s performance=%s frontend=%s\n' \
+            "$EXACT_HEAD_SHA" "$FAST" "$FAST_AUDIT" "$SLOW" "$SLOW_AUDIT" "$QUALITY" "$PERFORMANCE" "$FRONTEND"
           [[ "$FAST" == success ]]
           [[ "$FAST_AUDIT" == success ]]
           [[ "$SLOW" == success ]]
+          [[ "$SLOW_AUDIT" == success ]]
           [[ "$QUALITY" == success ]]
           [[ "$PERFORMANCE" == success ]]
           [[ "$FRONTEND" == success ]]
