@@ -1444,6 +1444,7 @@ class _DraftFacts:
         "approved",
         "axis_families",
         "bounded_intervals",
+        "explicit_resultant_force_profile",
         "geometry",
         "has_blocking_ambiguity",
         "interactions",
@@ -1483,6 +1484,9 @@ class _DraftFacts:
         )
         self.rigid_two_point_speed_profile = (
             _rigid_two_point_speed_transfer_evidence(draft)
+        )
+        self.explicit_resultant_force_profile = (
+            _explicit_resultant_force_evidence(draft)
         )
 
 
@@ -1569,17 +1573,256 @@ def _bounded_interval(facts: _DraftFacts) -> PrerequisiteDisposition:
 
 
 def _resultant_force_authority(facts: _DraftFacts) -> PrerequisiteDisposition:
-    """A lone force is a resultant only when a typed authority proves it is.
+    """A lone force on a *constrained* body needs a typed resultant authority.
 
-    No such authority exists in the frozen Draft contract, so a source that
-    states one force and no free body cannot be closed as Newton's second law.
-    Treating the force as the resultant anyway is exactly the confident-wrong
-    solve the hard-safety gate forbids, so this reports `missing` rather than
-    guessing — and it will keep reporting `missing` until a real authority
-    exists to read.
+    The engine's free-body completeness contract accepts one narrow shape
+    without it: a free particle whose typed model carries a single applied
+    force and no constraint-bearing interaction at all is already closed —
+    the stated force is the model's entire force system.  That exact shape
+    is what `_explicit_resultant_force_evidence` reads.  Anything with a
+    contact, rope, joint, spring, gear, or second force still requires the
+    authority no Draft can currently state, so it stays `missing` here.
     """
 
-    return PrerequisiteDisposition.missing
+    return (
+        PrerequisiteDisposition.explicit_source
+        if facts.explicit_resultant_force_profile is not None
+        else PrerequisiteDisposition.missing
+    )
+
+
+def _explicit_resultant_force_evidence(
+    draft: Any,
+) -> Mapping[str, PrerequisiteDisposition] | None:
+    """Classify one exact free-particle single-applied-force topology.
+
+    One particle, one source-valued mass, one source-valued force whose
+    semantic direction names the horizontal axis, and one value-free signed
+    x-component acceleration query on the same interval.  The typed model
+    carries no other entity, interaction, relation, or force of any kind, so
+    by the engine's free-body completeness contract the stated force is the
+    model's entire force system and Newton's second law closes on it.  The
+    transaction materialises only the world frame, the axis bindings, and
+    the applied-force interaction record the source's force statement
+    already is; the existing ``particle_newton_second`` generic law does all
+    solving.  No value, equation, assumption, solver choice, answer
+    metadata, text, or corpus identity is read here.
+    """
+
+    if (
+        len(draft.entities) != 1
+        or len(draft.motion_intervals) != 1
+        or len(draft.queries) != 1
+        or len(draft.events) != 2
+        or draft.reference_frames
+        or draft.points
+        or draft.interactions
+        or draft.constraints
+        or draft.state_conditions
+        or draft.principle_hints
+        or draft.ambiguities
+        or draft.unsupported_features
+        or draft.geometry
+        or draft.figure_dependency.level.value != "none"
+        or draft.figure_dependency.missing_information
+        or draft.figure_dependency.evidence_refs
+    ):
+        return None
+
+    particle = draft.entities[0]
+    if particle.primitive.value != "particle":
+        return None
+    particle_id = particle.entity_id
+
+    interval = draft.motion_intervals[0]
+    interval_id = interval.interval_id
+    if (
+        tuple(interval.subject_ids) != (particle_id,)
+        or interval.frame_id is not None
+        or interval.start_event_id is None
+        or interval.end_event_id is None
+        or interval.start_event_id == interval.end_event_id
+    ):
+        return None
+
+    events = {item.event_id: item for item in draft.events}
+    start = events.get(interval.start_event_id)
+    finish = events.get(interval.end_event_id)
+    if (
+        len(events) != 2
+        or start is None
+        or finish is None
+        or start.kind.value != "start"
+        or finish.kind.value != "finish"
+        or any(
+            tuple(item.subject_ids) != (particle_id,)
+            or item.time_quantity_id is not None
+            or tuple(item.interval_ids) != (interval_id,)
+            or item.occurs_in_interval_ids
+            for item in draft.events
+        )
+    ):
+        return None
+
+    evidence_ids = {item.evidence_id for item in draft.source_evidence}
+
+    def evidenced(item: Any) -> bool:
+        refs = set(item.evidence_refs)
+        return bool(refs) and refs.issubset(evidence_ids)
+
+    if any(
+        item.subject_id != particle_id
+        or item.interval_id not in {None, interval_id}
+        or item.proposed_role is not None
+        or item.proposed_value is not None
+        or item.proposed_unit is not None
+        or not evidenced(item)
+        for item in draft.assumptions
+    ):
+        return None
+
+    def valued_source(item: Any) -> bool:
+        return (
+            item.raw_value is not None
+            and item.raw_unit is not None
+            and item.provenance.value == "explicit_source"
+            and item.symbol_id is not None
+            and evidenced(item)
+        )
+
+    query = draft.queries[0]
+    target = query.target
+    target_quantity = next(
+        (
+            item
+            for item in draft.quantities
+            if item.quantity_id == target.target_quantity_id
+        ),
+        None,
+    )
+    query_exact = (
+        query.shape.value == "scalar"
+        and target.role.value == "acceleration"
+        and target.component.value == "x"
+        and target.subject_id == particle_id
+        and target.point_id is None
+        and target.frame_id is None
+        and target.interval_id == interval_id
+        and target.event_id is None
+        and target.direction is None
+        and target_quantity is not None
+        and target_quantity.subject_id == particle_id
+        and target_quantity.point_id is None
+        and target_quantity.frame_id is None
+        and target_quantity.interval_id == interval_id
+        and target_quantity.event_id is None
+        and target_quantity.role is target.role
+        and target_quantity.component is target.component
+        and target_quantity.direction is None
+        and target_quantity.shape.value == "scalar"
+        and target_quantity.raw_value is None
+        and target_quantity.raw_unit is None
+        and target_quantity.provenance.value == "unknown"
+        and target_quantity.symbol_id is not None
+        and not target_quantity.evidence_refs
+        and query.output_dimension == target_quantity.dimension
+        and not query.evidence_refs
+    )
+    if not query_exact:
+        return None
+
+    symbols_by_quantity: Counter[str | None] = Counter(
+        item.quantity_id for item in draft.symbols
+    )
+    if len(draft.symbols) != len(draft.quantities) or any(
+        item.symbol_id is None or symbols_by_quantity[item.quantity_id] != 1
+        for item in draft.quantities
+    ):
+        return None
+
+    known = tuple(
+        item
+        for item in draft.quantities
+        if item.quantity_id != target_quantity.quantity_id
+    )
+
+    dispositions: dict[str, PrerequisiteDisposition] = {}
+
+    masses = tuple(item for item in known if item.role.value == "mass")
+    mass_exact = (
+        len(masses) == 1
+        and masses[0].subject_id == particle_id
+        and masses[0].point_id is None
+        and masses[0].frame_id is None
+        and masses[0].interval_id in {None, interval_id}
+        and masses[0].event_id is None
+        and masses[0].shape.value == "scalar"
+        and masses[0].component.value == "unspecified"
+        and masses[0].direction is None
+        and valued_source(masses[0])
+    )
+    dispositions["mass"] = (
+        PrerequisiteDisposition.explicit_source
+        if mass_exact
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(masses) > 1
+            else PrerequisiteDisposition.missing
+        )
+    )
+
+    forces = tuple(item for item in known if item.role.value == "force")
+    force_exact = None
+    if len(forces) == 1:
+        item = forces[0]
+        direction = getattr(
+            getattr(item.direction, "direction", None), "value", None
+        )
+        force_exact = (
+            item.subject_id == particle_id
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id == interval_id
+            and item.event_id is None
+            and item.shape.value == "scalar"
+            and item.component.value == "unspecified"
+            and direction in {"right", "left"}
+            and getattr(item.direction, "kind", None) is not None
+            and valued_source(item)
+        )
+    dispositions["horizontal_applied_force"] = (
+        PrerequisiteDisposition.explicit_source
+        if force_exact
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(forces) > 1
+            else PrerequisiteDisposition.missing
+        )
+    )
+
+    accounted = {item.quantity_id for item in (*masses, *forces)} | {
+        target_quantity.quantity_id
+    }
+    if len(accounted) != len(draft.quantities):
+        return None
+
+    dispositions.update(
+        world_frame=PrerequisiteDisposition.server_derivable,
+        applied_force_interaction=PrerequisiteDisposition.server_derivable,
+        axis_bindings=PrerequisiteDisposition.server_derivable,
+        query_binding=PrerequisiteDisposition.server_derivable,
+        capability=PrerequisiteDisposition.explicit_source,
+    )
+    return dispositions
+
+
+def _explicit_resultant_force_prerequisite(name: str) -> "_Resolver":
+    def resolve(facts: "_DraftFacts") -> PrerequisiteDisposition:
+        if facts.explicit_resultant_force_profile is None:
+            return PrerequisiteDisposition.missing
+        return facts.explicit_resultant_force_profile[name]
+
+    return resolve
 
 
 def _catalogue_has_no_capability(facts: _DraftFacts) -> PrerequisiteDisposition:
@@ -1893,7 +2136,10 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
             ("interval_bounded", PrerequisiteKind.state_condition, _bounded_interval),
         ),
     ),
-    # One stated force treated as the resultant.  Deliberately never closes.
+    # One free particle whose typed model carries a single applied force and
+    # nothing else.  The engine's free-body completeness contract accepts
+    # exactly this shape as already closed, so the profile closes it; every
+    # constrained shape still reports the missing resultant authority.
     _ProfileSignature(
         ProfileId.explicit_resultant_force,
         lambda facts: (
@@ -1903,11 +2149,21 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
         ),
         (
             ("quantity_mass", PrerequisiteKind.interaction_quantity,
-             _needs_role("mass")),
-            ("quantity_force", PrerequisiteKind.interaction_quantity,
-             _needs_role("force")),
+             _explicit_resultant_force_prerequisite("mass")),
+            ("quantity_horizontal_applied_force", PrerequisiteKind.interaction_quantity,
+             _explicit_resultant_force_prerequisite("horizontal_applied_force")),
             ("authority_force_is_resultant", PrerequisiteKind.authority,
              _resultant_force_authority),
+            ("frame_world_axes", PrerequisiteKind.reference_frame,
+             _explicit_resultant_force_prerequisite("world_frame")),
+            ("interaction_applied_force", PrerequisiteKind.interaction,
+             _explicit_resultant_force_prerequisite("applied_force_interaction")),
+            ("axis_bindings", PrerequisiteKind.capability,
+             _explicit_resultant_force_prerequisite("axis_bindings")),
+            ("query_binding", PrerequisiteKind.capability,
+             _explicit_resultant_force_prerequisite("query_binding")),
+            ("capability_particle_newton_second", PrerequisiteKind.capability,
+             _explicit_resultant_force_prerequisite("capability")),
         ),
     ),
     _ProfileSignature(

@@ -140,6 +140,8 @@ TWO_POINT_SPEED_KNOWN_POINT_ID = "pt_closure_two_point_speed_known"
 TWO_POINT_SPEED_QUERY_POINT_ID = "pt_closure_two_point_speed_query"
 TWO_POINT_SPEED_OMEGA_QUANTITY_ID = "qty_closure_two_point_speed_omega"
 TWO_POINT_SPEED_OMEGA_SYMBOL_ID = "sym_closure_two_point_speed_omega"
+RESULTANT_FORCE_FRAME_ID = "frm_closure_resultant_force"
+RESULTANT_FORCE_INTERACTION_ID = "rel_closure_resultant_force"
 
 _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
     "massless_rope": "asm_closure_fixed_pulley_massless_rope",
@@ -3908,6 +3910,275 @@ def _rigid_two_point_speed_transfer_transaction(
     )
 
 
+def _explicit_resultant_force_transaction(
+    payload: dict[str, Any], _authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one exact free-particle single-applied-force readout.
+
+    The transaction creates no value, equation, assumption, solver choice,
+    candidate, or answer.  It materialises the world frame, binds the
+    source's horizontally directed force and the value-free x-component
+    acceleration query onto that frame's axis, and records the
+    applied-force interaction the source's force statement already is, so
+    the existing ``particle_newton_second`` generic law does all solving on
+    the typed model's entire — single-force — free body.
+    """
+
+    reserved_ids = {RESULTANT_FORCE_FRAME_ID, RESULTANT_FORCE_INTERACTION_ID}
+    if (
+        len(payload["entities"]) != 1
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["queries"]) != 1
+        or len(payload["events"]) != 2
+        or len(payload["quantities"]) != 3
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or payload["state_conditions"]
+        or payload["principle_hints"]
+        or payload["ambiguities"]
+        or payload["unsupported_features"]
+        or payload["geometry"]
+        or payload["figure_dependency"] != {
+            "level": "none",
+            "missing_information": [],
+            "evidence_refs": [],
+        }
+        or reserved_ids & _authored_draft_ids(payload)
+    ):
+        return None
+
+    particle = payload["entities"][0]
+    if particle.get("primitive") != "particle":
+        return None
+    particle_id = particle.get("entity_id")
+
+    interval = payload["motion_intervals"][0]
+    interval_id = interval.get("interval_id")
+    if (
+        interval.get("subject_ids") != [particle_id]
+        or interval.get("frame_id") is not None
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or interval.get("start_event_id") == interval.get("end_event_id")
+    ):
+        return None
+
+    events = {item.get("event_id"): item for item in payload["events"]}
+    start = events.get(interval.get("start_event_id"))
+    finish = events.get(interval.get("end_event_id"))
+    if (
+        len(events) != 2
+        or start is None
+        or finish is None
+        or start.get("kind") != "start"
+        or finish.get("kind") != "finish"
+        or any(
+            item.get("subject_ids") != [particle_id]
+            or item.get("time_quantity_id") is not None
+            or item.get("interval_ids") != [interval_id]
+            or item.get("occurs_in_interval_ids")
+            for item in payload["events"]
+        )
+    ):
+        return None
+
+    source_evidence_ids = {
+        item.get("evidence_id") for item in payload["source_evidence"]
+    }
+
+    def evidenced(item: dict[str, Any]) -> bool:
+        refs = set(item.get("evidence_refs", ()))
+        return bool(refs) and refs.issubset(source_evidence_ids)
+
+    if any(
+        item.get("subject_id") != particle_id
+        or item.get("interval_id") not in {None, interval_id}
+        or item.get("proposed_role") is not None
+        or item.get("proposed_value") is not None
+        or item.get("proposed_unit") is not None
+        or not evidenced(item)
+        for item in payload["assumptions"]
+    ):
+        return None
+
+    def valued_source(item: dict[str, Any]) -> bool:
+        return (
+            item.get("raw_value") is not None
+            and item.get("raw_unit") is not None
+            and item.get("provenance") == "explicit_source"
+            and item.get("symbol_id") is not None
+            and evidenced(item)
+        )
+
+    query = payload["queries"][0]
+    target = dict(query.get("target") or {})
+    target_quantity_id = target.get("target_quantity_id")
+    quantities = {
+        item.get("quantity_id"): item for item in payload["quantities"]
+    }
+    target_quantity = quantities.get(target_quantity_id)
+    if (
+        len(quantities) != len(payload["quantities"])
+        or target_quantity is None
+        or query.get("shape") != "scalar"
+        or target.get("role") != "acceleration"
+        or target.get("component") != "x"
+        or target.get("subject_id") != particle_id
+        or target.get("point_id") is not None
+        or target.get("frame_id") is not None
+        or target.get("interval_id") != interval_id
+        or target.get("event_id") is not None
+        or target.get("direction") is not None
+        or target_quantity.get("subject_id") != particle_id
+        or target_quantity.get("point_id") is not None
+        or target_quantity.get("frame_id") is not None
+        or target_quantity.get("interval_id") != interval_id
+        or target_quantity.get("event_id") is not None
+        or target_quantity.get("role") != "acceleration"
+        or target_quantity.get("component") != "x"
+        or target_quantity.get("direction") is not None
+        or target_quantity.get("shape") != "scalar"
+        or target_quantity.get("raw_value") is not None
+        or target_quantity.get("raw_unit") is not None
+        or target_quantity.get("provenance") != "unknown"
+        or target_quantity.get("symbol_id") is None
+        or target_quantity.get("evidence_refs")
+        or query.get("output_dimension") != target_quantity.get("dimension")
+        or query.get("evidence_refs")
+    ):
+        return None
+
+    symbol_counts: Counter[str | None] = Counter(
+        item.get("quantity_id") for item in payload["symbols"]
+    )
+    if len(payload["symbols"]) != len(payload["quantities"]) or any(
+        item.get("symbol_id") is None
+        or symbol_counts[item.get("quantity_id")] != 1
+        for item in payload["quantities"]
+    ):
+        return None
+
+    known = [
+        item
+        for item in payload["quantities"]
+        if item.get("quantity_id") != target_quantity_id
+    ]
+    masses = [item for item in known if item.get("role") == "mass"]
+    forces = [item for item in known if item.get("role") == "force"]
+    if len(masses) != 1 or len(forces) != 1 or len(known) != 2:
+        return None
+    mass = masses[0]
+    if (
+        mass.get("subject_id") != particle_id
+        or mass.get("point_id") is not None
+        or mass.get("frame_id") is not None
+        or mass.get("interval_id") not in {None, interval_id}
+        or mass.get("event_id") is not None
+        or mass.get("shape") != "scalar"
+        or mass.get("component") != "unspecified"
+        or mass.get("direction") is not None
+        or not valued_source(mass)
+    ):
+        return None
+    force = forces[0]
+    force_direction = (force.get("direction") or {}).get("direction")
+    if (
+        force.get("subject_id") != particle_id
+        or force.get("point_id") is not None
+        or force.get("frame_id") is not None
+        or force.get("interval_id") != interval_id
+        or force.get("event_id") is not None
+        or force.get("shape") != "scalar"
+        or force.get("component") != "unspecified"
+        or (force.get("direction") or {}).get("kind") != "semantic"
+        or force_direction not in {"right", "left"}
+        or not valued_source(force)
+    ):
+        return None
+    axis, sign = _SEMANTIC_AXIS_BINDING[force_direction]
+
+    frame_evidence = sorted(set(force.get("evidence_refs", ())))
+    if not frame_evidence or len(frame_evidence) > 16:
+        return None
+    world = {
+        "frame_id": RESULTANT_FORCE_FRAME_ID,
+        "frame_type": "cartesian_2d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {
+                "axis": name,
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": RESULTANT_FORCE_FRAME_ID,
+                    "axis": name,
+                    "sign": 1,
+                },
+            }
+            for name in ("x", "y")
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": frame_evidence,
+    }
+
+    rewritten_quantities: list[dict[str, Any]] = []
+    rebound: list[str] = []
+    for original in payload["quantities"]:
+        item = dict(original)
+        quantity_id = item.get("quantity_id")
+        if quantity_id == force.get("quantity_id"):
+            item.update(
+                frame_id=RESULTANT_FORCE_FRAME_ID,
+                component=axis,
+                direction={
+                    "kind": "axis",
+                    "frame_id": RESULTANT_FORCE_FRAME_ID,
+                    "axis": axis,
+                    "sign": sign,
+                },
+            )
+            rebound.append(quantity_id)
+        elif quantity_id == target_quantity_id:
+            item.update(frame_id=RESULTANT_FORCE_FRAME_ID)
+            rebound.append(quantity_id)
+        rewritten_quantities.append(item)
+
+    interaction = {
+        "interaction_id": RESULTANT_FORCE_INTERACTION_ID,
+        "kind": "applied_force",
+        "participant_ids": [particle_id],
+        "point_ids": [],
+        "frame_id": RESULTANT_FORCE_FRAME_ID,
+        "interval_id": interval_id,
+        "event_id": None,
+        "quantity_ids": [force.get("quantity_id")],
+        "evidence_refs": frame_evidence,
+    }
+
+    rewritten_query = dict(query)
+    rewritten_target = dict(target)
+    rewritten_target.update(
+        frame_id=RESULTANT_FORCE_FRAME_ID,
+        target_quantity_id=target_quantity_id,
+    )
+    rewritten_query.update(target=rewritten_target)
+
+    closed = dict(payload)
+    closed["reference_frames"] = [world]
+    closed["interactions"] = [interaction]
+    closed["quantities"] = rewritten_quantities
+    closed["queries"] = [rewritten_query]
+    return (
+        closed,
+        (RESULTANT_FORCE_FRAME_ID, RESULTANT_FORCE_INTERACTION_ID),
+        tuple(sorted(rebound)),
+    )
+
+
 _TRANSACTIONS = {
     ProfileId.signed_constant_acceleration_1d: (
         _signed_constant_acceleration_1d_transaction
@@ -3925,6 +4196,9 @@ _TRANSACTIONS = {
     ProfileId.incline_hanging_pulley: _incline_hanging_pulley_transaction,
     ProfileId.rigid_two_point_speed: (
         _rigid_two_point_speed_transfer_transaction
+    ),
+    ProfileId.explicit_resultant_force: (
+        _explicit_resultant_force_transaction
     ),
     ProfileId.rigid_fixed_axis: (
         _rigid_fixed_axis_point_speed_transaction
@@ -4130,6 +4404,8 @@ __all__ = [
     "TWO_POINT_SPEED_QUERY_POINT_ID",
     "TWO_POINT_SPEED_OMEGA_QUANTITY_ID",
     "TWO_POINT_SPEED_OMEGA_SYMBOL_ID",
+    "RESULTANT_FORCE_FRAME_ID",
+    "RESULTANT_FORCE_INTERACTION_ID",
     "GRAVITY_INTERACTION_ID",
     "GRAVITY_QUANTITY_ID",
     "GRAVITY_SYMBOL_ID",
