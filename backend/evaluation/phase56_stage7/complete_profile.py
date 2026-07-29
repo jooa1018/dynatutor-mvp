@@ -75,6 +75,7 @@ class ProfileId(str, Enum):
     incline_contact = "incline_contact"
     rigid_fixed_axis = "rigid_fixed_axis"
     rigid_two_point_speed = "rigid_two_point_speed"
+    vertical_circle_top_speed = "vertical_circle_top_speed"
     # Declared in the order the closure step considers them, so the enum and the
     # signature table cannot drift apart.
     slot_pin_relative_frame = "slot_pin_relative_frame"
@@ -1428,6 +1429,252 @@ def _rigid_two_point_speed_prerequisite(name: str) -> "_Resolver":
     return resolve
 
 
+def _vertical_circle_top_speed_evidence(
+    draft: Any,
+) -> Mapping[str, PrerequisiteDisposition] | None:
+    """Classify one exact vertical-circle top contact-boundary topology.
+
+    One particle in contact with one circular track, one source-valued
+    rotation radius, an approved server-valued uniform-gravity authority,
+    and one value-free scalar speed-magnitude query at the source-declared
+    highest point of the motion — and no other typed data of any kind.  At
+    a smooth circular track's highest point the contact can only push, so
+    the boundary speed the shape determines is the one the existing
+    ``vertical_circle_top_minimum_speed`` law states: v^2 = g r.  Any extra
+    quantity — a mass, an energy, another speed, a height — makes the
+    question a different one and refuses.
+
+    The transaction materialises only the gravity magnitude the approved
+    authority already carries; the law does all solving.  No value beyond
+    that authority, no equation, solver choice, answer metadata, text, or
+    corpus identity is read here.
+    """
+
+    if (
+        len(draft.entities) != 2
+        or len(draft.motion_intervals) != 1
+        or len(draft.queries) != 1
+        or len(draft.events) != 3
+        or len(draft.interactions) != 1
+        or len(draft.assumptions) != 1
+        or draft.reference_frames
+        or draft.points
+        or draft.geometry
+        or draft.constraints
+        or draft.state_conditions
+        or draft.principle_hints
+        or draft.ambiguities
+        or draft.unsupported_features
+        or draft.figure_dependency.level.value != "none"
+        or draft.figure_dependency.missing_information
+        or draft.figure_dependency.evidence_refs
+    ):
+        return None
+
+    particles = tuple(
+        item for item in draft.entities if item.primitive.value == "particle"
+    )
+    surfaces = tuple(
+        item for item in draft.entities if item.primitive.value == "surface"
+    )
+    if len(particles) != 1 or len(surfaces) != 1:
+        return None
+    particle_id = particles[0].entity_id
+    surface_id = surfaces[0].entity_id
+
+    interval = draft.motion_intervals[0]
+    interval_id = interval.interval_id
+    if (
+        tuple(interval.subject_ids) != (particle_id,)
+        or interval.frame_id is not None
+        or interval.start_event_id is None
+        or interval.end_event_id is None
+        or interval.start_event_id == interval.end_event_id
+    ):
+        return None
+
+    contact = draft.interactions[0]
+    if (
+        contact.kind.value != "contact"
+        or set(contact.participant_ids) != {particle_id, surface_id}
+        or len(contact.participant_ids) != 2
+        or contact.point_ids
+        or contact.frame_id is not None
+        or contact.interval_id not in {None, interval_id}
+        or contact.event_id is not None
+        or contact.quantity_ids
+    ):
+        return None
+
+    events = {item.event_id: item for item in draft.events}
+    if len(events) != 3:
+        return None
+    start = events.get(interval.start_event_id)
+    finish = events.get(interval.end_event_id)
+    instants = tuple(
+        item
+        for item in draft.events
+        if item.event_id
+        not in {interval.start_event_id, interval.end_event_id}
+    )
+    if (
+        start is None
+        or finish is None
+        or len(instants) != 1
+        or start.kind.value != "start"
+        or finish.kind.value != "finish"
+        or instants[0].kind.value != "highest_point"
+        or any(
+            tuple(item.subject_ids) != (particle_id,)
+            or item.time_quantity_id is not None
+            for item in draft.events
+        )
+        or tuple(start.interval_ids) != (interval_id,)
+        or tuple(finish.interval_ids) != (interval_id,)
+        or start.occurs_in_interval_ids
+        or finish.occurs_in_interval_ids
+        or instants[0].interval_ids
+        or tuple(instants[0].occurs_in_interval_ids) != (interval_id,)
+    ):
+        return None
+    top_id = instants[0].event_id
+
+    evidence_ids = {item.evidence_id for item in draft.source_evidence}
+
+    def evidenced(item: Any) -> bool:
+        refs = set(item.evidence_refs)
+        return bool(refs) and refs.issubset(evidence_ids)
+
+    authority = draft.assumptions[0]
+    authority_exact = (
+        authority.kind == "constant_gravity"
+        and getattr(authority.disposition, "value", authority.disposition)
+        == "approved"
+        and authority.subject_id == particle_id
+        and authority.interval_id == interval_id
+        and str(getattr(authority.proposed_role, "value", authority.proposed_role))
+        == "gravity"
+        and authority.proposed_value is not None
+        and authority.proposed_unit is not None
+        and evidenced(authority)
+    )
+    if not authority_exact:
+        return None
+
+    def valued_source(item: Any) -> bool:
+        return (
+            item.raw_value is not None
+            and item.raw_unit is not None
+            and item.provenance.value == "explicit_source"
+            and item.symbol_id is not None
+            and evidenced(item)
+        )
+
+    query = draft.queries[0]
+    target = query.target
+    target_quantity = next(
+        (
+            item
+            for item in draft.quantities
+            if item.quantity_id == target.target_quantity_id
+        ),
+        None,
+    )
+    query_exact = (
+        query.shape.value == "scalar"
+        and target.role.value == "speed"
+        and target.component.value == "magnitude"
+        and target.subject_id == particle_id
+        and target.point_id is None
+        and target.frame_id is None
+        and target.interval_id == interval_id
+        and target.event_id == top_id
+        and target.direction is None
+        and target_quantity is not None
+        and target_quantity.subject_id == particle_id
+        and target_quantity.point_id is None
+        and target_quantity.frame_id is None
+        and target_quantity.interval_id == interval_id
+        and target_quantity.event_id == top_id
+        and target_quantity.role is target.role
+        and target_quantity.component is target.component
+        and target_quantity.direction is None
+        and target_quantity.shape.value == "scalar"
+        and target_quantity.raw_value is None
+        and target_quantity.raw_unit is None
+        and target_quantity.provenance.value == "unknown"
+        and target_quantity.symbol_id is not None
+        and not target_quantity.evidence_refs
+        and query.output_dimension == target_quantity.dimension
+        and not query.evidence_refs
+    )
+    if not query_exact:
+        return None
+
+    symbols_by_quantity: Counter[str | None] = Counter(
+        item.quantity_id for item in draft.symbols
+    )
+    if len(draft.symbols) != len(draft.quantities) or any(
+        item.symbol_id is None or symbols_by_quantity[item.quantity_id] != 1
+        for item in draft.quantities
+    ):
+        return None
+
+    known = tuple(
+        item
+        for item in draft.quantities
+        if item.quantity_id != target_quantity.quantity_id
+    )
+    radii = tuple(item for item in known if item.role.value == "radius")
+    radius_exact = (
+        len(radii) == 1
+        and radii[0].subject_id == particle_id
+        and radii[0].point_id is None
+        and radii[0].frame_id is None
+        and radii[0].interval_id == interval_id
+        and radii[0].event_id is None
+        and radii[0].shape.value == "scalar"
+        and radii[0].component.value == "unspecified"
+        and radii[0].direction is None
+        and valued_source(radii[0])
+    )
+    dispositions: dict[str, PrerequisiteDisposition] = {
+        "circular_contact": PrerequisiteDisposition.explicit_source,
+        "highest_point_boundary": PrerequisiteDisposition.explicit_source,
+        "radius": (
+            PrerequisiteDisposition.explicit_source
+            if radius_exact
+            else (
+                PrerequisiteDisposition.ambiguous
+                if len(radii) > 1
+                else PrerequisiteDisposition.missing
+            )
+        ),
+        "gravity_authority": PrerequisiteDisposition.explicit_source,
+    }
+
+    accounted = {item.quantity_id for item in radii} | {
+        target_quantity.quantity_id
+    }
+    if len(accounted) != len(draft.quantities):
+        return None
+
+    dispositions.update(
+        gravity_quantity=PrerequisiteDisposition.server_derivable,
+        capability=PrerequisiteDisposition.explicit_source,
+    )
+    return dispositions
+
+
+def _vertical_circle_top_speed_prerequisite(name: str) -> "_Resolver":
+    def resolve(facts: "_DraftFacts") -> PrerequisiteDisposition:
+        if facts.vertical_circle_top_speed_profile is None:
+            return PrerequisiteDisposition.missing
+        return facts.vertical_circle_top_speed_profile[name]
+
+    return resolve
+
+
 def _rigid_fixed_axis_prerequisite(name: str) -> "_Resolver":
     def resolve(facts: "_DraftFacts") -> PrerequisiteDisposition:
         if facts.rigid_fixed_axis_profile is None:
@@ -1459,6 +1706,7 @@ class _DraftFacts:
         "rigid_two_point_speed_profile",
         "rotating_relative_profile",
         "semantic_directions",
+        "vertical_circle_top_speed_profile",
     )
 
     def __init__(self, draft: Any, approved_assumption_ids: Iterable[str]) -> None:
@@ -1487,6 +1735,9 @@ class _DraftFacts:
         )
         self.explicit_resultant_force_profile = (
             _explicit_resultant_force_evidence(draft)
+        )
+        self.vertical_circle_top_speed_profile = (
+            _vertical_circle_top_speed_evidence(draft)
         )
 
 
@@ -2554,6 +2805,29 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _rigid_two_point_speed_prerequisite("point_speed_symbol")),
             ("capability_fixed_axis_speed", PrerequisiteKind.capability,
              _rigid_two_point_speed_prerequisite("capability")),
+        ),
+    ),
+    # One particle on one circular track, one source-valued radius, an
+    # approved server-valued gravity authority, and one value-free scalar
+    # speed query at the source-declared highest point — nothing else.  The
+    # exact-shape reader owns applicability; the existing
+    # vertical_circle_top_minimum_speed law does all solving.
+    _ProfileSignature(
+        ProfileId.vertical_circle_top_speed,
+        lambda facts: facts.vertical_circle_top_speed_profile is not None,
+        (
+            ("interaction_circular_contact", PrerequisiteKind.interaction,
+             _vertical_circle_top_speed_prerequisite("circular_contact")),
+            ("event_highest_point_boundary", PrerequisiteKind.state_condition,
+             _vertical_circle_top_speed_prerequisite("highest_point_boundary")),
+            ("quantity_radius", PrerequisiteKind.interaction_quantity,
+             _vertical_circle_top_speed_prerequisite("radius")),
+            ("authority_constant_gravity", PrerequisiteKind.authority,
+             _vertical_circle_top_speed_prerequisite("gravity_authority")),
+            ("quantity_gravity", PrerequisiteKind.interaction_quantity,
+             _vertical_circle_top_speed_prerequisite("gravity_quantity")),
+            ("capability_top_minimum_speed", PrerequisiteKind.capability,
+             _vertical_circle_top_speed_prerequisite("capability")),
         ),
     ),
     # The one profile the engine answers by *declining*: a free undamped linear

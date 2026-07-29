@@ -2529,6 +2529,123 @@ def _is_static_fixed_axis_two_point_speed_boundary_graph(
     return True
 
 
+def _is_static_vertical_circle_top_boundary_graph(graph: EquationGraph) -> bool:
+    """Recognize one exact vertical-circle top contact-boundary graph.
+
+    The single event ID identifies the source-declared highest point at
+    which the boundary speed is read; it is not a timed root event.  Only
+    the compiler-produced ``vertical_circle_top_minimum_speed`` equality
+    plus the speed's nonnegative domain predicate receives the event-free
+    algebraic plan.  Structural or provenance near misses keep ordinary
+    event handling closed.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    boundary_law = "vertical_circle_top_minimum_speed"
+    domain_law = "translational_speed_nonnegative"
+    expected_laws = {boundary_law, domain_law}
+    if (
+        len(event_ids) != 1
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 2
+        or len(graph.applications) != 2
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or graph.rank.equality_count != 1
+        or graph.rank.inequality_count != 1
+        or graph.rank.unknown_count != 1
+        or graph.rank.structural_rank != 1
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    boundary = equations_by_law[boundary_law]
+    nonnegative = equations_by_law[domain_law]
+    if (
+        not isinstance(boundary.expression, Equality)
+        or not isinstance(nonnegative.expression, Inequality)
+        or graph.selected_equation_ids != (boundary.equation_id,)
+        or any(
+            application.equation_ids != (equations_by_law[law_id].equation_id,)
+            or application.source_quantity_ids
+            != equations_by_law[law_id].source_quantity_ids
+            or application.source_evidence_ids
+            != equations_by_law[law_id].source_evidence_ids
+            or application.assumption_ids
+            != equations_by_law[law_id].assumption_ids
+            or application.constraint_ids
+            != equations_by_law[law_id].constraint_ids
+            or application.generated_unknown_symbol_ids
+            != equations_by_law[law_id].generated_unknown_symbol_ids
+            or application.complexity_cost
+            != equations_by_law[law_id].complexity_cost
+            or application.scope != equations_by_law[law_id].scope
+            for law_id, application in applications_by_law.items()
+        )
+    ):
+        return False
+
+    by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.quantity_role is None:
+            return False
+        if item.known_si_value is not None and (
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+        ):
+            return False
+        by_role.setdefault(item.quantity_role, []).append(item)
+    if (
+        set(by_role) != {"radius", "gravity", "speed"}
+        or len(by_role["radius"]) != 1
+        or len(by_role["gravity"]) != 1
+        or len(by_role["speed"]) != 1
+        or len(graph.symbols) != 3
+    ):
+        return False
+
+    radius = by_role["radius"][0]
+    gravity = by_role["gravity"][0]
+    speed = by_role["speed"][0]
+    if (
+        radius.known_si_value is None
+        or radius.known_si_value <= 0.0
+        or gravity.known_si_value is None
+        or gravity.known_si_value <= 0.0
+        or speed.known_si_value is not None
+        or graph.query_symbol_id != speed.symbol.symbol_id
+    ):
+        return False
+
+    subject_ids = {item.subject_id for item in graph.symbols}
+    interval_ids = {item.interval_id for item in graph.symbols}
+    if (
+        len(subject_ids) != 1
+        or None in subject_ids
+        or len(interval_ids) != 1
+        or None in interval_ids
+        or radius.event_id is not None
+        or gravity.event_id is not None
+        or speed.event_id != event_ids[0]
+    ):
+        return False
+
+    incidence: dict[str, set[str]] = {}
+    for edge in graph.incidence:
+        incidence.setdefault(edge.equation_id, set()).add(edge.symbol_id)
+    if tuple(sorted(incidence.get(boundary.equation_id, ()))) != (
+        speed.symbol.symbol_id,
+    ):
+        return False
+    return not incidence.get(nonnegative.equation_id)
+
+
 def _is_static_particle_work_energy_boundary_graph(graph: EquationGraph) -> bool:
     """Recognize an exact scalar-speed particle work--energy endpoint graph.
 
@@ -2741,6 +2858,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
             or _is_static_impulse_momentum_boundary_graph(graph)
             or _is_static_particle_work_energy_boundary_graph(graph)
             or _is_static_fixed_axis_two_point_speed_boundary_graph(graph)
+            or _is_static_vertical_circle_top_boundary_graph(graph)
         )
         else _graph_event_ids(graph)
     )

@@ -11211,6 +11211,121 @@ def _instant_center_profile(context: LawContext) -> _InstantCenterLawProfile | N
     )
 
 
+def _vertical_circle_top_boundary_emissions(
+    context: LawContext,
+) -> list[LawEmission]:
+    """The top-of-track contact boundary speed, from its exact typed shape.
+
+    One particle in contact with one circular track, one known rotation
+    radius, one known gravity magnitude, and one value-free scalar speed
+    magnitude read exactly at a typed ``highest_point`` event — and no other
+    quantity at all.  At a smooth track's highest point the contact can only
+    push, so the boundary the shape states is ``v^2 = g r`` — the existing
+    ``vertical_circle_top_minimum_speed`` law — with the speed's own
+    nonnegative domain predicate keeping the single admissible branch.  Any
+    extra quantity, entity, interaction, frame, or point makes the question
+    a different one and emits nothing.
+    """
+
+    particles = tuple(
+        item
+        for item in context.entities
+        if item.primitive is EntityPrimitive.particle
+    )
+    surfaces = tuple(
+        item
+        for item in context.entities
+        if item.primitive is EntityPrimitive.surface
+    )
+    if (
+        len(context.entities) != 2
+        or len(particles) != 1
+        or len(surfaces) != 1
+        or len(context.interactions) != 1
+        or context.reference_frames
+        or context.points
+        or len(context.motion_intervals) != 1
+        or len(context.quantities) != 3
+    ):
+        return []
+    particle_id = particles[0].entity_id
+    surface_id = surfaces[0].entity_id
+    contact = context.interactions[0]
+    interval = context.motion_intervals[0]
+    if (
+        contact.kind is not InteractionKind.contact
+        or set(contact.participant_ids) != {particle_id, surface_id}
+        or contact.quantity_ids
+    ):
+        return []
+
+    radii = tuple(_by_role(context, QuantityRole.radius))
+    gravities = tuple(_by_role(context, QuantityRole.gravity))
+    speeds = tuple(_by_role(context, QuantityRole.speed))
+    if len(radii) != 1 or len(gravities) != 1 or len(speeds) != 1:
+        return []
+    radius, gravity, speed = radii[0], gravities[0], speeds[0]
+    top_events = tuple(
+        item
+        for item in context.events
+        if item.event_id == speed.event_id
+        and item.kind.value == "highest_point"
+    )
+    if (
+        len(top_events) != 1
+        or speed.subject_id != particle_id
+        or speed.component is not QuantityComponent.magnitude
+        or speed.shape is not QuantityShape.scalar
+        or speed.known_si_value is not None
+        or speed.interval_id != interval.interval_id
+        or radius.subject_id != particle_id
+        or radius.shape is not QuantityShape.scalar
+        or radius.component is not QuantityComponent.unspecified
+        or radius.event_id is not None
+        or radius.interval_id != interval.interval_id
+        or radius.known_si_value is None
+        or radius.known_si_value <= 0.0
+        or not radius.evidence_ids
+        or gravity.subject_id != particle_id
+        or gravity.shape is not QuantityShape.scalar
+        or gravity.component is not QuantityComponent.magnitude
+        or gravity.event_id is not None
+        or gravity.interval_id != interval.interval_id
+        or gravity.known_si_value is None
+        or gravity.known_si_value <= 0.0
+    ):
+        return []
+
+    speed_squared_dimension = speed.dimension.plus(speed.dimension)
+    assert speed_squared_dimension is not None
+    return [
+        _emit(
+            context,
+            "vertical_circle_top_minimum_speed",
+            Equality(
+                left=Power(
+                    base=speed.expression, exponent=LiteralNode(value=2.0)
+                ),
+                right=Multiply(
+                    factors=(gravity.expression, radius.expression),
+                    dimension=speed_squared_dimension,
+                ),
+            ),
+            (speed, gravity, radius),
+        ),
+        _emit(
+            context,
+            "translational_speed_nonnegative",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=speed.expression,
+                right=LiteralNode(value=0.0, dimension=speed.dimension),
+            ),
+            (speed,),
+        ),
+    ]
+
+
 def _square_sum(left: BoundQuantity, right: BoundQuantity, dimension: DimensionVector):
     return Add(
         terms=(
@@ -11665,6 +11780,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_work_energy_emissions(context))
     emitted.extend(_momentum_emissions(context))
     emitted.extend(_rigid_emissions(context))
+    emitted.extend(_vertical_circle_top_boundary_emissions(context))
     emitted.extend(_topology_constraint_emissions(context))
     emitted.extend(_fixed_pulley_common_acceleration_readout_emissions(context))
     emitted.extend(_vibration_emissions(context))
