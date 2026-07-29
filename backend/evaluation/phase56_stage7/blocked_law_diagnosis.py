@@ -539,6 +539,8 @@ _INCREMENTAL_EMITTERS: tuple[str, ...] = (
     "_work_energy_emissions",
     "_momentum_emissions",
     "_rigid_emissions",
+    "_vertical_circle_top_boundary_emissions",
+    "_rolling_incline_endpoint_emissions",
     "_topology_constraint_emissions",
     "_vibration_emissions",
 )
