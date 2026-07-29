@@ -25,7 +25,8 @@ jobs:
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$expected"
           git archive --format=tar.gz --output "${RUNNER_TEMP}/dynatutor-stage7-source-${expected}.tar.gz" "$expected"
-          git bundle create "${RUNNER_TEMP}/dynatutor-stage7-${expected}.bundle" "$expected"^.."$expected"
+          git branch -f stage7-exact-export "$expected"
+          git bundle create "${RUNNER_TEMP}/dynatutor-stage7-${expected}.bundle" stage7-exact-export
           {
             printf 'exact_head_sha=%s\n' "$expected"
             sha256sum "${RUNNER_TEMP}/dynatutor-stage7-source-${expected}.tar.gz"
