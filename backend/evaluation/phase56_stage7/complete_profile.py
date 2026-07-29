@@ -823,6 +823,312 @@ def _polar_kinematics_state_profile_evidence(
     return dispositions
 
 
+
+def _rigid_fixed_axis_point_speed_evidence(
+    draft: Any,
+) -> Mapping[str, PrerequisiteDisposition] | None:
+    """Classify one exact source-typed fixed-axis point-speed topology.
+
+    The projected source carries one rigid body, one point-primitive entity,
+    a source-declared point-on-body relation, a source-declared rotates-about
+    relation, one valued angular velocity on the body, one valued radius on
+    the point, and one value-free speed/velocity magnitude query on the point.
+    This reader authorises only structural closure: materialising the typed
+    point record, rebinding the radius and the query unknown onto the body's
+    fixed-axis scope, and normalising a scalar velocity magnitude into the
+    equivalent speed magnitude the existing ``fixed_axis_speed`` law reads.
+
+    No value, equation, assumption, solver choice, answer metadata, text, or
+    corpus identity is read here.  Extra bodies, duplicate or missing
+    topology, signed component queries, mixed scopes, value-bearing points,
+    or unevidenced facts refuse.
+    """
+
+    if (
+        len(draft.entities) != 2
+        or len(draft.motion_intervals) != 1
+        or len(draft.queries) != 1
+        or draft.reference_frames
+        or draft.points
+        or draft.interactions
+        or draft.constraints
+        or draft.state_conditions
+        or draft.principle_hints
+        or draft.ambiguities
+        or draft.unsupported_features
+        or draft.figure_dependency.level.value != "none"
+        or draft.figure_dependency.missing_information
+        or draft.figure_dependency.evidence_refs
+    ):
+        return None
+
+    bodies = tuple(
+        item for item in draft.entities if item.primitive.value == "rigid_body"
+    )
+    point_entities = tuple(
+        item for item in draft.entities if item.primitive.value == "point"
+    )
+    if len(bodies) != 1 or len(point_entities) != 1:
+        return None
+    body_id = bodies[0].entity_id
+    point_id = point_entities[0].entity_id
+    subject_ids = {body_id, point_id}
+
+    interval = draft.motion_intervals[0]
+    interval_id = interval.interval_id
+    if (
+        set(interval.subject_ids) != subject_ids
+        or len(interval.subject_ids) != 2
+        or interval.frame_id is not None
+        or interval.start_event_id is None
+        or interval.end_event_id is None
+        or interval.start_event_id == interval.end_event_id
+    ):
+        return None
+
+    evidence_ids = {item.evidence_id for item in draft.source_evidence}
+
+    def evidenced(item: Any) -> bool:
+        refs = set(item.evidence_refs)
+        return bool(refs) and refs.issubset(evidence_ids)
+
+    if any(
+        item.subject_id not in subject_ids
+        or item.interval_id not in {None, interval_id}
+        or item.proposed_role is not None
+        or item.proposed_value is not None
+        or item.proposed_unit is not None
+        or not evidenced(item)
+        for item in draft.assumptions
+    ):
+        return None
+
+    events = {item.event_id: item for item in draft.events}
+    if len(draft.events) != 2 or len(events) != 2:
+        return None
+    start = events.get(interval.start_event_id)
+    finish = events.get(interval.end_event_id)
+    if (
+        start is None
+        or finish is None
+        or start.kind.value != "start"
+        or finish.kind.value != "finish"
+        or any(
+            set(item.subject_ids) != subject_ids
+            or item.time_quantity_id is not None
+            or tuple(item.interval_ids) != (interval_id,)
+            or item.occurs_in_interval_ids
+            for item in draft.events
+        )
+    ):
+        return None
+
+    lies_on = tuple(
+        item for item in draft.geometry if item.kind.value == "lies_on"
+    )
+    coincident = tuple(
+        item for item in draft.geometry if item.kind.value == "coincident"
+    )
+    if len(draft.geometry) != 2 or any(
+        set(item.participant_ids) != subject_ids
+        or len(item.participant_ids) != 2
+        or item.interval_id not in {None, interval_id}
+        or item.quantity_ids
+        or item.expression is not None
+        for item in draft.geometry
+    ):
+        return None
+    topology = {
+        "point_topology": (
+            PrerequisiteDisposition.explicit_source
+            if len(lies_on) == 1
+            else (
+                PrerequisiteDisposition.ambiguous
+                if lies_on
+                else PrerequisiteDisposition.missing
+            )
+        ),
+        "fixed_axis_topology": (
+            PrerequisiteDisposition.explicit_source
+            if len(coincident) == 1
+            else (
+                PrerequisiteDisposition.ambiguous
+                if coincident
+                else PrerequisiteDisposition.missing
+            )
+        ),
+    }
+
+    query = draft.queries[0]
+    target = query.target
+    target_quantity = next(
+        (
+            item
+            for item in draft.quantities
+            if item.quantity_id == target.target_quantity_id
+        ),
+        None,
+    )
+    query_exact = (
+        query.shape.value == "scalar"
+        and (target.role.value, target.component.value)
+        in {("velocity", "magnitude"), ("speed", "magnitude")}
+        and target.subject_id == point_id
+        and target.point_id is None
+        and target.frame_id is None
+        and target.interval_id == interval_id
+        and target.event_id is None
+        and target.direction is None
+        and target_quantity is not None
+        and target_quantity.subject_id == point_id
+        and target_quantity.point_id is None
+        and target_quantity.frame_id is None
+        and target_quantity.interval_id == interval_id
+        and target_quantity.event_id is None
+        and target_quantity.role is target.role
+        and target_quantity.component is target.component
+        and target_quantity.direction is None
+        and target_quantity.shape.value == "scalar"
+        and target_quantity.raw_value is None
+        and target_quantity.raw_unit is None
+        and target_quantity.provenance.value == "unknown"
+        and target_quantity.symbol_id is not None
+        and not target_quantity.evidence_refs
+        and query.output_dimension == target_quantity.dimension
+        and not query.evidence_refs
+    )
+    if not query_exact:
+        return None
+
+    symbols_by_quantity: Counter[str | None] = Counter(
+        item.quantity_id for item in draft.symbols
+    )
+    if len(draft.symbols) != len(draft.quantities) or any(
+        item.symbol_id is None or symbols_by_quantity[item.quantity_id] != 1
+        for item in draft.quantities
+    ):
+        return None
+
+    known = tuple(
+        item
+        for item in draft.quantities
+        if item.quantity_id != target_quantity.quantity_id
+    )
+
+    def scoped(item: Any) -> bool:
+        return (
+            item.point_id is None
+            and item.frame_id is None
+            and item.interval_id in {None, interval_id}
+            and item.event_id is None
+            and item.shape.value == "scalar"
+        )
+
+    def valued_source(item: Any) -> bool:
+        return (
+            item.raw_value is not None
+            and item.raw_unit is not None
+            and item.provenance.value == "explicit_source"
+            and item.symbol_id is not None
+            and evidenced(item)
+        )
+
+    dispositions: dict[str, PrerequisiteDisposition] = dict(topology)
+    selected: dict[str, Any] = {}
+
+    angular = tuple(
+        item for item in known if item.role.value == "angular_velocity"
+    )
+    angular_exact = None
+    if len(angular) == 1:
+        item = angular[0]
+        direction = getattr(
+            getattr(item.direction, "direction", None), "value", None
+        )
+        angular_exact = (
+            item.subject_id == body_id
+            and scoped(item)
+            and item.interval_id == interval_id
+            and valued_source(item)
+            and (
+                (
+                    direction is None
+                    and item.component.value in {"unspecified", "magnitude"}
+                )
+                or (
+                    direction in {"clockwise", "counterclockwise"}
+                    and item.component.value == direction
+                )
+            )
+        )
+    dispositions["angular_velocity"] = (
+        PrerequisiteDisposition.explicit_source
+        if angular_exact
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(angular) > 1
+            else PrerequisiteDisposition.missing
+        )
+    )
+    if len(angular) == 1:
+        selected["angular_velocity"] = angular[0]
+
+    radii = tuple(item for item in known if item.role.value == "radius")
+    radius_exact = None
+    if len(radii) == 1:
+        item = radii[0]
+        radius_exact = (
+            item.subject_id == point_id
+            and scoped(item)
+            and item.component.value == "unspecified"
+            and item.direction is None
+            and valued_source(item)
+        )
+    dispositions["radius"] = (
+        PrerequisiteDisposition.explicit_source
+        if radius_exact
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(radii) > 1
+            else PrerequisiteDisposition.missing
+        )
+    )
+    if len(radii) == 1:
+        selected["radius"] = radii[0]
+
+    # An unrelated valued mass on the body is tolerated but never consumed.
+    masses = tuple(item for item in known if item.role.value == "mass")
+    if any(
+        item.subject_id != body_id or not scoped(item) or not valued_source(item)
+        for item in masses
+    ) or len(masses) > 1:
+        return None
+
+    accounted = {
+        item.quantity_id for item in (*selected.values(), *masses)
+    } | {target_quantity.quantity_id}
+    if len(accounted) != len(draft.quantities):
+        return None
+
+    dispositions.update(
+        material_point=PrerequisiteDisposition.server_derivable,
+        speed_normalization=PrerequisiteDisposition.server_derivable,
+        query_binding=PrerequisiteDisposition.server_derivable,
+        point_speed_symbol=PrerequisiteDisposition.generated_unknown,
+        capability=PrerequisiteDisposition.explicit_source,
+    )
+    return dispositions
+
+
+def _rigid_fixed_axis_prerequisite(name: str) -> "_Resolver":
+    def resolve(facts: "_DraftFacts") -> PrerequisiteDisposition:
+        if facts.rigid_fixed_axis_profile is None:
+            return PrerequisiteDisposition.missing
+        return facts.rigid_fixed_axis_profile[name]
+
+    return resolve
+
+
 class _DraftFacts:
     """One pass of typed readings, shared by every profile signature."""
 
@@ -840,6 +1146,7 @@ class _DraftFacts:
         "query_role",
         "roles",
         "rest_boundary_count",
+        "rigid_fixed_axis_profile",
         "rotating_relative_profile",
         "semantic_directions",
     )
@@ -861,6 +1168,9 @@ class _DraftFacts:
         self.rotating_relative_profile = _rotating_relative_profile_evidence(draft)
         self.polar_kinematics_state_profile = (
             _polar_kinematics_state_profile_evidence(draft)
+        )
+        self.rigid_fixed_axis_profile = (
+            _rigid_fixed_axis_point_speed_evidence(draft)
         )
 
 
@@ -1620,25 +1930,32 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _generated_unknown),
         ),
     ),
+    # One rigid body about a fixed axis, one source-declared on-body point at a
+    # source-declared radius, one scalar speed-magnitude readout of that point.
+    # The exact-shape reader owns applicability; the existing fixed_axis_speed
+    # law does all solving.
     _ProfileSignature(
         ProfileId.rigid_fixed_axis,
-        lambda facts: (
-            bool(facts.primitives.get("rigid_body"))
-            and bool(facts.roles.get("angular_velocity"))
-        ),
+        lambda facts: facts.rigid_fixed_axis_profile is not None,
         (
             ("quantity_angular_velocity", PrerequisiteKind.interaction_quantity,
-             _needs_role("angular_velocity")),
+             _rigid_fixed_axis_prerequisite("angular_velocity")),
             ("quantity_radius", PrerequisiteKind.interaction_quantity,
-             _needs_role("radius")),
-            ("capability_rigid_point_authority", PrerequisiteKind.capability,
-             _catalogue_has_no_capability),
-            ("geometry_attached", PrerequisiteKind.geometry,
-             _needs_geometry("attached")),
-            ("capability_body_fixed_frame", PrerequisiteKind.capability,
-             _catalogue_has_no_capability),
+             _rigid_fixed_axis_prerequisite("radius")),
+            ("geometry_point_on_body", PrerequisiteKind.geometry,
+             _rigid_fixed_axis_prerequisite("point_topology")),
+            ("geometry_fixed_axis", PrerequisiteKind.geometry,
+             _rigid_fixed_axis_prerequisite("fixed_axis_topology")),
+            ("point_material_binding", PrerequisiteKind.point,
+             _rigid_fixed_axis_prerequisite("material_point")),
+            ("query_speed_normalization", PrerequisiteKind.capability,
+             _rigid_fixed_axis_prerequisite("speed_normalization")),
+            ("query_binding", PrerequisiteKind.capability,
+             _rigid_fixed_axis_prerequisite("query_binding")),
             ("symbol_point_speed", PrerequisiteKind.unknown_symbol,
-             _generated_unknown),
+             _rigid_fixed_axis_prerequisite("point_speed_symbol")),
+            ("capability_fixed_axis_speed", PrerequisiteKind.capability,
+             _rigid_fixed_axis_prerequisite("capability")),
         ),
     ),
     # The one profile the engine answers by *declining*: a free undamped linear

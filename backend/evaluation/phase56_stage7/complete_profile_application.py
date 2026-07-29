@@ -33,6 +33,7 @@ Values of generated unknowns stay unknown.  Only their existence is derived.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
@@ -134,6 +135,7 @@ INCLINE_HANGING_INCLINE_FRAME_ID = "frm_closure_incline_hanging_slope"
 INCLINE_HANGING_CONTACT_POINT_ID = "pt_closure_incline_hanging_contact"
 INCLINE_HANGING_GRAVITY_ID = "qty_closure_incline_hanging_gravity"
 INCLINE_HANGING_GRAVITY_SYMBOL_ID = "sym_closure_incline_hanging_gravity"
+RIGID_AXIS_POINT_ID = "pt_closure_rigid_axis_material"
 
 _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
     "massless_rope": "asm_closure_fixed_pulley_massless_rope",
@@ -3254,6 +3256,299 @@ def _incline_hanging_pulley_transaction(
 # Only a profile whose partial-attachment hazards already have engine-level
 # negative controls, or which creates no force at all, may appear here.
 # Everything else plans, is measured by the census, and is not built.
+def _rigid_fixed_axis_point_speed_transaction(
+    payload: dict[str, Any], _authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one exact source-typed fixed-axis point-speed readout.
+
+    The transaction creates no value, equation, force, assumption, solver
+    choice, candidate, or answer.  It materialises the typed material-point
+    record the source's point-on-body relation already states, rebinds the
+    source radius and the value-free query unknown onto the rotating body's
+    scope, and normalises the scalar velocity-magnitude query into the
+    equivalent speed magnitude read by the existing ``fixed_axis_speed`` law.
+    """
+
+    reserved_ids = {RIGID_AXIS_POINT_ID}
+    if (
+        len(payload["entities"]) != 2
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["queries"]) != 1
+        or len(payload["events"]) != 2
+        or len(payload["geometry"]) != 2
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or payload["state_conditions"]
+        or payload["principle_hints"]
+        or payload["ambiguities"]
+        or payload["unsupported_features"]
+        or payload["figure_dependency"] != {
+            "level": "none",
+            "missing_information": [],
+            "evidence_refs": [],
+        }
+        or reserved_ids & _authored_draft_ids(payload)
+    ):
+        return None
+
+    bodies = [
+        item for item in payload["entities"]
+        if item.get("primitive") == "rigid_body"
+    ]
+    point_entities = [
+        item for item in payload["entities"] if item.get("primitive") == "point"
+    ]
+    if len(bodies) != 1 or len(point_entities) != 1:
+        return None
+    body_id = bodies[0].get("entity_id")
+    point_entity = point_entities[0]
+    point_entity_id = point_entity.get("entity_id")
+    subject_ids = {body_id, point_entity_id}
+
+    interval = payload["motion_intervals"][0]
+    interval_id = interval.get("interval_id")
+    if (
+        set(interval.get("subject_ids", ())) != subject_ids
+        or len(interval.get("subject_ids", ())) != 2
+        or interval.get("frame_id") is not None
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or interval.get("start_event_id") == interval.get("end_event_id")
+    ):
+        return None
+
+    source_evidence_ids = {
+        item.get("evidence_id") for item in payload["source_evidence"]
+    }
+
+    def evidenced(item: dict[str, Any]) -> bool:
+        refs = set(item.get("evidence_refs", ()))
+        return bool(refs) and refs.issubset(source_evidence_ids)
+
+    if any(
+        item.get("subject_id") not in subject_ids
+        or item.get("interval_id") not in {None, interval_id}
+        or item.get("proposed_role") is not None
+        or item.get("proposed_value") is not None
+        or item.get("proposed_unit") is not None
+        or not evidenced(item)
+        for item in payload["assumptions"]
+    ):
+        return None
+
+    events = {item.get("event_id"): item for item in payload["events"]}
+    start = events.get(interval.get("start_event_id"))
+    finish = events.get(interval.get("end_event_id"))
+    if (
+        len(events) != 2
+        or start is None
+        or finish is None
+        or start.get("kind") != "start"
+        or finish.get("kind") != "finish"
+        or any(
+            set(item.get("subject_ids", ())) != subject_ids
+            or item.get("time_quantity_id") is not None
+            or item.get("interval_ids") != [interval_id]
+            or item.get("occurs_in_interval_ids")
+            for item in payload["events"]
+        )
+    ):
+        return None
+
+    lies_on = [
+        item for item in payload["geometry"] if item.get("kind") == "lies_on"
+    ]
+    coincident = [
+        item for item in payload["geometry"] if item.get("kind") == "coincident"
+    ]
+    if (
+        len(lies_on) != 1
+        or len(coincident) != 1
+        or any(
+            set(item.get("participant_ids", ())) != subject_ids
+            or len(item.get("participant_ids", ())) != 2
+            or item.get("interval_id") not in {None, interval_id}
+            or item.get("quantity_ids")
+            or item.get("expression") is not None
+            for item in payload["geometry"]
+        )
+    ):
+        return None
+
+    query = payload["queries"][0]
+    target = dict(query.get("target") or {})
+    target_quantity_id = target.get("target_quantity_id")
+    quantities = {
+        item.get("quantity_id"): item for item in payload["quantities"]
+    }
+    target_quantity = quantities.get(target_quantity_id)
+    if (
+        len(quantities) != len(payload["quantities"])
+        or target_quantity is None
+        or query.get("shape") != "scalar"
+        or (target.get("role"), target.get("component"))
+        not in {("velocity", "magnitude"), ("speed", "magnitude")}
+        or target.get("subject_id") != point_entity_id
+        or target.get("point_id") is not None
+        or target.get("frame_id") is not None
+        or target.get("interval_id") != interval_id
+        or target.get("event_id") is not None
+        or target.get("direction") is not None
+        or target_quantity.get("subject_id") != point_entity_id
+        or target_quantity.get("point_id") is not None
+        or target_quantity.get("frame_id") is not None
+        or target_quantity.get("interval_id") != interval_id
+        or target_quantity.get("event_id") is not None
+        or target_quantity.get("role") != target.get("role")
+        or target_quantity.get("component") != target.get("component")
+        or target_quantity.get("direction") is not None
+        or target_quantity.get("shape") != "scalar"
+        or target_quantity.get("raw_value") is not None
+        or target_quantity.get("raw_unit") is not None
+        or target_quantity.get("provenance") != "unknown"
+        or target_quantity.get("symbol_id") is None
+        or target_quantity.get("evidence_refs")
+        or query.get("output_dimension") != target_quantity.get("dimension")
+        or query.get("evidence_refs")
+    ):
+        return None
+
+    symbol_counts: Counter[str | None] = Counter(
+        item.get("quantity_id") for item in payload["symbols"]
+    )
+    if len(payload["symbols"]) != len(payload["quantities"]) or any(
+        item.get("symbol_id") is None
+        or symbol_counts[item.get("quantity_id")] != 1
+        for item in payload["quantities"]
+    ):
+        return None
+
+    known = [
+        item
+        for item in payload["quantities"]
+        if item.get("quantity_id") != target_quantity_id
+    ]
+
+    def scoped(item: dict[str, Any]) -> bool:
+        return (
+            item.get("point_id") is None
+            and item.get("frame_id") is None
+            and item.get("interval_id") in {None, interval_id}
+            and item.get("event_id") is None
+            and item.get("shape") == "scalar"
+        )
+
+    def valued_source(item: dict[str, Any]) -> bool:
+        return (
+            item.get("raw_value") is not None
+            and item.get("raw_unit") is not None
+            and item.get("provenance") == "explicit_source"
+            and item.get("symbol_id") is not None
+            and evidenced(item)
+        )
+
+    angular = [item for item in known if item.get("role") == "angular_velocity"]
+    radii = [item for item in known if item.get("role") == "radius"]
+    masses = [item for item in known if item.get("role") == "mass"]
+    if len(angular) != 1 or len(radii) != 1 or len(masses) > 1:
+        return None
+    omega = angular[0]
+    omega_direction = (omega.get("direction") or {}).get("direction")
+    if (
+        omega.get("subject_id") != body_id
+        or not scoped(omega)
+        or omega.get("interval_id") != interval_id
+        or not valued_source(omega)
+        or not (
+            (
+                omega_direction is None
+                and omega.get("component") in {"unspecified", "magnitude"}
+            )
+            or (
+                omega_direction in {"clockwise", "counterclockwise"}
+                and omega.get("component") == omega_direction
+            )
+        )
+    ):
+        return None
+    radius = radii[0]
+    if (
+        radius.get("subject_id") != point_entity_id
+        or not scoped(radius)
+        or radius.get("component") != "unspecified"
+        or radius.get("direction") is not None
+        or not valued_source(radius)
+    ):
+        return None
+    if any(
+        item.get("subject_id") != body_id
+        or not scoped(item)
+        or not valued_source(item)
+        for item in masses
+    ):
+        return None
+    accounted = {
+        omega.get("quantity_id"),
+        radius.get("quantity_id"),
+        target_quantity_id,
+        *(item.get("quantity_id") for item in masses),
+    }
+    if len(accounted) != len(payload["quantities"]):
+        return None
+
+    point_evidence = sorted(
+        set(point_entity.get("evidence_refs", ()))
+        | set(radius.get("evidence_refs", ()))
+    )
+    if not point_evidence or len(point_evidence) > 16:
+        return None
+    material_point = {
+        "point_id": RIGID_AXIS_POINT_ID,
+        "role": "material",
+        "owner_entity_id": body_id,
+        "frame_id": None,
+        "label": None,
+        "evidence_refs": point_evidence,
+    }
+
+    rewritten_quantities: list[dict[str, Any]] = []
+    rebound: list[str] = []
+    for original in payload["quantities"]:
+        item = dict(original)
+        if item.get("quantity_id") == radius.get("quantity_id"):
+            item.update(
+                subject_id=body_id,
+                point_id=RIGID_AXIS_POINT_ID,
+            )
+            rebound.append(item["quantity_id"])
+        elif item.get("quantity_id") == target_quantity_id:
+            item.update(
+                role="speed",
+                subject_id=body_id,
+                point_id=RIGID_AXIS_POINT_ID,
+            )
+            rebound.append(item["quantity_id"])
+        rewritten_quantities.append(item)
+
+    rewritten_query = dict(query)
+    rewritten_target = dict(target)
+    rewritten_target.update(
+        role="speed",
+        subject_id=body_id,
+        point_id=RIGID_AXIS_POINT_ID,
+        target_quantity_id=target_quantity_id,
+    )
+    rewritten_query.update(target=rewritten_target)
+
+    closed = dict(payload)
+    closed["points"] = [material_point]
+    closed["quantities"] = rewritten_quantities
+    closed["queries"] = [rewritten_query]
+    return closed, (RIGID_AXIS_POINT_ID,), tuple(sorted(rebound))
+
+
 _TRANSACTIONS = {
     ProfileId.signed_constant_acceleration_1d: (
         _signed_constant_acceleration_1d_transaction
@@ -3269,6 +3564,9 @@ _TRANSACTIONS = {
     ProfileId.impulse_momentum: _impulse_momentum_transaction,
     ProfileId.fixed_pulley: _fixed_pulley_acceleration_transaction,
     ProfileId.incline_hanging_pulley: _incline_hanging_pulley_transaction,
+    ProfileId.rigid_fixed_axis: (
+        _rigid_fixed_axis_point_speed_transaction
+    ),
     ProfileId.slot_pin_relative_frame: _slot_pin_relative_frame_transaction,
     ProfileId.rotating_relative_frame: _rotating_relative_frame_transaction,
     ProfileId.relative_translating_frame: _relative_translating_frame_transaction,
@@ -3465,6 +3763,7 @@ __all__ = [
     "POLAR_COORDINATE_ENTITY_ID",
     "POLAR_FRAME_ID",
     "POLAR_RADIUS_RELATION_ID",
+    "RIGID_AXIS_POINT_ID",
     "GRAVITY_INTERACTION_ID",
     "GRAVITY_QUANTITY_ID",
     "GRAVITY_SYMBOL_ID",

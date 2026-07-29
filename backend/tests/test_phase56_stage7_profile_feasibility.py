@@ -538,6 +538,7 @@ def test_the_profile_table_and_enum_cannot_drift():
         ProfileId.polar_kinematics_state,
         ProfileId.fixed_pulley,
         ProfileId.incline_hanging_pulley,
+        ProfileId.rigid_fixed_axis,
         ProfileId.free_flight_gravity,
         ProfileId.impulse_momentum,
         ProfileId.slot_pin_relative_frame,
@@ -647,10 +648,10 @@ def test_the_decision_tree_is_exact(terminal, kwargs, expected):
 
 def test_an_unimplemented_profile_short_circuits_before_any_result():
     status = classify_selected_profile_outcome(
-        ProfileId.rigid_fixed_axis, None, None
+        ProfileId.work_energy, None, None
     )
     assert status is ProfileFeasibilityStatus.profile_not_implemented
-    assert not profile_has_transaction(ProfileId.rigid_fixed_axis)
+    assert not profile_has_transaction(ProfileId.work_energy)
 
 
 def test_plan_and_transaction_verdicts_come_from_the_application():
@@ -762,16 +763,75 @@ def _cases():
     ]
 
 
+def _work_query_case() -> PublicCorpusCaseV1:
+    """A work readout: applicable to the unimplemented work_energy profile."""
+
+    return _case(
+        34,
+        RIGID_TEXT,
+        {
+            "entities": [{"role": "wheel", "kind": "rigid_body", "label": "바퀴"}],
+            "motion_segments": [
+                {
+                    "role": "spin",
+                    "order": 1,
+                    "actor_roles": ["wheel"],
+                    "motion_model": "rotation_about_fixed_axis",
+                    "relevance": "target",
+                    "start_event_role": "start",
+                    "end_event_role": None,
+                }
+            ],
+            "events": [
+                {
+                    "role": "start",
+                    "kind": "start",
+                    "subject_roles": ["wheel"],
+                    "segment_role": "spin",
+                    "evidence_quote": None,
+                }
+            ],
+            "explicit_facts": [
+                _fact(
+                    "w", "angular_velocity", "5", "rad/s", "5 rad/s",
+                    "wheel", "spin", temporal_role=None,
+                )
+            ],
+            "relations": [],
+            "assumption_proposals": [],
+            "queries": [
+                {
+                    "role": "q1",
+                    "output_key": "work",
+                    "subject_role": "wheel",
+                    "segment_role": "spin",
+                    "component": "magnitude",
+                    "event_role": None,
+                }
+            ],
+            "answers": [
+                {
+                    "query_role": "q1",
+                    "numeric": 10.0,
+                    "unit": "J",
+                    "tolerance_abs": 0.01,
+                    "reference_expression": "deliberately non-authoritative",
+                }
+            ],
+        },
+    )
+
+
 def test_an_unimplemented_profile_is_not_measured_and_carries_no_yield():
-    matrix = measure_profile_feasibility(_cases())
+    matrix = measure_profile_feasibility([*_cases(), _work_query_case()])
     rows = {row.profile_id: row for row in matrix.rows}
-    rigid = rows[ProfileId.rigid_fixed_axis]
-    assert rigid.implemented is False
-    assert rigid.applicable_contexts >= 1
-    assert rigid.measured_contexts == 0
-    assert rigid.not_measured_contexts == rigid.applicable_contexts
-    assert rigid.status_counts == {
-        "profile_not_implemented": rigid.applicable_contexts
+    exemplar = rows[ProfileId.work_energy]
+    assert exemplar.implemented is False
+    assert exemplar.applicable_contexts >= 1
+    assert exemplar.measured_contexts == 0
+    assert exemplar.not_measured_contexts == exemplar.applicable_contexts
+    assert exemplar.status_counts == {
+        "profile_not_implemented": exemplar.applicable_contexts
     }
     for row in matrix.rows:
         if not row.implemented:
