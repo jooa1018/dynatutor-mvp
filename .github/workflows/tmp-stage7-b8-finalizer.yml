@@ -1,0 +1,97 @@
+name: Temporary Stage 7 B8 incline-hanging finalizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/stage7-b8-finalizer-base-d74b790
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PARENT_SHA: d74b7907fa799a031fc030c93877fb266ebd39c4
+      PATCH_B64_SHA256: 8606ab75d82993357b160a4cbd3b62bfcb3905140bc52ffbacfbe2387e8b1e04
+      PATCH_GZ_SHA256: ab15c0479882a008b583eb85b2c4d8bbfbcc3cfd4c825295974ba60703a7695c
+      PATCH_SHA256: 6bf6bc08b61a7f3f9e625490c9455beb341610ae38d841314aa0420a8aaeff0e
+    steps:
+      - name: Check out temporary finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/stage7-b8-finalizer-base-d74b790
+          fetch-depth: 0
+      - name: Decode and verify reviewed B8 patch
+        run: |
+          set -euo pipefail
+          cat .stage7-tmp/b8-a403.part-* > "${RUNNER_TEMP}/b8.patch.gz.b64"
+          test "$(sha256sum "${RUNNER_TEMP}/b8.patch.gz.b64" | cut -d' ' -f1)" = "$PATCH_B64_SHA256"
+          base64 -d "${RUNNER_TEMP}/b8.patch.gz.b64" > "${RUNNER_TEMP}/b8.patch.gz"
+          test "$(sha256sum "${RUNNER_TEMP}/b8.patch.gz" | cut -d' ' -f1)" = "$PATCH_GZ_SHA256"
+          gzip -dc "${RUNNER_TEMP}/b8.patch.gz" > "${RUNNER_TEMP}/b8.patch"
+          test "$(sha256sum "${RUNNER_TEMP}/b8.patch" | cut -d' ' -f1)" = "$PATCH_SHA256"
+      - name: Verify exact parent and apply atomic commit
+        run: |
+          set -euo pipefail
+          git fetch origin codex/phase56-generic-mechanics-engine
+          actual="$(git rev-parse origin/codex/phase56-generic-mechanics-engine)"
+          printf 'EXPECTED_PARENT=%s\nACTUAL_PARENT=%s\n' "$PARENT_SHA" "$actual"
+          test "$actual" = "$PARENT_SHA"
+          git checkout -B b8-finalizer "$PARENT_SHA"
+          git config user.name 'zenith go'
+          git config user.email '35967220+jooa1018@users.noreply.github.com'
+          git am "${RUNNER_TEMP}/b8.patch"
+          mapfile -t paths < <(git diff-tree --no-commit-id --name-only -r HEAD | sort)
+          expected=(
+            backend/engine/mechanics/compiler/compiler.py
+            backend/engine/mechanics/laws/core.py
+            backend/evaluation/phase56_stage7/complete_profile_application.py
+            backend/evaluation/phase56_stage7/lane_b_draft_projection.py
+            backend/tests/test_phase56_stage7_b8_incline_hanging_pulley.py
+            backend/tests/test_phase56_stage7_profile_feasibility.py
+          )
+          printf '%s\n' "${expected[@]}" | sort > "${RUNNER_TEMP}/expected-paths"
+          printf '%s\n' "${paths[@]}" > "${RUNNER_TEMP}/actual-paths"
+          diff -u "${RUNNER_TEMP}/expected-paths" "${RUNNER_TEMP}/actual-paths"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+      - name: Validate B8 implementation and adjacent contracts
+        working-directory: backend
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: '1'
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          python -m compileall -q engine evaluation tests/test_phase56_stage7_b8_incline_hanging_pulley.py
+          git diff --check HEAD^
+          python -m pytest -q -o addopts= \
+            tests/test_phase56_stage7_profile_feasibility.py::test_the_profile_table_and_enum_cannot_drift \
+            tests/test_phase56_stage7_profile_application.py \
+            tests/test_phase56_stage7_fixed_pulley_profile.py \
+            tests/test_phase56_mechanics_compiler.py \
+            tests/test_phase56_stage7_gold_isolation.py \
+            tests/test_phase56_stage7_hard_safety_instruments.py \
+            tests/test_phase56_stage7_lane_b_draft_projection.py
+          python -m pytest -q -o addopts= \
+            tests/test_phase56_stage7_b8_incline_hanging_pulley.py::test_projection_materializes_only_one_source_evidenced_implicit_rope \
+            'tests/test_phase56_stage7_b8_incline_hanging_pulley.py::test_incline_hanging_acceleration_uses_existing_generic_laws[4-3-25-1.835208487042136]' \
+            tests/test_phase56_stage7_b8_incline_hanging_pulley.py::test_transaction_adds_only_typed_topology_and_value_free_unknowns \
+            tests/test_phase56_stage7_b8_incline_hanging_pulley.py::test_structural_near_misses_fail_closed_without_numeric_output \
+            tests/test_phase56_stage7_b8_incline_hanging_pulley.py::test_closed_graph_never_routes_to_rolling_energy
+          test "$(python -m pytest --collect-only -q --disable-warnings -o addopts= -m 'slow and not benchmark and not audit and not frontend' tests/test_phase56_stage7_b8_incline_hanging_pulley.py 2>/dev/null | grep -c '::')" = 24
+      - name: Fast-forward push reviewed B8 commit
+        run: |
+          set -euo pipefail
+          git fetch origin codex/phase56-generic-mechanics-engine
+          test "$(git rev-parse origin/codex/phase56-generic-mechanics-engine)" = "$PARENT_SHA"
+          git push origin HEAD:refs/heads/codex/phase56-generic-mechanics-engine
