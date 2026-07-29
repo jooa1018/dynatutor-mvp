@@ -144,6 +144,8 @@ RESULTANT_FORCE_FRAME_ID = "frm_closure_resultant_force"
 RESULTANT_FORCE_INTERACTION_ID = "rel_closure_resultant_force"
 VERTICAL_CIRCLE_GRAVITY_QUANTITY_ID = "qty_closure_vertical_circle_gravity"
 VERTICAL_CIRCLE_GRAVITY_SYMBOL_ID = "sym_closure_vertical_circle_gravity"
+ROLLING_GRAVITY_QUANTITY_ID = "qty_closure_rolling_gravity"
+ROLLING_GRAVITY_SYMBOL_ID = "sym_closure_rolling_gravity"
 
 _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
     "massless_rope": "asm_closure_fixed_pulley_massless_rope",
@@ -4443,6 +4445,394 @@ def _vertical_circle_top_speed_transaction(
     )
 
 
+def _rolling_incline_energy_speed_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one exact pure-rolling incline energy-endpoint readout.
+
+    The transaction creates no equation, force, frame, point, solver choice,
+    candidate, or answer.  The only value it materialises is the gravity
+    magnitude the Lane B authority stage has already authorised from the
+    source's own approved server-valued proposal; the rest-release descent
+    sub-shape keeps its start speed a value-free unknown whose zero is
+    stated by the projected at_rest boundary itself.  The existing
+    ``rolling_general_principal_energy`` generic law does all solving.
+    """
+
+    reserved_ids = {ROLLING_GRAVITY_QUANTITY_ID, ROLLING_GRAVITY_SYMBOL_ID}
+    if (
+        len(payload["entities"]) != 2
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["queries"]) != 1
+        or len(payload["events"]) != 2
+        or len(payload["geometry"]) != 1
+        or len(payload["quantities"]) != 6
+        or len(payload["assumptions"]) not in {2, 3}
+        or len(payload["state_conditions"]) > 1
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["interactions"]
+        or payload["constraints"]
+        or payload["principle_hints"]
+        or payload["ambiguities"]
+        or payload["unsupported_features"]
+        or payload["figure_dependency"] != {
+            "level": "none",
+            "missing_information": [],
+            "evidence_refs": [],
+        }
+        or reserved_ids & _authored_draft_ids(payload)
+    ):
+        return None
+
+    bodies = [
+        item for item in payload["entities"]
+        if item.get("primitive") == "rigid_body"
+    ]
+    inclines = [
+        item for item in payload["entities"]
+        if item.get("primitive") == "incline"
+    ]
+    if len(bodies) != 1 or len(inclines) != 1:
+        return None
+    body_id = bodies[0].get("entity_id")
+    incline_id = inclines[0].get("entity_id")
+
+    interval = payload["motion_intervals"][0]
+    interval_id = interval.get("interval_id")
+    if (
+        interval.get("subject_ids") != [body_id]
+        or interval.get("frame_id") is not None
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or interval.get("start_event_id") == interval.get("end_event_id")
+    ):
+        return None
+
+    tangent = payload["geometry"][0]
+    if (
+        tangent.get("kind") != "tangent"
+        or set(tangent.get("participant_ids", ())) != {body_id, incline_id}
+        or len(tangent.get("participant_ids", ())) != 2
+        or tangent.get("interval_id") not in {None, interval_id}
+        or tangent.get("quantity_ids")
+        or tangent.get("expression") is not None
+    ):
+        return None
+
+    events = {item.get("event_id"): item for item in payload["events"]}
+    start = events.get(interval.get("start_event_id"))
+    finish = events.get(interval.get("end_event_id"))
+    if (
+        len(events) != 2
+        or start is None
+        or finish is None
+        or any(
+            item.get("subject_ids") != [body_id]
+            or item.get("time_quantity_id") is not None
+            or item.get("interval_ids") != [interval_id]
+            or item.get("occurs_in_interval_ids")
+            for item in payload["events"]
+        )
+    ):
+        return None
+    descent = (
+        start.get("kind") == "release" and finish.get("kind") == "finish"
+    )
+    climb = (
+        start.get("kind") == "start"
+        and finish.get("kind") == "reaches_condition"
+    )
+    if descent == climb:
+        return None
+
+    source_evidence_ids = {
+        item.get("evidence_id") for item in payload["source_evidence"]
+    }
+
+    def evidenced(item: dict[str, Any]) -> bool:
+        refs = set(item.get("evidence_refs", ()))
+        return bool(refs) and refs.issubset(source_evidence_ids)
+
+    def approved(item: dict[str, Any]) -> bool:
+        return (
+            item.get("disposition") == "approved"
+            and item.get("subject_id") == body_id
+            and item.get("interval_id") == interval_id
+            and evidenced(item)
+        )
+
+    by_kind: dict[str, dict[str, Any]] = {}
+    for item in payload["assumptions"]:
+        if item.get("kind") in by_kind:
+            return None
+        by_kind[item.get("kind")] = item
+    rolling = by_kind.get("pure_rolling")
+    gravity_assumption = by_kind.get("constant_gravity")
+    rest_assumption = by_kind.get("starts_from_rest")
+    if (
+        rolling is None
+        or gravity_assumption is None
+        or not approved(rolling)
+        or rolling.get("proposed_role") is not None
+        or rolling.get("proposed_value") is not None
+        or rolling.get("proposed_unit") is not None
+        or not approved(gravity_assumption)
+        or set(by_kind)
+        != (
+            {"pure_rolling", "constant_gravity", "starts_from_rest"}
+            if descent
+            else {"pure_rolling", "constant_gravity"}
+        )
+    ):
+        return None
+    if descent and (
+        rest_assumption is None or not approved(rest_assumption)
+    ):
+        return None
+
+    def authorization_for(
+        assumption: dict[str, Any], role: str
+    ) -> AssumptionAuthorization | None:
+        if assumption.get("assumption_id") not in authority.approved_assumption_ids:
+            return None
+        authorization = authority.authorized_assumptions.get(
+            assumption.get("assumption_id")
+        )
+        if type(authorization) is not AssumptionAuthorization:
+            return None
+        if (
+            authorization.assumption_id != assumption.get("assumption_id")
+            or str(getattr(authorization.role, "value", authorization.role))
+            != role
+            or str(assumption.get("proposed_role") or "") != role
+            or assumption.get("proposed_value") != authorization.raw_value
+            or assumption.get("proposed_unit") != authorization.raw_unit
+            or assumption.get("subject_id") != authorization.subject_id
+            or assumption.get("interval_id") != authorization.interval_id
+            or authorization.subject_id != body_id
+            or authorization.interval_id != interval_id
+        ):
+            return None
+        return authorization
+
+    gravity_authorization = authorization_for(gravity_assumption, _GRAVITY_ROLE)
+    if gravity_authorization is None:
+        return None
+
+    def scalar_scoped(item: dict[str, Any]) -> bool:
+        return (
+            item.get("point_id") is None
+            and item.get("frame_id") is None
+            and item.get("interval_id") == interval_id
+            and item.get("shape") == "scalar"
+        )
+
+    def valued_source(item: dict[str, Any]) -> bool:
+        return (
+            item.get("raw_value") is not None
+            and item.get("raw_unit") is not None
+            and item.get("provenance") == "explicit_source"
+            and item.get("symbol_id") is not None
+            and evidenced(item)
+        )
+
+    query = payload["queries"][0]
+    target = dict(query.get("target") or {})
+    target_quantity_id = target.get("target_quantity_id")
+    quantities = {
+        item.get("quantity_id"): item for item in payload["quantities"]
+    }
+    target_quantity = quantities.get(target_quantity_id)
+    if (
+        len(quantities) != len(payload["quantities"])
+        or target_quantity is None
+        or query.get("shape") != "scalar"
+        or target.get("role") != "velocity"
+        or target.get("component") != "magnitude"
+        or target.get("subject_id") != body_id
+        or target.get("point_id") is not None
+        or target.get("frame_id") is not None
+        or target.get("interval_id") != interval_id
+        or target.get("event_id") != interval.get("end_event_id")
+        or target.get("direction") is not None
+        or target_quantity.get("subject_id") != body_id
+        or not scalar_scoped(target_quantity)
+        or target_quantity.get("event_id") != interval.get("end_event_id")
+        or target_quantity.get("role") != "velocity"
+        or target_quantity.get("component") != "magnitude"
+        or target_quantity.get("direction") is not None
+        or target_quantity.get("raw_value") is not None
+        or target_quantity.get("raw_unit") is not None
+        or target_quantity.get("provenance") != "unknown"
+        or target_quantity.get("symbol_id") is None
+        or target_quantity.get("evidence_refs")
+        or query.get("output_dimension") != target_quantity.get("dimension")
+        or query.get("evidence_refs")
+    ):
+        return None
+
+    symbol_counts: Counter[str | None] = Counter(
+        item.get("quantity_id") for item in payload["symbols"]
+    )
+    if len(payload["symbols"]) != len(payload["quantities"]) or any(
+        item.get("symbol_id") is None
+        or symbol_counts[item.get("quantity_id")] != 1
+        for item in payload["quantities"]
+    ):
+        return None
+
+    known = [
+        item
+        for item in payload["quantities"]
+        if item.get("quantity_id") != target_quantity_id
+    ]
+
+    def one_plain(role: str) -> dict[str, Any] | None:
+        matches = [item for item in known if item.get("role") == role]
+        if len(matches) != 1:
+            return None
+        item = matches[0]
+        if (
+            item.get("subject_id") == body_id
+            and scalar_scoped(item)
+            and item.get("event_id") is None
+            and item.get("component") == "unspecified"
+            and item.get("direction") is None
+            and valued_source(item)
+        ):
+            return item
+        return None
+
+    mass = one_plain("mass")
+    radius = one_plain("radius")
+    inertia = one_plain("moment_of_inertia")
+    if mass is None or radius is None or inertia is None:
+        return None
+
+    heights = [item for item in known if item.get("role") == "height"]
+    start_speeds = [
+        item
+        for item in known
+        if item.get("role") == "velocity"
+        and item.get("event_id") == interval.get("start_event_id")
+    ]
+    if len(heights) != 1 or len(start_speeds) != 1 or len(known) != 5:
+        return None
+    height = heights[0]
+    start_speed = start_speeds[0]
+    height_direction = (height.get("direction") or {}).get("direction")
+    if (
+        height.get("subject_id") != body_id
+        or not scalar_scoped(height)
+        or height.get("component") != "unspecified"
+        or height_direction
+        not in ({None, "downward"} if descent else {None, "upward"})
+        or not valued_source(height)
+        or height.get("event_id")
+        != (None if descent else interval.get("end_event_id"))
+    ):
+        return None
+    if descent:
+        if (
+            start_speed.get("subject_id") != body_id
+            or not scalar_scoped(start_speed)
+            or start_speed.get("component") != "magnitude"
+            or start_speed.get("direction") is not None
+            or start_speed.get("raw_value") is not None
+            or start_speed.get("raw_unit") is not None
+            or start_speed.get("provenance") != "unknown"
+            or start_speed.get("symbol_id") is None
+        ):
+            return None
+    else:
+        start_direction = (start_speed.get("direction") or {}).get("direction")
+        if (
+            start_speed.get("subject_id") != body_id
+            or not scalar_scoped(start_speed)
+            or start_speed.get("component") not in {"unspecified", "magnitude"}
+            or start_direction not in {None, "along_motion"}
+            or not valued_source(start_speed)
+        ):
+            return None
+
+    if descent:
+        if len(payload["state_conditions"]) != 1:
+            return None
+        rest_state = payload["state_conditions"][0]
+        if (
+            rest_state.get("kind") != "initial"
+            or rest_state.get("state") != "at_rest"
+            or rest_state.get("subject_id") != body_id
+            or rest_state.get("interval_id") != interval_id
+            or rest_state.get("event_id") != interval.get("start_event_id")
+            or rest_state.get("expression") is not None
+            or rest_state.get("quantity_ids")
+            != [start_speed.get("quantity_id")]
+            or not evidenced(rest_state)
+        ):
+            return None
+    elif payload["state_conditions"]:
+        return None
+
+    gravity_quantity = {
+        "quantity_id": ROLLING_GRAVITY_QUANTITY_ID,
+        "symbol_id": ROLLING_GRAVITY_SYMBOL_ID,
+        "role": _GRAVITY_ROLE,
+        "subject_id": gravity_authorization.subject_id,
+        "point_id": None,
+        "frame_id": None,
+        "interval_id": interval_id,
+        "event_id": None,
+        "component": "magnitude",
+        "shape": "scalar",
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "provenance": "server_default",
+        "raw_value": gravity_authorization.raw_value,
+        "raw_unit": gravity_authorization.raw_unit,
+        "assumption_policy_ref": gravity_authorization.assumption_id,
+        "evidence_refs": [],
+    }
+    gravity_symbol = {
+        "symbol_id": ROLLING_GRAVITY_SYMBOL_ID,
+        "quantity_id": ROLLING_GRAVITY_QUANTITY_ID,
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "shape": "scalar",
+    }
+
+    # A directionless scalar velocity magnitude is the equivalent speed
+    # magnitude — the same normalisation the sealed fixed-axis packages
+    # apply — so the endpoint readouts reach the energy law's own typed
+    # role without any value changing.
+    speed_ids = {
+        start_speed.get("quantity_id"),
+        target_quantity_id,
+    }
+    rewritten_quantities: list[dict[str, Any]] = []
+    rebound: list[str] = []
+    for original in payload["quantities"]:
+        item = dict(original)
+        if item.get("quantity_id") in speed_ids:
+            item.update(role="speed")
+            rebound.append(item["quantity_id"])
+        rewritten_quantities.append(item)
+
+    rewritten_query = dict(query)
+    rewritten_target = dict(target)
+    rewritten_target.update(role="speed", target_quantity_id=target_quantity_id)
+    rewritten_query.update(target=rewritten_target)
+
+    closed = dict(payload)
+    closed["quantities"] = [*rewritten_quantities, gravity_quantity]
+    closed["symbols"] = [*payload["symbols"], gravity_symbol]
+    closed["queries"] = [rewritten_query]
+    return (
+        closed,
+        (ROLLING_GRAVITY_QUANTITY_ID,),
+        tuple(sorted(rebound)),
+    )
+
+
 _TRANSACTIONS = {
     ProfileId.signed_constant_acceleration_1d: (
         _signed_constant_acceleration_1d_transaction
@@ -4466,6 +4856,9 @@ _TRANSACTIONS = {
     ),
     ProfileId.vertical_circle_top_speed: (
         _vertical_circle_top_speed_transaction
+    ),
+    ProfileId.rolling_incline_energy_speed: (
+        _rolling_incline_energy_speed_transaction
     ),
     ProfileId.rigid_fixed_axis: (
         _rigid_fixed_axis_point_speed_transaction
@@ -4675,6 +5068,8 @@ __all__ = [
     "RESULTANT_FORCE_INTERACTION_ID",
     "VERTICAL_CIRCLE_GRAVITY_QUANTITY_ID",
     "VERTICAL_CIRCLE_GRAVITY_SYMBOL_ID",
+    "ROLLING_GRAVITY_QUANTITY_ID",
+    "ROLLING_GRAVITY_SYMBOL_ID",
     "GRAVITY_INTERACTION_ID",
     "GRAVITY_QUANTITY_ID",
     "GRAVITY_SYMBOL_ID",

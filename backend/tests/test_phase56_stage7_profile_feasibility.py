@@ -542,6 +542,7 @@ def test_the_profile_table_and_enum_cannot_drift():
         ProfileId.rigid_two_point_speed,
         ProfileId.explicit_resultant_force,
         ProfileId.vertical_circle_top_speed,
+        ProfileId.rolling_incline_energy_speed,
         ProfileId.free_flight_gravity,
         ProfileId.impulse_momentum,
         ProfileId.slot_pin_relative_frame,

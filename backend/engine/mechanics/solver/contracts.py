@@ -2646,6 +2646,221 @@ def _is_static_vertical_circle_top_boundary_graph(graph: EquationGraph) -> bool:
     return not incidence.get(nonnegative.equation_id)
 
 
+def _is_static_rolling_incline_endpoint_boundary_graph(
+    graph: EquationGraph,
+) -> bool:
+    """Recognize one exact pure-rolling incline energy-endpoint graph.
+
+    The two event IDs identify the start/end states of the rolling interval;
+    they are not timed root events.  Only the compiler-produced
+    ``rolling_general_principal_energy`` equality plus the end speed's
+    nonnegative domain predicate receives the event-free algebraic plan.
+    Structural or provenance near misses keep ordinary event handling
+    closed.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    energy_law = "rolling_general_principal_energy"
+    rest_law = "state_at_rest"
+    domain_law = "translational_speed_nonnegative"
+    laws = sorted(item.law_id for item in graph.equations)
+    constraint_kinds = sorted(
+        item.constraint_kind for item in graph.constraints
+    )
+    if (
+        len(event_ids) != 2
+        or constraint_kinds
+        not in (["geometry_tangent"], ["geometry_tangent", "state_initial"])
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.applications) != len(graph.equations)
+        or laws
+        not in (
+            [energy_law, domain_law],
+            [energy_law, rest_law, domain_law],
+        )
+        and sorted(laws)
+        not in (
+            sorted([energy_law, domain_law]),
+            sorted([energy_law, rest_law, domain_law]),
+        )
+        or graph.rank.inequality_count != 1
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+    descent = rest_law in laws
+    if descent:
+        if (
+            graph.rank.equality_count != 2
+            or graph.rank.unknown_count != 2
+            or graph.rank.structural_rank != 2
+        ):
+            return False
+    else:
+        if (
+            graph.rank.equality_count != 1
+            or graph.rank.unknown_count != 1
+            or graph.rank.structural_rank != 1
+        ):
+            return False
+
+    equations_by_law = {item.law_id: item for item in graph.equations}
+    applications_by_law = {item.law_id: item for item in graph.applications}
+    if len(equations_by_law) != len(graph.equations) or set(
+        applications_by_law
+    ) != set(equations_by_law):
+        return False
+    energy = equations_by_law[energy_law]
+    nonnegative = equations_by_law[domain_law]
+    rest = equations_by_law.get(rest_law)
+    if (
+        not isinstance(energy.expression, Equality)
+        or not isinstance(nonnegative.expression, Inequality)
+        or (rest is not None and not isinstance(rest.expression, Equality))
+        or set(graph.selected_equation_ids)
+        != {
+            item.equation_id
+            for item in graph.equations
+            if isinstance(item.expression, Equality)
+        }
+        or any(
+            application.equation_ids != (equations_by_law[law_id].equation_id,)
+            or application.source_quantity_ids
+            != equations_by_law[law_id].source_quantity_ids
+            or application.source_evidence_ids
+            != equations_by_law[law_id].source_evidence_ids
+            or application.assumption_ids
+            != equations_by_law[law_id].assumption_ids
+            or application.constraint_ids
+            != equations_by_law[law_id].constraint_ids
+            or application.generated_unknown_symbol_ids
+            != equations_by_law[law_id].generated_unknown_symbol_ids
+            or application.complexity_cost
+            != equations_by_law[law_id].complexity_cost
+            or application.scope != equations_by_law[law_id].scope
+            for law_id, application in applications_by_law.items()
+        )
+    ):
+        return False
+
+    by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.quantity_role is None:
+            return False
+        if item.known_si_value is not None and (
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+        ):
+            return False
+        by_role.setdefault(item.quantity_role, []).append(item)
+    if (
+        set(by_role)
+        != {
+            "mass",
+            "radius",
+            "moment_of_inertia",
+            "height",
+            "gravity",
+            "speed",
+        }
+        or len(by_role["mass"]) != 1
+        or len(by_role["radius"]) != 1
+        or len(by_role["moment_of_inertia"]) != 1
+        or len(by_role["height"]) != 1
+        or len(by_role["gravity"]) != 1
+        or len(by_role["speed"]) != 2
+        or len(graph.symbols) != 7
+    ):
+        return False
+
+    velocities = tuple(by_role["speed"])
+    unknowns = tuple(
+        item for item in graph.symbols if item.known_si_value is None
+    )
+    unknown_ids = {item.symbol.symbol_id for item in unknowns}
+    if (
+        len(unknowns) != (2 if descent else 1)
+        or any(item not in velocities for item in unknowns)
+        or graph.query_symbol_id not in unknown_ids
+    ):
+        return False
+    end_speed = next(
+        item
+        for item in velocities
+        if item.symbol.symbol_id == graph.query_symbol_id
+    )
+    start_speed = next(item for item in velocities if item is not end_speed)
+    if descent:
+        if start_speed.known_si_value is not None:
+            return False
+    else:
+        if (
+            start_speed.known_si_value is None
+            or start_speed.known_si_value < 0.0
+        ):
+            return False
+    if (
+        end_speed.known_si_value is not None
+        or start_speed.event_id is None
+        or end_speed.event_id is None
+        or start_speed.event_id == end_speed.event_id
+        or {start_speed.event_id, end_speed.event_id} != set(event_ids)
+    ):
+        return False
+    for role in ("mass", "radius", "moment_of_inertia", "gravity"):
+        item = by_role[role][0]
+        if (
+            item.known_si_value is None
+            or item.known_si_value <= 0.0
+            or item.event_id is not None
+        ):
+            return False
+    height = by_role["height"][0]
+    if (
+        height.known_si_value is None
+        or height.known_si_value <= 0.0
+        or height.event_id not in {None, end_speed.event_id}
+    ):
+        return False
+
+    subject_ids = {item.subject_id for item in graph.symbols}
+    interval_ids = {item.interval_id for item in graph.symbols}
+    if (
+        len(subject_ids) != 1
+        or None in subject_ids
+        or len(interval_ids) != 1
+        or None in interval_ids
+    ):
+        return False
+
+    incidence: dict[str, set[str]] = {}
+    for edge in graph.incidence:
+        incidence.setdefault(edge.equation_id, set()).add(edge.symbol_id)
+    expected_energy_incidence = (
+        tuple(
+            sorted(
+                (
+                    start_speed.symbol.symbol_id,
+                    end_speed.symbol.symbol_id,
+                )
+            )
+        )
+        if descent
+        else (end_speed.symbol.symbol_id,)
+    )
+    if tuple(sorted(incidence.get(energy.equation_id, ()))) != (
+        expected_energy_incidence
+    ):
+        return False
+    if rest is not None and tuple(
+        sorted(incidence.get(rest.equation_id, ()))
+    ) != (start_speed.symbol.symbol_id,):
+        return False
+    return not incidence.get(nonnegative.equation_id)
+
+
 def _is_static_particle_work_energy_boundary_graph(graph: EquationGraph) -> bool:
     """Recognize an exact scalar-speed particle work--energy endpoint graph.
 
@@ -2859,6 +3074,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
             or _is_static_particle_work_energy_boundary_graph(graph)
             or _is_static_fixed_axis_two_point_speed_boundary_graph(graph)
             or _is_static_vertical_circle_top_boundary_graph(graph)
+            or _is_static_rolling_incline_endpoint_boundary_graph(graph)
         )
         else _graph_event_ids(graph)
     )

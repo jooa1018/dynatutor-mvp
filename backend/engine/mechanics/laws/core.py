@@ -11326,6 +11326,254 @@ def _vertical_circle_top_boundary_emissions(
     ]
 
 
+def _rolling_incline_endpoint_emissions(
+    context: LawContext,
+) -> list[LawEmission]:
+    """The pure-rolling incline energy endpoint, from its exact typed shape.
+
+    One rigid body tangent to one incline, known mass, rotation radius,
+    central moment of inertia, endpoint height and start speed, a value-free
+    end-speed magnitude, and an approved pure-rolling authority.  Under pure
+    rolling the contact force does no work, so the endpoint balance is the
+    existing ``rolling_general_principal_energy`` law:
+
+        (1/2) (m + I/R^2) (v_end^2 - v_start^2) = ± m g h
+
+    with the sign decided by the typed endpoint sub-shape — an interval
+    height descended from a rest release adds energy; an event-bound height
+    reached at a ``reaches_condition`` end removes it.  Any other quantity,
+    entity, interaction, frame, or point emits nothing.
+    """
+
+    bodies = tuple(
+        item
+        for item in context.entities
+        if item.primitive is EntityPrimitive.rigid_body
+    )
+    inclines = tuple(
+        item
+        for item in context.entities
+        if item.primitive is EntityPrimitive.incline
+    )
+    if (
+        len(context.entities) != 2
+        or len(bodies) != 1
+        or len(inclines) != 1
+        or context.interactions
+        or context.reference_frames
+        or context.points
+        or len(context.motion_intervals) != 1
+        or len(context.geometry) != 1
+        or len(context.quantities) != 7
+    ):
+        return []
+    body_id = bodies[0].entity_id
+    incline_id = inclines[0].entity_id
+    interval = context.motion_intervals[0]
+    tangent = context.geometry[0]
+    if (
+        tangent.kind is not GeometryRelationKind.tangent
+        or set(tangent.participant_ids) != {body_id, incline_id}
+        or tangent.quantity_ids
+    ):
+        return []
+
+    events = {item.event_id: item for item in context.events}
+    start = events.get(interval.start_event_id)
+    finish = events.get(interval.end_event_id)
+    if start is None or finish is None:
+        return []
+    descent = start.kind.value == "release" and finish.kind.value == "finish"
+    climb = (
+        start.kind.value == "start"
+        and finish.kind.value == "reaches_condition"
+    )
+    if descent == climb:
+        return []
+
+    authority = context.approved_assumptions(
+        "pure_rolling", body_id, interval.interval_id
+    )
+    if len(authority) != 1:
+        return []
+
+    def one_known(
+        role: QuantityRole,
+        *,
+        event_id: str | None,
+        positive: bool,
+    ) -> BoundQuantity | None:
+        matches = tuple(
+            item
+            for item in _by_role(context, role)
+            if item.subject_id == body_id
+        )
+        if len(matches) != 1:
+            return None
+        item = matches[0]
+        if (
+            item.shape is not QuantityShape.scalar
+            or item.interval_id != interval.interval_id
+            or item.event_id != event_id
+            or item.known_si_value is None
+            or (positive and item.known_si_value <= 0.0)
+        ):
+            return None
+        return item
+
+    mass = one_known(QuantityRole.mass, event_id=None, positive=True)
+    radius = one_known(QuantityRole.radius, event_id=None, positive=True)
+    inertia = one_known(
+        QuantityRole.moment_of_inertia, event_id=None, positive=True
+    )
+    gravity = one_known(QuantityRole.gravity, event_id=None, positive=True)
+    height = one_known(
+        QuantityRole.height,
+        event_id=None if descent else interval.end_event_id,
+        positive=True,
+    )
+    if mass is None or radius is None or inertia is None or gravity is None or height is None:
+        return []
+
+    velocities = tuple(
+        item
+        for item in _by_role(context, QuantityRole.speed)
+        if item.subject_id == body_id
+    )
+    start_speeds = tuple(
+        item for item in velocities if item.event_id == interval.start_event_id
+    )
+    end_speeds = tuple(
+        item for item in velocities if item.event_id == interval.end_event_id
+    )
+    if (
+        len(velocities) != 2
+        or len(start_speeds) != 1
+        or len(end_speeds) != 1
+    ):
+        return []
+    start_speed, end_speed = start_speeds[0], end_speeds[0]
+    if (
+        start_speed.shape is not QuantityShape.scalar
+        or start_speed.component
+        not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        or end_speed.shape is not QuantityShape.scalar
+        or end_speed.component is not QuantityComponent.magnitude
+        or end_speed.known_si_value is not None
+        or end_speed.direction_bound
+    ):
+        return []
+
+    # The two endpoint sub-shapes state the start speed differently: the
+    # rest release keeps it a value-free unknown pinned to zero by exactly
+    # one typed at_rest state on the start boundary, while the climb states
+    # its value in the source.
+    rest_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind.value == "initial"
+        and item.state.value == "at_rest"
+        and item.subject_id == body_id
+        and item.interval_id == interval.interval_id
+        and item.event_id == interval.start_event_id
+        and item.expression is None
+        and tuple(item.quantity_ids) == (start_speed.quantity_id,)
+        and item.evidence_refs
+    )
+    if descent:
+        if (
+            len(context.state_conditions) != 1
+            or len(rest_states) != 1
+            or start_speed.known_si_value is not None
+        ):
+            return []
+    else:
+        if (
+            context.state_conditions
+            or start_speed.known_si_value is None
+            or start_speed.known_si_value < 0.0
+        ):
+            return []
+
+    energy_dimension = height.dimension.plus(gravity.dimension)
+    if energy_dimension is not None:
+        energy_dimension = energy_dimension.plus(mass.dimension)
+    assert energy_dimension is not None
+    speed_squared = Subtract(
+        left=Power(base=end_speed.expression, exponent=LiteralNode(value=2.0)),
+        right=Power(
+            base=start_speed.expression, exponent=LiteralNode(value=2.0)
+        ),
+    )
+    effective_inertia = Add(
+        terms=(
+            mass.expression,
+            Divide(
+                numerator=inertia.expression,
+                denominator=Power(
+                    base=radius.expression, exponent=LiteralNode(value=2.0)
+                ),
+                dimension=mass.dimension,
+            ),
+        ),
+        dimension=mass.dimension,
+    )
+    kinetic_change = Multiply(
+        factors=(
+            LiteralNode(value=0.5),
+            effective_inertia,
+            speed_squared,
+        ),
+        dimension=energy_dimension,
+    )
+    potential = Multiply(
+        factors=(mass.expression, gravity.expression, height.expression),
+        dimension=energy_dimension,
+    )
+    right = (
+        potential
+        if descent
+        else Negate(operand=potential, dimension=energy_dimension)
+    )
+    emissions = [
+        _emit(
+            context,
+            "rolling_general_principal_energy",
+            Equality(left=kinetic_change, right=right),
+            (end_speed, start_speed, mass, inertia, radius, gravity, height),
+            assumption_ids=authority,
+            constraint_ids=(tangent.relation_id,),
+        ),
+        _emit(
+            context,
+            "translational_speed_nonnegative",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=end_speed.expression,
+                right=LiteralNode(value=0.0, dimension=end_speed.dimension),
+            ),
+            (end_speed,),
+        ),
+    ]
+    if descent:
+        emissions.append(
+            _emit(
+                context,
+                "state_at_rest",
+                Equality(
+                    left=start_speed.expression,
+                    right=LiteralNode(
+                        value=0.0, dimension=start_speed.dimension
+                    ),
+                ),
+                (start_speed,),
+                constraint_ids=(rest_states[0].state_condition_id,),
+                extra_evidence_ids=tuple(rest_states[0].evidence_refs),
+            )
+        )
+    return emissions
+
+
 def _square_sum(left: BoundQuantity, right: BoundQuantity, dimension: DimensionVector):
     return Add(
         terms=(
@@ -11781,6 +12029,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_momentum_emissions(context))
     emitted.extend(_rigid_emissions(context))
     emitted.extend(_vertical_circle_top_boundary_emissions(context))
+    emitted.extend(_rolling_incline_endpoint_emissions(context))
     emitted.extend(_topology_constraint_emissions(context))
     emitted.extend(_fixed_pulley_common_acceleration_readout_emissions(context))
     emitted.extend(_vibration_emissions(context))

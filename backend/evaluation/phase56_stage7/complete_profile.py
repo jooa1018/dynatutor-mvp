@@ -76,6 +76,7 @@ class ProfileId(str, Enum):
     rigid_fixed_axis = "rigid_fixed_axis"
     rigid_two_point_speed = "rigid_two_point_speed"
     vertical_circle_top_speed = "vertical_circle_top_speed"
+    rolling_incline_energy_speed = "rolling_incline_energy_speed"
     # Declared in the order the closure step considers them, so the enum and the
     # signature table cannot drift apart.
     slot_pin_relative_frame = "slot_pin_relative_frame"
@@ -1675,6 +1676,378 @@ def _vertical_circle_top_speed_prerequisite(name: str) -> "_Resolver":
     return resolve
 
 
+def _rolling_incline_energy_speed_evidence(
+    draft: Any,
+) -> Mapping[str, PrerequisiteDisposition] | None:
+    """Classify one exact pure-rolling incline energy-endpoint topology.
+
+    One rigid body rolling on one incline it is tangent to, with approved
+    pure-rolling and server-valued uniform-gravity authorities, source-valued
+    mass, rotation radius, and central moment of inertia, and one value-free
+    scalar speed-magnitude query at the interval's end — in exactly one of
+    the two source-declared endpoint sub-shapes:
+
+    * descent: the interval starts at a typed ``release`` event with an
+      approved server-valued rest authority, and the source states the
+      descended height on the whole interval;
+    * climb: the interval starts at a plain ``start`` event with a
+      source-valued start speed, ends at a typed ``reaches_condition``
+      event, and the source binds the reached height to that end event.
+
+    Under pure rolling the contact force does no work, so the energy
+    endpoint balance the existing ``rolling_general_principal_energy`` law
+    states closes the shape; the sub-shape decides the height term's sign.
+    Any mixture of the two sub-shapes, extra quantity, second body, or
+    missing authority refuses.
+    """
+
+    if (
+        len(draft.entities) != 2
+        or len(draft.motion_intervals) != 1
+        or len(draft.queries) != 1
+        or len(draft.events) != 2
+        or len(draft.geometry) != 1
+        or len(draft.assumptions) not in {2, 3}
+        or len(draft.state_conditions) > 1
+        or draft.reference_frames
+        or draft.points
+        or draft.interactions
+        or draft.constraints
+        or draft.principle_hints
+        or draft.ambiguities
+        or draft.unsupported_features
+        or draft.figure_dependency.level.value != "none"
+        or draft.figure_dependency.missing_information
+        or draft.figure_dependency.evidence_refs
+    ):
+        return None
+
+    bodies = tuple(
+        item for item in draft.entities if item.primitive.value == "rigid_body"
+    )
+    inclines = tuple(
+        item for item in draft.entities if item.primitive.value == "incline"
+    )
+    if len(bodies) != 1 or len(inclines) != 1:
+        return None
+    body_id = bodies[0].entity_id
+    incline_id = inclines[0].entity_id
+
+    interval = draft.motion_intervals[0]
+    interval_id = interval.interval_id
+    if (
+        tuple(interval.subject_ids) != (body_id,)
+        or interval.frame_id is not None
+        or interval.start_event_id is None
+        or interval.end_event_id is None
+        or interval.start_event_id == interval.end_event_id
+    ):
+        return None
+
+    tangent = draft.geometry[0]
+    if (
+        tangent.kind.value != "tangent"
+        or set(tangent.participant_ids) != {body_id, incline_id}
+        or len(tangent.participant_ids) != 2
+        or tangent.interval_id not in {None, interval_id}
+        or tangent.quantity_ids
+        or tangent.expression is not None
+    ):
+        return None
+
+    events = {item.event_id: item for item in draft.events}
+    start = events.get(interval.start_event_id)
+    finish = events.get(interval.end_event_id)
+    if (
+        len(events) != 2
+        or start is None
+        or finish is None
+        or any(
+            tuple(item.subject_ids) != (body_id,)
+            or item.time_quantity_id is not None
+            or tuple(item.interval_ids) != (interval_id,)
+            or item.occurs_in_interval_ids
+            for item in draft.events
+        )
+    ):
+        return None
+    descent = (
+        start.kind.value == "release" and finish.kind.value == "finish"
+    )
+    climb = (
+        start.kind.value == "start"
+        and finish.kind.value == "reaches_condition"
+    )
+    if descent == climb:
+        return None
+
+    evidence_ids = {item.evidence_id for item in draft.source_evidence}
+
+    def evidenced(item: Any) -> bool:
+        refs = set(item.evidence_refs)
+        return bool(refs) and refs.issubset(evidence_ids)
+
+    def approved(item: Any) -> bool:
+        return (
+            getattr(item.disposition, "value", item.disposition) == "approved"
+            and item.subject_id == body_id
+            and item.interval_id == interval_id
+            and evidenced(item)
+        )
+
+    by_kind: dict[str, Any] = {}
+    for item in draft.assumptions:
+        if item.kind in by_kind:
+            return None
+        by_kind[item.kind] = item
+    rolling = by_kind.get("pure_rolling")
+    gravity_authority = by_kind.get("constant_gravity")
+    rest_authority = by_kind.get("starts_from_rest")
+    if (
+        rolling is None
+        or gravity_authority is None
+        or not approved(rolling)
+        or rolling.proposed_role is not None
+        or rolling.proposed_value is not None
+        or rolling.proposed_unit is not None
+        or not approved(gravity_authority)
+        or str(
+            getattr(
+                gravity_authority.proposed_role,
+                "value",
+                gravity_authority.proposed_role,
+            )
+        )
+        != "gravity"
+        or gravity_authority.proposed_value is None
+        or gravity_authority.proposed_unit is None
+        or set(by_kind)
+        != (
+            {"pure_rolling", "constant_gravity", "starts_from_rest"}
+            if descent
+            else {"pure_rolling", "constant_gravity"}
+        )
+    ):
+        return None
+    if descent and (
+        rest_authority is None
+        or not approved(rest_authority)
+        or str(
+            getattr(
+                rest_authority.proposed_role,
+                "value",
+                rest_authority.proposed_role,
+            )
+        )
+        != "velocity"
+        or rest_authority.proposed_value is None
+        or rest_authority.proposed_unit is None
+    ):
+        return None
+
+    def scalar_scoped(item: Any) -> bool:
+        return (
+            item.point_id is None
+            and item.frame_id is None
+            and item.interval_id == interval_id
+            and item.shape.value == "scalar"
+        )
+
+    def valued_source(item: Any) -> bool:
+        return (
+            item.raw_value is not None
+            and item.raw_unit is not None
+            and item.provenance.value == "explicit_source"
+            and item.symbol_id is not None
+            and evidenced(item)
+        )
+
+    query = draft.queries[0]
+    target = query.target
+    target_quantity = next(
+        (
+            item
+            for item in draft.quantities
+            if item.quantity_id == target.target_quantity_id
+        ),
+        None,
+    )
+    query_exact = (
+        query.shape.value == "scalar"
+        and target.role.value == "velocity"
+        and target.component.value == "magnitude"
+        and target.subject_id == body_id
+        and target.point_id is None
+        and target.frame_id is None
+        and target.interval_id == interval_id
+        and target.event_id == interval.end_event_id
+        and target.direction is None
+        and target_quantity is not None
+        and target_quantity.subject_id == body_id
+        and scalar_scoped(target_quantity)
+        and target_quantity.event_id == interval.end_event_id
+        and target_quantity.role is target.role
+        and target_quantity.component is target.component
+        and target_quantity.direction is None
+        and target_quantity.raw_value is None
+        and target_quantity.raw_unit is None
+        and target_quantity.provenance.value == "unknown"
+        and target_quantity.symbol_id is not None
+        and not target_quantity.evidence_refs
+        and query.output_dimension == target_quantity.dimension
+        and not query.evidence_refs
+    )
+    if not query_exact:
+        return None
+
+    symbols_by_quantity: Counter[str | None] = Counter(
+        item.quantity_id for item in draft.symbols
+    )
+    if len(draft.symbols) != len(draft.quantities) or any(
+        item.symbol_id is None or symbols_by_quantity[item.quantity_id] != 1
+        for item in draft.quantities
+    ):
+        return None
+
+    known = tuple(
+        item
+        for item in draft.quantities
+        if item.quantity_id != target_quantity.quantity_id
+    )
+
+    def one_plain(role: str) -> Any | None:
+        matches = tuple(item for item in known if item.role.value == role)
+        if len(matches) != 1:
+            return None
+        item = matches[0]
+        if (
+            item.subject_id == body_id
+            and scalar_scoped(item)
+            and item.event_id is None
+            and item.component.value == "unspecified"
+            and item.direction is None
+            and valued_source(item)
+        ):
+            return item
+        return None
+
+    mass = one_plain("mass")
+    radius = one_plain("radius")
+    inertia = one_plain("moment_of_inertia")
+    if mass is None or radius is None or inertia is None:
+        return None
+
+    heights = tuple(item for item in known if item.role.value == "height")
+    starts = tuple(
+        item
+        for item in known
+        if item.role.value == "velocity"
+        and item.event_id == interval.start_event_id
+    )
+    if len(heights) != 1 or len(starts) != 1:
+        return None
+    height = heights[0]
+    start_speed = starts[0]
+    height_direction = getattr(
+        getattr(height.direction, "direction", None), "value", None
+    )
+    height_exact = (
+        height.subject_id == body_id
+        and scalar_scoped(height)
+        and height.component.value == "unspecified"
+        # The height may carry the sub-shape's own sense — a descended
+        # height downward, a reached height upward — and nothing else.
+        and height_direction in ({None, "downward"} if descent else {None, "upward"})
+        and valued_source(height)
+        and (
+            height.event_id is None
+            if descent
+            else height.event_id == interval.end_event_id
+        )
+    )
+    if descent:
+        start_exact = (
+            start_speed.subject_id == body_id
+            and scalar_scoped(start_speed)
+            and start_speed.component.value == "magnitude"
+            and start_speed.direction is None
+            and start_speed.raw_value is None
+            and start_speed.raw_unit is None
+            and start_speed.provenance.value == "unknown"
+            and start_speed.symbol_id is not None
+        )
+    else:
+        start_direction = getattr(
+            getattr(start_speed.direction, "direction", None), "value", None
+        )
+        start_exact = (
+            start_speed.subject_id == body_id
+            and scalar_scoped(start_speed)
+            and start_speed.component.value in {"unspecified", "magnitude"}
+            # A start speed stated along the motion is exactly the scalar
+            # the energy endpoint reads; any other stated direction refuses.
+            and start_direction in {None, "along_motion"}
+            and valued_source(start_speed)
+        )
+    if not height_exact or not start_exact:
+        return None
+
+    # The rest release projects exactly one typed at_rest state on the start
+    # boundary, carrying the reserved rest quantity; the climb sub-shape
+    # projects none.
+    if descent:
+        if len(draft.state_conditions) != 1:
+            return None
+        rest_state = draft.state_conditions[0]
+        if (
+            rest_state.kind.value != "initial"
+            or rest_state.state.value != "at_rest"
+            or rest_state.subject_id != body_id
+            or rest_state.interval_id != interval_id
+            or rest_state.event_id != interval.start_event_id
+            or rest_state.expression is not None
+            or tuple(rest_state.quantity_ids)
+            != (start_speed.quantity_id,)
+            or not evidenced(rest_state)
+        ):
+            return None
+    elif draft.state_conditions:
+        return None
+
+    accounted = {
+        item.quantity_id
+        for item in (mass, radius, inertia, height, start_speed)
+    } | {target_quantity.quantity_id}
+    if len(accounted) != len(draft.quantities):
+        return None
+
+    dispositions: dict[str, PrerequisiteDisposition] = {
+        "rolling_tangency": PrerequisiteDisposition.explicit_source,
+        "endpoint_shape": PrerequisiteDisposition.explicit_source,
+        "inertia_triplet": PrerequisiteDisposition.explicit_source,
+        "endpoint_height": PrerequisiteDisposition.explicit_source,
+        "start_speed": (
+            PrerequisiteDisposition.server_derivable
+            if descent
+            else PrerequisiteDisposition.explicit_source
+        ),
+        "pure_rolling_authority": PrerequisiteDisposition.explicit_source,
+        "gravity_authority": PrerequisiteDisposition.explicit_source,
+        "gravity_quantity": PrerequisiteDisposition.server_derivable,
+        "capability": PrerequisiteDisposition.explicit_source,
+    }
+    return dispositions
+
+
+def _rolling_incline_energy_speed_prerequisite(name: str) -> "_Resolver":
+    def resolve(facts: "_DraftFacts") -> PrerequisiteDisposition:
+        if facts.rolling_incline_energy_speed_profile is None:
+            return PrerequisiteDisposition.missing
+        return facts.rolling_incline_energy_speed_profile[name]
+
+    return resolve
+
+
 def _rigid_fixed_axis_prerequisite(name: str) -> "_Resolver":
     def resolve(facts: "_DraftFacts") -> PrerequisiteDisposition:
         if facts.rigid_fixed_axis_profile is None:
@@ -1704,6 +2077,7 @@ class _DraftFacts:
         "rest_boundary_count",
         "rigid_fixed_axis_profile",
         "rigid_two_point_speed_profile",
+        "rolling_incline_energy_speed_profile",
         "rotating_relative_profile",
         "semantic_directions",
         "vertical_circle_top_speed_profile",
@@ -1738,6 +2112,9 @@ class _DraftFacts:
         )
         self.vertical_circle_top_speed_profile = (
             _vertical_circle_top_speed_evidence(draft)
+        )
+        self.rolling_incline_energy_speed_profile = (
+            _rolling_incline_energy_speed_evidence(draft)
         )
 
 
@@ -2828,6 +3205,36 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _vertical_circle_top_speed_prerequisite("gravity_quantity")),
             ("capability_top_minimum_speed", PrerequisiteKind.capability,
              _vertical_circle_top_speed_prerequisite("capability")),
+        ),
+    ),
+    # One rigid body rolling on one incline it is tangent to, approved
+    # pure-rolling and gravity authorities, source-valued mass/radius/inertia,
+    # and one of the two exact endpoint sub-shapes (rest-release descent with
+    # an interval height, or valued-start climb to an event-bound height).
+    # The exact-shape reader owns applicability; the existing
+    # rolling_general_principal_energy law does all solving.
+    _ProfileSignature(
+        ProfileId.rolling_incline_energy_speed,
+        lambda facts: facts.rolling_incline_energy_speed_profile is not None,
+        (
+            ("geometry_rolling_tangency", PrerequisiteKind.geometry,
+             _rolling_incline_energy_speed_prerequisite("rolling_tangency")),
+            ("event_endpoint_shape", PrerequisiteKind.state_condition,
+             _rolling_incline_energy_speed_prerequisite("endpoint_shape")),
+            ("quantity_inertia_triplet", PrerequisiteKind.interaction_quantity,
+             _rolling_incline_energy_speed_prerequisite("inertia_triplet")),
+            ("quantity_endpoint_height", PrerequisiteKind.interaction_quantity,
+             _rolling_incline_energy_speed_prerequisite("endpoint_height")),
+            ("quantity_start_speed", PrerequisiteKind.interaction_quantity,
+             _rolling_incline_energy_speed_prerequisite("start_speed")),
+            ("authority_pure_rolling", PrerequisiteKind.authority,
+             _rolling_incline_energy_speed_prerequisite("pure_rolling_authority")),
+            ("authority_constant_gravity", PrerequisiteKind.authority,
+             _rolling_incline_energy_speed_prerequisite("gravity_authority")),
+            ("quantity_gravity", PrerequisiteKind.interaction_quantity,
+             _rolling_incline_energy_speed_prerequisite("gravity_quantity")),
+            ("capability_rolling_energy", PrerequisiteKind.capability,
+             _rolling_incline_energy_speed_prerequisite("capability")),
         ),
     ),
     # The one profile the engine answers by *declining*: a free undamped linear
