@@ -5948,10 +5948,23 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
                     item.shape is not QuantityShape.scalar for item in (angular, radius)
                 ):
                     continue
-                magnitude = Sqrt(
-                    operand=Power(
-                        base=angular.expression,
-                        exponent=LiteralNode(value=2.0),
+                # A point-bound speed reads only its own point's rotation
+                # radius: with two bound points in one context, pairing one
+                # point's speed with the other's radius would state a
+                # relation the rigid body does not have.
+                if radius.point_id != speed.point_id:
+                    continue
+                # An angular speed typed as a magnitude is nonnegative by
+                # its own component, so |omega| is omega itself; every other
+                # component keeps the sign-erasing square root.
+                magnitude = (
+                    angular.expression
+                    if angular.component is QuantityComponent.magnitude
+                    else Sqrt(
+                        operand=Power(
+                            base=angular.expression,
+                            exponent=LiteralNode(value=2.0),
+                        )
                     )
                 )
                 product = Multiply(
@@ -5966,6 +5979,30 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
                         (speed, angular, radius),
                     )
                 )
+    for angular in _by_role(context, QuantityRole.angular_velocity):
+        # A value-free angular-speed magnitude is nonnegative by type; the
+        # domain bound is what keeps the coupled two-point solve on the
+        # single admissible branch without any root being chosen.
+        if (
+            angular.subject_id in rigid_ids
+            and angular.shape is QuantityShape.scalar
+            and angular.component is QuantityComponent.magnitude
+            and angular.known_si_value is None
+        ):
+            emitted.append(
+                _emit(
+                    context,
+                    "angular_speed_nonnegative",
+                    Inequality(
+                        relation=InequalityRelation.ge,
+                        left=angular.expression,
+                        right=LiteralNode(
+                            value=0.0, dimension=angular.dimension
+                        ),
+                    ),
+                    (angular,),
+                )
+            )
     linked_moments = {
         qid
         for interaction in context.interactions

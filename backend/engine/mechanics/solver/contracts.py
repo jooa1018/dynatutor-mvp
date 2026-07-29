@@ -2356,6 +2356,179 @@ def _is_static_impulse_momentum_boundary_graph(graph: EquationGraph) -> bool:
 
 
 
+def _is_static_fixed_axis_two_point_speed_boundary_graph(
+    graph: EquationGraph,
+) -> bool:
+    """Recognize one exact two-point fixed-axis speed-transfer instant graph.
+
+    The single event ID identifies the source-declared instant at which every
+    quantity is read; it is not a timed root event.  Only the exact coupled
+    pair of compiler-produced ``fixed_axis_speed`` equalities sharing one
+    value-free angular-speed magnitude, plus that magnitude's nonnegative
+    domain predicate, receives the event-free algebraic plan.  Structural or
+    provenance near misses keep ordinary event handling closed.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    speed_law = "fixed_axis_speed"
+    domain_law = "angular_speed_nonnegative"
+    if (
+        len(event_ids) != 1
+        or graph.constraints
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 3
+        or len(graph.applications) != 3
+        or sorted(item.law_id for item in graph.equations)
+        != [domain_law, speed_law, speed_law]
+        or sorted(item.law_id for item in graph.applications)
+        != [domain_law, speed_law, speed_law]
+        or graph.rank.equality_count != 2
+        or graph.rank.inequality_count != 1
+        or graph.rank.unknown_count != 2
+        or graph.rank.structural_rank != 2
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    equations_by_id = {item.equation_id: item for item in graph.equations}
+    applications_by_equation: dict[str, object] = {}
+    for application in graph.applications:
+        if len(application.equation_ids) != 1:
+            return False
+        applications_by_equation[application.equation_ids[0]] = application
+    if set(applications_by_equation) != set(equations_by_id) or any(
+        application.law_id != equations_by_id[equation_id].law_id
+        or application.source_quantity_ids
+        != equations_by_id[equation_id].source_quantity_ids
+        or application.source_evidence_ids
+        != equations_by_id[equation_id].source_evidence_ids
+        or application.assumption_ids
+        != equations_by_id[equation_id].assumption_ids
+        or application.constraint_ids
+        != equations_by_id[equation_id].constraint_ids
+        or application.generated_unknown_symbol_ids
+        != equations_by_id[equation_id].generated_unknown_symbol_ids
+        or application.complexity_cost
+        != equations_by_id[equation_id].complexity_cost
+        or application.scope != equations_by_id[equation_id].scope
+        for equation_id, application in applications_by_equation.items()
+    ):
+        return False
+
+    equalities = tuple(
+        item
+        for item in graph.equations
+        if isinstance(item.expression, Equality)
+    )
+    inequalities = tuple(
+        item
+        for item in graph.equations
+        if isinstance(item.expression, Inequality)
+    )
+    if (
+        len(equalities) != 2
+        or len(inequalities) != 1
+        or {item.law_id for item in equalities} != {speed_law}
+        or inequalities[0].law_id != domain_law
+        or set(graph.selected_equation_ids)
+        != {item.equation_id for item in equalities}
+    ):
+        return False
+
+    by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.quantity_role is None:
+            return False
+        if item.known_si_value is not None and (
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+        ):
+            return False
+        by_role.setdefault(item.quantity_role, []).append(item)
+    if (
+        set(by_role) != {"radius", "speed", "angular_velocity"}
+        or len(by_role["radius"]) != 2
+        or len(by_role["speed"]) != 2
+        or len(by_role["angular_velocity"]) != 1
+        or len(graph.symbols) != 5
+    ):
+        return False
+
+    radii = tuple(by_role["radius"])
+    speeds = tuple(by_role["speed"])
+    angular = by_role["angular_velocity"][0]
+    unknowns = tuple(
+        item for item in graph.symbols if item.known_si_value is None
+    )
+    known_speeds = tuple(
+        item for item in speeds if item.known_si_value is not None
+    )
+    if (
+        len(unknowns) != 2
+        or angular not in unknowns
+        or len(known_speeds) != 1
+        or known_speeds[0].known_si_value < 0.0
+        or any(
+            item.known_si_value is None or item.known_si_value <= 0.0
+            for item in radii
+        )
+    ):
+        return False
+    target_speed = next(
+        (item for item in speeds if item.known_si_value is None), None
+    )
+    if (
+        target_speed is None
+        or target_speed not in unknowns
+        or graph.query_symbol_id != target_speed.symbol.symbol_id
+    ):
+        return False
+
+    subject_ids = {item.subject_id for item in graph.symbols}
+    interval_ids = {item.interval_id for item in graph.symbols}
+    frame_ids = {item.frame_id for item in graph.symbols}
+    symbol_event_ids = {item.event_id for item in graph.symbols}
+    if (
+        len(subject_ids) != 1
+        or None in subject_ids
+        or len(interval_ids) != 1
+        or None in interval_ids
+        or len(frame_ids) != 1
+        or symbol_event_ids != set(event_ids)
+    ):
+        return False
+
+    # The coupled structure itself: the known-speed equality determines the
+    # shared angular magnitude alone, and the query equality reads exactly
+    # that magnitude plus the queried speed.
+    incidence: dict[str, set[str]] = {}
+    for edge in graph.incidence:
+        incidence.setdefault(edge.equation_id, set()).add(edge.symbol_id)
+    omega_id = angular.symbol.symbol_id
+    incidence_sets = sorted(
+        (
+            tuple(sorted(incidence.get(item.equation_id, ())))
+            for item in equalities
+        ),
+        key=len,
+    )
+    if incidence_sets != [
+        (omega_id,),
+        tuple(sorted((omega_id, target_speed.symbol.symbol_id))),
+    ]:
+        return False
+    # Inequalities carry no incidence rows; the domain predicate must read
+    # exactly the one shared angular magnitude and nothing else.
+    if incidence.get(inequalities[0].equation_id):
+        return False
+    if len(inequalities[0].source_quantity_ids) != 1:
+        return False
+    return True
+
+
 def _is_static_particle_work_energy_boundary_graph(graph: EquationGraph) -> bool:
     """Recognize an exact scalar-speed particle work--energy endpoint graph.
 
@@ -2567,6 +2740,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
             or _is_static_constant_angular_acceleration_boundary_graph(graph)
             or _is_static_impulse_momentum_boundary_graph(graph)
             or _is_static_particle_work_energy_boundary_graph(graph)
+            or _is_static_fixed_axis_two_point_speed_boundary_graph(graph)
         )
         else _graph_event_ids(graph)
     )
