@@ -976,7 +976,9 @@ def _derive_fixed_pulley_assumptions(
     entity.  For one unambiguous two-body wrap/connect topology this adapter may
     therefore materialise one value-free rope entity and scope the source's
     massless/inextensible authority to it.  One optional ``lies_on`` relation is
-    admitted for the incline-hanging variant; no other overlapping geometry is.
+    admitted for the supported-body variants — an incline support or a
+    horizontal table support, each a typed support primitive — and no other
+    overlapping geometry is.
 
     A pulley that is an interval actor or carries rotational/inertial data is
     never treated as fixed.  No value, equation, answer, family, terminal, or
@@ -1057,20 +1059,20 @@ def _derive_fixed_pulley_assumptions(
         or len(wraps[0]["participant_ids"]) != 3
     ):
         return
-    incline_ids = tuple(
+    support_ids = tuple(
         sorted(
             entity_id
             for entity_id, primitive in primitive_by_id.items()
-            if primitive == "incline"
+            if primitive in _SUPPORT_PRIMITIVES
         )
     )
     if lies_on:
-        if len(incline_ids) != 1:
+        if len(support_ids) != 1:
             return
         if (
             len(lies_on[0]["participant_ids"]) != 2
             or set(lies_on[0]["participant_ids"])
-            != {incline_ids[0], next((item for item in moving_ids if item in lies_on[0]["participant_ids"]), "")}
+            != {support_ids[0], next((item for item in moving_ids if item in lies_on[0]["participant_ids"]), "")}
             or len(set(lies_on[0]["participant_ids"]) & set(moving_ids)) != 1
         ):
             return
@@ -1079,7 +1081,7 @@ def _derive_fixed_pulley_assumptions(
         connects[0]["relation_id"],
         *(item["relation_id"] for item in lies_on),
     }
-    topology_ids = {*moving_ids, pulley_id, *incline_ids}
+    topology_ids = {*moving_ids, pulley_id, *support_ids}
     if any(
         item["interval_id"] == interval_id
         and set(item["participant_ids"]) & topology_ids

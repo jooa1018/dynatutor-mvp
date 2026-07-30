@@ -1896,16 +1896,22 @@ def _fixed_pulley_horizontal_contact_contract(
     """Close the exact evidenced horizontal-contact fixed-pulley template."""
 
     entities = tuple(item for item in ir.entities if item.entity_id in relevant)
+    entity_by_id = {item.entity_id: item for item in entities}
+    free_body_ids = tuple(
+        item.entity_id
+        for item in entities
+        if item.primitive.value in {"particle", "rigid_body", "body_component"}
+    )
     primitive_ids = {
         primitive: tuple(
             item.entity_id for item in entities if item.primitive.value == primitive
         )
         for primitive in (
-            "particle",
             "surface",
             "rope",
             "pulley",
             "environment",
+            "system",
         )
     }
     interactions = tuple(
@@ -1940,7 +1946,7 @@ def _fixed_pulley_horizontal_contact_contract(
         and bool(rope_interactions)
         and bool(primitive_ids["rope"])
         and (bool(primitive_ids["pulley"]) or bool(wraps) or fixed_signal)
-        and bool(primitive_ids["particle"])
+        and bool(free_body_ids)
     )
     if not candidate:
         return None, None
@@ -1953,25 +1959,31 @@ def _fixed_pulley_horizontal_contact_contract(
             referenced_id or query.query_id,
         )
 
-    expected_counts = {
-        "particle": 2,
-        "surface": 1,
-        "rope": 1,
-        "pulley": 1,
-        "environment": 1,
-    }
+    system_count = len(primitive_ids["system"])
     if (
-        {key: len(value) for key, value in primitive_ids.items()} != expected_counts
-        or len(entities) != 6
+        len(free_body_ids) != 2
+        or system_count > 1
+        or {
+            key: len(value)
+            for key, value in primitive_ids.items()
+            if key != "system"
+        }
+        != {
+            "surface": 1,
+            "rope": 1,
+            "pulley": 1,
+            "environment": 1,
+        }
+        or len(entities) != 6 + system_count
         or any(
             not item.evidence_refs or item.component_of_entity_id is not None
             for item in entities
         )
     ):
         return None, failure(
-            "requires exactly two particles, one surface, one rope, one pulley, and one environment"
+            "requires exactly two free bodies, one surface, one rope, one pulley, and one environment"
         )
-    particle_ids = set(primitive_ids["particle"])
+    particle_ids = set(free_body_ids)
     surface_id = primitive_ids["surface"][0]
     rope_id = primitive_ids["rope"][0]
     pulley_id = primitive_ids["pulley"][0]
@@ -2162,9 +2174,17 @@ def _fixed_pulley_horizontal_contact_contract(
         ("ideal_massless_frictionless_pulley", pulley_id),
         ("fixed_pulley", pulley_id),
     }
+    structural_assumptions = tuple(
+        item for item in scoped_assumptions
+        if (item.kind, item.subject_id) in expected_assumptions
+    )
+    gravity_assumptions = tuple(
+        item for item in scoped_assumptions if item.kind == "constant_gravity"
+    )
+    system_ids = set(primitive_ids["system"])
     if (
-        len(scoped_assumptions) != 4
-        or {(item.kind, item.subject_id) for item in scoped_assumptions}
+        len(structural_assumptions) != 4
+        or {(item.kind, item.subject_id) for item in structural_assumptions}
         != expected_assumptions
         or any(
             item.disposition is not AssumptionDisposition.approved
@@ -2174,11 +2194,25 @@ def _fixed_pulley_horizontal_contact_contract(
             or item.proposed_value is not None
             or item.proposed_unit is not None
             or not item.evidence_refs
-            for item in scoped_assumptions
+            for item in structural_assumptions
         )
+        or len(gravity_assumptions) not in {0, 1}
+        or any(
+            item.disposition is not AssumptionDisposition.approved
+            or item.assumption_id not in approved_assumption_ids
+            or item.subject_id not in system_ids
+            or item.interval_id != interval.interval_id
+            or getattr(item.proposed_role, "value", item.proposed_role) != "gravity"
+            or item.proposed_value is None
+            or item.proposed_unit is None
+            or not item.evidence_refs
+            for item in gravity_assumptions
+        )
+        or len(scoped_assumptions)
+        != len(structural_assumptions) + len(gravity_assumptions)
     ):
         return None, failure(
-            "requires exact externally approved evidenced rope and pulley assumptions",
+            "requires exact externally approved evidenced rope, pulley, and gravity assumptions",
             rope_id,
         )
 
@@ -2242,7 +2276,7 @@ def _fixed_pulley_horizontal_contact_contract(
             for item in linked
             if item is not None
             and item.role is QuantityRole.gravity
-            and item.subject_id == environment_id
+            and item.subject_id in {environment_id, *system_ids}
         )
         local_weight = tuple(
             item
@@ -2369,8 +2403,36 @@ def _fixed_pulley_horizontal_contact_contract(
             f"quantities.{bad_domain.quantity_id}.si_value",
             bad_domain.quantity_id,
         )
-    if any(not exact_known(item, positive=True) for item in known_positive):
-        return None, failure("requires exact positive source-backed masses and gravity")
+    gravity_subject_primitives = {
+        entity_by_id[item].primitive.value
+        for item in (getattr(gravity, "subject_id", None),)
+        if item in entity_by_id
+    }
+    gravity_value = getattr(gravity, "si_value", None)
+    gravity_valid = (
+        gravity.role is QuantityRole.gravity
+        and gravity.shape is QuantityShape.scalar
+        and gravity.symbol_id is not None
+        and gravity.provenance
+        in {Provenance.explicit_source, Provenance.server_default}
+        and bool(gravity.evidence_refs)
+        and gravity.point_id is None
+        and gravity.frame_id is None
+        and gravity.interval_id in {None, interval.interval_id}
+        and gravity.event_id is None
+        and gravity.direction is None
+        and gravity.component.value in {"magnitude", "unspecified"}
+        and type(gravity_value) is float
+        and math.isfinite(gravity_value)
+        and gravity_value > 0.0
+        and gravity_subject_primitives <= {"environment", "system"}
+        and bool(gravity_subject_primitives)
+    )
+    if (
+        any(not exact_known(item, positive=True) for item in masses.values())
+        or not gravity_valid
+    ):
+        return None, failure("requires exact positive source-backed masses and authorized gravity")
 
     def exact_unknown_component(
         item: object,

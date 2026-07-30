@@ -1854,6 +1854,11 @@ def _fixed_pulley_horizontal_contact_profile(
     """Recognize one exact surface-contact, cross-axis fixed-pulley graph."""
 
     entities = {item.entity_id: item for item in context.entities}
+    body_ids = tuple(
+        item.entity_id
+        for item in context.entities
+        if item.primitive in _FREE_BODY_PRIMITIVES
+    )
     primitive_ids = {
         primitive: tuple(
             item.entity_id
@@ -1861,18 +1866,24 @@ def _fixed_pulley_horizontal_contact_profile(
             if item.primitive is primitive
         )
         for primitive in (
-            EntityPrimitive.particle,
             EntityPrimitive.surface,
             EntityPrimitive.rope,
             EntityPrimitive.pulley,
             EntityPrimitive.environment,
+            EntityPrimitive.system,
         )
     }
+    system_count = len(primitive_ids[EntityPrimitive.system])
     if (
-        len(context.entities) != 6
-        or {key: len(value) for key, value in primitive_ids.items()}
+        len(body_ids) != 2
+        or system_count > 1
+        or len(context.entities) != 6 + system_count
+        or {
+            key: len(value)
+            for key, value in primitive_ids.items()
+            if key is not EntityPrimitive.system
+        }
         != {
-            EntityPrimitive.particle: 2,
             EntityPrimitive.surface: 1,
             EntityPrimitive.rope: 1,
             EntityPrimitive.pulley: 1,
@@ -1884,7 +1895,7 @@ def _fixed_pulley_horizontal_contact_profile(
         )
     ):
         return None
-    particle_ids = set(primitive_ids[EntityPrimitive.particle])
+    particle_ids = set(body_ids)
     surface_id = primitive_ids[EntityPrimitive.surface][0]
     rope_id = primitive_ids[EntityPrimitive.rope][0]
     pulley_id = primitive_ids[EntityPrimitive.pulley][0]
@@ -2112,9 +2123,26 @@ def _fixed_pulley_horizontal_contact_profile(
             kind, subject_id, interval.interval_id
         )
     }
+    # The server-default gravity quantity may keep its authorising policy
+    # record in the closed graph; anything else beyond the four structural
+    # idealisations is a different shape.
+    gravity_assumptions = tuple(
+        item for item in context.assumptions if item.kind == "constant_gravity"
+    )
+    structural_assumptions = tuple(
+        item for item in context.assumptions if item.kind != "constant_gravity"
+    )
     if (
-        len(context.assumptions) != 4
-        or {(item.kind, item.subject_id) for item in context.assumptions}
+        len(gravity_assumptions) > 1
+        or any(
+            item.disposition is not AssumptionDisposition.approved
+            or item.assumption_id not in context.approved_assumption_ids
+            or item.interval_id not in {None, interval.interval_id}
+            or not item.evidence_refs
+            for item in gravity_assumptions
+        )
+        or len(structural_assumptions) != 4
+        or {(item.kind, item.subject_id) for item in structural_assumptions}
         != required_assumptions
         or any(
             item.interval_id != interval.interval_id
@@ -2122,11 +2150,12 @@ def _fixed_pulley_horizontal_contact_profile(
             or item.proposed_value is not None
             or item.proposed_unit is not None
             or not item.evidence_refs
-            for item in context.assumptions
+            for item in structural_assumptions
         )
         or (
             require_rope_authority
-            and {item.assumption_id for item in context.assumptions} != approved_ids
+            and {item.assumption_id for item in structural_assumptions}
+            != approved_ids
         )
     ):
         return None
@@ -2150,7 +2179,8 @@ def _fixed_pulley_horizontal_contact_profile(
             item for item in linked
             if item is not None
             and item.role is QuantityRole.gravity
-            and item.subject_id == environment_id
+            and item.subject_id
+            in {environment_id, *primitive_ids[EntityPrimitive.system]}
         )
         weight = tuple(
             item for item in linked
@@ -2185,7 +2215,24 @@ def _fixed_pulley_horizontal_contact_profile(
             and (value > 0.0 if positive else value >= 0.0)
         )
 
-    if any(not exact_known(item, positive=True) for item in (*masses.values(), gravity)):
+    if any(not exact_known(item, positive=True) for item in masses.values()):
+        return None
+    gravity_value = gravity.known_si_value
+    if not (
+        gravity.shape is QuantityShape.scalar
+        and gravity.symbol_id is not None
+        and bool(gravity.evidence_ids)
+        and gravity.point_id is None
+        and gravity.frame_id is None
+        and gravity.interval_id in {None, interval.interval_id}
+        and gravity.event_id is None
+        and gravity.component
+        in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+        and not gravity.direction_bound
+        and type(gravity_value) is float
+        and math.isfinite(gravity_value)
+        and gravity_value > 0.0
+    ):
         return None
 
     def exact_unknown_axis(
@@ -8851,19 +8898,12 @@ def _topology_constraint_emissions(context: LawContext) -> list[LawEmission]:
                 )
                 and not inertial_pulley_ids
             )
-            strict_fixed_particle_profile = (
-                strict_fixed_body_profile
-                and all(
-                    primitive_by_id.get(item) is EntityPrimitive.particle
-                    for item in moving_ids
-                )
-            )
             horizontal_contact_profile = (
                 _fixed_pulley_horizontal_contact_profile(
                     context,
                     interaction.interaction_id,
                 )
-                if strict_fixed_particle_profile
+                if strict_fixed_body_profile
                 else None
             )
             fixed_ideal_topology = (

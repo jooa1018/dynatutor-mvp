@@ -65,6 +65,7 @@ class ProfileId(str, Enum):
     collision_restitution = "collision_restitution"
     fixed_pulley = "fixed_pulley"
     incline_hanging_pulley = "incline_hanging_pulley"
+    table_pulley_two_body = "table_pulley_two_body"
     rolling_energy = "rolling_energy"
     particle_work_energy_speed = "particle_work_energy_speed"
     direct_constant_force_work = "direct_constant_force_work"
@@ -3299,6 +3300,7 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
         lambda facts: (
             bool(facts.geometry.get("wraps"))
             and bool(facts.geometry.get("lies_on"))
+            and bool(facts.primitives.get("incline"))
         ),
         (
             ("geometry_wraps", PrerequisiteKind.geometry, _needs_geometry("wraps")),
@@ -3320,6 +3322,55 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _derivable_from_authority("frictionless")),
             ("symbol_tension", PrerequisiteKind.unknown_symbol, _generated_unknown),
             ("symbol_normal_force", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
+        ),
+    ),
+    # A body on a horizontal table tied over a fixed ideal pulley to a hanging
+    # body.  The support is the typed `surface` primitive — never an incline
+    # with an invented zero angle — so the shape is disjoint from the
+    # incline-hanging profile by the source's own support primitive.  The
+    # transaction derives only frames, force-bearing interactions, contact and
+    # rope states, and value-free unknowns; the existing weight, Newton,
+    # contact, and rope laws do all solving.
+    _ProfileSignature(
+        ProfileId.table_pulley_two_body,
+        lambda facts: (
+            bool(facts.geometry.get("wraps"))
+            and bool(facts.geometry.get("lies_on"))
+            and bool(facts.primitives.get("surface"))
+            and not facts.primitives.get("incline")
+            and not facts.roles.get("angle")
+        ),
+        (
+            ("geometry_wraps", PrerequisiteKind.geometry, _needs_geometry("wraps")),
+            ("geometry_rope", PrerequisiteKind.geometry,
+             _needs_geometry("topology_connects")),
+            ("geometry_support", PrerequisiteKind.geometry,
+             _needs_geometry("lies_on")),
+            ("interaction_rope_tension", PrerequisiteKind.interaction,
+             _derivable_from_authority("massless_rope")),
+            ("interaction_contact", PrerequisiteKind.interaction,
+             _derivable_from_authority("frictionless")),
+            ("interaction_gravity", PrerequisiteKind.interaction,
+             _derivable_from_authority("constant_gravity")),
+            ("authority_massless_rope", PrerequisiteKind.authority,
+             _needs_authority("massless_rope")),
+            ("authority_inextensible_rope", PrerequisiteKind.authority,
+             _needs_authority("inextensible_rope")),
+            ("authority_fixed_pulley", PrerequisiteKind.authority,
+             _needs_authority("massless_pulley")),
+            ("authority_frictionless_support", PrerequisiteKind.authority,
+             _needs_authority("frictionless")),
+            ("quantity_mass", PrerequisiteKind.interaction_quantity,
+             _needs_role("mass")),
+            ("frame_world_cartesian", PrerequisiteKind.reference_frame,
+             _derivable_from_authority("frictionless")),
+            ("state_contact_regime", PrerequisiteKind.state_condition,
+             _derivable_from_authority("frictionless")),
+            ("symbol_tension", PrerequisiteKind.unknown_symbol, _generated_unknown),
+            ("symbol_normal_force", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
+            ("symbol_acceleration", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
         ),
     ),
