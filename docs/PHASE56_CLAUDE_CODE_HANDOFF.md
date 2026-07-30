@@ -1,5 +1,25 @@
 # Phase 56 Claude Code Continuation Handoff
 
+## 2026-07-30 session prefix — B10/B12 revoked, B14 landed, corpus absent
+
+Read `docs/PHASE56_STAGE7_PROGRESS_REPORT.md` §"B10/B12 authority repair
+session" first; it supersedes the head pointers below.  In brief:
+
+- Code head after this session: `53a169d1ed46fd200e453e5a47784550e2215a13`
+  (fast-forward `25c36e6 → 3411e8e → 58ae586 → a837719 → 53a169d`).
+- **B10 and B12 are revoked to INCOMPLETE**: their profiles now demand the
+  typed authority the public structured data cannot state (B10: one
+  `rotates_about`-projected common centre; B12: minimum objective + inward
+  contact side + touching/boundary states).  `AUTHORITY_ACCEPTED_SCORE` is
+  **38/81**; the old 44/81 is observed-only and stale.
+- **B14 (1D restitution impact)** is implemented and fully tested but its
+  public yield is UNMEASURED: this session's container had **no public
+  corpus archive**.  First step next session: supply the archive, re-run the
+  strict gate at the code head, reconcile observed = authority-accepted.
+- Next package (measured diagnosis in the progress report): the table-pulley
+  two-body closure.  Do NOT attempt the translating-frame family as yield —
+  its clean contexts are expected-deferred.
+
 ## Current authoritative state
 
 - Disposition: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`

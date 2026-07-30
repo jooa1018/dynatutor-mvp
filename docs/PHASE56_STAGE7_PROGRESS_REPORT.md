@@ -6,6 +6,51 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
+## B10/B12 authority repair session (2026-07-30) — read this first
+
+An independent review found that two sealed packages produced public-correct
+answers **without sufficient typed authority**, and this session repaired both
+forward (no history rewrite) and landed one new package:
+
+| Item | Commit | Disposition |
+|---|---|---|
+| B10 common-centre repair | `3411e8eb2e5f920512fcfacc51af11a90d16ea9d` | **B10 INCOMPLETE / revoked** — the profile now requires the source's own typed rotation centre (one `rotates_about` → `coincident` record binding the body to a third, otherwise-inert centre point).  The pre-repair public shape (general plane motion, floating centre entity, no typed relation) is pinned refusing, whatever the ratio computes. |
+| B12 limiting-contact repair | `58ae586cbeb8783632d6b09eb2f4a14703858f26` | **B12 INCOMPLETE / revoked** — `minimum_speed` now projects a typed `QueryObjective` the planner enforces globally (no exact-value profile may read an objective-bearing draft), and the `v² = g·r` boundary needs the full typed limiting authority: an `inward` `ContactSide` on the contact, a `contact`/`touching` state over the interval, and a `boundary`/`active` state at the top instant.  The corpus schema cannot state the orientation or the boundary states, so the public vertical-circle cases now fail closed. |
+| Frame-reference audit follow-up | `a837719e86be0117126b003eb00e01a3dcc7e1d0` | Classifies the two additive enum fields in the observer-frame audit registry (they are enums, never references); repairs the CI failure at `58ae586`. |
+| **B14 1D restitution impact** | `53a169d1ed46fd200e453e5a47784550e2215a13` | **Implemented and tested** (35 focused tests, full stage-7 suite 1,189 passed locally).  New closed-policy projection derivation `external_impulse_negligible` per body from typed model completeness; exact-shape profile + transaction; the pre-existing collision static-boundary recognizer gains the Lane B closure shape as a second exact form, and its own [0, 1] coefficient domain fail-closes unphysical restitution.  **Public yield unmeasured — see the blocker below.** |
+
+**Accounting.** `OBSERVED_PUBLIC_SCORE` 44/81 (measured at `1982c40`, last
+session) is stale: it includes 6 solves whose authority is now revoked.
+`AUTHORITY_ACCEPTED_SCORE` = **38/81** (B1–B9, B11, B13).  After the repairs
+the B10/B12 public cases are expected to land as ordinary underdetermined
+non-solves (never `verified_unsupported`, so the supported-downgrade metric
+stays 0, and never a numeric answer), making observed = accepted ≈ 38/81, plus
+whatever B14 adds — but **none of this could be re-measured in this session**:
+
+**Corpus-unavailable blocker (this session).** The authorised public archive
+(SHA-256 `cc8d8b27…`) is supplied out-of-tree per session and was not present
+in this session's container.  No strict public-corpus gate could run; every
+public-100 number in this report below this line is the previous session's
+measurement at its own head.  The next session with the archive must first
+re-run the strict gate at `53a169d` (or later) and reconcile observed =
+authority-accepted before any new package.
+
+**Next exact implementation task (measured diagnosis, this session).** The
+strongest next family is the **table-pulley two-body** closure (~3 contexts by
+the in-tree matrix; the same contexts appear as `fixed_pulley`'s
+`authority_fixed_pulley: missing` and `incline_hanging_pulley`'s
+`quantity_angle: missing` rows).  A projected table shape reaches validation
+`needs_confirmation` because no closure consumes its value-bearing frictionless
+approvals; the `_derive_fixed_pulley_assumptions` chain refuses it twice over
+(the `lies_on` support must be an *incline* primitive, and two `frictionless`
+approvals — pulley and table — break the one-match-per-kind rule); and the
+incline profile demands the angle a horizontal table never has.  The package is
+a B8-scale table-variant closure (profile + transaction + a horizontal-support
+branch of the law profile).  The translating-frame family must **not** be
+attempted as yield: its three clean contexts are expected-deferred (the
+measured `supported_downgraded_to_unsupported = 0` proves it), so solving them
+would create deferred silent solves.
+
 ## Supersession note
 
 Earlier revisions of this report described the corpus-preflight checkpoint
