@@ -1,16 +1,23 @@
 """B10 rigid two-point speed-transfer package: v_B = v_A * r_B / r_A.
 
-One rigid body carries two source-declared on-body points, each at its own
-source-valued rotation radius, all read at the same source-declared instant.
-The source states one point's scalar undirected speed and asks for the other
-point's speed/velocity magnitude at that instant.  The profile materialises
-the two typed material points, rebinds both radii and both speed magnitudes
-onto the body scope, and adds one value-free shared angular-speed magnitude;
-the existing ``fixed_axis_speed`` generic law couples the two points and the
-``angular_speed_nonnegative`` domain predicate keeps the single admissible
-branch.  A third floating point entity naming the rotation centre is
-tolerated as context only while it owns no relation, fact, actor slot, or
-query.
+One rigid body rotates about one source-declared fixed centre — the source's
+own ``rotates_about`` relation, projected as the single ``coincident``
+geometry record — and carries two source-declared on-body points, each at
+its own source-valued rotation radius, all read at the same source-declared
+instant.  The source states one point's scalar undirected speed and asks for
+the other point's speed/velocity magnitude at that instant.  The profile
+materialises the two typed material points, rebinds both radii and both
+speed magnitudes onto the body scope, and adds one value-free shared
+angular-speed magnitude; the existing ``fixed_axis_speed`` generic law
+couples the two points and the ``angular_speed_nonnegative`` domain
+predicate keeps the single admissible branch.
+
+The shared typed centre is the load-bearing authority: two radii licence one
+angular speed only when both are measured from the same fixed centre, and
+the only typed proof of that identity is the body's sole rotation-centre
+relation.  A floating context point — however it is labelled, and whatever
+the problem text calls it — is not that proof, so the old general-plane
+shape with an inert centre entity now refuses instead of solving.
 """
 
 from __future__ import annotations
@@ -97,11 +104,16 @@ def _case(
     known_role: str = "point_a",
     query_role: str = "point_b",
     center_role: str = "center_o",
+    center_label: str = "중심 O",
     drop_center: bool = False,
+    floating_center: bool = False,
+    duplicate_center_relation: bool = False,
+    center_relation_to_known: bool = False,
     missing_relation: str | None = None,
     duplicate_relation: bool = False,
     center_bound: bool = False,
     center_radius: bool = False,
+    center_speed: bool = False,
     center_actor: bool = False,
     extra_body: bool = False,
     include_interaction: bool = False,
@@ -128,13 +140,19 @@ def _case(
     r_a_quote = f"중심에서 점 A까지의 거리는 {r_a} {r_a_unit}"
     r_b_quote = f"중심에서 점 B까지의 거리는 {r_b} {r_b_unit}"
     v_a_quote = f"이 순간 점 A의 속력은 {v_a} {v_a_unit}"
+    typed_center = not (drop_center or floating_center)
+    opening = (
+        "강체 판이 고정된 중심 O를 지나는 축을 중심으로 회전한다."
+        if typed_center
+        else "강체 판이 평면 운동을 한다."
+    )
     text = (
-        f"강체 판이 평면 운동을 한다. 점 A와 점 B는 판 위에 있다. {r_a_quote}. "
+        f"{opening} 점 A와 점 B는 판 위에 있다. {r_a_quote}. "
         f"{r_b_quote}. {v_a_quote}. 이 순간 점 B의 속력 크기를 구하여라."
     )
     if text_variant:
         text = (
-            f"강체 판이 평면 운동을 한다! 점 A와 점 B는 판 위에 있다! {r_a_quote}! "
+            f"{opening} 점 A와 점 B는 판 위에 있다! {r_a_quote}! "
             f"{r_b_quote}! {v_a_quote}! 이때 점 B의 속력 크기를 구하여라."
         )
 
@@ -144,7 +162,9 @@ def _case(
         {"role": query_role, "kind": "point", "label": "점 B"},
     ]
     if not drop_center:
-        entities.append({"role": center_role, "kind": "point", "label": "중심 O"})
+        entities.append(
+            {"role": center_role, "kind": "point", "label": center_label}
+        )
     if extra_body:
         entities.append({"role": "second_body", "kind": "block", "label": "추가 강체"})
     if collision_id is not None:
@@ -174,6 +194,12 @@ def _case(
         center_quote = "중심점까지의 거리는 0.1 m"
         text += f" {center_quote}."
         facts.append(_fact("r_o", "radius", "0.1", "m", center_quote, center_role))
+    if center_speed and not drop_center:
+        center_speed_quote = "중심 O의 속력은 1 m/s"
+        text += f" {center_speed_quote}."
+        facts.append(
+            _fact("v_o", "velocity", "1", "m/s", center_speed_quote, center_role)
+        )
     if second_velocity:
         second_quote = "점 B의 속력은 4 m/s"
         text += f" {second_quote}."
@@ -195,13 +221,25 @@ def _case(
 
     lies_a = [body_role, known_role]
     lies_b = [body_role, query_role]
+    axis_participants = [body_role, center_role]
     if swap_participants:
         lies_a = [known_role, body_role]
         lies_b = [query_role, body_role]
+        axis_participants = [center_role, body_role]
     relations = [
         _relation("a_on_body", "point_on_body", lies_a),
         _relation("b_on_body", "point_on_body", lies_b),
     ]
+    if typed_center and not center_relation_to_known:
+        relations.append(
+            _relation("axis_topology", "rotates_about", axis_participants)
+        )
+    if center_relation_to_known and not drop_center:
+        # The rotation relation names an on-body rim point, not the inert
+        # centre: the typed centre identity is broken, not merely renamed.
+        relations.append(
+            _relation("axis_topology", "rotates_about", [body_role, known_role])
+        )
     if center_bound and not drop_center:
         relations.append(
             _relation("center_on_body", "point_on_body", [body_role, center_role])
@@ -210,6 +248,12 @@ def _case(
         relations = [item for item in relations if item["role"] != missing_relation]
     if duplicate_relation:
         duplicate = deepcopy(relations[0])
+        duplicate["role"] += "_duplicate"
+        relations.append(duplicate)
+    if duplicate_center_relation and typed_center:
+        duplicate = deepcopy(
+            next(item for item in relations if item["role"] == "axis_topology")
+        )
         duplicate["role"] += "_duplicate"
         relations.append(duplicate)
     if include_interaction:
@@ -239,7 +283,11 @@ def _case(
             "role": "motion_1",
             "order": 1,
             "actor_roles": actors,
-            "motion_model": "general_plane_motion",
+            "motion_model": (
+                "rotation_about_fixed_axis"
+                if typed_center
+                else "general_plane_motion"
+            ),
             "relevance": "target",
             "start_event_role": "start",
             "end_event_role": "finish",
@@ -368,7 +416,10 @@ def test_entity_ids_order_and_participant_order_are_not_authority() -> None:
               center_role="pivot_z"),
         _case(reverse=True),
         _case(swap_participants=True),
-        _case(drop_center=True),
+        # The centre's label is not authority in either direction: a typed
+        # centre relabelled as anything — even "순간중심" — still solves the
+        # same, because the coincident relation, not the word, licenses it.
+        _case(center_label="순간중심 I"),
         _case(
             family="renamed_family_for_metadata_control",
             case_id="fx_public_dev_0999",
@@ -480,11 +531,17 @@ def test_transaction_adds_only_typed_points_and_value_free_records() -> None:
 @pytest.mark.parametrize(
     "case",
     (
+        _case(drop_center=True),
+        _case(floating_center=True),
+        _case(duplicate_center_relation=True),
+        _case(center_relation_to_known=True),
+        _case(missing_relation="axis_topology"),
         _case(missing_relation="a_on_body"),
         _case(missing_relation="b_on_body"),
         _case(duplicate_relation=True),
         _case(center_bound=True),
         _case(center_radius=True),
+        _case(center_speed=True),
         _case(center_actor=True),
         _case(extra_body=True),
         _case(include_interaction=True),
@@ -504,12 +561,18 @@ def test_transaction_adds_only_typed_points_and_value_free_records() -> None:
         _case(strip_radius_quote=True),
     ),
     ids=(
+        "no-centre-entity",
+        "floating-centre-without-rotation-relation",
+        "two-rotation-centre-relations",
+        "rotation-relation-names-a-rim-point",
+        "rotation-relation-missing",
         "missing-known-point-on-body",
         "missing-query-point-on-body",
         "duplicate-point-on-body",
-        "third-bound-point",
-        "radius-on-floating-centre",
-        "floating-centre-as-actor",
+        "centre-also-bound-as-on-body-point",
+        "radius-on-the-centre",
+        "speed-on-the-centre",
+        "centre-as-actor",
         "second-rigid-body",
         "contact-interaction-present",
         "body-mass-present",
@@ -539,6 +602,44 @@ def test_structural_near_misses_fail_closed_without_numeric_output(case) -> None
     assert result.terminal is not LaneBTerminal.solved
     assert result.answer_value_si is None
     assert result.verified_candidate_count == 0
+
+
+def test_the_old_general_plane_shape_refuses_whatever_the_ratio_says() -> None:
+    # The pre-repair public shape: general plane motion, two radii, one
+    # speed, and an inert centre entity no typed relation ever names.  The
+    # numbers are exactly the ones whose ratio the old profile confidently
+    # multiplied; refusing must not depend on them being "wrong", because
+    # radii measured from two different reference points can produce any
+    # ratio at all — including this one.
+    for variant in (
+        _case(floating_center=True),
+        _case(floating_center=True, r_a="0.1", r_b="0.3", v_a="6"),
+        _case(floating_center=True, center_label="순간중심 I"),
+        _case(floating_center=True, text_variant=True),
+        _case(
+            floating_center=True,
+            family="renamed_family_for_metadata_control",
+            case_id="fx_public_dev_0999",
+            fake_answer=5.0,
+        ),
+    ):
+        result = _run(variant)
+        assert result.terminal is not LaneBTerminal.solved
+        assert result.answer_value_si is None
+        assert result.verified_candidate_count == 0
+
+
+def test_an_instant_centre_label_alone_never_licenses_the_coupling() -> None:
+    # Renaming the floating centre "순간중심" (instantaneous centre) — in the
+    # entity label and in the problem text — types nothing: there is no
+    # approved instantaneous-centre authority in the projected source, so
+    # the shape still refuses.  The same words on a typed fixed centre are
+    # equally inert in the other direction (see the invariance battery).
+    case = _case(floating_center=True, center_label="순간중심 I")
+    projection = _projection(case)
+    result = run_lane_b_case(projection, execution_token="b10-test-token")
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
 
 
 def test_unrelated_approved_assumption_is_not_answer_authority() -> None:

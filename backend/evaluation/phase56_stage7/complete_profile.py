@@ -1128,14 +1128,26 @@ def _rigid_two_point_speed_transfer_evidence(
 ) -> Mapping[str, PrerequisiteDisposition] | None:
     """Classify one exact source-typed two-point speed-transfer topology.
 
-    One rigid body carries exactly two source-declared on-body points, each
-    with its own source-valued rotation radius, and every quantity is bound to
-    the same source-declared instant of the single motion interval.  The
-    source states one point's scalar undirected speed and asks for the other
-    point's scalar speed/velocity magnitude at that same instant.  A third
-    point entity naming the rotation centre is tolerated as pure context only
-    while it participates in no relation, no interval, no event, no quantity,
-    and no query.
+    One rigid body rotates about one source-declared fixed centre point —
+    stated by the source's own rotates-about relation, which projects as the
+    single ``coincident`` geometry record between the body and the centre —
+    and carries exactly two source-declared on-body points, each with its
+    own source-valued rotation radius, every quantity bound to the same
+    source-declared instant of the single motion interval.  The source
+    states one point's scalar undirected speed and asks for the other
+    point's scalar speed/velocity magnitude at that same instant.
+
+    The shared centre is what licenses reading both radii against one
+    angular speed: ``v = |omega| r`` holds for both points only when both
+    rotation radii are measured from the same fixed centre, and the only
+    typed proof of that identity is the body's sole rotation-centre
+    relation.  A centre that is merely a floating context entity, a centre
+    with no typed rotation relation, a centre named only by a label or by
+    the problem text, or two candidate centres never license the coupling:
+    without exactly one typed centre this reader refuses, whatever the two
+    radii would happen to compute.  The centre itself must stay motionless
+    context — it may not be an interval actor, an event subject, a query
+    subject, or the subject of any quantity or assumption.
 
     This reader authorises only structural closure: materialising the two
     typed material points the point-on-body relations already state,
@@ -1172,7 +1184,7 @@ def _rigid_two_point_speed_transfer_evidence(
     )
     if (
         len(bodies) != 1
-        or len(point_entities) not in {2, 3}
+        or len(point_entities) != 3
         or len(draft.entities) != 1 + len(point_entities)
     ):
         return None
@@ -1182,7 +1194,10 @@ def _rigid_two_point_speed_transfer_evidence(
     lies_on = tuple(
         item for item in draft.geometry if item.kind.value == "lies_on"
     )
-    if len(draft.geometry) != len(lies_on):
+    centre_relations = tuple(
+        item for item in draft.geometry if item.kind.value == "coincident"
+    )
+    if len(draft.geometry) != len(lies_on) + len(centre_relations):
         return None
     interval = draft.motion_intervals[0]
     interval_id = interval.interval_id
@@ -1193,7 +1208,7 @@ def _rigid_two_point_speed_transfer_evidence(
         or item.interval_id not in {None, interval_id}
         or item.quantity_ids
         or item.expression is not None
-        for item in lies_on
+        for item in (*lies_on, *centre_relations)
     ):
         return None
     bound_ids = tuple(
@@ -1218,7 +1233,26 @@ def _rigid_two_point_speed_transfer_evidence(
     if topology is not PrerequisiteDisposition.explicit_source:
         return None
     floating_ids = point_ids - set(bound_ids)
-    if len(floating_ids) > 1:
+    if len(floating_ids) != 1:
+        return None
+    centre_id = next(iter(floating_ids))
+    centre_bound_ids = {
+        participant
+        for item in centre_relations
+        for participant in item.participant_ids
+        if participant != body_id
+    }
+    centre_authority = (
+        PrerequisiteDisposition.explicit_source
+        if len(centre_relations) == 1 and centre_bound_ids == {centre_id}
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(centre_relations) > 1
+            or (centre_relations and centre_bound_ids != {centre_id})
+            else PrerequisiteDisposition.missing
+        )
+    )
+    if centre_authority is not PrerequisiteDisposition.explicit_source:
         return None
     subject_ids = {body_id, *bound_ids}
 
@@ -1358,6 +1392,7 @@ def _rigid_two_point_speed_transfer_evidence(
 
     dispositions: dict[str, PrerequisiteDisposition] = {
         "two_point_topology": topology,
+        "rotation_centre_authority": centre_authority,
     }
 
     radii = tuple(item for item in known if item.role.value == "radius")
@@ -3166,6 +3201,8 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
         (
             ("geometry_two_points_on_body", PrerequisiteKind.geometry,
              _rigid_two_point_speed_prerequisite("two_point_topology")),
+            ("geometry_rotation_centre", PrerequisiteKind.geometry,
+             _rigid_two_point_speed_prerequisite("rotation_centre_authority")),
             ("quantity_radius_pair", PrerequisiteKind.interaction_quantity,
              _rigid_two_point_speed_prerequisite("radius_pair")),
             ("quantity_known_point_speed", PrerequisiteKind.interaction_quantity,

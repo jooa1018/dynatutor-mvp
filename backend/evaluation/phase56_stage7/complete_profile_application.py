@@ -3575,6 +3575,13 @@ def _rigid_two_point_speed_transfer_transaction(
     speed magnitudes, and adds the single value-free shared angular-speed
     unknown through which the existing ``fixed_axis_speed`` law couples the
     two points at the source-declared instant.
+
+    The coupling is licensed only by the source's own fixed rotation
+    centre: exactly one ``coincident`` rotation relation must bind the body
+    to a third, otherwise-inert centre point.  That single typed centre is
+    what makes both radii the same rotation's radii; without it — or with
+    two candidate centres, or a centre that acts, carries a quantity, or is
+    bound as an on-body point — the transaction refuses and closes nothing.
     """
 
     reserved_ids = {
@@ -3614,7 +3621,7 @@ def _rigid_two_point_speed_transfer_transaction(
     ]
     if (
         len(bodies) != 1
-        or len(point_entities) not in {2, 3}
+        or len(point_entities) != 3
         or len(payload["entities"]) != 1 + len(point_entities)
     ):
         return None
@@ -3624,11 +3631,15 @@ def _rigid_two_point_speed_transfer_transaction(
     lies_on = [
         item for item in payload["geometry"] if item.get("kind") == "lies_on"
     ]
+    centre_relations = [
+        item for item in payload["geometry"] if item.get("kind") == "coincident"
+    ]
     interval = payload["motion_intervals"][0]
     interval_id = interval.get("interval_id")
     if (
-        len(payload["geometry"]) != 2
+        len(payload["geometry"]) != 3
         or len(lies_on) != 2
+        or len(centre_relations) != 1
         or any(
             len(item.get("participant_ids", ())) != 2
             or body_id not in item.get("participant_ids", ())
@@ -3637,7 +3648,7 @@ def _rigid_two_point_speed_transfer_transaction(
             or item.get("interval_id") not in {None, interval_id}
             or item.get("quantity_ids")
             or item.get("expression") is not None
-            for item in lies_on
+            for item in (*lies_on, *centre_relations)
         )
     ):
         return None
@@ -3649,7 +3660,15 @@ def _rigid_two_point_speed_transfer_transaction(
             if participant != body_id
         }
     )
-    if len(bound_ids) != 2 or len(point_ids - set(bound_ids)) > 1:
+    if len(bound_ids) != 2 or len(point_ids - set(bound_ids)) != 1:
+        return None
+    centre_id = next(iter(point_ids - set(bound_ids)))
+    if {
+        participant
+        for item in centre_relations
+        for participant in item.get("participant_ids", ())
+        if participant != body_id
+    } != {centre_id}:
         return None
     subject_ids = {body_id, *bound_ids}
 
