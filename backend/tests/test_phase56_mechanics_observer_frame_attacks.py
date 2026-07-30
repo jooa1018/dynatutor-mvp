@@ -487,6 +487,9 @@ _NON_STRING_FIELDS: frozenset[str] = frozenset(
         "components",
         "confidence",
         "constraints",
+        # Typed contact-normal orientation: an enum, never a frame or
+        # entity reference.
+        "contact_side",
         "current",
         "denominator",
         "dimension",
@@ -511,6 +514,9 @@ _NON_STRING_FIELDS: frozenset[str] = frozenset(
         "model_confidence",
         "motion_intervals",
         "numerator",
+        # Typed extremal query objective: an enum, never a frame or entity
+        # reference.
+        "objective",
         "op",
         "operand",
         "order",
