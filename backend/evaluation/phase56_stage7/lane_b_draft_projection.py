@@ -67,7 +67,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v7"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v8"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -240,6 +240,17 @@ _QUERY_ROLES: dict[str, tuple[str, str, dict[str, int]]] = {
     "v1_after": ("velocity", "m/s", _dim(length=1, time=-1)),
     "v2_after": ("velocity", "m/s", _dim(length=1, time=-1)),
     "work": ("work", "J", _dim(mass=1, length=2, time=-2)),
+}
+
+# A query output key that states an extremal objective keeps it.  The corpus's
+# own `minimum_speed` asks for an admissible-set boundary, not an exact value;
+# collapsing it onto a plain speed question silently changed what was asked,
+# which is how a boundary equality once fired for a question that never proved
+# the boundary.  The typed objective travels on the Draft query so every
+# downstream reader either honours it or declines.  No problem text, family,
+# case identity, or expected answer participates.
+_QUERY_OBJECTIVES: dict[str, str] = {
+    "minimum_speed": "minimum",
 }
 
 _ENTITY_PRIMITIVES: dict[str, str] = {
@@ -2013,23 +2024,25 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
                 "evidence_refs": [],
             }
         )
-        queries.append(
-            {
-                "query_id": f"qry_{query.role}",
-                "output_unit": unit,
-                "output_dimension": dimension,
-                "shape": "scalar",
-                "target": {
-                    "role": role,
-                    "subject_id": query.subject_role,
-                    "interval_id": query_interval_id,
-                    "event_id": query_event_id,
-                    "component": query.component or "unspecified",
-                    "target_quantity_id": f"qty_unknown_{query.role}",
-                },
-                "evidence_refs": [],
-            }
-        )
+        projected_query: dict[str, Any] = {
+            "query_id": f"qry_{query.role}",
+            "output_unit": unit,
+            "output_dimension": dimension,
+            "shape": "scalar",
+            "target": {
+                "role": role,
+                "subject_id": query.subject_role,
+                "interval_id": query_interval_id,
+                "event_id": query_event_id,
+                "component": query.component or "unspecified",
+                "target_quantity_id": f"qty_unknown_{query.role}",
+            },
+            "evidence_refs": [],
+        }
+        objective = _QUERY_OBJECTIVES.get(query.output_key)
+        if objective is not None:
+            projected_query["objective"] = objective
+        queries.append(projected_query)
 
     unknown_symbols = _bind_reciprocal_symbols(unknown_quantities)
     _assert_symbols_are_reciprocal(unknown_quantities, unknown_symbols)

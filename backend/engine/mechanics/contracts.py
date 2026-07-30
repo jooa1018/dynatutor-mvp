@@ -653,6 +653,22 @@ class InteractionKind(str, Enum):
     other = "other"
 
 
+class ContactSide(str, Enum):
+    """Typed normal orientation of a unilateral contact on a curved path.
+
+    ``inward`` states that the contact's normal force on the moving
+    participant points toward the path's curvature centre (an inside
+    track); ``outward`` states it points away (riding over an outside
+    surface).  The side decides which way the unilateral inequality
+    N >= 0 bounds the speed at a vertical-circle extremum, so a boundary
+    law may consume the orientation only when the source's own typed
+    statement carries it — absence means unstated, never a default.
+    """
+
+    inward = "inward"
+    outward = "outward"
+
+
 class Interaction(StrictModel):
     interaction_id: Identifier
     kind: InteractionKind
@@ -663,6 +679,15 @@ class Interaction(StrictModel):
     event_id: Identifier | None = None
     quantity_ids: list[Identifier] = Field(default_factory=list, max_length=32)
     evidence_refs: list[Identifier] = Field(default_factory=list, max_length=16)
+    # Appended: the typed contact-normal orientation, stated by the source
+    # or not at all.  Only a `contact` interaction may carry it.
+    contact_side: ContactSide | None = None
+
+    @model_validator(mode="after")
+    def validate_contact_side_scope(self) -> "Interaction":
+        if self.contact_side is not None and self.kind is not InteractionKind.contact:
+            raise ValueError("contact_side is typed contact orientation only")
+        return self
 
 
 class ConstraintKind(str, Enum):
@@ -740,6 +765,21 @@ class QueryTarget(StrictModel):
     target_quantity_id: Identifier | None = None
 
 
+class QueryObjective(str, Enum):
+    """What the question asks for beyond an exact value.
+
+    An absent objective is the default exact-value reading.  ``minimum`` and
+    ``maximum`` state that the source asks for an admissible-set boundary —
+    "the least speed that still ...", "the greatest speed before ..." — and
+    that semantic is part of the question's identity: a reader that cannot
+    honour the stated objective must decline the query rather than answer
+    the exact-value question the source never asked.
+    """
+
+    minimum = "minimum"
+    maximum = "maximum"
+
+
 class Query(StrictModel):
     query_id: Identifier
     target: QueryTarget
@@ -747,6 +787,10 @@ class Query(StrictModel):
     output_dimension: DimensionVector
     shape: QuantityShape
     evidence_refs: list[Identifier] = Field(default_factory=list, max_length=16)
+    # Appended: the source-stated extremal objective, or None for the
+    # default exact-value question.  Preserved end-to-end so a minimum
+    # question can never silently degrade into an exact readout.
+    objective: QueryObjective | None = None
 
 
 class Principle(str, Enum):

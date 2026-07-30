@@ -4205,7 +4205,7 @@ def _explicit_resultant_force_transaction(
 def _vertical_circle_top_speed_transaction(
     payload: dict[str, Any], authority: TransactionAuthority
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
-    """Close one exact vertical-circle top contact-boundary readout.
+    """Close one exact vertical-circle limiting-contact minimum readout.
 
     The transaction creates no equation, force, frame, point, solver choice,
     candidate, or answer, and the only value it materialises is the gravity
@@ -4213,6 +4213,14 @@ def _vertical_circle_top_speed_transaction(
     source's own approved server-valued proposal — the free-flight
     consumption contract, checked field for field.  The existing
     ``vertical_circle_top_minimum_speed`` generic law does all solving.
+
+    The boundary reading must be typed in full before anything closes: the
+    query's own ``minimum`` objective, the contact's ``inward`` side, a
+    maintained ``contact``/``touching`` state over the interval, and an
+    active ``boundary`` state at the highest-point instant.  A plain speed
+    question, an unstated or outward orientation, or missing boundary
+    states refuse — the equality ``v^2 = g r`` states the asked-for
+    boundary only when the source asked for that boundary.
     """
 
     reserved_ids = {
@@ -4227,11 +4235,11 @@ def _vertical_circle_top_speed_transaction(
         or len(payload["interactions"]) != 1
         or len(payload["assumptions"]) != 1
         or len(payload["quantities"]) != 2
+        or len(payload["state_conditions"]) != 2
         or payload["reference_frames"]
         or payload["points"]
         or payload["geometry"]
         or payload["constraints"]
-        or payload["state_conditions"]
         or payload["principle_hints"]
         or payload["ambiguities"]
         or payload["unsupported_features"]
@@ -4271,6 +4279,7 @@ def _vertical_circle_top_speed_transaction(
     contact = payload["interactions"][0]
     if (
         contact.get("kind") != "contact"
+        or contact.get("contact_side") != "inward"
         or set(contact.get("participant_ids", ())) != {particle_id, surface_id}
         or len(contact.get("participant_ids", ())) != 2
         or contact.get("point_ids")
@@ -4313,6 +4322,32 @@ def _vertical_circle_top_speed_transaction(
         return None
     top_id = instants[0].get("event_id")
 
+    touching_states = [
+        item
+        for item in payload["state_conditions"]
+        if item.get("kind") == "contact" and item.get("state") == "touching"
+    ]
+    boundary_states = [
+        item
+        for item in payload["state_conditions"]
+        if item.get("kind") == "boundary" and item.get("state") == "active"
+    ]
+    if (
+        len(touching_states) != 1
+        or len(boundary_states) != 1
+        or touching_states[0].get("subject_id") != particle_id
+        or touching_states[0].get("interval_id") != interval_id
+        or touching_states[0].get("event_id") is not None
+        or touching_states[0].get("expression") is not None
+        or touching_states[0].get("quantity_ids")
+        or boundary_states[0].get("subject_id") != particle_id
+        or boundary_states[0].get("interval_id") != interval_id
+        or boundary_states[0].get("event_id") != top_id
+        or boundary_states[0].get("expression") is not None
+        or boundary_states[0].get("quantity_ids")
+    ):
+        return None
+
     source_evidence_ids = {
         item.get("evidence_id") for item in payload["source_evidence"]
     }
@@ -4351,6 +4386,9 @@ def _vertical_circle_top_speed_transaction(
     ):
         return None
 
+    if not (evidenced(touching_states[0]) and evidenced(boundary_states[0])):
+        return None
+
     def valued_source(item: dict[str, Any]) -> bool:
         return (
             item.get("raw_value") is not None
@@ -4371,6 +4409,7 @@ def _vertical_circle_top_speed_transaction(
         len(quantities) != len(payload["quantities"])
         or target_quantity is None
         or query.get("shape") != "scalar"
+        or query.get("objective") != "minimum"
         or target.get("role") != "speed"
         or target.get("component") != "magnitude"
         or target.get("subject_id") != particle_id

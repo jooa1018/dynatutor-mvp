@@ -1468,17 +1468,33 @@ def _rigid_two_point_speed_prerequisite(name: str) -> "_Resolver":
 def _vertical_circle_top_speed_evidence(
     draft: Any,
 ) -> Mapping[str, PrerequisiteDisposition] | None:
-    """Classify one exact vertical-circle top contact-boundary topology.
+    """Classify one exact vertical-circle limiting-contact minimum topology.
 
-    One particle in contact with one circular track, one source-valued
-    rotation radius, an approved server-valued uniform-gravity authority,
-    and one value-free scalar speed-magnitude query at the source-declared
-    highest point of the motion — and no other typed data of any kind.  At
-    a smooth circular track's highest point the contact can only push, so
-    the boundary speed the shape determines is the one the existing
-    ``vertical_circle_top_minimum_speed`` law states: v^2 = g r.  Any extra
-    quantity — a mass, an energy, another speed, a height — makes the
-    question a different one and refuses.
+    One particle on one circular track, one source-valued rotation radius,
+    an approved server-valued uniform-gravity authority, and a value-free
+    scalar speed-magnitude query at the source-declared highest point —
+    where the *question itself* is typed as a minimum and the *boundary it
+    asks about* is typed as well.  Four typed authorities must all be
+    present, and each one carries load:
+
+    * the query's own ``minimum`` objective — a plain speed question at the
+      top of a circle has no boundary reading, and answering it with one
+      would answer a question the source never asked;
+    * the contact's ``inward`` side — only an inside track's push toward
+      the centre makes ``v^2 >= g r`` the admissible set whose minimum is
+      the boundary; an outside or unstated orientation bounds the other
+      way and refuses;
+    * a ``contact``/``touching`` state condition on the particle over the
+      motion interval — the typed statement that contact is maintained;
+    * a ``boundary``/``active`` state condition on the particle at the
+      highest-point instant — the typed statement that the question sits
+      exactly on the contact-maintenance boundary (N = 0).
+
+    Only with all four does the existing
+    ``vertical_circle_top_minimum_speed`` law's equality ``v^2 = g r``
+    state the asked-for boundary.  Any extra quantity, a missing or
+    outward orientation, a missing objective, or missing boundary states
+    make the question a different one and refuse.
 
     The transaction materialises only the gravity magnitude the approved
     authority already carries; the law does all solving.  No value beyond
@@ -1493,11 +1509,11 @@ def _vertical_circle_top_speed_evidence(
         or len(draft.events) != 3
         or len(draft.interactions) != 1
         or len(draft.assumptions) != 1
+        or len(draft.state_conditions) != 2
         or draft.reference_frames
         or draft.points
         or draft.geometry
         or draft.constraints
-        or draft.state_conditions
         or draft.principle_hints
         or draft.ambiguities
         or draft.unsupported_features
@@ -1540,6 +1556,19 @@ def _vertical_circle_top_speed_evidence(
         or contact.event_id is not None
         or contact.quantity_ids
     ):
+        return None
+    side = getattr(getattr(contact, "contact_side", None), "value", None)
+    if side == "outward":
+        # A stated outside track bounds the speed the other way: there is no
+        # minimum-to-maintain-contact boundary at the top.  Different
+        # physics, not a missing slot — this profile simply does not apply.
+        return None
+    orientation = (
+        PrerequisiteDisposition.explicit_source
+        if side == "inward"
+        else PrerequisiteDisposition.missing
+    )
+    if orientation is not PrerequisiteDisposition.explicit_source:
         return None
 
     events = {item.event_id: item for item in draft.events}
@@ -1597,6 +1626,41 @@ def _vertical_circle_top_speed_evidence(
     if not authority_exact:
         return None
 
+    touching_states = tuple(
+        item
+        for item in draft.state_conditions
+        if item.kind.value == "contact" and item.state.value == "touching"
+    )
+    boundary_states = tuple(
+        item
+        for item in draft.state_conditions
+        if item.kind.value == "boundary" and item.state.value == "active"
+    )
+    if len(touching_states) + len(boundary_states) != len(
+        draft.state_conditions
+    ):
+        return None
+    touching_exact = (
+        len(touching_states) == 1
+        and touching_states[0].subject_id == particle_id
+        and touching_states[0].interval_id == interval_id
+        and touching_states[0].event_id is None
+        and touching_states[0].expression is None
+        and not touching_states[0].quantity_ids
+        and evidenced(touching_states[0])
+    )
+    boundary_exact = (
+        len(boundary_states) == 1
+        and boundary_states[0].subject_id == particle_id
+        and boundary_states[0].interval_id == interval_id
+        and boundary_states[0].event_id == top_id
+        and boundary_states[0].expression is None
+        and not boundary_states[0].quantity_ids
+        and evidenced(boundary_states[0])
+    )
+    if not (touching_exact and boundary_exact):
+        return None
+
     def valued_source(item: Any) -> bool:
         return (
             item.raw_value is not None
@@ -1618,6 +1682,8 @@ def _vertical_circle_top_speed_evidence(
     )
     query_exact = (
         query.shape.value == "scalar"
+        and getattr(getattr(query, "objective", None), "value", None)
+        == "minimum"
         and target.role.value == "speed"
         and target.component.value == "magnitude"
         and target.subject_id == particle_id
@@ -1676,6 +1742,10 @@ def _vertical_circle_top_speed_evidence(
     )
     dispositions: dict[str, PrerequisiteDisposition] = {
         "circular_contact": PrerequisiteDisposition.explicit_source,
+        "contact_orientation": orientation,
+        "minimum_objective": PrerequisiteDisposition.explicit_source,
+        "maintained_contact_state": PrerequisiteDisposition.explicit_source,
+        "limiting_boundary_state": PrerequisiteDisposition.explicit_source,
         "highest_point_boundary": PrerequisiteDisposition.explicit_source,
         "radius": (
             PrerequisiteDisposition.explicit_source
@@ -2102,6 +2172,7 @@ class _DraftFacts:
         "explicit_resultant_force_profile",
         "geometry",
         "has_blocking_ambiguity",
+        "has_query_objective",
         "interactions",
         "observer_count",
         "polar_kinematics_state_profile",
@@ -2119,6 +2190,10 @@ class _DraftFacts:
     )
 
     def __init__(self, draft: Any, approved_assumption_ids: Iterable[str]) -> None:
+        self.has_query_objective = any(
+            getattr(item, "objective", None) is not None
+            for item in draft.queries
+        )
         self.roles = _roles(draft)
         self.approved = _approved_kinds(draft, approved_assumption_ids)
         self.interactions = _interaction_kinds(draft)
@@ -3223,15 +3298,26 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
     ),
     # One particle on one circular track, one source-valued radius, an
     # approved server-valued gravity authority, and one value-free scalar
-    # speed query at the source-declared highest point — nothing else.  The
-    # exact-shape reader owns applicability; the existing
-    # vertical_circle_top_minimum_speed law does all solving.
+    # minimum-speed query at the source-declared highest point, with the
+    # limiting contact typed in full: inward contact side, a maintained
+    # contact state over the interval, and an active boundary state at the
+    # top instant — nothing else.  The exact-shape reader owns
+    # applicability; the existing vertical_circle_top_minimum_speed law
+    # does all solving.
     _ProfileSignature(
         ProfileId.vertical_circle_top_speed,
         lambda facts: facts.vertical_circle_top_speed_profile is not None,
         (
             ("interaction_circular_contact", PrerequisiteKind.interaction,
              _vertical_circle_top_speed_prerequisite("circular_contact")),
+            ("interaction_contact_orientation", PrerequisiteKind.interaction,
+             _vertical_circle_top_speed_prerequisite("contact_orientation")),
+            ("query_minimum_objective", PrerequisiteKind.capability,
+             _vertical_circle_top_speed_prerequisite("minimum_objective")),
+            ("state_maintained_contact", PrerequisiteKind.state_condition,
+             _vertical_circle_top_speed_prerequisite("maintained_contact_state")),
+            ("state_limiting_boundary", PrerequisiteKind.state_condition,
+             _vertical_circle_top_speed_prerequisite("limiting_boundary_state")),
             ("event_highest_point_boundary", PrerequisiteKind.state_condition,
              _vertical_circle_top_speed_prerequisite("highest_point_boundary")),
             ("quantity_radius", PrerequisiteKind.interaction_quantity,
@@ -3374,6 +3460,13 @@ _PROFILES_BY_ID: Mapping[ProfileId, _ProfileSignature] = {
     item.profile_id: item for item in _PROFILES
 }
 
+# The profiles that understand an extremal query objective.  Everything else
+# refuses an objective-bearing draft outright: an exact-value reader answering
+# a minimum question would be answering a question the source never asked.
+_OBJECTIVE_AWARE_PROFILES: frozenset[ProfileId] = frozenset(
+    {ProfileId.vertical_circle_top_speed}
+)
+
 
 def plan_complete_profile(
     profile_id: ProfileId,
@@ -3391,6 +3484,19 @@ def plan_complete_profile(
     signature = _PROFILES_BY_ID[profile_id]
     fingerprint = draft_structure_fingerprint(draft)
     facts = _DraftFacts(draft, approved_assumption_ids)
+
+    # A query that states an extremal objective is a different question from
+    # the exact-value one, and only a profile that explicitly understands the
+    # objective may even consider the draft.  Every other profile refuses
+    # here, structurally, so a minimum question can never be closed by an
+    # exact-value reader that happens to match the rest of the shape.
+    if facts.has_query_objective and profile_id not in _OBJECTIVE_AWARE_PROFILES:
+        return CompleteProfilePlanV1(
+            profile_id=profile_id,
+            disposition=PlanDisposition.not_applicable,
+            prerequisites=(),
+            draft_fingerprint=fingerprint,
+        )
 
     if not signature.applies(facts):
         return CompleteProfilePlanV1(

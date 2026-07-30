@@ -1,22 +1,34 @@
-"""B12 vertical-circle top-speed package: v^2 = g r at the typed highest point.
+"""B12 vertical-circle limiting-contact minimum: v^2 = g r only when typed.
 
-One particle in contact with one circular track, one source-valued rotation
-radius, an approved server-valued uniform-gravity authority, and one
-value-free scalar speed-magnitude query at the source-declared highest point
-— and no other typed data of any kind.  At a smooth track's highest point the
-contact can only push, so the boundary speed the shape determines is the one
-the existing ``vertical_circle_top_minimum_speed`` law states.  The
-transaction materialises only the gravity magnitude the approved authority
-already carries; any extra quantity, entity, interaction, or event shape
-abstains without numeric output.
+The equality ``v^2 = g r`` at a circular track's highest point is the
+N = 0 contact-maintenance boundary, not a property of the shape: it answers
+the question only when the source asks for that boundary.  Four typed
+authorities must all be present before anything closes —
+
+* the query's own ``minimum`` objective (projected from the corpus's
+  ``minimum_speed`` output key, and preserved end-to-end);
+* the contact's ``inward`` side — an inside track pushes toward the centre,
+  so contact maintenance bounds the speed from below;
+* a ``contact``/``touching`` state condition over the motion interval;
+* a ``boundary``/``active`` state condition at the highest-point instant.
+
+The Lane B corpus projection can prove the first (the corpus's own typed
+output key) but none of the others — the corpus schema has no typed contact
+orientation and no typed boundary-condition record — so every corpus-shaped
+fixture in this file now fails closed, exactly as the public cases must.
+The positive controls state the full authority at the Draft level, which is
+the contract a richer source-side schema (or the product modeler) has to
+meet before this family may solve again.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 import hashlib
 
 import pytest
 
+from engine.mechanics.contracts import MechanicsProblemDraftV1
 from evaluation.phase56_stage7.complete_profile import (
     PlanDisposition,
     ProfileId,
@@ -44,6 +56,8 @@ EXPECTED_LAWS = (
     "translational_speed_nonnegative",
     "vertical_circle_top_minimum_speed",
 )
+
+_LIMIT_QUOTE = "접촉을 유지하기 위한 최소 속력"
 
 
 def _case(
@@ -79,12 +93,12 @@ def _case(
     g_quote = "중력 가속도는 일정하다"
     text = (
         f"질점이 매끄러운 원형 궤도 안쪽을 따라 돈다. {r_quote}. {g_quote}. "
-        "궤도 최고점에서 접촉을 유지하기 위한 최소 속력을 구하여라."
+        f"궤도 최고점에서 {_LIMIT_QUOTE}을 구하여라."
     )
     if text_variant:
         text = (
             f"질점이 매끄러운 원형 궤도 안쪽을 돈다! {r_quote}! {g_quote}! "
-            "이때 궤도 최고점에서의 최소 속력을 구하여라."
+            f"이때 궤도 최고점에서 {_LIMIT_QUOTE}을 구하여라!"
         )
 
     entities = [
@@ -228,15 +242,117 @@ def _run(case: PublicCorpusCaseV1):
     return run_lane_b_case(_projection(case), execution_token="b12-test-token")
 
 
+def _authorised(
+    case: PublicCorpusCaseV1,
+    *,
+    side: str | None = "inward",
+    with_touching: bool = True,
+    with_boundary: bool = True,
+    boundary_event: str | None = None,
+    state_subject: str | None = None,
+    evidence_free_states: bool = False,
+    strip_objective: bool = False,
+):
+    """The corpus projection plus the Draft-level typed limiting authority.
+
+    Only the four typed authorities are added — contact side, the touching
+    and boundary state conditions, and one text-evidence record for the
+    source's own limiting phrase.  Nothing else in the projection changes,
+    so what these controls measure is exactly the authority contract.
+    """
+
+    projection = _projection(case)
+    payload = projection.draft.model_dump(mode="python")
+    subject = state_subject or payload["motion_intervals"][0]["subject_ids"][0]
+    interval_id = payload["motion_intervals"][0]["interval_id"]
+    top_ids = [
+        item["event_id"]
+        for item in payload["events"]
+        if item["kind"] == "highest_point"
+    ]
+    top_id = boundary_event or (top_ids[0] if top_ids else "top")
+    quote = _LIMIT_QUOTE
+    start = projection.problem_text.index(quote)
+    payload["source_evidence"] = [
+        *payload["source_evidence"],
+        {
+            "kind": "text",
+            "evidence_id": "ev_contact_limit",
+            "quote": quote,
+            "source_span": {"start": start, "end": start + len(quote)},
+            "occurrence_index": 0,
+        },
+    ]
+    state_evidence = [] if evidence_free_states else ["ev_contact_limit"]
+    states = []
+    if with_touching:
+        states.append(
+            {
+                "state_condition_id": "st_maintained_contact",
+                "kind": "contact",
+                "state": "touching",
+                "subject_id": subject,
+                "interval_id": interval_id,
+                "event_id": None,
+                "quantity_ids": [],
+                "evidence_refs": list(state_evidence),
+            }
+        )
+    if with_boundary:
+        states.append(
+            {
+                "state_condition_id": "st_limiting_boundary",
+                "kind": "boundary",
+                "state": "active",
+                "subject_id": subject,
+                "interval_id": interval_id,
+                "event_id": top_id,
+                "quantity_ids": [],
+                "evidence_refs": list(state_evidence),
+            }
+        )
+    payload["state_conditions"] = states
+    if side is not None:
+        for interaction in payload["interactions"]:
+            if interaction["kind"] == "contact":
+                interaction["contact_side"] = side
+    if strip_objective:
+        for query in payload["queries"]:
+            query["objective"] = None
+    draft = MechanicsProblemDraftV1.model_validate(payload)
+    return replace(projection, draft=draft)
+
+
+def _run_authorised(case: PublicCorpusCaseV1, **kwargs):
+    return run_lane_b_case(
+        _authorised(case, **kwargs), execution_token="b12-test-token"
+    )
+
+
 def _expected(radius: float, gravity: float = 9.81) -> float:
     return (gravity * radius) ** 0.5
 
 
-# --- positive controls ------------------------------------------------------
+# --- the projection preserves the question ----------------------------------
 
 
-def test_top_boundary_speed_solves_with_existing_generic_law() -> None:
-    result = _run(_case())
+def test_the_minimum_objective_survives_projection() -> None:
+    draft = _projection(_case()).draft
+    assert draft.queries[0].objective is not None
+    assert draft.queries[0].objective.value == "minimum"
+    assert draft.queries[0].target.role.value == "speed"
+
+
+def test_a_plain_speed_query_carries_no_objective() -> None:
+    draft = _projection(_case(query_output="tangential_velocity")).draft
+    assert draft.queries[0].objective is None
+
+
+# --- positive controls (full typed authority, Draft level) ------------------
+
+
+def test_typed_limiting_contact_solves_with_existing_generic_law() -> None:
+    result = _run_authorised(_case())
     assert result.terminal is LaneBTerminal.solved
     assert result.applied_law_ids == EXPECTED_LAWS
     assert result.verified_candidate_count == 1
@@ -247,13 +363,13 @@ def test_top_boundary_speed_solves_with_existing_generic_law() -> None:
 
 
 def test_centimetre_radius_converts_exactly() -> None:
-    result = _run(_case(radius="200", radius_unit="cm"))
+    result = _run_authorised(_case(radius="200", radius_unit="cm"))
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(_expected(2.0))
 
 
 def test_entity_ids_order_and_metadata_are_not_authority() -> None:
-    baseline = _run(_case())
+    baseline = _run_authorised(_case())
     for variant in (
         _case(ball_role="bead_q", track_role="loop_z"),
         _case(reverse=True),
@@ -264,7 +380,7 @@ def test_entity_ids_order_and_metadata_are_not_authority() -> None:
         ),
         _case(text_variant=True),
     ):
-        result = _run(variant)
+        result = _run_authorised(variant)
         assert result.terminal is LaneBTerminal.solved
         assert result.applied_law_ids == EXPECTED_LAWS
         assert result.answer_value_si == pytest.approx(baseline.answer_value_si)
@@ -273,14 +389,16 @@ def test_entity_ids_order_and_metadata_are_not_authority() -> None:
 
 
 def test_physics_change_changes_the_answer_exactly() -> None:
-    assert _run(_case(radius="8")).answer_value_si == pytest.approx(_expected(8.0))
-    assert _run(_case(radius="0.5")).answer_value_si == pytest.approx(
+    assert _run_authorised(_case(radius="8")).answer_value_si == pytest.approx(
+        _expected(8.0)
+    )
+    assert _run_authorised(_case(radius="0.5")).answer_value_si == pytest.approx(
         _expected(0.5)
     )
 
 
 def test_transaction_adds_only_the_authorised_gravity_value() -> None:
-    projection = _projection(_case())
+    projection = _authorised(_case())
     draft = projection.draft
     plan = plan_complete_profile(ProfileId.vertical_circle_top_speed, draft)
     assert plan.disposition is PlanDisposition.complete
@@ -297,6 +415,12 @@ def test_transaction_adds_only_the_authorised_gravity_value() -> None:
     assert len(closed.symbols) == len(draft.symbols) + 1
     assert not closed.reference_frames
     assert not closed.points
+    # The typed limiting authority rides through the closure unchanged.
+    assert closed.interactions[0].contact_side is not None
+    assert closed.interactions[0].contact_side.value == "inward"
+    assert len(closed.state_conditions) == 2
+    assert closed.queries[0].objective is not None
+    assert closed.queries[0].objective.value == "minimum"
     gravity = next(
         item
         for item in closed.quantities
@@ -313,12 +437,55 @@ def test_transaction_adds_only_the_authorised_gravity_value() -> None:
     assert closed.queries[0].target.role.value == "speed"
 
 
-# --- fail-closed controls ---------------------------------------------------
+# --- the public corpus shape fails closed -----------------------------------
+
+
+def test_the_corpus_shape_alone_refuses_the_boundary_equality() -> None:
+    # The exact public structure: minimum_speed query, contact, radius,
+    # gravity, highest point — and no typed contact orientation, no typed
+    # boundary condition, because the corpus schema cannot state them.  The
+    # projected objective survives, but the missing authorities keep the
+    # boundary equality unlicensed: the case must not solve, whatever the
+    # correct-looking number would have been.
+    for variant in (
+        _case(),
+        _case(text_variant=True),
+        _case(
+            family="renamed_family_for_metadata_control",
+            case_id="fx_public_dev_0999",
+            fake_answer=4.4294469180700204,
+        ),
+    ):
+        result = _run(variant)
+        assert result.terminal is not LaneBTerminal.solved
+        assert result.answer_value_si is None
+        assert result.verified_candidate_count == 0
+        assert "vertical_circle_top_minimum_speed" not in result.applied_law_ids
+
+
+def test_no_other_profile_may_touch_an_objective_bearing_query() -> None:
+    # The planner-level guard: an extremal question is a different question,
+    # so a profile that does not understand objectives refuses the draft
+    # outright — before any shape matching.  Only the vertical-circle
+    # profile may even consider it, and on the bare corpus shape it still
+    # refuses on its missing typed authorities.
+    draft = _projection(_case()).draft
+    assert draft.queries[0].objective is not None
+    for profile_id in ProfileId:
+        plan = plan_complete_profile(profile_id, draft)
+        assert plan.disposition is not PlanDisposition.complete
+        if profile_id is not ProfileId.vertical_circle_top_speed:
+            assert plan.disposition is PlanDisposition.not_applicable
+
+
+# --- fail-closed controls (corpus-shaped near misses) -----------------------
 
 
 @pytest.mark.parametrize(
     "case",
     (
+        _case(query_output="tangential_velocity"),
+        _case(query_output="final_velocity"),
         _case(drop_contact=True),
         _case(duplicate_contact=True),
         _case(drop_gravity_assumption=True),
@@ -337,6 +504,8 @@ def test_transaction_adds_only_the_authorised_gravity_value() -> None:
         _case(strip_radius_quote=True),
     ),
     ids=(
+        "plain-top-speed-query",
+        "exact-final-speed-query",
         "missing-contact",
         "duplicate-contact",
         "missing-gravity-authority",
@@ -369,8 +538,53 @@ def test_structural_near_misses_fail_closed_without_numeric_output(case) -> None
     assert "vertical_circle_top_minimum_speed" not in result.applied_law_ids
 
 
+def test_a_maximum_speed_question_has_no_projection_at_all() -> None:
+    # The corpus query vocabulary has no maximum_speed key, so an
+    # outside-track maximum question cannot even reach the engine — and it
+    # must reach nothing rather than be silently reinterpreted.
+    projection = project_case_to_draft(_case(query_output="maximum_speed"))
+    assert projection.draft is None
+    assert projection.terminal.value == "projection_rejected"
+
+
+# --- fail-closed controls (authority variations, Draft level) ---------------
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    (
+        dict(side=None),
+        dict(side="outward"),
+        dict(with_touching=False),
+        dict(with_boundary=False),
+        dict(with_touching=False, with_boundary=False),
+        dict(boundary_event="start"),
+        dict(state_subject="track"),
+        dict(evidence_free_states=True),
+        dict(strip_objective=True),
+    ),
+    ids=(
+        "orientation-unstated",
+        "outside-track-contact",
+        "no-maintained-contact-state",
+        "no-limiting-boundary-state",
+        "no-states-at-all",
+        "boundary-at-the-wrong-event",
+        "states-on-the-track-not-the-particle",
+        "evidence-free-states",
+        "exact-question-despite-the-boundary-states",
+    ),
+)
+def test_authority_variations_fail_closed_without_numeric_output(kwargs) -> None:
+    result = _run_authorised(_case(), **kwargs)
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+    assert "vertical_circle_top_minimum_speed" not in result.applied_law_ids
+
+
 def test_gold_answer_tampering_cannot_change_runtime() -> None:
-    baseline = _run(_case())
-    tampered = _run(_case(fake_answer=123456.0))
+    baseline = _run_authorised(_case())
+    tampered = _run_authorised(_case(fake_answer=123456.0))
     assert tampered.terminal is LaneBTerminal.solved
     assert tampered.answer_value_si == pytest.approx(baseline.answer_value_si)

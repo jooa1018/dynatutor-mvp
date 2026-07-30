@@ -9,6 +9,7 @@ import math
 from engine.mechanics.contracts import (
     AssumptionDisposition,
     AxisName,
+    ContactSide,
     EntityPrimitive,
     GeometryRelationKind,
     InteractionKind,
@@ -11214,17 +11215,27 @@ def _instant_center_profile(context: LawContext) -> _InstantCenterLawProfile | N
 def _vertical_circle_top_boundary_emissions(
     context: LawContext,
 ) -> list[LawEmission]:
-    """The top-of-track contact boundary speed, from its exact typed shape.
+    """The typed limiting-contact minimum speed at a circular track's top.
 
-    One particle in contact with one circular track, one known rotation
-    radius, one known gravity magnitude, and one value-free scalar speed
-    magnitude read exactly at a typed ``highest_point`` event — and no other
-    quantity at all.  At a smooth track's highest point the contact can only
-    push, so the boundary the shape states is ``v^2 = g r`` — the existing
-    ``vertical_circle_top_minimum_speed`` law — with the speed's own
-    nonnegative domain predicate keeping the single admissible branch.  Any
-    extra quantity, entity, interaction, frame, or point makes the question
-    a different one and emits nothing.
+    One particle on one circular track, one known rotation radius, one
+    known gravity magnitude, and one value-free scalar speed magnitude read
+    exactly at a typed ``highest_point`` event — with the limiting contact
+    itself typed in full.  The equality ``v^2 = g r`` is the N = 0 contact
+    boundary, and a boundary is emitted only when the model states it:
+
+    * the contact's ``inward`` side — an inside track pushes toward the
+      centre, so contact maintenance bounds the speed from below and the
+      boundary is a minimum; an outward or unstated side emits nothing;
+    * a ``contact``/``touching`` state condition on the particle over the
+      motion interval — contact is maintained, not merely present;
+    * a ``boundary``/``active`` state condition on the particle at the top
+      event — the model sits exactly on the contact-maintenance boundary.
+
+    The existing ``vertical_circle_top_minimum_speed`` law id carries the
+    equality, with the speed's own nonnegative domain predicate keeping the
+    single admissible branch.  Any extra quantity, entity, interaction,
+    frame, point, or state makes the question a different one and emits
+    nothing.
     """
 
     particles = tuple(
@@ -11246,6 +11257,7 @@ def _vertical_circle_top_boundary_emissions(
         or context.points
         or len(context.motion_intervals) != 1
         or len(context.quantities) != 3
+        or len(context.state_conditions) != 2
     ):
         return []
     particle_id = particles[0].entity_id
@@ -11254,6 +11266,7 @@ def _vertical_circle_top_boundary_emissions(
     interval = context.motion_intervals[0]
     if (
         contact.kind is not InteractionKind.contact
+        or getattr(contact, "contact_side", None) is not ContactSide.inward
         or set(contact.participant_ids) != {particle_id, surface_id}
         or contact.quantity_ids
     ):
@@ -11271,8 +11284,30 @@ def _vertical_circle_top_boundary_emissions(
         if item.event_id == speed.event_id
         and item.kind.value == "highest_point"
     )
+    touching_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.contact
+        and item.state is StateValue.touching
+        and item.subject_id == particle_id
+        and item.interval_id == interval.interval_id
+        and item.event_id is None
+        and not item.quantity_ids
+    )
+    boundary_states = tuple(
+        item
+        for item in context.state_conditions
+        if item.kind is StateKind.boundary
+        and item.state is StateValue.active
+        and item.subject_id == particle_id
+        and item.interval_id == interval.interval_id
+        and item.event_id == speed.event_id
+        and not item.quantity_ids
+    )
     if (
         len(top_events) != 1
+        or len(touching_states) != 1
+        or len(boundary_states) != 1
         or speed.subject_id != particle_id
         or speed.component is not QuantityComponent.magnitude
         or speed.shape is not QuantityShape.scalar
@@ -11298,6 +11333,12 @@ def _vertical_circle_top_boundary_emissions(
 
     speed_squared_dimension = speed.dimension.plus(speed.dimension)
     assert speed_squared_dimension is not None
+    boundary_evidence_ids = tuple(
+        sorted(
+            set(touching_states[0].evidence_refs)
+            | set(boundary_states[0].evidence_refs)
+        )
+    )
     return [
         _emit(
             context,
@@ -11312,6 +11353,7 @@ def _vertical_circle_top_boundary_emissions(
                 ),
             ),
             (speed, gravity, radius),
+            extra_evidence_ids=boundary_evidence_ids,
         ),
         _emit(
             context,
