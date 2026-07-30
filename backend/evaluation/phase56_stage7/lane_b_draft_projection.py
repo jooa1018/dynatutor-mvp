@@ -2760,6 +2760,10 @@ def _interaction_owned_binding(
     invent structure the source never stated.
     """
 
+    # A parameter the source already states on a body-like subject has its
+    # typed owner; only a passive-side statement needs the resolution.
+    if primitives_by_entity.get(subject) in _CONSTITUTIVE_OWNER_PRIMITIVES:
+        return None
     owners: set[str] = set()
     relation_roles: set[str] = set()
     for relation in gold.relations:
