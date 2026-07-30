@@ -6,7 +6,125 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
-## B10/B12 authority repair session (2026-07-30) — read this first
+## B15/B16 acceptance and B17 disposition session (2026-07-30, later) — read this first
+
+This session continued Stage 7 from the measured 40/81 baseline
+(documentation head `52b237d`) and closed two structure packages forward-only;
+no reset, rebase, amend, squash, force-push, or history rewrite; every
+pre-session commit is preserved byte-identical.
+
+| Item | Value |
+|---|---|
+| B15 `TABLE_PULLEY_TWO_BODY` | **ACCEPTED** — code `9084091`, +3 public solves |
+| B16 `PARTICLE_ON_INCLINE_KINETIC_FRICTION` | **ACCEPTED** — code `3baa29d`, +3 public solves |
+| Projection owner fix | `a97e794` — body-stated constitutive parameters keep their source owner |
+| B17 `SPRING_ENERGY_ENDPOINT_SPEED` | **INCOMPLETE** — no code; see below |
+| Final code head | `a97e794b6f2b0a4b4521c280a03d62d03b9a361b` |
+| `OBSERVED_PUBLIC_SCORE` | **46/81** (measured at the final code head) |
+| `AUTHORITY_ACCEPTED_SCORE` | **46/81** (observed = accepted; no unmeasured claims) |
+| Supported wrong / solved-but-unscored / downgraded | **0 / 0 / 0** |
+| Deferred | 12/12; needs_figure 2/2; needs_confirmation 2/2; insufficient 1/1 |
+| Terminal mapping | 63/100 (was 57/100) |
+| Hard safety | 23/23 measured, 0 unbound, 0 nonzero |
+| Lanes C/D/E, compositional 12, synthetic 38, metamorphic, physics-changing, redaction | all PASS |
+| External model calls / private access / measured cost | 0 / 0 / $0 |
+| Strict report SHA-256 | `ff2d4b108f613e0eb3466f3232e443009cdedcdcac9ef4d60bb112e6900c75df` |
+| Corpus archive SHA-256 | `cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef` |
+
+`PUBLIC_EVALUATION_INFORMED_FIX: YES` — the packages were selected and
+verified by running the authorised public corpus and reading privacy-safe
+aggregates.  No private-corpus generalization is claimed.  Stage 7 remains
+`IN_PROGRESS / NOT_ACCEPTED`; Stage 8 is `NOT_STARTED`.
+
+### B15 — table-pulley two-body (`9084091`)
+
+A body on a frictionless horizontal table tied over a fixed ideal pulley to a
+hanging body; aggregate acceleration-magnitude query.  The projection's
+fixed-pulley closure admits the typed `surface` support variant alongside the
+incline variant; the new `table_pulley_two_body` profile is disjoint from
+`incline_hanging_pulley` by the source's own support primitive (never an
+invented zero angle).  The transaction derives only the world frame,
+weight/contact/rope interactions, contact and rope states, and value-free
+unknown components; the pre-built horizontal-contact law recognizer and
+compiler contract were widened to the free-body primitives the corpus
+projection actually produces, an optional system entity, and the authorized
+server-default gravity policy record.  All solving stays with the existing
+`particle_weight`, `particle_newton_second`, `rope_massless_tension`,
+`rope_fixed_pulley_motion`, `fixed_contact_no_penetration`, and
+`contact_normal_bound` laws.  The vertical two-body (Atwood) transaction now
+refuses a support primitive with no typed support relation instead of
+treating it as an inert bystander (the B10 lesson applied forward).
+31 focused tests.
+
+### B16 — kinetic incline slide (`3baa29d`)
+
+One body in a source-declared kinetic slide down one incline with a
+source-valued angle and friction coefficient; tangential-acceleration query,
+down-slope positive.  The corpus states no mass, so the existing force-based
+incline laws cannot close the shape; instead the projection derives a
+`gravity_driven_downslope_sliding` authority by closed policy only when
+gravity is the entire typed driving system (one body, one incline support, a
+`sliding_on_incline` segment, no stated velocity, force, rope, rest boundary,
+extra body, or extra proposal) — the same model-completeness footing as the
+B14 impact-isolation policy.  A friction coefficient stated on the support
+surface takes the sliding body as its typed owner under the existing
+interaction-owned constitutive convention.  The new registered
+`incline_sliding_kinetic_acceleration` law — the sliding twin of the existing
+sticking law — emits the per-mass slope closure plus the authority's own
+nonnegative-drive inequality, so a declared slide gravity cannot drive
+refuses instead of answering.  The rolling-energy candidate no longer claims
+a declared sliding regime, and the active-incline-friction compiler gate
+accepts exactly the mass-free downslope-authorised shape while every
+force-bearing mixture keeps failing closed.  The adversarial
+ambiguous-friction case remains `needs_confirmation`.  25 focused tests.
+
+### B17 — spring energy endpoint speed — INCOMPLETE, stated honestly
+
+The corpus's typed event structure does not preserve the natural-length
+endpoint: the end event's kind is the generic `finish`, and the
+natural-length wording exists only in raw-text evidence quotes, which the
+engine must never read as authority.  Without a typed carrier for "final
+spring deformation is zero", the final-speed query of an attached-spring
+release is genuinely underdetermined (the deformation at `finish` is
+unstated), and any server default for it would be exactly the silent-solve
+hazard the B12 revocation removed.  B17 is recorded INCOMPLETE with no code;
+the three affected public cases remain ordinary non-solves (wrong 0, blocked
+numeric 0).
+
+### Regression, environment, and audit notes
+
+- Full Stage 7 focused suite at the final code head: **1,245 passed**;
+  backend collection 4,095 tests, 0 errors.
+- One projection defect found by the suite (a body-stated coefficient was
+  rejected as owner-ambiguous) was repaired forward at `a97e794`.
+- The first strict run of this session was executed against unpinned
+  dependencies and mis-measured Lane D (FastAPI 0.141 route registration);
+  the official report was produced under `requirements-lock.txt` versions,
+  where Lane D passes.  No code changed between the two runs.
+- Exact-head CI at `a97e794` (all with verified exact checkout): push runs
+  `30560360254` (parser), `30560359932` (Stage 6: frontend, focused,
+  regression shards 0–7, partition audit, gate), `30560360115` (Stage 7:
+  B7 slow, offline evaluation incl. full backend regression and collection,
+  frontend, Stage 7 gate), `30560360250` (release: fast shards 0–3, slow
+  shards 0–15, both partition audits, quality, performance, frontend,
+  release gate); PR runs `30560366152`, `30560365767`, `30560365734`,
+  `30560365696`.  **8/8 SUCCESS.**
+- A **SAME_MODEL_READ_ONLY_CHECKER** (same Fable model as the author; not
+  represented as an independent Checker) audited `52b237d..a97e794` across
+  twelve scope areas (table/incline separation, kinetic/static separation,
+  B10/B12 revoke preservation, routing, generated values, event/interval
+  scope, near-miss coverage, compiler gate widenings, thresholds, gold
+  isolation, strict attribution): **PASS — blocking 0**, with eight
+  non-blocking notes recorded in the session evidence (among them: the
+  downslope compiler predicate could also check the approved-id set like its
+  sibling; the `a97e794` owner fix deserves its own pinned control; B15
+  inherits B8's tolerance of stray unused source quantities rather than
+  B16's exact-count style; and the B16 authority's physical premise — no
+  up-slope slide without stated prior motion — should stay documented
+  wherever the profile is).  A fresh independent Checker remains a
+  prerequisite for any Stage 7 acceptance claim.
+
+## B10/B12 authority repair session (2026-07-30)
 
 An independent review found that two sealed packages produced public-correct
 answers **without sufficient typed authority**, and this session repaired both
