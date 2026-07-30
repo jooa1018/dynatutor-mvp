@@ -19,13 +19,29 @@ forward (no history rewrite) and landed one new package:
 | Frame-reference audit follow-up | `a837719e86be0117126b003eb00e01a3dcc7e1d0` | Classifies the two additive enum fields in the observer-frame audit registry (they are enums, never references); repairs the CI failure at `58ae586`. |
 | **B14 1D restitution impact** | `53a169d1ed46fd200e453e5a47784550e2215a13` | **Implemented and tested** (35 focused tests, full stage-7 suite 1,189 passed locally).  New closed-policy projection derivation `external_impulse_negligible` per body from typed model completeness; exact-shape profile + transaction; the pre-existing collision static-boundary recognizer gains the Lane B closure shape as a second exact form, and its own [0, 1] coefficient domain fail-closes unphysical restitution.  **Public yield unmeasured — see the blocker below.** |
 
-**Accounting.** `OBSERVED_PUBLIC_SCORE` 44/81 (measured at `1982c40`, last
-session) is stale: it includes 6 solves whose authority is now revoked.
-`AUTHORITY_ACCEPTED_SCORE` = **38/81** (B1–B9, B11, B13).  After the repairs
-the B10/B12 public cases are expected to land as ordinary underdetermined
-non-solves (never `verified_unsupported`, so the supported-downgrade metric
-stays 0, and never a numeric answer), making observed = accepted ≈ 38/81, plus
-whatever B14 adds — but **none of this could be re-measured in this session**:
+**Accounting — measured and reconciled (strict gate re-run after the archive
+was supplied mid-session).** `OBSERVED_PUBLIC_SCORE` = `AUTHORITY_ACCEPTED_SCORE`
+= **40/81, wrong 0** at `exact_head_sha d719def` (code `53a169d`): the six
+revoked B10/B12 solves are gone exactly as designed (both profiles measure
+97/100 `not_applicable`, 0 complete — no wrong solve, no downgrade, no blocked
+numeric answer, no silent solve), and **B14 adds +2** (collision_restitution:
+4 applicable, 2 `verified_solve_reachable`, 1 `profile_plan_not_formable`,
+1 `solver_rejected` with no numeric output).  Deferred 12/12; needs_figure
+2/2; needs_confirmation 2/2; insufficient_information 1/1; unsupported_other
+0/2; terminal mapping 57/100; hard safety 23/23 measured, 0 unbound,
+0 nonzero, PASS; lanes C/D/E, compositional 12, synthetic 38, metamorphic,
+physics-changing controls, redaction all PASS; exit 2 on Lane B yield gates
+only.  Strict report: `/root/stage7_external/stage7_strict_report_d719def.json`,
+SHA-256 `fc562bb7dc091894dd6e363a367a1a8305e648df6bc1e26e8646182be3f5fe01`,
+corpus SHA-256 verified `cc8d8b27…`, evaluator `phase56-stage7-evaluator-v3`,
+contract v1, schema `dynatutor.phase56_stage7.offline_gate` 1.0.  **B14 is
+therefore ACCEPTED** (additional supported correct +2, wrong 0, exact-head CI
+8/8 SUCCESS at `53a169d`).  The next two restitution contexts (one
+plan-not-formable, one solver-rejected, both numberless) are the family's
+remaining shape candidates.
+
+The earlier revision of this section, preserved below for the session record,
+was written while the archive was absent:
 
 **Corpus-unavailable blocker (this session).** The authorised public archive
 (SHA-256 `cc8d8b27…`) is supplied out-of-tree per session and was not present
