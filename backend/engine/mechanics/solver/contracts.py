@@ -260,8 +260,10 @@ def _is_static_collision_boundary_graph(graph: EquationGraph) -> bool:
         return False
     momentum = equations_by_law["system_momentum_conservation"]
     restitution = equations_by_law["direct_restitution"]
+    # One system-scoped isolation authority, or exactly one per participant —
+    # the Lane B closure derives the per-body pair; both forms are exact.
     if (
-        len(momentum.assumption_ids) != 1
+        len(momentum.assumption_ids) not in {1, 2}
         or restitution.assumption_ids
         or momentum.complexity_cost != 6
         or restitution.complexity_cost != 5
@@ -290,6 +292,9 @@ def _is_static_collision_boundary_graph(graph: EquationGraph) -> bool:
         if item.quantity_role == "coefficient_restitution"
     )
     participant_ids = {item.subject_id for item in masses}
+    # A mass is timeless or scoped to the impact's own interval; the
+    # scalar coefficient may stay frameless — both are the same source
+    # statement, and nothing else is admitted.
     if (
         None in participant_ids
         or len(participant_ids) != 2
@@ -297,13 +302,13 @@ def _is_static_collision_boundary_graph(graph: EquationGraph) -> bool:
             item.known_si_value is None
             or item.event_id is not None
             or item.frame_id is not None
-            or item.interval_id is not None
+            or item.interval_id not in {None, interval_id}
             for item in masses
         )
         or len(coefficients) != 1
         or coefficients[0].known_si_value is None
         or coefficients[0].event_id is not None
-        or coefficients[0].frame_id != frame_id
+        or coefficients[0].frame_id not in {None, frame_id}
         or coefficients[0].interval_id != interval_id
         or any(
             item.subject_id not in participant_ids
@@ -396,9 +401,13 @@ def _is_static_collision_boundary_graph(graph: EquationGraph) -> bool:
 
     # Exact compiler-generated topology and provenance mirror.  Law labels and
     # symbol-set equality are not sufficient authority for this waiver.
+    # Two exact entity topologies are admitted and nothing between them: the
+    # two impact participants alone, with the scalar coefficient stated on one
+    # of them (the Lane B closure shape), or the participants plus exactly one
+    # enclosing system entity that owns the coefficient (the product shape).
     entity_ids = momentum.scope.entity_ids
     if (
-        len(entity_ids) != 3
+        len(entity_ids) not in {2, 3}
         or momentum.scope.point_ids
         or restitution.scope != momentum.scope
         or any(
@@ -423,10 +432,16 @@ def _is_static_collision_boundary_graph(graph: EquationGraph) -> bool:
     )
     coefficient = coefficients[0]
     system_ids = set(entity_ids) - participant_ids
+    coefficient_owner_ok = (
+        coefficient.subject_id in system_ids
+        if system_ids
+        else coefficient.subject_id in participant_ids
+    )
     if (
         not scalar_nodes
-        or len(system_ids) != 1
-        or coefficient.subject_id not in system_ids
+        or set(entity_ids) - system_ids != participant_ids
+        or len(system_ids) > 1
+        or not coefficient_owner_ok
         or coefficient.symbol.dimension != DimensionVector()
         or type(coefficient.known_si_value) is not float
         or not math.isfinite(coefficient.known_si_value)

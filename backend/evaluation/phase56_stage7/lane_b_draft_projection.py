@@ -67,7 +67,7 @@ from engine.textbook_parser.evidence_alignment import (
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
 
 
-DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v8"
+DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v9"
 
 PERMITTED_CASE_MEMBERS: frozenset[str] = frozenset({"problem_text", "gold"})
 PERMITTED_GOLD_MEMBERS: frozenset[str] = frozenset(
@@ -798,6 +798,138 @@ def _derive_direct_constant_force_work_assumption(
         }
     )
     approved.append(_DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID)
+
+
+_ISOLATED_IMPACT_ASSUMPTION_PREFIX = "asm_closure_isolated_impact_"
+
+
+def _derive_isolated_impact_assumption(
+    *,
+    entities: list[dict[str, Any]],
+    motion_intervals: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+    geometry: list[dict[str, Any]],
+    interactions: list[dict[str, Any]],
+    quantities: list[dict[str, Any]],
+    assumptions: list[dict[str, Any]],
+    approved: list[str],
+) -> None:
+    """Authorise impulse isolation over one exact source-declared impact.
+
+    The policy consumes only source-side typed structure: exactly two closed
+    bodies, exactly one source-declared collision between them, and a motion
+    interval whose own boundary events are the typed ``collision_start`` and
+    ``collision_end`` of exactly those two bodies.  In that model the
+    collision is the entire typed interaction system over its own interval —
+    there is no other typed carrier of impulse — so the conservation law's
+    existing ``external_impulse_negligible`` authority is a statement of the
+    model's completeness, not a guess about the world.  No sentence keyword,
+    case identity, family, expected terminal, or numeric answer is read.
+
+    Anything beyond the exact impact shape refuses the derivation outright:
+    a third entity, any geometry, any second interaction, any other
+    assumption (a gravity authority would put a finite external impulse in
+    play), or any quantity that is not one of the impact's own masses,
+    velocities, and restitution coefficient — a stated force, impulse, or
+    spring constant is typed evidence of external mechanics.
+    """
+
+    if (
+        len(entities) != 2
+        or len(motion_intervals) != 1
+        or len(interactions) != 1
+        or geometry
+        or assumptions
+    ):
+        return
+    if any(
+        item["primitive"] not in {"particle", "rigid_body"}
+        for item in entities
+    ):
+        return
+    body_ids = {item["entity_id"] for item in entities}
+    interval = motion_intervals[0]
+    interval_id = interval["interval_id"]
+    impact = interactions[0]
+    if (
+        impact["kind"] != "collision"
+        or set(impact["participant_ids"]) != body_ids
+        or len(impact["participant_ids"]) != 2
+        or impact["interval_id"] != interval_id
+        or impact.get("quantity_ids")
+    ):
+        return
+    if (
+        set(interval["subject_ids"]) != body_ids
+        or len(interval["subject_ids"]) != 2
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or interval["start_event_id"] == interval["end_event_id"]
+    ):
+        return
+    events_by_id = {item["event_id"]: item for item in events}
+    start = events_by_id.get(interval["start_event_id"])
+    end = events_by_id.get(interval["end_event_id"])
+    if (
+        len(events) != 2
+        or len(events_by_id) != 2
+        or start is None
+        or end is None
+        or start["kind"] != "collision_start"
+        or end["kind"] != "collision_end"
+        or set(start["subject_ids"]) != body_ids
+        or set(end["subject_ids"]) != body_ids
+    ):
+        return
+
+    allowed_roles = {"mass", "velocity", "coefficient_restitution"}
+    if any(
+        item["subject_id"] not in body_ids
+        or item["role"] not in allowed_roles
+        for item in quantities
+    ):
+        return
+    masses_by_subject: dict[str, dict[str, Any]] = {}
+    for item in quantities:
+        if item["role"] != "mass":
+            continue
+        if item["subject_id"] in masses_by_subject:
+            return
+        masses_by_subject[item["subject_id"]] = item
+    if set(masses_by_subject) != body_ids or any(
+        item.get("raw_value") is None or not item.get("evidence_refs")
+        for item in masses_by_subject.values()
+    ):
+        return
+
+    evidence = sorted(
+        {
+            evidence_id
+            for item in masses_by_subject.values()
+            for evidence_id in item["evidence_refs"]
+        }
+    )
+    declared = {item["assumption_id"] for item in assumptions}
+    for body_id in sorted(body_ids):
+        assumption_id = f"{_ISOLATED_IMPACT_ASSUMPTION_PREFIX}{body_id}"
+        if assumption_id in declared:
+            return
+        assumptions.append(
+            {
+                "assumption_id": assumption_id,
+                "kind": "external_impulse_negligible",
+                "subject_id": body_id,
+                "interval_id": interval_id,
+                "disposition": "approved",
+                "reason": (
+                    "closed server policy: the source-declared collision is "
+                    "the model's entire typed interaction system over its "
+                    "own collision interval"
+                ),
+                "evidence_refs": list(evidence),
+            }
+        )
+        approved.append(assumption_id)
 
 
 _FIXED_PULLEY_IMPLICIT_ROPE_ID = "entity_closure_fixed_pulley_rope"
@@ -1901,6 +2033,17 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         entities=entities,
         motion_intervals=intervals,
         geometry=geometry,
+        quantities=quantities,
+        assumptions=assumptions,
+        approved=approved,
+    )
+
+    _derive_isolated_impact_assumption(
+        entities=entities,
+        motion_intervals=intervals,
+        events=events,
+        geometry=geometry,
+        interactions=interactions,
         quantities=quantities,
         assumptions=assumptions,
         approved=approved,

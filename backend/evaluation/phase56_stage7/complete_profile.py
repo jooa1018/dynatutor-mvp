@@ -1465,6 +1465,327 @@ def _rigid_two_point_speed_prerequisite(name: str) -> "_Resolver":
     return resolve
 
 
+def _collision_restitution_evidence(
+    draft: Any,
+) -> Mapping[str, PrerequisiteDisposition] | None:
+    """Classify one exact source-typed 1D restitution-impact topology.
+
+    Exactly two closed bodies collide: one source-declared collision
+    interaction spans one motion interval whose own boundary events are the
+    typed ``collision_start`` and ``collision_end`` of exactly those two
+    bodies.  Each body carries one source-valued mass and one source-valued
+    approach speed read at the collision start, stated along the horizontal
+    line of impact by its own semantic direction (left or right); one
+    source-valued restitution coefficient binds the impact; and the source
+    asks for exactly one body's signed x-component separation velocity at
+    the collision end — the compiler's Lane B contract is one query per
+    run, so a two-question impact stays out of reach rather than half
+    answered.  The partner's separation velocity is the transaction's
+    single generated value-free unknown.
+
+    The conservation authority is the projection's own closed-policy
+    ``external_impulse_negligible`` derivation — a statement of the typed
+    model's completeness (the collision is the entire interaction system
+    over its own interval), never a guess — and this reader requires both
+    per-body authorities verbatim.  A third entity, a second interaction,
+    any geometry, a gravity authority, an unpaired mass or velocity, a
+    magnitude query, or a coefficient stated twice all refuse.
+
+    This reader authorises only structural closure: materialising the world
+    frame, binding each stated approach direction onto that frame's signed
+    axis, linking the impact's own quantities into the collision record,
+    and generating the partner's value-free separation unknown when only
+    one body's velocity is asked.  The existing
+    ``system_momentum_conservation`` and ``direct_restitution`` generic
+    laws do all solving.  No value, equation, solver choice, answer
+    metadata, text, or corpus identity is read here.
+    """
+
+    if (
+        len(draft.motion_intervals) != 1
+        or len(draft.queries) != 1
+        or len(draft.events) != 2
+        or len(draft.interactions) != 1
+        or len(draft.assumptions) != 2
+        or len(draft.entities) != 2
+        or draft.reference_frames
+        or draft.points
+        or draft.geometry
+        or draft.constraints
+        or draft.state_conditions
+        or draft.principle_hints
+        or draft.ambiguities
+        or draft.unsupported_features
+        or draft.figure_dependency.level.value != "none"
+        or draft.figure_dependency.missing_information
+        or draft.figure_dependency.evidence_refs
+    ):
+        return None
+
+    if any(
+        item.primitive.value not in {"particle", "rigid_body"}
+        for item in draft.entities
+    ):
+        return None
+    body_ids = {item.entity_id for item in draft.entities}
+
+    interval = draft.motion_intervals[0]
+    interval_id = interval.interval_id
+    if (
+        set(interval.subject_ids) != body_ids
+        or len(interval.subject_ids) != 2
+        or interval.frame_id is not None
+        or interval.start_event_id is None
+        or interval.end_event_id is None
+        or interval.start_event_id == interval.end_event_id
+    ):
+        return None
+
+    events = {item.event_id: item for item in draft.events}
+    start = events.get(interval.start_event_id)
+    end = events.get(interval.end_event_id)
+    if (
+        len(events) != 2
+        or start is None
+        or end is None
+        or start.kind.value != "collision_start"
+        or end.kind.value != "collision_end"
+        or any(
+            set(item.subject_ids) != body_ids
+            or item.time_quantity_id is not None
+            or tuple(item.interval_ids) != (interval_id,)
+            or item.occurs_in_interval_ids
+            for item in draft.events
+        )
+    ):
+        return None
+    start_id, end_id = start.event_id, end.event_id
+
+    impact = draft.interactions[0]
+    if (
+        impact.kind.value != "collision"
+        or set(impact.participant_ids) != body_ids
+        or len(impact.participant_ids) != 2
+        or impact.point_ids
+        or impact.frame_id is not None
+        or impact.interval_id != interval_id
+        or impact.event_id is not None
+        or impact.quantity_ids
+    ):
+        return None
+
+    evidence_ids = {item.evidence_id for item in draft.source_evidence}
+
+    def evidenced(item: Any) -> bool:
+        refs = set(item.evidence_refs)
+        return bool(refs) and refs.issubset(evidence_ids)
+
+    authority_subjects = set()
+    for authority in draft.assumptions:
+        if (
+            authority.kind != "external_impulse_negligible"
+            or getattr(authority.disposition, "value", authority.disposition)
+            != "approved"
+            or authority.subject_id not in body_ids
+            or authority.interval_id != interval_id
+            or authority.proposed_role is not None
+            or authority.proposed_value is not None
+            or authority.proposed_unit is not None
+            or not evidenced(authority)
+        ):
+            return None
+        authority_subjects.add(authority.subject_id)
+    if authority_subjects != body_ids:
+        return None
+
+    def valued_source(item: Any) -> bool:
+        return (
+            item.raw_value is not None
+            and item.raw_unit is not None
+            and item.provenance.value == "explicit_source"
+            and item.symbol_id is not None
+            and evidenced(item)
+        )
+
+    query = draft.queries[0]
+    target = query.target
+    target_quantity = next(
+        (
+            item
+            for item in draft.quantities
+            if item.quantity_id == target.target_quantity_id
+        ),
+        None,
+    )
+    query_exact = (
+        query.shape.value == "scalar"
+        and getattr(query, "objective", None) is None
+        and target.role.value == "velocity"
+        and target.component.value == "x"
+        and target.subject_id in body_ids
+        and target.point_id is None
+        and target.frame_id is None
+        and target.interval_id == interval_id
+        and target.event_id == end_id
+        and target.direction is None
+        and target_quantity is not None
+        and target_quantity.subject_id == target.subject_id
+        and target_quantity.point_id is None
+        and target_quantity.frame_id is None
+        and target_quantity.interval_id == interval_id
+        and target_quantity.event_id == end_id
+        and target_quantity.role is target.role
+        and target_quantity.component is target.component
+        and target_quantity.direction is None
+        and target_quantity.shape.value == "scalar"
+        and target_quantity.raw_value is None
+        and target_quantity.raw_unit is None
+        and target_quantity.provenance.value == "unknown"
+        and target_quantity.symbol_id is not None
+        and not target_quantity.evidence_refs
+        and query.output_dimension == target_quantity.dimension
+        and not query.evidence_refs
+    )
+    if not query_exact:
+        return None
+
+    symbols_by_quantity: Counter[str | None] = Counter(
+        item.quantity_id for item in draft.symbols
+    )
+    if len(draft.symbols) != len(draft.quantities) or any(
+        item.symbol_id is None or symbols_by_quantity[item.quantity_id] != 1
+        for item in draft.quantities
+    ):
+        return None
+
+    unknown_ids = {
+        query.target.target_quantity_id for query in draft.queries
+    }
+    known = tuple(
+        item
+        for item in draft.quantities
+        if item.quantity_id not in unknown_ids
+    )
+
+    dispositions: dict[str, PrerequisiteDisposition] = {
+        "collision_topology": PrerequisiteDisposition.explicit_source,
+        "impact_boundary_events": PrerequisiteDisposition.explicit_source,
+        "isolated_impact_authority": PrerequisiteDisposition.explicit_source,
+    }
+
+    masses = tuple(item for item in known if item.role.value == "mass")
+    masses_by_subject = {item.subject_id: item for item in masses}
+    mass_exact = (
+        len(masses) == 2
+        and set(masses_by_subject) == body_ids
+        and all(
+            item.point_id is None
+            and item.frame_id is None
+            and item.interval_id in {None, interval_id}
+            and item.event_id is None
+            and item.shape.value == "scalar"
+            and item.component.value == "unspecified"
+            and item.direction is None
+            and valued_source(item)
+            for item in masses
+        )
+    )
+    dispositions["mass_pair"] = (
+        PrerequisiteDisposition.explicit_source
+        if mass_exact
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(masses) > 2
+            else PrerequisiteDisposition.missing
+        )
+    )
+
+    approach = tuple(
+        item for item in known if item.role.value in {"velocity", "speed"}
+    )
+    approach_by_subject = {item.subject_id: item for item in approach}
+
+    def approach_exact(item: Any) -> bool:
+        direction = getattr(
+            getattr(item.direction, "direction", None), "value", None
+        )
+        return (
+            item.role.value == "velocity"
+            and item.point_id is None
+            and item.frame_id is None
+            and item.interval_id == interval_id
+            and item.event_id == start_id
+            and item.shape.value == "scalar"
+            and item.component.value == "unspecified"
+            and direction in {"left", "right"}
+            and valued_source(item)
+        )
+
+    approach_ok = (
+        len(approach) == 2
+        and set(approach_by_subject) == body_ids
+        and all(approach_exact(item) for item in approach)
+    )
+    dispositions["approach_velocities"] = (
+        PrerequisiteDisposition.explicit_source
+        if approach_ok
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(approach) > 2
+            else PrerequisiteDisposition.missing
+        )
+    )
+
+    coefficients = tuple(
+        item for item in known if item.role.value == "coefficient_restitution"
+    )
+    coefficient_exact = (
+        len(coefficients) == 1
+        and coefficients[0].subject_id in body_ids
+        and coefficients[0].point_id is None
+        and coefficients[0].frame_id is None
+        and coefficients[0].interval_id in {None, interval_id}
+        and coefficients[0].event_id is None
+        and coefficients[0].shape.value == "scalar"
+        and coefficients[0].component.value == "unspecified"
+        and coefficients[0].direction is None
+        and valued_source(coefficients[0])
+    )
+    dispositions["restitution_coefficient"] = (
+        PrerequisiteDisposition.explicit_source
+        if coefficient_exact
+        else (
+            PrerequisiteDisposition.ambiguous
+            if len(coefficients) > 1
+            else PrerequisiteDisposition.missing
+        )
+    )
+
+    accounted = {
+        item.quantity_id for item in (*masses, *approach, *coefficients)
+    } | unknown_ids
+    if len(accounted) != len(draft.quantities):
+        return None
+
+    dispositions.update(
+        world_frame=PrerequisiteDisposition.server_derivable,
+        axis_binding=PrerequisiteDisposition.server_derivable,
+        query_binding=PrerequisiteDisposition.server_derivable,
+        partner_post_velocity_symbol=PrerequisiteDisposition.generated_unknown,
+        capability=PrerequisiteDisposition.explicit_source,
+    )
+    return dispositions
+
+
+def _collision_restitution_prerequisite(name: str) -> "_Resolver":
+    def resolve(facts: "_DraftFacts") -> PrerequisiteDisposition:
+        if facts.collision_restitution_profile is None:
+            return PrerequisiteDisposition.missing
+        return facts.collision_restitution_profile[name]
+
+    return resolve
+
+
 def _vertical_circle_top_speed_evidence(
     draft: Any,
 ) -> Mapping[str, PrerequisiteDisposition] | None:
@@ -2169,6 +2490,7 @@ class _DraftFacts:
         "approved",
         "axis_families",
         "bounded_intervals",
+        "collision_restitution_profile",
         "explicit_resultant_force_profile",
         "geometry",
         "has_blocking_ambiguity",
@@ -2216,6 +2538,9 @@ class _DraftFacts:
         )
         self.rigid_two_point_speed_profile = (
             _rigid_two_point_speed_transfer_evidence(draft)
+        )
+        self.collision_restitution_profile = (
+            _collision_restitution_evidence(draft)
         )
         self.explicit_resultant_force_profile = (
             _explicit_resultant_force_evidence(draft)
@@ -2904,23 +3229,40 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _explicit_resultant_force_prerequisite("capability")),
         ),
     ),
+    # Exactly two closed bodies, one source-declared collision spanning its
+    # own collision_start/collision_end-bounded interval, per-body masses
+    # and semantically-directed approach velocities, one restitution
+    # coefficient, signed x-component separation queries, and the
+    # projection's own per-body impulse-isolation authority.  The
+    # exact-shape reader owns applicability; the existing
+    # system_momentum_conservation and direct_restitution laws do all
+    # solving.
     _ProfileSignature(
         ProfileId.collision_restitution,
-        lambda facts: bool(facts.interactions.get("collision")),
+        lambda facts: facts.collision_restitution_profile is not None,
         (
-            ("interaction_collision", PrerequisiteKind.interaction,
-             _needs_interaction("collision")),
-            ("quantity_mass", PrerequisiteKind.interaction_quantity,
-             _needs_role("mass")),
-            ("quantity_velocity", PrerequisiteKind.interaction_quantity,
-             _needs_role("velocity")),
+            ("interaction_collision_topology", PrerequisiteKind.interaction,
+             _collision_restitution_prerequisite("collision_topology")),
+            ("event_impact_boundaries", PrerequisiteKind.state_condition,
+             _collision_restitution_prerequisite("impact_boundary_events")),
+            ("authority_isolated_impact", PrerequisiteKind.authority,
+             _collision_restitution_prerequisite("isolated_impact_authority")),
+            ("quantity_mass_pair", PrerequisiteKind.interaction_quantity,
+             _collision_restitution_prerequisite("mass_pair")),
+            ("quantity_approach_velocities", PrerequisiteKind.interaction_quantity,
+             _collision_restitution_prerequisite("approach_velocities")),
             ("quantity_restitution", PrerequisiteKind.interaction_quantity,
-             _needs_role("coefficient_restitution")),
-            ("interval_bounded", PrerequisiteKind.state_condition, _bounded_interval),
-            ("authority_external_impulse_negligible", PrerequisiteKind.authority,
-             _needs_authority("external_impulse_negligible")),
-            ("symbol_post_velocity", PrerequisiteKind.unknown_symbol,
-             _generated_unknown),
+             _collision_restitution_prerequisite("restitution_coefficient")),
+            ("frame_world", PrerequisiteKind.reference_frame,
+             _collision_restitution_prerequisite("world_frame")),
+            ("axis_bindings", PrerequisiteKind.capability,
+             _collision_restitution_prerequisite("axis_binding")),
+            ("query_binding", PrerequisiteKind.capability,
+             _collision_restitution_prerequisite("query_binding")),
+            ("symbol_partner_post_velocity", PrerequisiteKind.unknown_symbol,
+             _collision_restitution_prerequisite("partner_post_velocity_symbol")),
+            ("capability_momentum_restitution", PrerequisiteKind.capability,
+             _collision_restitution_prerequisite("capability")),
         ),
     ),
     _ProfileSignature(

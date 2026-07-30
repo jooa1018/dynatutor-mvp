@@ -540,6 +540,7 @@ def test_the_profile_table_and_enum_cannot_drift():
         ProfileId.incline_hanging_pulley,
         ProfileId.rigid_fixed_axis,
         ProfileId.rigid_two_point_speed,
+        ProfileId.collision_restitution,
         ProfileId.explicit_resultant_force,
         ProfileId.vertical_circle_top_speed,
         ProfileId.rolling_incline_energy_speed,

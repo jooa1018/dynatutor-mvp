@@ -144,6 +144,9 @@ RESULTANT_FORCE_FRAME_ID = "frm_closure_resultant_force"
 RESULTANT_FORCE_INTERACTION_ID = "rel_closure_resultant_force"
 VERTICAL_CIRCLE_GRAVITY_QUANTITY_ID = "qty_closure_vertical_circle_gravity"
 VERTICAL_CIRCLE_GRAVITY_SYMBOL_ID = "sym_closure_vertical_circle_gravity"
+COLLISION_RESTITUTION_FRAME_ID = "frame_closure_collision_restitution_world"
+COLLISION_PARTNER_AFTER_QUANTITY_ID = "qty_closure_collision_partner_after"
+COLLISION_PARTNER_AFTER_SYMBOL_ID = "sym_closure_collision_partner_after"
 ROLLING_GRAVITY_QUANTITY_ID = "qty_closure_rolling_gravity"
 ROLLING_GRAVITY_SYMBOL_ID = "sym_closure_rolling_gravity"
 
@@ -3933,6 +3936,391 @@ def _rigid_two_point_speed_transfer_transaction(
     )
 
 
+def _collision_restitution_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one exact source-typed 1D restitution-impact readout.
+
+    The transaction creates no value, equation, force, assumption, solver
+    choice, candidate, or answer.  It materialises the world frame, rebinds
+    each source-stated approach direction onto that frame's signed x axis,
+    links the impact's own masses, velocities, and restitution coefficient
+    into the collision record the source already states, and — when the
+    source asks for only one body's separation velocity — generates the
+    partner's value-free separation unknown so the two existing generic
+    laws (``system_momentum_conservation`` under the projection's own
+    per-body impulse-isolation authority, and ``direct_restitution``) can
+    couple the impact.  Both authorities must be spent verbatim; anything
+    beyond the exact impact shape refuses and closes nothing.
+    """
+
+    reserved_ids = {
+        COLLISION_RESTITUTION_FRAME_ID,
+        COLLISION_PARTNER_AFTER_QUANTITY_ID,
+        COLLISION_PARTNER_AFTER_SYMBOL_ID,
+    }
+    if (
+        len(payload["entities"]) != 2
+        or len(payload["motion_intervals"]) != 1
+        or len(payload["queries"]) != 1
+        or len(payload["events"]) != 2
+        or len(payload["interactions"]) != 1
+        or len(payload["assumptions"]) != 2
+        or payload["reference_frames"]
+        or payload["points"]
+        or payload["geometry"]
+        or payload["constraints"]
+        or payload["state_conditions"]
+        or payload["principle_hints"]
+        or payload["ambiguities"]
+        or payload["unsupported_features"]
+        or payload["figure_dependency"] != {
+            "level": "none",
+            "missing_information": [],
+            "evidence_refs": [],
+        }
+        or reserved_ids & _authored_draft_ids(payload)
+    ):
+        return None
+
+    if any(
+        item.get("primitive") not in {"particle", "rigid_body"}
+        for item in payload["entities"]
+    ):
+        return None
+    body_ids = {item.get("entity_id") for item in payload["entities"]}
+
+    interval = payload["motion_intervals"][0]
+    interval_id = interval.get("interval_id")
+    if (
+        set(interval.get("subject_ids", ())) != body_ids
+        or len(interval.get("subject_ids", ())) != 2
+        or interval.get("frame_id") is not None
+        or interval.get("start_event_id") is None
+        or interval.get("end_event_id") is None
+        or interval.get("start_event_id") == interval.get("end_event_id")
+    ):
+        return None
+
+    events = {item.get("event_id"): item for item in payload["events"]}
+    start = events.get(interval.get("start_event_id"))
+    end = events.get(interval.get("end_event_id"))
+    if (
+        len(events) != 2
+        or start is None
+        or end is None
+        or start.get("kind") != "collision_start"
+        or end.get("kind") != "collision_end"
+        or any(
+            set(item.get("subject_ids", ())) != body_ids
+            or item.get("time_quantity_id") is not None
+            or item.get("interval_ids") != [interval_id]
+            or item.get("occurs_in_interval_ids")
+            for item in payload["events"]
+        )
+    ):
+        return None
+    start_id = start.get("event_id")
+    end_id = end.get("event_id")
+
+    impact = payload["interactions"][0]
+    if (
+        impact.get("kind") != "collision"
+        or set(impact.get("participant_ids", ())) != body_ids
+        or len(impact.get("participant_ids", ())) != 2
+        or impact.get("point_ids")
+        or impact.get("frame_id") is not None
+        or impact.get("interval_id") != interval_id
+        or impact.get("event_id") is not None
+        or impact.get("quantity_ids")
+    ):
+        return None
+
+    source_evidence_ids = {
+        item.get("evidence_id") for item in payload["source_evidence"]
+    }
+
+    def evidenced(item: dict[str, Any]) -> bool:
+        refs = set(item.get("evidence_refs", ()))
+        return bool(refs) and refs.issubset(source_evidence_ids)
+
+    authority_subjects = set()
+    for assumption in payload["assumptions"]:
+        if (
+            assumption.get("kind") != "external_impulse_negligible"
+            or assumption.get("disposition") != "approved"
+            or assumption.get("assumption_id")
+            not in authority.approved_assumption_ids
+            or assumption.get("subject_id") not in body_ids
+            or assumption.get("interval_id") != interval_id
+            or assumption.get("proposed_role") is not None
+            or assumption.get("proposed_value") is not None
+            or assumption.get("proposed_unit") is not None
+            or not evidenced(assumption)
+        ):
+            return None
+        authority_subjects.add(assumption.get("subject_id"))
+    if authority_subjects != body_ids:
+        return None
+
+    def valued_source(item: dict[str, Any]) -> bool:
+        return (
+            item.get("raw_value") is not None
+            and item.get("raw_unit") is not None
+            and item.get("provenance") == "explicit_source"
+            and item.get("symbol_id") is not None
+            and evidenced(item)
+        )
+
+    quantities = {
+        item.get("quantity_id"): item for item in payload["quantities"]
+    }
+    if len(quantities) != len(payload["quantities"]):
+        return None
+
+    query_subjects: list[str] = []
+    unknown_ids: set[str] = set()
+    for query in payload["queries"]:
+        target = dict(query.get("target") or {})
+        target_quantity = quantities.get(target.get("target_quantity_id"))
+        if (
+            target_quantity is None
+            or query.get("shape") != "scalar"
+            or query.get("objective") is not None
+            or target.get("role") != "velocity"
+            or target.get("component") != "x"
+            or target.get("subject_id") not in body_ids
+            or target.get("point_id") is not None
+            or target.get("frame_id") is not None
+            or target.get("interval_id") != interval_id
+            or target.get("event_id") != end_id
+            or target.get("direction") is not None
+            or target_quantity.get("subject_id") != target.get("subject_id")
+            or target_quantity.get("point_id") is not None
+            or target_quantity.get("frame_id") is not None
+            or target_quantity.get("interval_id") != interval_id
+            or target_quantity.get("event_id") != end_id
+            or target_quantity.get("role") != "velocity"
+            or target_quantity.get("component") != "x"
+            or target_quantity.get("direction") is not None
+            or target_quantity.get("shape") != "scalar"
+            or target_quantity.get("raw_value") is not None
+            or target_quantity.get("raw_unit") is not None
+            or target_quantity.get("provenance") != "unknown"
+            or target_quantity.get("symbol_id") is None
+            or target_quantity.get("evidence_refs")
+            or query.get("output_dimension") != target_quantity.get("dimension")
+            or query.get("evidence_refs")
+        ):
+            return None
+        query_subjects.append(target.get("subject_id"))
+        unknown_ids.add(target.get("target_quantity_id"))
+    if len(set(query_subjects)) != len(query_subjects):
+        return None
+
+    symbol_counts: Counter[str | None] = Counter(
+        item.get("quantity_id") for item in payload["symbols"]
+    )
+    if len(payload["symbols"]) != len(payload["quantities"]) or any(
+        item.get("symbol_id") is None
+        or symbol_counts[item.get("quantity_id")] != 1
+        for item in payload["quantities"]
+    ):
+        return None
+
+    known = [
+        item
+        for item in payload["quantities"]
+        if item.get("quantity_id") not in unknown_ids
+    ]
+    masses = [item for item in known if item.get("role") == "mass"]
+    approach = [
+        item for item in known if item.get("role") in {"velocity", "speed"}
+    ]
+    coefficients = [
+        item for item in known if item.get("role") == "coefficient_restitution"
+    ]
+    if (
+        len(masses) != 2
+        or len(approach) != 2
+        or len(coefficients) != 1
+        or len(known) != 5
+    ):
+        return None
+    masses_by_subject = {item.get("subject_id"): item for item in masses}
+    approach_by_subject = {item.get("subject_id"): item for item in approach}
+    if set(masses_by_subject) != body_ids or set(approach_by_subject) != body_ids:
+        return None
+    if any(
+        item.get("point_id") is not None
+        or item.get("frame_id") is not None
+        or item.get("interval_id") not in {None, interval_id}
+        or item.get("event_id") is not None
+        or item.get("shape") != "scalar"
+        or item.get("component") != "unspecified"
+        or item.get("direction") is not None
+        or not valued_source(item)
+        for item in masses
+    ):
+        return None
+    approach_axis: dict[str, tuple[str, int]] = {}
+    for item in approach:
+        direction = (item.get("direction") or {}).get("direction")
+        binding = _SEMANTIC_AXIS_BINDING.get(str(direction))
+        if (
+            item.get("role") != "velocity"
+            or item.get("point_id") is not None
+            or item.get("frame_id") is not None
+            or item.get("interval_id") != interval_id
+            or item.get("event_id") != start_id
+            or item.get("shape") != "scalar"
+            or item.get("component") != "unspecified"
+            or (item.get("direction") or {}).get("kind") != "semantic"
+            or direction not in {"left", "right"}
+            or binding is None
+            or not valued_source(item)
+        ):
+            return None
+        approach_axis[item.get("quantity_id")] = binding
+    coefficient = coefficients[0]
+    if (
+        coefficient.get("subject_id") not in body_ids
+        or coefficient.get("point_id") is not None
+        or coefficient.get("frame_id") is not None
+        or coefficient.get("interval_id") not in {None, interval_id}
+        or coefficient.get("event_id") is not None
+        or coefficient.get("shape") != "scalar"
+        or coefficient.get("component") != "unspecified"
+        or coefficient.get("direction") is not None
+        or not valued_source(coefficient)
+    ):
+        return None
+
+    frame_evidence = sorted(
+        {
+            evidence_id
+            for item in (*masses, *approach)
+            for evidence_id in item.get("evidence_refs", ())
+        }
+    )
+    if not frame_evidence or len(frame_evidence) > 16:
+        return None
+    world = {
+        "frame_id": COLLISION_RESTITUTION_FRAME_ID,
+        "frame_type": "cartesian_2d",
+        "origin": {"kind": "world"},
+        "axes": [
+            {
+                "axis": name,
+                "direction": {
+                    "kind": "axis",
+                    "frame_id": COLLISION_RESTITUTION_FRAME_ID,
+                    "axis": name,
+                    "sign": 1,
+                },
+            }
+            for name in ("x", "y")
+        ],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": frame_evidence,
+    }
+
+    rewritten_quantities: list[dict[str, Any]] = []
+    rebound: list[str] = []
+    for original in payload["quantities"]:
+        item = dict(original)
+        quantity_id = item.get("quantity_id")
+        if quantity_id in approach_axis:
+            axis, sign = approach_axis[quantity_id]
+            item.update(
+                frame_id=COLLISION_RESTITUTION_FRAME_ID,
+                component=axis,
+                direction={
+                    "kind": "axis",
+                    "frame_id": COLLISION_RESTITUTION_FRAME_ID,
+                    "axis": axis,
+                    "sign": sign,
+                },
+            )
+            rebound.append(quantity_id)
+        elif quantity_id in unknown_ids:
+            item.update(frame_id=COLLISION_RESTITUTION_FRAME_ID)
+            rebound.append(quantity_id)
+        rewritten_quantities.append(item)
+
+    generated_ids: list[str] = [COLLISION_RESTITUTION_FRAME_ID]
+    extra_quantities: list[dict[str, Any]] = []
+    extra_symbols: list[dict[str, Any]] = []
+    partner_ids = sorted(body_ids - set(query_subjects))
+    if partner_ids:
+        partner_id = partner_ids[0]
+        template = quantities[next(iter(unknown_ids))]
+        extra_quantities.append(
+            {
+                "quantity_id": COLLISION_PARTNER_AFTER_QUANTITY_ID,
+                "symbol_id": COLLISION_PARTNER_AFTER_SYMBOL_ID,
+                "role": "velocity",
+                "subject_id": partner_id,
+                "point_id": None,
+                "frame_id": COLLISION_RESTITUTION_FRAME_ID,
+                "interval_id": interval_id,
+                "event_id": end_id,
+                "component": "x",
+                "shape": "scalar",
+                "dimension": dict(template.get("dimension") or {}),
+                "provenance": "unknown",
+                "evidence_refs": [],
+            }
+        )
+        extra_symbols.append(
+            {
+                "symbol_id": COLLISION_PARTNER_AFTER_SYMBOL_ID,
+                "quantity_id": COLLISION_PARTNER_AFTER_QUANTITY_ID,
+                "dimension": dict(template.get("dimension") or {}),
+                "shape": "scalar",
+            }
+        )
+        generated_ids.append(COLLISION_PARTNER_AFTER_QUANTITY_ID)
+
+    linked_quantity_ids = sorted(
+        {
+            *(item.get("quantity_id") for item in masses),
+            *(item.get("quantity_id") for item in approach),
+            coefficient.get("quantity_id"),
+            *unknown_ids,
+            *(item["quantity_id"] for item in extra_quantities),
+        }
+    )
+    rewritten_interaction = dict(impact)
+    rewritten_interaction.update(
+        frame_id=COLLISION_RESTITUTION_FRAME_ID,
+        quantity_ids=linked_quantity_ids,
+    )
+
+    rewritten_queries: list[dict[str, Any]] = []
+    for query in payload["queries"]:
+        rewritten_query = dict(query)
+        rewritten_target = dict(query.get("target") or {})
+        rewritten_target.update(frame_id=COLLISION_RESTITUTION_FRAME_ID)
+        rewritten_query.update(target=rewritten_target)
+        rewritten_queries.append(rewritten_query)
+
+    closed = dict(payload)
+    closed["reference_frames"] = [world]
+    closed["interactions"] = [rewritten_interaction]
+    closed["quantities"] = [*rewritten_quantities, *extra_quantities]
+    closed["symbols"] = [*payload["symbols"], *extra_symbols]
+    closed["queries"] = rewritten_queries
+    return (
+        closed,
+        tuple(generated_ids),
+        tuple(sorted(rebound)),
+    )
+
+
 def _explicit_resultant_force_transaction(
     payload: dict[str, Any], _authority: TransactionAuthority
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
@@ -4908,6 +5296,9 @@ _TRANSACTIONS = {
     ProfileId.incline_hanging_pulley: _incline_hanging_pulley_transaction,
     ProfileId.rigid_two_point_speed: (
         _rigid_two_point_speed_transfer_transaction
+    ),
+    ProfileId.collision_restitution: (
+        _collision_restitution_transaction
     ),
     ProfileId.explicit_resultant_force: (
         _explicit_resultant_force_transaction
