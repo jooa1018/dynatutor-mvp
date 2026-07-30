@@ -529,6 +529,7 @@ _INCREMENTAL_EMITTERS: tuple[str, ...] = (
     "_constant_angular_acceleration_emissions",
     "_chain_kinematics_emissions",
     "_incline_gravity_contact_emissions",
+    "_incline_kinetic_sliding_emissions",
     "_horizontal_fixed_contact_emissions",
     "_horizontal_surface_contact_emissions",
     "_incline_hanging_rope_emissions",

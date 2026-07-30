@@ -93,6 +93,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("fixed_contact_no_penetration", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity", "constraint_residual")),
     _rule("incline_sticking_static_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.force, QuantityRole.coefficient_friction), interactions=(InteractionKind.contact.value,), cost=2, hooks=("friction_regime", "constraint_residual")),
     _rule("contact_sticking_static_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.force, QuantityRole.coefficient_friction), interactions=(InteractionKind.contact.value,), cost=2, hooks=("friction_regime", "constraint_residual")),
+    _rule("incline_sliding_kinetic_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.coefficient_friction, QuantityRole.angle, QuantityRole.gravity), interactions=(InteractionKind.contact.value,), assumptions=("gravity_driven_downslope_sliding",), cost=2, hooks=("friction_regime", "constraint_residual", "direction_residual")),
     _rule("contact_sliding_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime", "direction_residual")),
     _rule("spring_force", "newton_second_law", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.force), interactions=(InteractionKind.spring.value,), cost=3, hooks=("constitutive_residual",)),
     _rule("damper_force", "vibration", (QuantityRole.damping, QuantityRole.velocity, QuantityRole.force), interactions=(InteractionKind.damping.value,), cost=3, hooks=("constitutive_residual",)),
@@ -4318,6 +4319,434 @@ def _incline_gravity_contact_emissions(context: LawContext) -> list[LawEmission]
                 extra_entity_ids=tuple(contact.participant_ids),
             ))
     return emitted
+
+
+@dataclass(frozen=True)
+class _InclineKineticSlidingLawProfile:
+    body_id: str
+    incline_id: str
+    environment_id: str
+    interval_id: str
+    angle: BoundQuantity
+    coefficient: BoundQuantity
+    gravity: BoundQuantity
+    tangential_acceleration: BoundQuantity
+    assumption_ids: tuple[str, ...]
+    constraint_ids: tuple[str, ...]
+
+
+def _incline_kinetic_sliding_profile(
+    context: LawContext,
+) -> _InclineKineticSlidingLawProfile | None:
+    """Recognize the exact mass-free gravity-driven kinetic incline slide."""
+
+    body_ids = tuple(
+        item.entity_id
+        for item in context.entities
+        if item.primitive in _FREE_BODY_PRIMITIVES
+    )
+    incline_ids = tuple(
+        item.entity_id
+        for item in context.entities
+        if item.primitive is EntityPrimitive.incline
+    )
+    environment_ids = tuple(
+        item.entity_id
+        for item in context.entities
+        if item.primitive is EntityPrimitive.environment
+    )
+    if (
+        len(context.entities) != 3
+        or len(body_ids) != 1
+        or len(incline_ids) != 1
+        or len(environment_ids) != 1
+        or any(
+            not item.evidence_refs or item.component_of_entity_id is not None
+            for item in context.entities
+        )
+    ):
+        return None
+    body_id = body_ids[0]
+    incline_id = incline_ids[0]
+    environment_id = environment_ids[0]
+
+    world_frames = tuple(
+        item
+        for item in context.reference_frames
+        if item.frame_type is ReferenceFrameType.cartesian_2d
+    )
+    slope_frames = tuple(
+        item
+        for item in context.reference_frames
+        if item.frame_type is ReferenceFrameType.tangential_normal
+    )
+    if (
+        len(context.reference_frames) != 2
+        or len(world_frames) != 1
+        or len(slope_frames) != 1
+    ):
+        return None
+    world_frame = world_frames[0]
+    slope_frame = slope_frames[0]
+
+    def axis_signature(frame: object) -> set[tuple[object, ...]]:
+        return {
+            (
+                item.axis.value,
+                item.direction.kind,
+                getattr(item.direction, "frame_id", None),
+                getattr(getattr(item.direction, "axis", None), "value", None),
+                getattr(item.direction, "sign", None),
+            )
+            for item in getattr(frame, "axes", ())
+        }
+
+    if (
+        getattr(world_frame.origin, "kind", None) != "world"
+        or world_frame.parent_frame_id is not None
+        or world_frame.translating_with_entity_id is not None
+        or world_frame.rotating_about_point_id is not None
+        or world_frame.generalized_coordinate_symbol_ids
+        or not world_frame.evidence_refs
+        or len(world_frame.axes) != 2
+        or axis_signature(world_frame)
+        != {
+            ("x", "axis", world_frame.frame_id, "x", 1),
+            ("y", "axis", world_frame.frame_id, "y", 1),
+        }
+        or getattr(slope_frame.origin, "kind", None) != "entity"
+        or getattr(slope_frame.origin, "entity_id", None) != incline_id
+        or slope_frame.parent_frame_id != world_frame.frame_id
+        or slope_frame.translating_with_entity_id is not None
+        or slope_frame.rotating_about_point_id is not None
+        or slope_frame.generalized_coordinate_symbol_ids
+        or not slope_frame.evidence_refs
+        or len(slope_frame.axes) != 2
+        or axis_signature(slope_frame)
+        != {
+            ("tangent", "axis", slope_frame.frame_id, "tangent", 1),
+            ("normal", "axis", slope_frame.frame_id, "normal", 1),
+        }
+    ):
+        return None
+
+    if len(context.motion_intervals) != 1 or context.events:
+        return None
+    interval = context.motion_intervals[0]
+    if (
+        interval.frame_id is not None
+        or interval.start_event_id is not None
+        or interval.end_event_id is not None
+        or len(interval.subject_ids) != len(context.entities)
+        or set(interval.subject_ids)
+        != {item.entity_id for item in context.entities}
+        or not interval.evidence_refs
+    ):
+        return None
+
+    supports = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.lies_on
+    )
+    angles = tuple(
+        item
+        for item in context.geometry
+        if item.kind is GeometryRelationKind.angle
+    )
+    if (
+        len(context.geometry) != 2
+        or len(supports) != 1
+        or len(angles) != 1
+        or set(supports[0].participant_ids) != {body_id, incline_id}
+        or len(supports[0].participant_ids) != 2
+        or supports[0].interval_id != interval.interval_id
+        or supports[0].expression is not None
+        or supports[0].quantity_ids
+        or not supports[0].evidence_refs
+        or set(angles[0].participant_ids) != {incline_id, environment_id}
+        or len(angles[0].quantity_ids) != 1
+        or angles[0].interval_id is not None
+        or angles[0].expression is not None
+        or not angles[0].evidence_refs
+    ):
+        return None
+
+    contacts = tuple(
+        item
+        for item in context.interactions
+        if item.kind is InteractionKind.contact
+    )
+    if (
+        len(context.interactions) != 1
+        or len(contacts) != 1
+    ):
+        return None
+    contact = contacts[0]
+    if (
+        set(contact.participant_ids) != {body_id, incline_id}
+        or len(contact.participant_ids) != 2
+        or len(contact.point_ids) != 1
+        or contact.frame_id != slope_frame.frame_id
+        or contact.interval_id != interval.interval_id
+        or contact.event_id is not None
+        or len(contact.quantity_ids) != 1
+        or not contact.evidence_refs
+    ):
+        return None
+    if len(context.points) != 1:
+        return None
+    point = context.points[0]
+    if (
+        point.point_id != contact.point_ids[0]
+        or point.role is not PointRole.contact
+        or point.owner_entity_id != body_id
+        or point.frame_id != slope_frame.frame_id
+        or not point.evidence_refs
+    ):
+        return None
+
+    quantities = {
+        item.quantity_id: item
+        for item in context.quantities
+        if item.quantity_id is not None
+    }
+    if len(quantities) != len(context.quantities):
+        return None
+    angle = quantities.get(angles[0].quantity_ids[0])
+    coefficient = quantities.get(contact.quantity_ids[0])
+    gravities = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.gravity
+    )
+    tangential = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.acceleration
+    )
+    masses = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.mass
+    )
+    if (
+        angle is None
+        or coefficient is None
+        or len(gravities) != 1
+        or len(tangential) != 1
+        or len(masses) > 1
+        or len(context.quantities) != 4 + len(masses)
+    ):
+        return None
+    gravity = gravities[0]
+    acceleration = tangential[0]
+
+    def exact_known(
+        item: BoundQuantity,
+        *,
+        subject_id: str,
+        positive: bool,
+        dimensionless: bool,
+        interval_scope: bool = False,
+    ) -> bool:
+        value = item.known_si_value
+        return (
+            item.subject_id == subject_id
+            and item.shape is QuantityShape.scalar
+            and item.symbol_id is not None
+            and bool(item.evidence_ids)
+            and item.point_id is None
+            and item.frame_id is None
+            and (
+                item.interval_id in {None, interval.interval_id}
+                if interval_scope
+                else item.interval_id is None
+            )
+            and item.event_id is None
+            and not item.direction_bound
+            and item.component
+            in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            and type(value) is float
+            and math.isfinite(value)
+            and (value > 0.0 if positive else value >= 0.0)
+            and (
+                not any(item.dimension.model_dump(mode="python").values())
+                if dimensionless
+                else True
+            )
+        )
+
+    if (
+        not exact_known(angle, subject_id=incline_id, positive=False, dimensionless=True)
+        or not 0.0 <= angle.known_si_value < math.pi / 2.0
+        or not exact_known(
+            coefficient, subject_id=body_id, positive=False, dimensionless=True
+        )
+        or not exact_known(
+            gravity, subject_id=body_id, positive=True, dimensionless=False,
+            interval_scope=True,
+        )
+        or any(
+            not exact_known(item, subject_id=body_id, positive=True, dimensionless=False)
+            for item in masses
+        )
+        or angle.role is not QuantityRole.angle
+        or coefficient.role is not QuantityRole.coefficient_friction
+    ):
+        return None
+    if (
+        acceleration.subject_id != body_id
+        or acceleration.shape is not QuantityShape.scalar
+        or acceleration.symbol_id is None
+        or acceleration.known_si_value is not None
+        or not acceleration.evidence_ids
+        or acceleration.point_id is not None
+        or acceleration.frame_id != slope_frame.frame_id
+        or acceleration.interval_id != interval.interval_id
+        or acceleration.event_id is not None
+        or acceleration.component is not QuantityComponent.tangential
+        or acceleration.direction_sign not in {-1, 1}
+        or not _axis_bound(
+            acceleration,
+            slope_frame.frame_id,
+            QuantityComponent.tangential,
+            acceleration.direction_sign,
+        )
+        or gravity.dimension != acceleration.dimension
+    ):
+        return None
+
+    states = tuple(context.state_conditions)
+    if len(states) != 4 or any(
+        item.interval_id != interval.interval_id
+        or item.event_id is not None
+        or item.expression is not None
+        or not item.evidence_refs
+        for item in states
+    ):
+        return None
+    signatures = {
+        (item.kind, item.state, item.subject_id, tuple(item.quantity_ids))
+        for item in states
+    }
+    if signatures != {
+        (StateKind.contact, StateValue.touching, body_id, ()),
+        (
+            StateKind.friction,
+            StateValue.sliding,
+            body_id,
+            (coefficient.quantity_id,),
+        ),
+        (StateKind.motion, StateValue.moving, body_id, ()),
+        (StateKind.motion, StateValue.at_rest, incline_id, ()),
+    }:
+        return None
+
+    gravity_ids = context.approved_assumptions(
+        "constant_gravity", body_id, interval.interval_id
+    )
+    downslope_ids = context.approved_assumptions(
+        "gravity_driven_downslope_sliding", body_id, interval.interval_id
+    )
+    if (
+        len(gravity_ids) != 1
+        or len(downslope_ids) != 1
+        or len(context.assumptions) != 2
+        or any(not item.evidence_refs for item in context.assumptions)
+    ):
+        return None
+
+    return _InclineKineticSlidingLawProfile(
+        body_id=body_id,
+        incline_id=incline_id,
+        environment_id=environment_id,
+        interval_id=interval.interval_id,
+        angle=angle,
+        coefficient=coefficient,
+        gravity=gravity,
+        tangential_acceleration=acceleration,
+        assumption_ids=tuple(sorted({*gravity_ids, *downslope_ids})),
+        constraint_ids=tuple(
+            sorted(
+                {
+                    supports[0].relation_id,
+                    angles[0].relation_id,
+                    *(item.state_condition_id for item in states),
+                }
+            )
+        ),
+    )
+
+
+def _incline_kinetic_sliding_emissions(context: LawContext) -> list[LawEmission]:
+    """Close the gravity-driven kinetic slide the projection authorised.
+
+    The equality is Newton's second law along the slope with the Coulomb
+    kinetic friction bound and the gravity projections already substituted —
+    the same per-mass closure the sticking twin states for the static
+    regime.  The companion inequality states the authority's own premise: a
+    gravity-driven slide cannot accelerate up the slope, so a typed model
+    whose numbers contradict that refuses instead of answering.
+    """
+
+    profile = _incline_kinetic_sliding_profile(context)
+    if profile is None:
+        return []
+    theta = profile.angle.known_si_value
+    dimension = profile.tangential_acceleration.dimension
+    drive = Multiply(
+        factors=(
+            profile.gravity.expression,
+            LiteralNode(value=math.sin(theta), dimension=profile.angle.dimension),
+        ),
+        dimension=dimension,
+    )
+    resist = Multiply(
+        factors=(
+            profile.coefficient.expression,
+            profile.gravity.expression,
+            LiteralNode(value=math.cos(theta), dimension=profile.angle.dimension),
+        ),
+        dimension=dimension,
+    )
+    downslope = Add(
+        terms=(drive, Negate(operand=resist, dimension=dimension)),
+        dimension=dimension,
+    )
+    quantities = (
+        profile.tangential_acceleration,
+        profile.coefficient,
+        profile.angle,
+        profile.gravity,
+    )
+    return [
+        _emit(
+            context,
+            "incline_sliding_kinetic_acceleration",
+            Equality(
+                left=_signed(profile.tangential_acceleration),
+                right=downslope,
+            ),
+            quantities,
+            assumption_ids=profile.assumption_ids,
+            constraint_ids=profile.constraint_ids,
+            extra_entity_ids=(profile.incline_id, profile.environment_id),
+        ),
+        _emit(
+            context,
+            "incline_sliding_kinetic_acceleration",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=_signed(profile.tangential_acceleration),
+                right=LiteralNode(value=0.0, dimension=dimension),
+            ),
+            quantities,
+            assumption_ids=profile.assumption_ids,
+            constraint_ids=profile.constraint_ids,
+            extra_entity_ids=(profile.incline_id, profile.environment_id),
+        ),
+    ]
 
 
 _FORCE_BEARING_INTERACTIONS: frozenset[InteractionKind] = frozenset(
@@ -12101,6 +12530,7 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
     emitted.extend(_constant_angular_acceleration_emissions(context))
     emitted.extend(_chain_kinematics_emissions(context))
     emitted.extend(_incline_gravity_contact_emissions(context))
+    emitted.extend(_incline_kinetic_sliding_emissions(context))
     emitted.extend(_horizontal_fixed_contact_emissions(context))
     emitted.extend(_horizontal_surface_contact_emissions(context))
     emitted.extend(_incline_hanging_rope_emissions(context))

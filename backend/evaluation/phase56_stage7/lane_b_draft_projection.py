@@ -441,6 +441,9 @@ _ENVIRONMENT_LINK_RELATION_KINDS: frozenset[str] = frozenset(
 _INTERACTION_OWNED_CONSTITUTIVE_ROLES: dict[str, frozenset[str]] = {
     # corpus relation kind -> quantity roles that relation owns
     "attached_to_spring": frozenset({"stiffness"}),
+    # A friction coefficient stated on the support surface belongs, under the
+    # same accepted engine convention, to the body that slides on it.
+    "slides_on": frozenset({"coefficient_friction"}),
 }
 # Primitives that can carry a constitutive parameter as their own property.
 _CONSTITUTIVE_OWNER_PRIMITIVES: frozenset[str] = frozenset(
@@ -798,6 +801,192 @@ def _derive_direct_constant_force_work_assumption(
         }
     )
     approved.append(_DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID)
+
+
+_DOWNSLOPE_SLIDING_ASSUMPTION_ID = "asm_closure_downslope_sliding"
+
+
+def _derive_downslope_sliding_assumption(
+    *,
+    gold: Any,
+    entities: list[dict[str, Any]],
+    motion_intervals: list[dict[str, Any]],
+    geometry: list[dict[str, Any]],
+    quantities: list[dict[str, Any]],
+    assumptions: list[dict[str, Any]],
+    approved: list[str],
+) -> None:
+    """Authorise the gravity-driven down-slope reading of one kinetic slide.
+
+    The policy consumes only source-side typed structure: exactly one free
+    body on exactly one incline, one source-declared ``sliding_on_incline``
+    segment whose only actor is that body, one ``slides_on`` support
+    relation, one source-valued incline angle, one source-valued friction
+    coefficient, and an approved constant-gravity authority.  In that model
+    gravity is the *entire* typed driving system: there is no stated
+    velocity, no applied force, no rope, no spring, no second contact, and
+    no rest boundary, so the only reading of the declared slide that the
+    closed model supports is motion down the slope with friction opposing
+    it.  A statement of model completeness, never a guess: any stated
+    motion evidence, force, extra body, extra relation, or extra proposal
+    refuses the derivation outright.  No sentence keyword, case identity,
+    family, expected terminal, or numeric answer is read.
+    """
+
+    if (
+        len(entities) != 2
+        or len(motion_intervals) != 1
+        or len(gold.motion_segments) != 1
+        or len(gold.relations) != 1
+        or len(gold.queries) != 1
+        or len(gold.events) != len({item.role for item in gold.events})
+    ):
+        return
+    primitive_by_id = {
+        item["entity_id"]: item["primitive"] for item in entities
+    }
+    body_ids = tuple(
+        entity_id
+        for entity_id, primitive in primitive_by_id.items()
+        if primitive in {"particle", "rigid_body", "body_component"}
+    )
+    incline_ids = tuple(
+        entity_id
+        for entity_id, primitive in primitive_by_id.items()
+        if primitive == "incline"
+    )
+    if len(body_ids) != 1 or len(incline_ids) != 1:
+        return
+    body_id = body_ids[0]
+    incline_id = incline_ids[0]
+
+    segment = gold.motion_segments[0]
+    interval = motion_intervals[0]
+    interval_id = interval["interval_id"]
+    if (
+        segment.motion_model != "sliding_on_incline"
+        or tuple(segment.actor_roles) != (body_id,)
+        or segment.role != interval_id
+        or interval["subject_ids"] != [body_id]
+    ):
+        return
+    relation = gold.relations[0]
+    if (
+        relation.kind != "slides_on"
+        or set(relation.participant_roles) != {body_id, incline_id}
+        or len(relation.participant_roles) != 2
+        or relation.segment_role not in {None, interval_id}
+    ):
+        return
+    supports = tuple(
+        item
+        for item in geometry
+        if item["kind"] == "lies_on" and item["interval_id"] == interval_id
+    )
+    if len(supports) != 1 or len(geometry) != 1 or set(
+        supports[0]["participant_ids"]
+    ) != {body_id, incline_id}:
+        return
+
+    query = gold.queries[0]
+    if (
+        query.output_key != "acceleration"
+        or query.subject_role != body_id
+        or query.segment_role != interval_id
+        or query.component != "tangential"
+        or query.event_role is not None
+    ):
+        return
+
+    angle_facts = tuple(
+        fact
+        for fact in gold.explicit_facts
+        if fact.semantic_key == "angle"
+        and fact.subject_role == incline_id
+        and fact.event_role is None
+        and fact.temporal_role == "timeless"
+    )
+    coefficient_facts = tuple(
+        fact
+        for fact in gold.explicit_facts
+        if fact.semantic_key == "coefficient_of_friction"
+        and fact.subject_role == incline_id
+        and fact.event_role is None
+        and fact.temporal_role == "timeless"
+    )
+    mass_facts = tuple(
+        fact
+        for fact in gold.explicit_facts
+        if fact.semantic_key == "mass"
+        and fact.subject_role == body_id
+        and fact.event_role is None
+        and fact.temporal_role == "timeless"
+    )
+    if (
+        len(angle_facts) != 1
+        or len(coefficient_facts) != 1
+        or len(mass_facts) > 1
+        or len(gold.explicit_facts)
+        != len(angle_facts) + len(coefficient_facts) + len(mass_facts)
+    ):
+        return
+
+    by_id = {item["quantity_id"]: item for item in quantities}
+    angle = by_id.get(f"qty_{angle_facts[0].role}")
+    coefficient = by_id.get(f"qty_{coefficient_facts[0].role}")
+    if (
+        angle is None
+        or coefficient is None
+        or angle.get("role") != "angle"
+        or angle.get("raw_value") is None
+        or not angle.get("evidence_refs")
+        or coefficient.get("role") != "coefficient_friction"
+        or coefficient.get("raw_value") is None
+        or not coefficient.get("evidence_refs")
+    ):
+        return
+
+    gravity_records = tuple(
+        item
+        for item in assumptions
+        if item["kind"] == "constant_gravity"
+        and item["disposition"] == "approved"
+        and item["assumption_id"] in set(approved)
+        and item["subject_id"] == body_id
+        and item["interval_id"] in {None, interval_id}
+        and item["evidence_refs"]
+    )
+    # Any authority beyond the single gravity policy — a rest boundary, a
+    # frictionless statement, a motion-model kinematic authority — is typed
+    # evidence this is a different regime, and the derivation refuses.
+    if len(gravity_records) != 1 or len(assumptions) != 1:
+        return
+    if any(
+        item["assumption_id"] == _DOWNSLOPE_SLIDING_ASSUMPTION_ID
+        or item["kind"] == "gravity_driven_downslope_sliding"
+        for item in assumptions
+    ):
+        return
+
+    assumptions.append(
+        {
+            "assumption_id": _DOWNSLOPE_SLIDING_ASSUMPTION_ID,
+            "kind": "gravity_driven_downslope_sliding",
+            "subject_id": body_id,
+            "interval_id": interval_id,
+            "disposition": "approved",
+            "reason": (
+                "closed server policy: gravity is the entire typed driving "
+                "system of this source-declared kinetic slide"
+            ),
+            "evidence_refs": sorted(
+                set(angle["evidence_refs"])
+                | set(coefficient["evidence_refs"])
+                | set(gravity_records[0]["evidence_refs"])
+            ),
+        }
+    )
+    approved.append(_DOWNSLOPE_SLIDING_ASSUMPTION_ID)
 
 
 _ISOLATED_IMPACT_ASSUMPTION_PREFIX = "asm_closure_isolated_impact_"
@@ -2032,6 +2221,16 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
     )
 
     _derive_fixed_pulley_assumptions(
+        entities=entities,
+        motion_intervals=intervals,
+        geometry=geometry,
+        quantities=quantities,
+        assumptions=assumptions,
+        approved=approved,
+    )
+
+    _derive_downslope_sliding_assumption(
+        gold=gold,
         entities=entities,
         motion_intervals=intervals,
         geometry=geometry,

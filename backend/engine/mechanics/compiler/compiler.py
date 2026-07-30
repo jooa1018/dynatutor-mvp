@@ -1628,6 +1628,49 @@ def _incline_friction_contract_issue(
             referenced_id or query.query_id,
         )
 
+    downslope_authorised = any(
+        item.assumption_id in relevant
+        and item.kind == "gravity_driven_downslope_sliding"
+        and item.subject_id == body_id
+        and item.disposition is AssumptionDisposition.approved
+        and item.interval_id == query.target.interval_id
+        and item.evidence_refs
+        for item in ir.assumptions
+    )
+    if downslope_authorised:
+        # The projection's own closed policy carries the regime and the
+        # motion direction, so the exact mass-free shape — one contact
+        # linking only the coefficient, no force quantity anywhere on the
+        # body — is owned by the sliding-regime law and the structural
+        # support gate.  A downslope authority mixed with any force-bearing
+        # friction structure is no known contract and fails closed here.
+        coefficient_only_contact = (
+            len(related_contacts) == 1
+            and len(related_contacts[0].quantity_ids) == 1
+            and (
+                quantities.get(related_contacts[0].quantity_ids[0]) is not None
+                and quantities[
+                    related_contacts[0].quantity_ids[0]
+                ].role is QuantityRole.coefficient_friction
+            )
+        )
+        if (
+            coefficient_only_contact
+            and entities.get(body_id) is not None
+            and entities[body_id].primitive.value
+            in {"particle", "rigid_body", "body_component"}
+            and len(friction_states) == 1
+            and friction_states[0].state.value == "sliding"
+            and not any(
+                item.quantity_id in relevant
+                and item.role is QuantityRole.force
+                and item.subject_id == body_id
+                for item in ir.quantities
+            )
+        ):
+            return None
+        return failure(body_id)
+
     if (
         entities.get(body_id) is None
         or entities[body_id].primitive.value != "particle"
@@ -5010,6 +5053,12 @@ def _rolling_energy_candidate(ir: MechanicsProblemIRV1) -> bool:
         len(rigid_body_ids) == 1
         and not ({EntityPrimitive.rope, EntityPrimitive.pulley, EntityPrimitive.system} & primitives)
         and has_cartesian_2d_frame
+        # A declared sliding friction regime contradicts rolling without slip,
+        # so it is typed evidence this is a sliding contact, never a rolling one.
+        and not any(
+            item.kind.value == "friction" and item.state.value == "sliding"
+            for item in ir.state_conditions
+        )
         and (
             EntityPrimitive.incline in primitives
             or EntityPrimitive.environment in primitives
@@ -7047,6 +7096,38 @@ def _structural_template_support_issue(
                     f"state_conditions.{state.state_condition_id}",
                     state.state_condition_id,
                 )
+            continue
+        if (
+            state.state.value == "sliding"
+            and len(contacts) == 1
+            and not tangent
+            and not normal
+            and len(coefficients) == 1
+            and any(
+                item.entity_id in contacts[0].participant_ids
+                and item.primitive.value == "incline"
+                for item in ir.entities
+            )
+            and not any(
+                item.quantity_id in relevant
+                and item.role is QuantityRole.force
+                and item.subject_id == state.subject_id
+                for item in ir.quantities
+            )
+            and any(
+                item.assumption_id in relevant
+                and item.kind == "gravity_driven_downslope_sliding"
+                and item.subject_id == state.subject_id
+                and item.disposition is AssumptionDisposition.approved
+                and item.assumption_id in approved_assumption_ids
+                and item.interval_id == state.interval_id
+                and item.evidence_refs
+                for item in ir.assumptions
+            )
+        ):
+            # The mass-free gravity-driven kinetic slide: the projection's own
+            # downslope authority carries the regime, the contact links only
+            # the coefficient, and the sliding-regime law owns the closure.
             continue
         if (
             state.state.value not in {"sticking", "sliding"}

@@ -74,6 +74,7 @@ class ProfileId(str, Enum):
     impulse_momentum = "impulse_momentum"
     horizontal_contact = "horizontal_contact"
     incline_contact = "incline_contact"
+    incline_kinetic_sliding = "incline_kinetic_sliding"
     rigid_fixed_axis = "rigid_fixed_axis"
     rigid_two_point_speed = "rigid_two_point_speed"
     vertical_circle_top_speed = "vertical_circle_top_speed"
@@ -3625,6 +3626,47 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _derivable_from_authority("frictionless")),
             ("symbol_normal_force", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
+            ("symbol_tangential_acceleration", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
+        ),
+    ),
+    # One free body in a source-declared kinetic slide down one incline with a
+    # source-valued angle and friction coefficient.  The projection's own
+    # closed policy has already read the down-slope direction from the
+    # complete typed model — gravity as the entire driving system — so the
+    # profile requires that authority and never re-derives it.  The
+    # transaction supplies only frames, the contact record, regime states,
+    # and the value-free tangential unknown; the sliding-regime law does all
+    # solving.
+    _ProfileSignature(
+        ProfileId.incline_kinetic_sliding,
+        lambda facts: (
+            bool(facts.geometry.get("lies_on"))
+            and not facts.geometry.get("wraps")
+            and bool(facts.roles.get("angle"))
+            and bool(facts.roles.get("coefficient_friction"))
+            and bool(facts.primitives.get("incline"))
+            and "gravity_driven_downslope_sliding" in facts.approved
+        ),
+        (
+            ("geometry_support", PrerequisiteKind.geometry,
+             _needs_geometry("lies_on")),
+            ("geometry_angle", PrerequisiteKind.geometry,
+             _derivable_from_authority("constant_gravity")),
+            ("interaction_contact", PrerequisiteKind.interaction,
+             _derivable_from_authority("gravity_driven_downslope_sliding")),
+            ("quantity_angle", PrerequisiteKind.interaction_quantity,
+             _needs_role("angle")),
+            ("quantity_coefficient_friction", PrerequisiteKind.interaction_quantity,
+             _needs_role("coefficient_friction")),
+            ("authority_constant_gravity", PrerequisiteKind.authority,
+             _needs_authority("constant_gravity")),
+            ("authority_downslope_sliding", PrerequisiteKind.authority,
+             _needs_authority("gravity_driven_downslope_sliding")),
+            ("frame_tangential_normal", PrerequisiteKind.reference_frame,
+             _derivable_from_authority("constant_gravity")),
+            ("state_friction_regime", PrerequisiteKind.state_condition,
+             _derivable_from_authority("gravity_driven_downslope_sliding")),
             ("symbol_tangential_acceleration", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
         ),
