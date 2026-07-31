@@ -4123,7 +4123,7 @@ def _incline_kinetic_sliding_transaction(
         and item["subject_id"] == body_id
         and item.get("evidence_refs")
     )
-    downslope_assumptions = tuple(
+    motion_authorities = tuple(
         item for item in payload["assumptions"]
         if item["kind"] == "typed_incline_slide_motion"
         and item["assumption_id"] == "asm_closure_incline_slide_motion"
@@ -4135,12 +4135,12 @@ def _incline_kinetic_sliding_transaction(
     )
     if (
         len(gravity_assumptions) != 1
-        or len(downslope_assumptions) != 1
+        or len(motion_authorities) != 1
         or len(payload["assumptions"]) != 2
     ):
         return None
     gravity_assumption = gravity_assumptions[0]
-    downslope_assumption = downslope_assumptions[0]
+    motion_authority = motion_authorities[0]
     gravity_authorization = authority.authorized_assumptions.get(
         gravity_assumption["assumption_id"]
     )
@@ -4173,20 +4173,20 @@ def _incline_kinetic_sliding_transaction(
         return None
 
     gravity_evidence = tuple(gravity_assumption["evidence_refs"])
-    downslope_evidence = tuple(downslope_assumption["evidence_refs"])
+    motion_authority_evidence = tuple(motion_authority["evidence_refs"])
     motion_evidence = tuple(motion_quantity["evidence_refs"])
     angle_evidence = tuple(angle_quantity["evidence_refs"])
     coefficient_evidence = tuple(coefficient_quantity["evidence_refs"])
     # The source states the support as a relation without its own quote; the
-    # downslope authority's evidence is the typed reading of that support.
-    support_evidence = downslope_evidence
+    # slide-motion authority's evidence is the typed reading of that support.
+    support_evidence = motion_authority_evidence
     orientation_evidence = tuple(sorted(
         set(gravity_evidence) | set(angle_evidence) | set(support_evidence)
     ))
     query_evidence = tuple(sorted(
         set(orientation_evidence)
         | set(coefficient_evidence)
-        | set(downslope_evidence)
+        | set(motion_authority_evidence)
     ))
 
     def axis_direction(frame_id: str, axis: str, sign: int) -> dict[str, Any]:
@@ -4332,7 +4332,7 @@ def _incline_kinetic_sliding_transaction(
          "subject_id": body_id, "interval_id": interval_id, "event_id": None,
          "quantity_ids": [coefficient_quantity["quantity_id"]],
          "evidence_refs": list(tuple(sorted(
-             set(coefficient_evidence) | set(downslope_evidence)
+             set(coefficient_evidence) | set(motion_authority_evidence)
          )))},
         {"state_condition_id": ids["motion_state"], "kind": "motion", "state": "moving",
          "subject_id": body_id, "interval_id": interval_id, "event_id": None,
@@ -4370,7 +4370,7 @@ def _incline_kinetic_sliding_transaction(
         "interactions": interactions,
         "state_conditions": states,
         "queries": queries,
-        "assumptions": [gravity_assumption, downslope_assumption],
+        "assumptions": [gravity_assumption, motion_authority],
     })
     return closed, tuple(sorted(ids.values())), (query_quantity["quantity_id"],)
 

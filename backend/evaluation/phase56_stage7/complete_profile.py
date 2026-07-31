@@ -3743,7 +3743,7 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _needs_role("coefficient_friction")),
             ("authority_constant_gravity", PrerequisiteKind.authority,
              _needs_authority("constant_gravity")),
-            ("authority_downslope_sliding", PrerequisiteKind.authority,
+            ("authority_typed_slide_motion", PrerequisiteKind.authority,
              _needs_authority("typed_incline_slide_motion")),
             ("frame_tangential_normal", PrerequisiteKind.reference_frame,
              _derivable_from_authority("constant_gravity")),

@@ -1628,7 +1628,7 @@ def _incline_friction_contract_issue(
             referenced_id or query.query_id,
         )
 
-    downslope_authorised = any(
+    slide_motion_authorised = any(
         item.assumption_id in relevant
         and item.kind == "typed_incline_slide_motion"
         and item.subject_id == body_id
@@ -1637,12 +1637,12 @@ def _incline_friction_contract_issue(
         and item.evidence_refs
         for item in ir.assumptions
     )
-    if downslope_authorised:
+    if slide_motion_authorised:
         # The projection's own closed policy carries the regime and the
         # motion direction, so the exact mass-free shape — one contact
         # linking only the coefficient, no force quantity anywhere on the
         # body — is owned by the sliding-regime law and the structural
-        # support gate.  A downslope authority mixed with any force-bearing
+        # support gate.  A slide-motion authority mixed with any force-bearing
         # friction structure is no known contract and fails closed here.
         coefficient_only_contact = (
             len(related_contacts) == 1
@@ -7204,7 +7204,7 @@ def _structural_template_support_issue(
             )
         ):
             # The mass-free gravity-driven kinetic slide: the projection's own
-            # downslope authority carries the regime, the contact links only
+            # slide-motion authority carries the regime, the contact links only
             # the coefficient, and the sliding-regime law owns the closure.
             continue
         if (

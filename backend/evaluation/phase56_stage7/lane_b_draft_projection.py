@@ -803,7 +803,7 @@ def _derive_direct_constant_force_work_assumption(
     approved.append(_DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID)
 
 
-_DOWNSLOPE_SLIDING_ASSUMPTION_ID = "asm_closure_incline_slide_motion"
+_INCLINE_SLIDE_MOTION_ASSUMPTION_ID = "asm_closure_incline_slide_motion"
 # A body typed as sliding on an incline has its velocity along the slope
 # tangent, so a source that states the velocity points downward has stated the
 # down-slope sense and one that states upward has stated the up-slope sense.
@@ -824,7 +824,7 @@ _INCLINE_SLIDE_VELOCITY_KEYS: frozenset[str] = frozenset(
 _INCLINE_SLIDE_MOTION_KIND = "typed_incline_slide_motion"
 
 
-def _derive_downslope_sliding_assumption(
+def _derive_incline_slide_motion_authority(
     *,
     gold: Any,
     entities: list[dict[str, Any]],
@@ -1009,7 +1009,7 @@ def _derive_downslope_sliding_assumption(
     if len(gravity_records) != 1 or len(assumptions) != 1:
         return
     if any(
-        item["assumption_id"] == _DOWNSLOPE_SLIDING_ASSUMPTION_ID
+        item["assumption_id"] == _INCLINE_SLIDE_MOTION_ASSUMPTION_ID
         or item["kind"] == _INCLINE_SLIDE_MOTION_KIND
         for item in assumptions
     ):
@@ -1017,7 +1017,7 @@ def _derive_downslope_sliding_assumption(
 
     assumptions.append(
         {
-            "assumption_id": _DOWNSLOPE_SLIDING_ASSUMPTION_ID,
+            "assumption_id": _INCLINE_SLIDE_MOTION_ASSUMPTION_ID,
             "kind": _INCLINE_SLIDE_MOTION_KIND,
             "subject_id": body_id,
             "interval_id": interval_id,
@@ -1034,7 +1034,7 @@ def _derive_downslope_sliding_assumption(
             ),
         }
     )
-    approved.append(_DOWNSLOPE_SLIDING_ASSUMPTION_ID)
+    approved.append(_INCLINE_SLIDE_MOTION_ASSUMPTION_ID)
 
 
 _ISOLATED_IMPACT_ASSUMPTION_PREFIX = "asm_closure_isolated_impact_"
@@ -2277,7 +2277,7 @@ def _build_payload(gold: Any, problem_text: str) -> _PayloadProjection:
         approved=approved,
     )
 
-    _derive_downslope_sliding_assumption(
+    _derive_incline_slide_motion_authority(
         gold=gold,
         entities=entities,
         motion_intervals=intervals,

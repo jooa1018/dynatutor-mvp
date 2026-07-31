@@ -4754,12 +4754,12 @@ def _incline_kinetic_sliding_profile(
     gravity_ids = context.approved_assumptions(
         "constant_gravity", body_id, interval.interval_id
     )
-    downslope_ids = context.approved_assumptions(
+    motion_authority_ids = context.approved_assumptions(
         "typed_incline_slide_motion", body_id, interval.interval_id
     )
     if (
         len(gravity_ids) != 1
-        or len(downslope_ids) != 1
+        or len(motion_authority_ids) != 1
         or len(context.assumptions) != 2
         or any(not item.evidence_refs for item in context.assumptions)
     ):
@@ -4776,7 +4776,7 @@ def _incline_kinetic_sliding_profile(
         tangential_acceleration=acceleration,
         motion=motion,
         motion_sign=motion.direction_sign,
-        assumption_ids=tuple(sorted({*gravity_ids, *downslope_ids})),
+        assumption_ids=tuple(sorted({*gravity_ids, *motion_authority_ids})),
         constraint_ids=tuple(
             sorted(
                 {
