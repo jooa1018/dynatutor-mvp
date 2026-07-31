@@ -33,6 +33,7 @@ Values of generated unknowns stay unknown.  Only their existence is derived.
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
@@ -80,6 +81,69 @@ _SEMANTIC_AXIS_BINDING: Mapping[str, tuple[str, int]] = {
     "upward": ("y", 1),
     "downward": ("y", -1),
 }
+
+
+def _directed_scalar_axis_sign(
+    direction_sign: int, raw_value: Any
+) -> int | None:
+    """Resolve one axis sign for a scalar that states a direction *and* a value.
+
+    One typed contract, stated once and applied everywhere: **a scalar that
+    carries a semantic direction has stated its direction separately, so its
+    value is a magnitude and the direction owns the sign.**  The component the
+    engine forms is then ``direction_sign * raw_value``, and it never applies
+    a sign twice.
+
+    A magnitude is never negative.  A source that writes a *negative* value
+    next to a stated direction has encoded the sign twice, and the two
+    encodings cannot be reconciled from typed structure alone: whether the
+    number or the word wins depends on an axis orientation the source never
+    states, and the two readings are not the same physics.  Guessing would
+    answer a mirror-image problem with full confidence, so this fails closed.
+
+    This is a statement about scalars, not about any one problem family: it
+    reads only a sign and a number — never a role, a subject, an event, a
+    family, or an answer.
+    """
+
+    if direction_sign not in {-1, 1}:
+        return None
+    if type(raw_value) is not str:
+        return None
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return None
+    if not math.isfinite(value) or value < 0.0:
+        return None
+    return direction_sign
+
+
+def _directionless_zero_scalar(quantity: Mapping[str, Any]) -> bool:
+    """True for a source scalar that is exactly zero and states no direction.
+
+    ``not_applicable`` is the source saying this quantity has no direction —
+    which the projection records as the magnitude component with no direction
+    binding.  For every other value that is a real gap: a magnitude of 3 m/s
+    does not say which way the body is going, and no rule may supply one.
+    Zero is the single exception, and only because it is not a direction
+    question at all: +0 and -0 are the same number on any axis, so a body whose
+    speed is exactly zero has exactly one velocity vector on the line of
+    impact.  Anything that is merely small is not zero and is refused.
+    """
+
+    raw_value = quantity.get("raw_value")
+    if (
+        quantity.get("direction") is not None
+        or quantity.get("component") != "magnitude"
+        or type(raw_value) is not str
+    ):
+        return False
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return False
+    return value == 0.0
 # Roles whose physical identity includes a component.  A scalar invariant — a
 # mass, a duration — is left exactly as the source stated it.
 _COMPONENT_ROLES: frozenset[str] = frozenset(
@@ -5219,14 +5283,30 @@ def _collision_restitution_transaction(
             or item.get("interval_id") != interval_id
             or item.get("event_id") != start_id
             or item.get("shape") != "scalar"
-            or item.get("component") != "unspecified"
-            or (item.get("direction") or {}).get("kind") != "semantic"
-            or direction not in {"left", "right"}
-            or binding is None
             or not valued_source(item)
         ):
             return None
-        approach_axis[item.get("quantity_id")] = binding
+        if _directionless_zero_scalar(item):
+            # Exactly zero, and the source said this quantity has no direction
+            # at all.  Zero is the one value for which that is not a gap: it is
+            # the same number on either sign of the line of impact, so binding
+            # it to the impact axis adds no direction the source withheld.
+            approach_axis[item.get("quantity_id")] = ("x", 1)
+            continue
+        axis_sign = (
+            None
+            if binding is None
+            else _directed_scalar_axis_sign(binding[1], item.get("raw_value"))
+        )
+        if (
+            item.get("component") != "unspecified"
+            or (item.get("direction") or {}).get("kind") != "semantic"
+            or direction not in {"left", "right"}
+            or binding is None
+            or axis_sign is None
+        ):
+            return None
+        approach_axis[item.get("quantity_id")] = (binding[0], axis_sign)
     coefficient = coefficients[0]
     if (
         coefficient.get("subject_id") not in body_ids

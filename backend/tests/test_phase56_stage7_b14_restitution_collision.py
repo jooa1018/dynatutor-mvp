@@ -552,3 +552,221 @@ def test_gold_answer_tampering_cannot_change_runtime() -> None:
     tampered = _run(_case(fake_answer=123456.0))
     assert tampered.terminal is LaneBTerminal.solved
     assert tampered.answer_value_si == pytest.approx(baseline.answer_value_si)
+
+
+# --------------------------------------------------------------------------
+# B18 — direction-safe restitution residuals
+#
+# Two encodings of the same scalar caused two different residuals, and they
+# have opposite answers:
+#
+# * A velocity that is *exactly zero* and states no direction is not missing a
+#   direction — zero is the same number on either side of the line of impact,
+#   so it can be bound to the impact axis without inventing anything.
+# * A *negative* value stated next to a semantic direction has encoded the
+#   sign twice.  A scalar that names a direction has stated a magnitude, a
+#   magnitude is never negative, and which of the two encodings wins depends
+#   on an axis orientation the source never gives.  That fails closed.
+#
+# Neither rule reads a role, a family, a case, or an answer: both read a sign
+# and a number.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("zero", ("0", "0.0", "+0", "-0", "0.000"))
+def test_an_exactly_zero_approach_velocity_needs_no_direction(zero: str) -> None:
+    """A body at rest has one velocity on the line of impact, whatever the sign."""
+
+    baseline = _run(_case(v2="0", v2_direction="right"))
+    result = _run(_case(v2=zero, v2_directionless=True))
+    assert result.terminal is LaneBTerminal.solved
+    assert baseline.terminal is LaneBTerminal.solved
+    assert result.answer_value_si == pytest.approx(
+        baseline.answer_value_si, rel=1.0e-12, abs=1.0e-12
+    )
+    assert result.candidate_count == result.verified_candidate_count == 1
+
+
+@pytest.mark.parametrize("direction", ("left", "right"))
+def test_naming_a_direction_for_a_zero_velocity_changes_nothing(
+    direction: str,
+) -> None:
+    directionless = _run(_case(v2="0", v2_directionless=True))
+    directed = _run(_case(v2="0", v2_direction=direction))
+    assert directionless.terminal is directed.terminal is LaneBTerminal.solved
+    assert directionless.answer_value_si == pytest.approx(
+        directed.answer_value_si, rel=1.0e-12, abs=1.0e-12
+    )
+
+
+def test_a_zero_approach_velocity_survives_unit_conversion() -> None:
+    metres = _run(_case(v2="0", v2_directionless=True))
+    centimetres = _run(_case(v2="0", v2_unit="cm/s", v2_directionless=True))
+    assert metres.terminal is centimetres.terminal is LaneBTerminal.solved
+    assert centimetres.answer_value_si == pytest.approx(
+        metres.answer_value_si, rel=1.0e-12, abs=1.0e-12
+    )
+
+
+@pytest.mark.parametrize("value", ("2", "0.5", "-2", "1e-9"))
+def test_a_nonzero_directionless_approach_velocity_stays_refused(
+    value: str,
+) -> None:
+    """Only zero is exempt.  Every other magnitude is a missing direction."""
+
+    result = _run(_case(v2=value, v2_directionless=True))
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+
+
+def test_a_zero_velocity_is_refused_when_the_impact_axis_is_not_fixed() -> None:
+    """Zero binds to *the* line of impact, so there has to be exactly one.
+
+    With the partner's own direction off the horizontal line, or with the
+    impact topology broken, there is no single axis for the zero to sit on and
+    the closure refuses rather than choosing one.
+    """
+
+    for label, case in (
+        ("vertical partner direction", _case(v1_direction="upward", v2="0",
+                                             v2_directionless=True)),
+        ("no collision relation", _case(drop_collision=True, v2="0",
+                                        v2_directionless=True)),
+        ("third body", _case(third_body=True, v2="0", v2_directionless=True)),
+        ("duplicate collision", _case(duplicate_collision=True, v2="0",
+                                      v2_directionless=True)),
+    ):
+        result = _run(case)
+        assert result.terminal is not LaneBTerminal.solved, label
+        assert result.answer_value_si is None, label
+        assert result.verified_candidate_count == 0, label
+
+
+def test_a_zero_velocity_outside_the_impact_boundary_is_refused() -> None:
+    """The zero is admitted at the collision start and nowhere else."""
+
+    for label, case in (
+        ("bound to the collision end", _case(v2="0", v2_directionless=True,
+                                             v1_at_end=True)),
+        ("query at the collision start", _case(v2="0", v2_directionless=True,
+                                               query_at_start=True)),
+        ("start event is not a collision start", _case(v2="0",
+                                                       v2_directionless=True,
+                                                       start_kind="start")),
+        ("end event is not a collision end", _case(v2="0",
+                                                   v2_directionless=True,
+                                                   end_kind="finish")),
+    ):
+        result = _run(case)
+        assert result.terminal is not LaneBTerminal.solved, label
+        assert result.answer_value_si is None, label
+        assert result.verified_candidate_count == 0, label
+
+
+@pytest.mark.parametrize(
+    ("value", "direction"),
+    (("1", "left"), ("1", "right"), ("4", "left"), ("0.5", "right")),
+)
+def test_a_positive_magnitude_takes_its_sign_from_the_stated_direction(
+    value: str, direction: str
+) -> None:
+    result = _run(_case(v2=value, v2_direction=direction))
+    assert result.terminal is LaneBTerminal.solved
+    assert result.candidate_count == result.verified_candidate_count == 1
+    # The engine's own closed form, computed from the signed components.
+    m1, m2, e = 2.0, 3.0, 0.5
+    u1 = _signed("4", "right")
+    u2 = _signed(value, direction)
+    expected = (m1 * u1 + m2 * u2 - m2 * e * (u1 - u2)) / (m1 + m2)
+    assert result.answer_value_si == pytest.approx(expected, rel=1.0e-9, abs=1.0e-9)
+
+
+@pytest.mark.parametrize(
+    ("value", "direction"),
+    (("-1", "left"), ("-1", "right"), ("-4", "left"), ("-0.5", "right")),
+)
+def test_a_negative_value_next_to_a_stated_direction_fails_closed(
+    value: str, direction: str
+) -> None:
+    """The sign is encoded twice and nothing typed decides which one wins."""
+
+    result = _run(_case(v2=value, v2_direction=direction))
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+
+
+def test_the_two_directions_are_mirror_images_and_not_the_same_answer() -> None:
+    """A physics-changing control: flipping the stated direction moves the answer."""
+
+    left = _run(_case(v2="1", v2_direction="left"))
+    right = _run(_case(v2="1", v2_direction="right"))
+    assert left.terminal is right.terminal is LaneBTerminal.solved
+    assert left.answer_value_si != pytest.approx(right.answer_value_si)
+
+
+def test_the_zero_admission_does_not_leak_into_other_families() -> None:
+    """The exemption belongs to the impact axis, not to zeros in general.
+
+    A directionless zero has to be inside the exact one-dimensional impact
+    topology to be admitted.  The controls above already refuse it when the
+    topology is broken; this one proves the rule is written against the
+    collision reader itself and never against a bare role or value, by
+    checking the helper directly.
+    """
+
+    from evaluation.phase56_stage7.complete_profile_application import (
+        _directed_scalar_axis_sign,
+        _directionless_zero_scalar,
+    )
+
+    magnitude_zero = {
+        "component": "magnitude", "direction": None, "raw_value": "0",
+    }
+    assert _directionless_zero_scalar(magnitude_zero)
+    # Every neighbouring shape is refused by the helper itself.
+    for label, quantity in (
+        ("nonzero magnitude", {**magnitude_zero, "raw_value": "3"}),
+        ("tiny magnitude", {**magnitude_zero, "raw_value": "1e-12"}),
+        ("no value", {**magnitude_zero, "raw_value": None}),
+        ("non-numeric", {**magnitude_zero, "raw_value": "zero"}),
+        ("not a magnitude component", {**magnitude_zero, "component": "x"}),
+        (
+            "already directed",
+            {**magnitude_zero, "direction": {"kind": "semantic", "direction": "left"}},
+        ),
+    ):
+        assert not _directionless_zero_scalar(quantity), label
+    # And the directed-scalar contract reads only a sign and a number.
+    assert _directed_scalar_axis_sign(1, "5") == 1
+    assert _directed_scalar_axis_sign(-1, "5") == -1
+    assert _directed_scalar_axis_sign(1, "0") == 1
+    assert _directed_scalar_axis_sign(-1, "0") == -1
+    assert _directed_scalar_axis_sign(1, "-5") is None
+    assert _directed_scalar_axis_sign(-1, "-5") is None
+    assert _directed_scalar_axis_sign(0, "5") is None
+    assert _directed_scalar_axis_sign(1, "nan") is None
+    assert _directed_scalar_axis_sign(1, "inf") is None
+    assert _directed_scalar_axis_sign(1, None) is None
+
+
+def test_the_zero_admission_keeps_ids_units_and_order_out_of_the_answer() -> None:
+    baseline = _run(_case(v2="0", v2_directionless=True))
+    renamed = _run(
+        _case(
+            v2="0",
+            v2_unit="cm/s",
+            v2_directionless=True,
+            body_a_role="cart_one",
+            body_b_role="cart_two",
+            reverse=True,
+            family="renamed_restitution_family",
+            case_id="renamed_case_identity",
+            fake_answer=999999.0,
+        )
+    )
+    assert baseline.terminal is renamed.terminal is LaneBTerminal.solved
+    assert renamed.answer_value_si == pytest.approx(
+        baseline.answer_value_si, rel=1.0e-12, abs=1.0e-12
+    )

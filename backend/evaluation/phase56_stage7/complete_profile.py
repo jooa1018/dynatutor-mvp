@@ -1711,16 +1711,27 @@ def _collision_restitution_evidence(
         direction = getattr(
             getattr(item.direction, "direction", None), "value", None
         )
-        return (
+        scoped = (
             item.role.value == "velocity"
             and item.point_id is None
             and item.frame_id is None
             and item.interval_id == interval_id
             and item.event_id == start_id
             and item.shape.value == "scalar"
-            and item.component.value == "unspecified"
-            and direction in {"left", "right"}
             and valued_source(item)
+        )
+        if not scoped:
+            return False
+        # Either the source stated a direction along the line of impact, or it
+        # stated that this approach velocity has no direction *and* that its
+        # value is exactly zero — the one value for which a missing direction
+        # is not a missing fact.  A nonzero directionless speed stays missing.
+        if item.component.value == "unspecified":
+            return direction in {"left", "right"}
+        return (
+            item.component.value == "magnitude"
+            and item.direction is None
+            and _exact_source_zero(item.raw_value)
         )
 
     approach_ok = (
