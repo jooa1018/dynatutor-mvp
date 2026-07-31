@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import replace
 import hashlib
 
 import pytest
 
-from engine.mechanics.contracts import Provenance
+from engine.mechanics.contracts import MechanicsProblemDraftV1, Provenance
 from evaluation.phase56_stage7.complete_profile import (
     PlanDisposition,
     ProfileId,
@@ -15,8 +16,6 @@ from evaluation.phase56_stage7.complete_profile import (
 from evaluation.phase56_stage7.complete_profile_application import (
     TABLE_PULLEY_GRAVITY_ID,
     TABLE_PULLEY_ORIENTATION_RELATION_ID,
-    TABLE_PULLEY_SUPPORT_FRAME_ID,
-    TABLE_PULLEY_WORLD_FRAME_ID,
     TABLE_PULLEY_WORLD_ID,
     ApplicationOutcome,
     apply_selected_profile,
@@ -47,6 +46,103 @@ EXPECTED_LAWS = {
     "rope_fixed_pulley_motion",
     "rope_massless_tension",
 }
+
+# The frame identities a *fully authored* source Draft supplies.  They are
+# fixture-owned on purpose: the closure no longer mints frames, so no product
+# constant names them.
+AUTHORED_WORLD_FRAME_ID = "frm_source_table_pulley_world"
+AUTHORED_SUPPORT_FRAME_ID = "frm_source_table_pulley_support"
+
+
+def _authored_axis(frame_id: str, axis: str, sign: int = 1) -> dict:
+    return {"kind": "axis", "frame_id": frame_id, "axis": axis, "sign": sign}
+
+
+def _stated_orientation_frames(
+    *,
+    support_id: str = "surface",
+    tangent_axis: str = "x",
+    normal_axis: str = "y",
+    tangent_sign: int = 1,
+    parent_frame_id: str | None = AUTHORED_WORLD_FRAME_ID,
+    origin_entity_id: str | None = None,
+    evidence: tuple[str, ...] = (),
+) -> list[dict]:
+    """The two frames a source authors to state a support's orientation.
+
+    The support frame is the whole statement: its tangent names the world
+    frame's x axis, so the support-owned angle finally has a reference line to
+    be zero *against*.  Every knob here exists so a test can state a different
+    orientation — or a broken one — and watch the closure refuse it.
+    """
+
+    return [
+        {
+            "frame_id": AUTHORED_WORLD_FRAME_ID,
+            "frame_type": "cartesian_2d",
+            "origin": {"kind": "world"},
+            "axes": [
+                {"axis": "x", "direction": _authored_axis(AUTHORED_WORLD_FRAME_ID, "x")},
+                {"axis": "y", "direction": _authored_axis(AUTHORED_WORLD_FRAME_ID, "y")},
+            ],
+            "evidence_refs": list(evidence),
+        },
+        {
+            "frame_id": AUTHORED_SUPPORT_FRAME_ID,
+            "frame_type": "cartesian_2d",
+            "origin": {
+                "kind": "entity",
+                "entity_id": origin_entity_id or support_id,
+            },
+            "parent_frame_id": parent_frame_id,
+            "axes": [
+                {
+                    "axis": "tangent",
+                    "direction": _authored_axis(
+                        AUTHORED_WORLD_FRAME_ID, tangent_axis, tangent_sign
+                    ),
+                },
+                {
+                    "axis": "normal",
+                    "direction": _authored_axis(AUTHORED_WORLD_FRAME_ID, normal_axis),
+                },
+            ],
+            "evidence_refs": list(evidence),
+        },
+    ]
+
+
+def _state_orientation(projection, **frame_overrides):
+    """Return the same projection with the source's orientation stated.
+
+    The public corpus cannot express an angle's reference axis — the
+    projection emits ``reference_frames: []`` for every case — so a stated
+    orientation only ever reaches the engine from a fully authored Draft.
+    This helper builds exactly that Draft, and nothing else about the case
+    changes.
+    """
+
+    payload = projection.draft.model_dump(mode="json", warnings="none")
+    frame_overrides.setdefault("evidence", _orientation_evidence(payload))
+    payload["reference_frames"] = _stated_orientation_frames(**frame_overrides)
+    return replace(
+        projection, draft=MechanicsProblemDraftV1.model_validate(payload)
+    )
+
+
+def _orientation_evidence(payload: dict) -> tuple[str, ...]:
+    """The source evidence a stated orientation cites.
+
+    The support's own angle statement when the case makes one; otherwise the
+    first source evidence, so that a case *without* an angle can still author
+    a well-formed frame and be refused for the reason under test rather than
+    for a dangling evidence reference.
+    """
+
+    for quantity in payload["quantities"]:
+        if quantity["role"] == "angle" and quantity["subject_id"] == "surface":
+            return tuple(quantity["evidence_refs"])
+    return (payload["source_evidence"][0]["evidence_id"],)
 
 
 def _fact(
@@ -341,17 +437,26 @@ def _case(
     return PublicCorpusCaseV1(**record)
 
 
-def _projection(case: PublicCorpusCaseV1):
+def _projection(case: PublicCorpusCaseV1, *, stated: bool = False, **frame_overrides):
     projection = project_case_to_draft(case)
     assert projection.terminal is DraftProjectionTerminal.projected, (
         projection.sanitized_reason
     )
     assert projection.draft is not None
-    return projection
+    return _state_orientation(projection, **frame_overrides) if stated else projection
 
 
-def _run(case: PublicCorpusCaseV1, nonce: str):
+def _run(case: PublicCorpusCaseV1, nonce: str, *, stated: bool = False, **overrides):
+    """Run one case.
+
+    ``stated=False`` is the public corpus exactly as it projects — no frames,
+    hence no reference axis, hence no closure.  ``stated=True`` is the fully
+    authored Draft in which the source did state the support's orientation.
+    """
+
     projection = project_case_to_draft(case)
+    if stated and projection.draft is not None:
+        projection = _state_orientation(projection, **overrides)
     return run_lane_b_case(
         projection,
         execution_token=deterministic_token(0, run_nonce=nonce),
@@ -403,6 +508,7 @@ def test_table_pulley_acceleration_uses_existing_generic_laws(
     result = _run(
         _case(mass_a=mass_a, mass_b=mass_b),
         f"b15-positive-{mass_a}-{mass_b}",
+        stated=True,
     )
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(expected, rel=1.0e-12, abs=1.0e-12)
@@ -419,7 +525,7 @@ def test_table_pulley_acceleration_uses_existing_generic_laws(
 
 
 def test_swapped_masses_stay_solved_with_the_swapped_drive() -> None:
-    result = _run(_case(swap_masses=True), "b15-swap")
+    result = _run(_case(swap_masses=True), "b15-swap", stated=True)
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(
         _expected(2.0, 5.0), rel=1.0e-12, abs=1.0e-12
@@ -427,7 +533,7 @@ def test_swapped_masses_stay_solved_with_the_swapped_drive() -> None:
 
 
 def test_transaction_adds_only_typed_topology_and_value_free_unknowns() -> None:
-    projection = _projection(_case())
+    projection = _projection(_case(), stated=True)
     pristine = projection.draft.model_dump(mode="json", warnings="none")
     bundle = build_lane_b_authority_bundle(projection)
     application = apply_selected_profile(
@@ -439,10 +545,15 @@ def test_transaction_adds_only_typed_topology_and_value_free_unknowns() -> None:
     assert application.outcome is ApplicationOutcome.applied
     assert projection.draft.model_dump(mode="json", warnings="none") == pristine
     closed = application.draft
+    # The source authored both frames, so neither is a created record.
     assert {item.frame_id for item in closed.reference_frames} == {
-        TABLE_PULLEY_WORLD_FRAME_ID,
-        TABLE_PULLEY_SUPPORT_FRAME_ID,
+        AUTHORED_WORLD_FRAME_ID,
+        AUTHORED_SUPPORT_FRAME_ID,
     }
+    assert not {
+        AUTHORED_WORLD_FRAME_ID,
+        AUTHORED_SUPPORT_FRAME_ID,
+    } & set(application.created_record_ids)
     assert {
         item.entity_id
         for item in closed.entities
@@ -471,7 +582,7 @@ def test_transaction_adds_only_typed_topology_and_value_free_unknowns() -> None:
 
 
 def test_units_explicit_rope_ids_and_source_order_are_not_authority() -> None:
-    baseline = _run(_case(), "b15-invariance-base")
+    baseline = _run(_case(), "b15-invariance-base", stated=True)
     equivalent = _run(
         _case(
             mass_a="5000",
@@ -486,6 +597,7 @@ def test_units_explicit_rope_ids_and_source_order_are_not_authority() -> None:
             fake_answer=999999.0,
         ),
         "b15-invariance-equivalent",
+        stated=True,
     )
     assert baseline.terminal is equivalent.terminal is LaneBTerminal.solved
     assert equivalent.answer_value_si == pytest.approx(
@@ -495,13 +607,13 @@ def test_units_explicit_rope_ids_and_source_order_are_not_authority() -> None:
 
 
 def test_relation_participant_order_is_not_authority() -> None:
-    baseline = _run(_case(), "b15-participants-base")
+    baseline = _run(_case(), "b15-participants-base", stated=True)
     case = _case(case_id="fx_public_dev_0952")
     gold = case.gold.model_dump(mode="json", warnings="none")
     for relation in gold["relations"]:
         relation["participant_roles"] = list(reversed(relation["participant_roles"]))
     permuted = case.model_copy(update={"gold": type(case.gold)(**gold)})
-    result = _run(permuted, "b15-participants-permuted")
+    result = _run(permuted, "b15-participants-permuted", stated=True)
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(
         baseline.answer_value_si, rel=1.0e-12, abs=1.0e-12
@@ -542,7 +654,7 @@ def test_incline_shape_is_never_claimed_by_the_table_profile() -> None:
         {"query_component": "x"},
         {"query_output": "force"},
         {"query_event": "start"},
-        {"collision_id": TABLE_PULLEY_WORLD_FRAME_ID},
+        {"collision_id": AUTHORED_WORLD_FRAME_ID},
     ),
 )
 def test_structural_near_misses_fail_closed_without_numeric_output(
@@ -555,15 +667,15 @@ def test_structural_near_misses_fail_closed_without_numeric_output(
 
 
 def test_physics_changing_mass_changes_the_verified_answer() -> None:
-    first = _run(_case(mass_b="2"), "b15-mass-2")
-    second = _run(_case(mass_b="3"), "b15-mass-3")
+    first = _run(_case(mass_b="2"), "b15-mass-2", stated=True)
+    second = _run(_case(mass_b="3"), "b15-mass-3", stated=True)
     assert first.terminal is second.terminal is LaneBTerminal.solved
     assert first.answer_value_si != pytest.approx(second.answer_value_si)
     assert first.applied_law_ids == second.applied_law_ids
 
 
 def test_closed_graph_never_uses_incline_projection_laws() -> None:
-    result = _run(_case(), "b15-no-incline-laws")
+    result = _run(_case(), "b15-no-incline-laws", stated=True)
     assert result.terminal is LaneBTerminal.solved
     assert not any("incline" in law_id for law_id in result.applied_law_ids)
     assert not any("rolling" in law_id for law_id in result.applied_law_ids)
@@ -582,7 +694,7 @@ def test_closed_graph_never_uses_incline_projection_laws() -> None:
 
 
 def test_typed_support_normal_and_tangent_are_bound_to_the_world_axes() -> None:
-    projection = _projection(_case())
+    projection = _projection(_case(), stated=True)
     bundle = build_lane_b_authority_bundle(projection)
     application = apply_selected_profile(
         projection.draft,
@@ -595,12 +707,12 @@ def test_typed_support_normal_and_tangent_are_bound_to_the_world_axes() -> None:
     support = next(
         item
         for item in closed.reference_frames
-        if item.frame_id == TABLE_PULLEY_SUPPORT_FRAME_ID
+        if item.frame_id == AUTHORED_SUPPORT_FRAME_ID
     )
     world = next(
         item
         for item in closed.reference_frames
-        if item.frame_id == TABLE_PULLEY_WORLD_FRAME_ID
+        if item.frame_id == AUTHORED_WORLD_FRAME_ID
     )
     assert support.parent_frame_id == world.frame_id
     assert support.origin.entity_id == "surface"
@@ -619,7 +731,7 @@ def test_typed_support_normal_and_tangent_are_bound_to_the_world_axes() -> None:
 
 
 def test_typed_horizontal_relation_carries_the_stated_zero_angle() -> None:
-    projection = _projection(_case())
+    projection = _projection(_case(), stated=True)
     bundle = build_lane_b_authority_bundle(projection)
     application = apply_selected_profile(
         projection.draft,
@@ -677,7 +789,11 @@ def test_typed_horizontal_relation_carries_the_stated_zero_angle() -> None:
 def test_support_orientation_must_be_stated_exactly_once_and_be_zero(
     overrides: dict, why: str
 ) -> None:
-    result = _run(_case(**overrides), f"b15-orientation-{sorted(overrides)}-{why}")
+    result = _run(
+        _case(**overrides),
+        f"b15-orientation-{sorted(overrides)}-{why}",
+        stated=True,
+    )
     assert result.terminal is not LaneBTerminal.solved, why
     assert result.answer_value_si is None
     assert result.verified_candidate_count == 0
@@ -710,7 +826,7 @@ def test_entity_labels_are_never_the_horizontal_authority(label: str) -> None:
     ),
 )
 def test_problem_text_is_never_the_horizontal_authority(replacement: str) -> None:
-    baseline = _run(_case(), "b15-text-baseline")
+    baseline = _run(_case(), "b15-text-baseline", stated=True)
     assert baseline.terminal is LaneBTerminal.solved
     case = _case(case_id="fx_public_dev_0955")
     # Same typed structure, contradicting prose: the engine reads structure.
@@ -722,7 +838,7 @@ def test_problem_text_is_never_the_horizontal_authority(replacement: str) -> Non
             ).hexdigest(),
         }
     )
-    result = _run(rewritten, f"b15-text-{replacement[:12]}")
+    result = _run(rewritten, f"b15-text-{replacement[:12]}", stated=True)
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(
         baseline.answer_value_si, rel=1.0e-12, abs=1.0e-12
@@ -736,10 +852,11 @@ def test_problem_text_is_never_the_horizontal_authority(replacement: str) -> Non
 def test_a_stated_zero_reads_the_same_in_every_angular_unit(
     unit: str, value: str
 ) -> None:
-    baseline = _run(_case(), "b15-zero-unit-baseline")
+    baseline = _run(_case(), "b15-zero-unit-baseline", stated=True)
     result = _run(
         _case(support_angle=value, support_angle_unit=unit),
         f"b15-zero-unit-{unit}-{value}",
+        stated=True,
     )
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(
@@ -795,7 +912,7 @@ def test_a_support_frame_that_is_not_horizontal_fails_closed() -> None:
     it rather than answer.
     """
 
-    projection = _projection(_case())
+    projection = _projection(_case(), stated=True)
     bundle = build_lane_b_authority_bundle(projection)
     application = apply_selected_profile(
         projection.draft,
@@ -809,7 +926,7 @@ def test_a_support_frame_that_is_not_horizontal_fails_closed() -> None:
         return next(
             item
             for item in payload["reference_frames"]
-            if item["frame_id"] == TABLE_PULLEY_SUPPORT_FRAME_ID
+            if item["frame_id"] == AUTHORED_SUPPORT_FRAME_ID
         )
 
     swapped_normal = deepcopy(closed)
@@ -833,7 +950,7 @@ def test_a_support_frame_that_is_not_horizontal_fails_closed() -> None:
     no_support_frame["reference_frames"] = [
         item
         for item in no_support_frame["reference_frames"]
-        if item["frame_id"] != TABLE_PULLEY_SUPPORT_FRAME_ID
+        if item["frame_id"] != AUTHORED_SUPPORT_FRAME_ID
     ]
 
     text = _case().problem_text
@@ -860,3 +977,158 @@ def test_a_support_frame_that_is_not_horizontal_fails_closed() -> None:
         assert not _compiles_to_a_solved_answer(
             mutated, text, approved, authority_map
         ), name
+
+
+# ---------------------------------------------------------------------------
+# The reference axis a stated zero is measured *from*.
+#
+# A support-owned angle of zero is a number until something says which line it
+# is zero against.  These tests hold the line that the number alone is never
+# enough, and that the only thing that ever is, is the source's own frame
+# binding.
+# ---------------------------------------------------------------------------
+
+
+def test_a_stated_zero_angle_without_any_reference_stays_closed() -> None:
+    """The public corpus shape: an exact zero, and no reference for it.
+
+    This is what every table-pulley case in the public corpus actually
+    projects to — the projection emits no reference frames at all — so this
+    test is also the standing proof that the profile cannot answer one.
+    """
+
+    projection = _projection(_case())
+    assert projection.draft.reference_frames == []
+    bundle = build_lane_b_authority_bundle(projection)
+    application = apply_selected_profile(
+        projection.draft,
+        ProfileId.table_pulley_two_body,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+    assert application.outcome is not ApplicationOutcome.applied
+
+    result = _run(_case(), "b15-zero-without-reference")
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+
+
+@pytest.mark.parametrize(
+    ("overrides", "why"),
+    (
+        (
+            {"tangent_axis": "y", "normal_axis": "x"},
+            "a tangent bound to world y states a vertical support, not a level one",
+        ),
+        (
+            {"tangent_sign": -1},
+            "a reversed tangent is a different axis binding, not the stated one",
+        ),
+        (
+            {"normal_axis": "x"},
+            "a normal bound to world x contradicts the tangent it accompanies",
+        ),
+        (
+            {"origin_entity_id": "mass_a"},
+            "a frame anchored on the block states the block's orientation",
+        ),
+        (
+            {"origin_entity_id": "pulley"},
+            "a frame anchored on the pulley states nothing about the support",
+        ),
+        (
+            {"parent_frame_id": None},
+            "an unparented support frame names no world to be horizontal in",
+        ),
+        (
+            {"evidence": ()},
+            "an unevidenced frame is an assertion, not a source statement",
+        ),
+    ),
+)
+def test_only_a_world_horizontal_frame_binding_states_the_orientation(
+    overrides: dict, why: str
+) -> None:
+    result = _run(
+        _case(), f"b15-reference-{sorted(overrides)}", stated=True, **overrides
+    )
+    assert result.terminal is not LaneBTerminal.solved, why
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+
+
+def test_a_second_surface_frame_leaves_the_reference_ambiguous() -> None:
+    """Two candidate orientations are no orientation.
+
+    A support frame plus a second, differently-bound frame does not say which
+    one the angle is measured from, so the closure refuses rather than picking.
+    """
+
+    projection = _projection(_case())
+    payload = projection.draft.model_dump(mode="json", warnings="none")
+    frames = _stated_orientation_frames(evidence=_orientation_evidence(payload))
+    duplicate = deepcopy(frames[1])
+    duplicate["frame_id"] = "frm_source_table_pulley_support_2"
+    for axis in duplicate["axes"]:
+        if axis["axis"] == "tangent":
+            axis["direction"]["axis"] = "y"
+    payload["reference_frames"] = [*frames, duplicate]
+    ambiguous = replace(
+        projection, draft=MechanicsProblemDraftV1.model_validate(payload)
+    )
+    bundle = build_lane_b_authority_bundle(ambiguous)
+    application = apply_selected_profile(
+        ambiguous.draft,
+        ProfileId.table_pulley_two_body,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+    assert application.outcome is not ApplicationOutcome.applied
+
+
+def test_a_stated_reference_never_substitutes_for_the_stated_zero() -> None:
+    """Both halves are required, and neither implies the other.
+
+    A frame binding says which line the angle is measured from; the angle says
+    the support is level with it.  A binding beside a missing angle, or beside
+    a non-zero one, is not a horizontal support.
+    """
+
+    for overrides, why in (
+        ({"support_angle": None}, "a reference with no angle states no value"),
+        ({"support_angle": "30"}, "a slope beside a horizontal reference conflicts"),
+        ({"support_angle": "90"}, "a vertical support is not a level one"),
+        ({"support_angle": "0.0001"}, "nearly zero is not a stated zero"),
+    ):
+        result = _run(
+            _case(**overrides), f"b15-both-halves-{sorted(overrides)}", stated=True
+        )
+        assert result.terminal is not LaneBTerminal.solved, why
+        assert result.answer_value_si is None
+
+
+def test_the_closure_never_creates_the_orientation_it_reads() -> None:
+    """No frame is a created record, and removing the source's frames refuses.
+
+    The defect this replaces was a closure that minted a tangent/world-x
+    binding out of a bare zero and then read its own output back as evidence.
+    """
+
+    projection = _projection(_case(), stated=True)
+    bundle = build_lane_b_authority_bundle(projection)
+    application = apply_selected_profile(
+        projection.draft,
+        ProfileId.table_pulley_two_body,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+    assert application.outcome is ApplicationOutcome.applied
+    created = set(application.created_record_ids)
+    assert not created & {
+        item.frame_id for item in application.draft.reference_frames
+    }
+    # And the frames that survive are byte-identical to the ones authored.
+    authored = projection.draft.model_dump(mode="json", warnings="none")
+    closed = application.draft.model_dump(mode="json", warnings="none")
+    assert closed["reference_frames"] == authored["reference_frames"]

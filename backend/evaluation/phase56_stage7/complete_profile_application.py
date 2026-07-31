@@ -201,8 +201,6 @@ INCLINE_HANGING_GRAVITY_ID = "qty_closure_incline_hanging_gravity"
 INCLINE_HANGING_GRAVITY_SYMBOL_ID = "sym_closure_incline_hanging_gravity"
 
 TABLE_PULLEY_WORLD_ID = "entity_closure_table_pulley_world"
-TABLE_PULLEY_WORLD_FRAME_ID = "frm_closure_table_pulley_world"
-TABLE_PULLEY_SUPPORT_FRAME_ID = "frm_closure_table_pulley_support"
 TABLE_PULLEY_ORIENTATION_RELATION_ID = "geo_closure_table_pulley_orientation"
 TABLE_PULLEY_CONTACT_POINT_ID = "pt_closure_table_pulley_contact"
 TABLE_PULLEY_GRAVITY_ID = "qty_closure_table_pulley_gravity"
@@ -2349,6 +2347,111 @@ def _exact_zero_source_angle(quantity: Mapping[str, Any]) -> bool:
     return value == 0.0
 
 
+def _world_axis_direction(binding: Any, frame_id: str, axis: str) -> bool:
+    """True when one axis binding names ``frame_id``'s ``axis`` in the + sense."""
+
+    return (
+        isinstance(binding, Mapping)
+        and binding.get("kind") == "axis"
+        and binding.get("frame_id") == frame_id
+        and binding.get("axis") == axis
+        and binding.get("sign") == 1
+    )
+
+
+def _axis_bindings(frame: Mapping[str, Any]) -> dict[str, Any]:
+    """One frame's axis name -> direction binding, or ``{}`` if malformed."""
+
+    axes = frame.get("axes")
+    if not isinstance(axes, list) or len(axes) != 2:
+        return {}
+    bindings = {
+        item.get("axis"): item.get("direction")
+        for item in axes
+        if isinstance(item, Mapping)
+    }
+    return bindings if len(bindings) == 2 else {}
+
+
+def _frame_is_plain(frame: Mapping[str, Any]) -> bool:
+    """True for a static frame carrying no translation, rotation, or coordinate."""
+
+    return (
+        frame.get("frame_type") == "cartesian_2d"
+        and frame.get("translating_with_entity_id") is None
+        and frame.get("rotating_about_point_id") is None
+        and not frame.get("generalized_coordinate_symbol_ids")
+        and bool(frame.get("evidence_refs"))
+    )
+
+
+def _stated_support_orientation(
+    payload: Mapping[str, Any], *, support_id: str
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """The source's own binding of a support's tangent to the world horizontal.
+
+    An angle is a number until something states what it is measured *from*.
+    A support-owned angle of exactly zero is equally consistent with a plane
+    level to the world horizontal, a plane measured from the vertical, and a
+    plane measured from some second surface: the value fixes no reference, so
+    no world axis may be written out of it.  Neither does the transaction's
+    own later output — a closure that mints a tangent/world-x binding and then
+    reads that binding back has proved nothing about the source.
+
+    ``ReferenceFrame.axes[].direction`` is the only place in this contract
+    where an axis identity is typed: ``GeometryRelation`` carries no axis and
+    ``SemanticDirectionName`` carries no surface-relative member.  So a stated
+    support orientation means exactly one thing, and this helper admits only
+    it — the source itself authored a support frame, anchored on the support
+    entity and parented to a world frame, whose tangent binds to that world
+    frame's x axis and whose normal to its y axis.
+
+    No label, sentence, primitive, entity kind, or missing field is read
+    anywhere.  Absence returns ``None``: silence is never a stated reference.
+    """
+
+    frames = payload.get("reference_frames")
+    if not isinstance(frames, list) or len(frames) != 2:
+        return None
+    world_frames = [
+        item
+        for item in frames
+        if isinstance(item, Mapping)
+        and isinstance(item.get("origin"), Mapping)
+        and item["origin"].get("kind") == "world"
+    ]
+    if len(world_frames) != 1:
+        return None
+    world = world_frames[0]
+    support = next(item for item in frames if item is not world)
+    if not isinstance(support, Mapping):
+        return None
+    world_id = world.get("frame_id")
+    world_axes = _axis_bindings(world)
+    support_axes = _axis_bindings(support)
+    if (
+        type(world_id) is not str
+        or not _frame_is_plain(world)
+        or world.get("parent_frame_id") is not None
+        or not _world_axis_direction(world_axes.get("x"), world_id, "x")
+        or not _world_axis_direction(world_axes.get("y"), world_id, "y")
+        # The support frame is what states the orientation: its tangent is
+        # the world horizontal and its normal the world vertical.  A tangent
+        # bound to y would state a vertical support, and a binding into any
+        # frame other than this world frame states an orientation relative to
+        # something whose own orientation is unstated.
+        or not _frame_is_plain(support)
+        or not isinstance(support.get("origin"), Mapping)
+        or support["origin"].get("kind") != "entity"
+        or support["origin"].get("entity_id") != support_id
+        or support.get("parent_frame_id") != world_id
+        or not _world_axis_direction(support_axes.get("tangent"), world_id, "x")
+        or not _world_axis_direction(support_axes.get("normal"), world_id, "y")
+    ):
+        return None
+    return dict(world), dict(support)
+
+
 def _fixed_pulley_acceleration_transaction(
     payload: dict[str, Any], authority: TransactionAuthority
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
@@ -3388,17 +3491,18 @@ def _table_pulley_two_body_transaction(
     one unique connected/wrapped/lying-on topology and the idealisations.
     The support is the typed ``surface`` primitive; an incline support, an
     invented angle, or a stated friction coefficient is a different shape and
-    is refused.  This adapter derives only the world frame, the force-bearing
-    interactions, the contact/rope states and value-free unknown components
-    required by the existing weight/Newton/contact/rope laws.  The aggregate
-    acceleration-magnitude query is rebound to the hanging body's downward
-    axis component; no acceleration value or answer is written here.
+    is refused.  The support's *orientation* is read from the source's own
+    frame binding and is never written here — see
+    ``_stated_support_orientation``.  This adapter derives only the
+    force-bearing interactions, the contact/rope states and value-free unknown
+    components required by the existing weight/Newton/contact/rope laws.  The
+    aggregate acceleration-magnitude query is rebound to the hanging body's
+    downward axis component; no acceleration value or answer is written here.
     """
 
     if (
         len(payload["queries"]) != 1
         or len(payload["motion_intervals"]) != 1
-        or payload["reference_frames"]
         or payload["points"]
         or payload["interactions"]
         or payload["constraints"]
@@ -3486,14 +3590,25 @@ def _table_pulley_two_body_transaction(
         return None
     mass_by_id = {item[1]["subject_id"]: item for item in mass_records}
 
-    # The support's orientation is the source's own statement or nothing.
-    # Exactly one evidenced angle, owned by the support entity, whose value is
-    # exactly zero, states that the support plane is horizontal — that the
-    # support tangent is the world horizontal axis and the support normal the
-    # world vertical one.  A generic `surface` primitive proves none of that
-    # on its own: the same primitive carries banked roads and vertical tracks.
-    # A missing angle is silence, not a zero, and a stated non-zero angle is a
-    # different contact shape.
+    # The support's orientation is the source's own statement or nothing, and
+    # the statement has two halves that must agree.
+    #
+    # The *reference* half is the source's frame binding: only a frame whose
+    # tangent is bound to the world x axis says which line the support angle
+    # is measured from.  Without it a zero fixes nothing, so it is required
+    # before the angle is even looked at.
+    #
+    # The *value* half is exactly one evidenced angle, owned by the support
+    # entity, whose value is exactly zero — the support really is level with
+    # the reference the binding names.  A generic `surface` primitive proves
+    # neither half on its own: the same primitive carries banked roads and
+    # vertical tracks.  A missing angle is silence, not a zero, and a stated
+    # non-zero angle beside a horizontal binding is a contradiction, not a
+    # shape this closure may resolve.
+    stated_orientation = _stated_support_orientation(payload, support_id=surface_id)
+    if stated_orientation is None:
+        return None
+    world_frame, support_frame = stated_orientation
     support_angles = tuple(
         item
         for item in payload["quantities"]
@@ -3619,8 +3734,6 @@ def _table_pulley_two_body_transaction(
 
     ids = {
         "world": TABLE_PULLEY_WORLD_ID,
-        "world_frame": TABLE_PULLEY_WORLD_FRAME_ID,
-        "support_frame": TABLE_PULLEY_SUPPORT_FRAME_ID,
         "orientation": TABLE_PULLEY_ORIENTATION_RELATION_ID,
         "point": TABLE_PULLEY_CONTACT_POINT_ID,
         "gravity": TABLE_PULLEY_GRAVITY_ID,
@@ -3654,6 +3767,13 @@ def _table_pulley_two_body_transaction(
     }
     if _authored_draft_ids(payload) & set(ids.values()):
         return None
+    # The two frames are the source's, not this closure's.  They join the id
+    # map after the collision check so the records below can reference them by
+    # name, and they are excluded from the created-record report because
+    # nothing here created them.
+    created_ids = tuple(sorted(ids.values()))
+    ids["world_frame"] = world_frame["frame_id"]
+    ids["support_frame"] = support_frame["frame_id"]
 
     rope_evidence = tuple(sorted(
         set(assumption_by_kind["massless_rope"]["evidence_refs"])
@@ -3681,33 +3801,11 @@ def _table_pulley_two_body_transaction(
     def axis_direction(frame_id: str, axis: str, sign: int) -> dict[str, Any]:
         return {"kind": "axis", "frame_id": frame_id, "axis": axis, "sign": sign}
 
-    world_frame = {
-        "frame_id": ids["world_frame"], "frame_type": "cartesian_2d",
-        "origin": {"kind": "world"},
-        "axes": [
-            {"axis": "x", "direction": axis_direction(ids["world_frame"], "x", 1)},
-            {"axis": "y", "direction": axis_direction(ids["world_frame"], "y", 1)},
-        ],
-        "evidence_refs": list(orientation_evidence),
-    }
-    # The stated zero support angle, written down as the typed thing it means:
-    # the support's tangent is the world horizontal axis and the support's
-    # normal is the world vertical axis.  Nothing else in this transaction may
-    # bind a world axis, so if the statement is ever removed the whole world
-    # frame goes with it.
-    support_frame = {
-        "frame_id": ids["support_frame"], "frame_type": "cartesian_2d",
-        "origin": {"kind": "entity", "entity_id": surface_id},
-        "parent_frame_id": ids["world_frame"],
-        "axes": [
-            {"axis": "tangent",
-             "direction": axis_direction(ids["world_frame"], "x", 1)},
-            {"axis": "normal",
-             "direction": axis_direction(ids["world_frame"], "y", 1)},
-        ],
-        "evidence_refs": list(support_angle_evidence),
-    }
-
+    # No frame is built here.  The world axes and the support's tangent/normal
+    # binding are the source's own statement, validated by
+    # `_stated_support_orientation` and carried through untouched; a closure
+    # that minted them would be writing the reference it is supposed to be
+    # reading.
     generated_quantities: list[dict[str, Any]] = []
     generated_symbols: list[dict[str, Any]] = []
 
@@ -3915,7 +4013,8 @@ def _table_pulley_two_body_transaction(
                     "owner_entity_id": table_body_id,
                     "frame_id": ids["world_frame"],
                     "evidence_refs": list(contact_evidence)}],
-        "reference_frames": [world_frame, support_frame],
+        # Carried through exactly as the source authored them.
+        "reference_frames": list(payload["reference_frames"]),
         "motion_intervals": [updated_interval],
         "events": [],
         "symbols": [*payload["symbols"], *generated_symbols],
@@ -3938,7 +4037,7 @@ def _table_pulley_two_body_transaction(
             )),
         ],
     })
-    return closed, tuple(sorted(ids.values())), (query_quantity["quantity_id"],)
+    return closed, created_ids, (query_quantity["quantity_id"],)
 
 
 def _incline_kinetic_sliding_transaction(
@@ -6647,8 +6746,6 @@ __all__ = [
     "ROLLING_GRAVITY_QUANTITY_ID",
     "ROLLING_GRAVITY_SYMBOL_ID",
     "TABLE_PULLEY_WORLD_ID",
-    "TABLE_PULLEY_WORLD_FRAME_ID",
-    "TABLE_PULLEY_SUPPORT_FRAME_ID",
     "TABLE_PULLEY_ORIENTATION_RELATION_ID",
     "TABLE_PULLEY_CONTACT_POINT_ID",
     "TABLE_PULLEY_GRAVITY_ID",
