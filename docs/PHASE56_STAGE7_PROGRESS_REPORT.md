@@ -6,7 +6,167 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
-## B15/B16 acceptance and B17 disposition session (2026-07-30, later) — read this first
+## B15/B16 authority repair and B18 residual session (2026-07-31) — read this first
+
+An independent authority audit found that **B15 and B16 both produced
+public-correct answers from authority the source never states**, and this
+session repaired both forward.  No reset, rebase, amend, squash, force-push, or
+history rewrite; every pre-session commit is preserved byte-identical, and the
+earlier acceptance records below are kept as history rather than edited away.
+
+| Item | Commit | Disposition |
+|---|---|---|
+| B15 `TABLE_PULLEY_TWO_BODY` | `f67550a` | **INCOMPLETE / revoked**, −3 public solves |
+| B16 `PARTICLE_ON_INCLINE_KINETIC_FRICTION` | `0ea3148` | **INCOMPLETE / revoked**, −3 public solves |
+| B18 `DIRECTION_SAFE_RESTITUTION_RESIDUALS` | `a544e4b` | **ACCEPTED**, +1 public solve |
+| Slide-authority naming | `b825013` | identifiers only, no behaviour change |
+| Final code head | `b82501333183c7cec2dbc8d9efacfc438a52e0ae` |  |
+| `OBSERVED_PUBLIC_SCORE` | **41/81** | measured at the final code head |
+| `AUTHORITY_ACCEPTED_SCORE` | **41/81** | observed = accepted |
+| Supported wrong / solved-but-unscored / downgraded | **0 / 0 / 0** |  |
+| Deferred | 12/12; needs_figure 2/2; needs_confirmation 2/2; insufficient 1/1 |  |
+| unsupported_other | 0/2 (unchanged known gap) |  |
+| Terminal mapping | 58/100 (was 63/100) |  |
+| Hard safety | 23/23 measured, 0 unbound, 0 nonzero |  |
+| Lanes C/D/E, compositional 12, synthetic 38, metamorphic, physics-changing, redaction | all PASS |  |
+| External model calls / private access / measured cost | 0 / 0 / $0 |  |
+| Strict report | `stage7_strict_public100_b825013.json`, SHA-256 `4132cf05ca9d52dc1bd726e887aa5e80f0c870f414a14ad86099d16ab64077f4` (out-of-repo) |  |
+| Corpus archive SHA-256 | `cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef` |  |
+
+**The score went down on purpose.** A solve without typed authority is a defect
+even when its number is right; removing it is the repair, not a regression.
+
+### B15 — the generic surface was never horizontal (`f67550a`)
+
+`EntityPrimitive.surface` is a *generic* support.  The corpus contract uses the
+same primitive for a banked road, a vertical circular track, and a level floor,
+so it can never stand for "horizontal" — and the accepted profile read exactly
+that: a `surface`, no `incline` primitive, and no `angle` quantity were taken
+together as a stated zero slope.  The transaction then wrote world axes (table
+acceleration +x, normal +y, weight −y, hanging acceleration −y) that nothing in
+the source licensed.  Information the source never states is not evidence of a
+zero.
+
+The orientation now has to be stated.  The one authority admitted is the
+source's own support angle — owned by the support entity, evidenced, and
+exactly zero, a value that reads the same in every angular unit so the check
+needs no unit policy and cannot be widened by one.  Four independent places
+require it: the profile signature, the closure transaction, the compiler's
+fixed-pulley horizontal-contact contract, and the horizontal-contact law
+profile.  The closure records what it means as typed structure: a support frame
+whose tangent is bound to world +x and whose normal to world +y, plus an angle
+relation carrying the source quantity itself.
+
+Nothing else substitutes: not the primitive, not a missing incline, not a
+missing angle, not a label reading "horizontal table", not a sentence in the
+problem text, not a nearly-zero number.  The public table-pulley cases state no
+support angle, so they fail closed with no numeric output.  **57 focused
+tests**, including stated-zero positives, unit invariance of zero, label and
+problem-text negative controls, duplicate and second-surface refusals, and
+Draft-level mutations of the support frame.  The legacy table-hanging parity
+fixture states the same zero angle explicitly, so the long-standing horizontal
+contract keeps its coverage under the stricter rule.
+
+### B16 — `sliding_on_incline` never said which way (`0ea3148`)
+
+The accepted profile inferred the slide direction from absence: one body, one
+incline, one slide segment, gravity and nothing else was read as "gravity is
+the whole driving system, therefore the block is going down".  That confuses
+"gravity could start this motion" with "this motion is happening", and no
+stated velocity is silence rather than proof.
+
+Direction decides the physics.  On the down-slope-positive tangent a down-slope
+slide obeys `a = g(sin θ − μ cos θ)` and an up-slope slide `a = g(sin θ + μ cos
+θ)`, because kinetic friction opposes the motion that exists.  The projection
+now carries the sense only when the source states it: one velocity fact about
+the sliding body, inside the sliding segment, with typed direction `downward`
+or `upward`.  A body constrained to the slope moves along the slope tangent, so
+those two are the slope senses; `left`, `right`, `along_motion`,
+`opposite_motion`, and `unspecified` resolve no sense without a slope facing
+the source never gives.  The sense stays on the physics record — the source
+velocity, rebound to the slope tangent with its own sign, carried by the typed
+motion state — and the law reads the friction sign from that quantity.
+
+The `a ≥ 0` companion inequality is **removed**.  It encoded the same confusion
+and refused correct answers whenever `μ > tan θ`: a block already sliding down
+a shallow rough slope decelerates, and a negative tangential acceleration is
+the right answer.  The remaining inequality states what the model really
+requires of a source value — a friction coefficient is never negative.
+
+The public kinetic-incline cases state no velocity at all, so they fail closed.
+**47 focused tests**, including up-slope and down-slope closed forms, the
+high-friction decelerating slide the old premise refused, direction negative
+controls for every non-slope-sense direction, contradictory and duplicated
+statements, wrong subject/segment/event scope, non-positive speeds, a roped
+second body, and a B15/B16 non-interference control.  The adversarial
+ambiguous-friction case still reaches `needs_confirmation`.
+
+### B18 — one directed-scalar contract, +1 public solve (`a544e4b`)
+
+Two of the four applicable restitution impacts never reached a verified solve,
+and both were the same scalar encoded two ways.
+
+* **Zero-valued directionless velocity — solved.**  A velocity that is exactly
+  zero and states no direction is not missing a direction: `+0` and `−0` are
+  the same number on either side of the line of impact, so a body whose speed
+  is exactly zero has one velocity vector there.  It is admitted only inside
+  the exact one-dimensional impact topology — two bodies, one line of impact,
+  the collision-start boundary, the same axis the restitution and momentum laws
+  use — and only for an exact finite zero.  Anything merely small, and every
+  nonzero directionless magnitude, stays refused.
+* **Negative value beside a stated direction — INCOMPLETE, fail-closed.**  A
+  scalar that names a direction has stated a magnitude; a magnitude is never
+  negative; and which encoding wins when they disagree depends on an axis
+  orientation the source never states.  The two readings are mirror-image
+  physics, so this refuses at the binding instead of answering.  It previously
+  reached the solver and was rejected there — the same outcome, now stated at
+  the right layer.
+
+The helper reads a sign and a number — never a role, subject, family, case, or
+answer — and is exercised directly so the rule cannot become a per-value patch.
+**60 focused tests** (35 existing plus 25 new).
+
+### Regression, strict, and CI at the final code head
+
+- Full Stage 7 focused suite: **1,318 passed**.  Full `phase56_mechanics`
+  parity suite: **1,886 passed**.  Backend collection: **4,095 tests, 0
+  errors**.
+- Strict public-100 (`--require-public-corpus --require-full-stage7`): exit
+  **2** (expected while Stage 7 is incomplete), **29 strict gates PASS / 10
+  FAIL**.  Every FAIL is a Stage-7-incomplete condition: supported < 81,
+  `unsupported_other` 0/2, terminal mapping < 100%, unscored > 0, and the five
+  100%-metric gates that follow from them.
+- Exact-head CI at `b825013`, all with verified exact checkout: push runs
+  `30621958241` (parser), `30621958220` (Stage 6: frontend, focused, regression
+  shards 0–7, partition audit, gate — 12 jobs), `30621958236` (Stage 7:
+  offline-evaluation incl. full backend regression and collection, frontend, B7
+  polar slow, Stage 7 gate — 4 jobs), `30621958223` (release: fast shards 0–3,
+  slow shards 0–15, both partition audits, quality, performance, frontend,
+  release gate — 26 jobs); PR runs `30621960616`, `30621960798`, `30621960777`,
+  `30621960759`.  **8/8 SUCCESS.**
+- A **SAME_MODEL_READ_ONLY_CHECKER** (the same Opus model as the author; *not*
+  represented as an independent Checker) audited `4898465..b825013`:
+  **PASS — blocking 0**.  Scope: B15 horizontal authority and generic-surface
+  misuse, B16 motion-direction authority, kinetic/static separation,
+  high-friction negative acceleration, B18 zero normalization and sign
+  double-application, B10/B12 revoke preservation, raw-text/label/family/case
+  routing, generated values, event/interval scope, wrong confident solves,
+  threshold/tolerance/budget relaxation, test deletion, gold isolation, and
+  strict attribution.  Four non-blocking notes are recorded in
+  `PHASE56_STAGE7_STRUCTURAL_BLOCKERS.md` §B18.  A fresh independent Checker
+  remains a prerequisite for any Stage 7 acceptance claim.
+
+---
+
+## B15/B16 acceptance session (2026-07-30, later) — **SUPERSEDED**
+
+> **Superseded by the 2026-07-31 authority repair above.**  The B15 and B16
+> acceptances recorded here did not hold: both closed on authority the source
+> never states, and both were revoked forward.  The section is preserved
+> unchanged as the record of what was claimed and when.  Its
+> `OBSERVED_PUBLIC_SCORE` / `AUTHORITY_ACCEPTED_SCORE` of 46/81, and its
+> B15/B16 `ACCEPTED` dispositions, are **not** current.
+
 
 This session continued Stage 7 from the measured 40/81 baseline
 (documentation head `52b237d`) and closed two structure packages forward-only;

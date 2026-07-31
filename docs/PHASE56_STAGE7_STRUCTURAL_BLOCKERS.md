@@ -1182,6 +1182,88 @@ catch it the moment it stops being latent.
    signed answer changes sign. Any answer that does not change is proof the
    metric is still lying.
 
+## B18. Direction-safe restitution residuals — measured, one solved, one blocked
+
+Measured at code head `b82501333183c7cec2dbc8d9efacfc438a52e0ae` against the
+authorised public archive.  The four applicable `collision_restitution`
+contexts split into two that already solved and two residuals; both residuals
+were the same scalar encoded two different ways, and they resolve in opposite
+directions.
+
+### B18-A. Directionless zero — RESOLVED, +1 public solve
+
+A source velocity of exactly zero whose typed direction is `not_applicable`
+projects to the magnitude component with no direction binding, so the profile
+plan never formed.  That is right for every magnitude except zero: `+0` and
+`−0` are the same number on either side of the line of impact, so a body whose
+speed is exactly zero has exactly one velocity vector there and binding it to
+the impact axis adds no direction the source withheld.
+
+Admitted only inside the exact one-dimensional impact topology (two bodies, one
+line of impact, the collision-start boundary, the same axis the restitution and
+momentum laws use) and only for an exact finite zero.  Every neighbouring shape
+is refused, including `1e-12`, every nonzero directionless magnitude, a broken
+or duplicated collision relation, a third body, a vertical partner direction,
+and a zero bound to the wrong boundary.
+
+### B18-B. Negative value beside a stated direction — BLOCKED, fail-closed
+
+The source states `direction = left` **and** `raw_value = -1` for the same
+approach velocity: the sign is encoded twice.  The typed contract now applied
+at the impact-axis binding is that a scalar naming a direction has stated a
+*magnitude*, a magnitude is never negative, and the direction owns the sign.
+Which encoding wins when they disagree depends on an axis orientation the
+corpus never states, and the two readings are mirror-image physics, so the
+binding refuses.
+
+**The exact blocker, if a future package wants this case.**  Recovering it
+requires committing to signed impact velocities, and the engine's
+`_is_static_collision_boundary_graph` waiver — the predicate that decides
+whether collision boundary labels are provenance or *timed root events* —
+requires every **known** impact velocity to satisfy `known_si_value >= 0.0`.
+That is the same magnitude-with-direction convention, enforced one layer down.
+A signed known velocity therefore leaves the waiver, the plan keeps its two
+timed event ids, and every backend refuses a plan with timed events, which is
+exactly the `solve_rejected` this case reached before the repair.  Relaxing
+that nonnegativity rule is a deliberate contract change to a hard-safety-
+adjacent predicate and was **not** taken here.
+
+### B18-C. Measured note: generalizing the contract to the other binding sites
+
+The directed-scalar rule is written as a value-only helper, but it is currently
+consumed only by the collision impact-axis binding.  Two other transactions —
+the impulse-momentum closure and the observer-relative closure — still bind a
+semantic direction's sign without checking the raw value's sign, so the same
+double-application hazard exists there in principle.  The corpus states five
+such facts (three `acceleration`+`left`, one `velocity`+`downward`, one
+`velocity_before`+`left`).
+
+Extending the helper to both sites was **measured, not estimated**: public
+solved / correct / wrong stayed at **41 / 41 / 0**, but `verified_unsupported`
+fell from **12 to 10** while `compiler_unsupported` rose from **8 to 10** — two
+deferred-capability contexts stop reaching their deferred classification, which
+breaks the `strict_deferred_12_verified_unsupported` gate that currently
+passes.  The generalization therefore buys no yield and costs a passing gate;
+it belongs to whichever package next owns those deferred families, together
+with their own typed handling.  The measurement is recorded here so the next
+session does not have to rediscover it.
+
+### B18-D. Other non-blocking notes from the same-model read-only checker
+
+- The B15 support-frame requirement is enforced independently in four places
+  (profile signature, closure transaction, compiler contract, law profile).
+  That redundancy is deliberate defence in depth; a future refactor must keep
+  all four or the weakest one becomes the contract.
+- The directionless-zero exemption is guarded by the collision reader's own
+  topology, not by the helper.  Any other family wanting the same exemption
+  must supply its own single-axis guard — the helper alone does not carry one.
+- `_INCLINE_SLIDE_MOTION_SENSES` maps the two admitted corpus directions to
+  slope senses, but only its membership is consumed; the values document the
+  mapping the transaction's `_INCLINE_SLIDE_TANGENT_SIGNS` re-states.  The two
+  tables must stay in agreement.
+- B15's stated-zero angle and B16's stated slide direction are independent
+  authorities; a control pins that neither can stand in for the other.
+
 ## 7. What this document is not
 
 It is not a reason to lower the target, and the target has not been lowered. It
