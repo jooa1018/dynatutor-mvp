@@ -69,6 +69,7 @@ from test_phase56_mechanics_incline_same_fixture_parity import (
 
 
 FRAME_ID = "worldFrame"
+SUPPORT_FRAME_ID = "tableSupportFrame"
 INTERVAL_ID = "motionInterval"
 VELOCITY = DimensionVector(length=1, time=-1)
 IMPULSE = DimensionVector(mass=1, length=1, time=-1)
@@ -228,6 +229,7 @@ def _source(
             "The rope is attached to block A.",
             "The rope is attached to block B.",
             "The +x axis points right and the +y axis points upward.",
+            "The table plane makes an angle of 0 deg with the horizontal.",
             query_sentence,
         )
     )
@@ -352,6 +354,9 @@ def _draft_payload(source: TableHangingSource) -> dict[str, object]:
     attach_a_quote = "The rope is attached to block A."
     attach_b_quote = "The rope is attached to block B."
     orientation_quote = "The +x axis points right and the +y axis points upward."
+    support_angle_quote = (
+        "The table plane makes an angle of 0 deg with the horizontal."
+    )
     if source.regime == "inactive":
         regime_quote = "The contact is explicitly frictionless."
         coefficient_quote = None
@@ -394,6 +399,7 @@ def _draft_payload(source: TableHangingSource) -> dict[str, object]:
         ("attachAEvidence", attach_a_quote, None),
         ("attachBEvidence", attach_b_quote, None),
         ("orientationEvidence", orientation_quote, None),
+        ("supportAngleEvidence", support_angle_quote, "0 deg"),
         ("queryEvidence", query_quote, None),
     ]
     if coefficient_quote is not None and coefficient_raw is not None:
@@ -423,6 +429,7 @@ def _draft_payload(source: TableHangingSource) -> dict[str, object]:
     symbol_specs = [
         ("mA", "massA", MASS),
         ("mB", "massB", MASS),
+        ("thetaTable", "supportAngle", DIMENSIONLESS),
         ("g", "gravity", ACCELERATION),
         ("wA", "weightA", FORCE),
         ("wB", "weightB", FORCE),
@@ -463,6 +470,20 @@ def _draft_payload(source: TableHangingSource) -> dict[str, object]:
             evidence_refs=("massBEvidence",),
             raw_value=mass_b_raw,
             raw_unit="kg",
+        ),
+        # The source's own statement that the support is horizontal.  Without
+        # it the surface primitive alone says nothing about orientation and the
+        # whole horizontal-contact template must fail closed.
+        _quantity(
+            "supportAngle",
+            "thetaTable",
+            "angle",
+            "table",
+            DIMENSIONLESS,
+            provenance="explicit_source",
+            evidence_refs=("supportAngleEvidence",),
+            raw_value="0",
+            raw_unit="deg",
         ),
         _quantity(
             "gravity",
@@ -790,7 +811,24 @@ def _draft_payload(source: TableHangingSource) -> dict[str, object]:
                     _axis_binding("y", frame_id=FRAME_ID),
                 ],
                 "evidence_refs": ["orientationEvidence"],
-            }
+            },
+            {
+                "frame_id": SUPPORT_FRAME_ID,
+                "frame_type": "cartesian_2d",
+                "origin": {"kind": "entity", "entity_id": "table"},
+                "parent_frame_id": FRAME_ID,
+                "axes": [
+                    {
+                        "axis": "tangent",
+                        "direction": _axis_direction("x", 1, frame_id=FRAME_ID),
+                    },
+                    {
+                        "axis": "normal",
+                        "direction": _axis_direction("y", 1, frame_id=FRAME_ID),
+                    },
+                ],
+                "evidence_refs": ["supportAngleEvidence"],
+            },
         ],
         "motion_intervals": [
             {
@@ -821,6 +859,14 @@ def _draft_payload(source: TableHangingSource) -> dict[str, object]:
         "symbols": symbols,
         "quantities": quantities,
         "geometry": [
+            {
+                "relation_id": "tableOrientation",
+                "kind": "angle",
+                "participant_ids": ["table", "world"],
+                "quantity_ids": ["supportAngle"],
+                "interval_id": INTERVAL_ID,
+                "evidence_refs": ["supportAngleEvidence"],
+            },
             {
                 "relation_id": "ropeWrap",
                 "kind": "wraps",

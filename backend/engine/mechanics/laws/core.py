@@ -1902,9 +1902,25 @@ def _fixed_pulley_horizontal_contact_profile(
     pulley_id = primitive_ids[EntityPrimitive.pulley][0]
     environment_id = primitive_ids[EntityPrimitive.environment][0]
 
-    if len(context.reference_frames) != 1:
+    # Two frames: the world Cartesian frame this law resolves its components
+    # in, and the support frame that states what "horizontal" means here.
+    # The support frame is not decoration — it is the only thing that binds
+    # the surface's tangent to the world horizontal axis and its normal to the
+    # world vertical one.  A generic surface primitive says nothing about
+    # orientation, so without the support frame this law must not fire.
+    if len(context.reference_frames) != 2:
         return None
-    frame = context.reference_frames[0]
+    world_frames = tuple(
+        item
+        for item in context.reference_frames
+        if getattr(item.origin, "kind", None) == "world"
+    )
+    if len(world_frames) != 1:
+        return None
+    frame = world_frames[0]
+    support_frame = next(
+        item for item in context.reference_frames if item is not frame
+    )
     axis_signature = {
         (
             item.axis,
@@ -1915,9 +1931,18 @@ def _fixed_pulley_horizontal_contact_profile(
         )
         for item in frame.axes
     }
+    support_axis_signature = {
+        (
+            item.axis,
+            getattr(item.direction, "kind", None),
+            getattr(item.direction, "frame_id", None),
+            getattr(item.direction, "axis", None),
+            getattr(item.direction, "sign", None),
+        )
+        for item in support_frame.axes
+    }
     if (
         frame.frame_type is not ReferenceFrameType.cartesian_2d
-        or getattr(frame.origin, "kind", None) != "world"
         or frame.parent_frame_id is not None
         or frame.translating_with_entity_id is not None
         or frame.rotating_about_point_id is not None
@@ -1928,6 +1953,20 @@ def _fixed_pulley_horizontal_contact_profile(
         != {
             (AxisName.x, "axis", frame.frame_id, AxisName.x, 1),
             (AxisName.y, "axis", frame.frame_id, AxisName.y, 1),
+        }
+        or support_frame.frame_type is not ReferenceFrameType.cartesian_2d
+        or getattr(support_frame.origin, "kind", None) != "entity"
+        or getattr(support_frame.origin, "entity_id", None) != surface_id
+        or support_frame.parent_frame_id != frame.frame_id
+        or support_frame.translating_with_entity_id is not None
+        or support_frame.rotating_about_point_id is not None
+        or support_frame.generalized_coordinate_symbol_ids
+        or not support_frame.evidence_refs
+        or len(support_frame.axes) != 2
+        or support_axis_signature
+        != {
+            (AxisName.tangent, "axis", frame.frame_id, AxisName.x, 1),
+            (AxisName.normal, "axis", frame.frame_id, AxisName.y, 1),
         }
     ):
         return None
@@ -2033,24 +2072,35 @@ def _fixed_pulley_horizontal_contact_profile(
     attached = tuple(
         item for item in context.geometry if item.kind is GeometryRelationKind.attached
     )
+    orientations = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.angle
+    )
     if (
-        len(context.geometry) != 3
+        len(context.geometry) != 4
         or len(wraps) != 1
         or len(attached) != 2
+        or len(orientations) != 1
         or any(
             item.interval_id != interval.interval_id
             or item.expression is not None
             or item.quantity_ids
             or not item.evidence_refs
             or len(item.participant_ids) != len(set(item.participant_ids))
-            for item in context.geometry
+            for item in (*wraps, *attached)
         )
         or set(wraps[0].participant_ids) != {rope_id, pulley_id}
         or len(wraps[0].participant_ids) != 2
         or {frozenset(item.participant_ids) for item in attached}
         != {frozenset((rope_id, item)) for item in particle_ids}
+        or orientations[0].interval_id != interval.interval_id
+        or orientations[0].expression is not None
+        or not orientations[0].evidence_refs
+        or set(orientations[0].participant_ids) != {surface_id, environment_id}
+        or len(orientations[0].participant_ids) != 2
+        or len(orientations[0].quantity_ids) != 1
     ):
         return None
+    orientation = orientations[0]
 
     states = context.state_conditions
     if any(
@@ -2163,6 +2213,25 @@ def _fixed_pulley_horizontal_contact_profile(
 
     quantities = {item.quantity_id: item for item in context.quantities}
     if None in quantities:
+        return None
+    # The orientation relation's own quantity: the source's stated support
+    # angle.  It has to be there, it has to belong to the support, and it has
+    # to be exactly zero.  Zero reads the same in every angular unit, so this
+    # check needs no unit policy — and a missing angle can never satisfy it.
+    support_angle = quantities.get(orientation.quantity_ids[0])
+    if (
+        support_angle is None
+        or support_angle.role is not QuantityRole.angle
+        or support_angle.subject_id != surface_id
+        or support_angle.shape is not QuantityShape.scalar
+        or support_angle.point_id is not None
+        or support_angle.frame_id is not None
+        or support_angle.event_id is not None
+        or support_angle.generated
+        or not support_angle.evidence_ids
+        or type(support_angle.known_si_value) is not float
+        or support_angle.known_si_value != 0.0
+    ):
         return None
     masses: dict[str, BoundQuantity] = {}
     weights: dict[str, BoundQuantity] = {}
@@ -2508,6 +2577,7 @@ def _fixed_pulley_horizontal_contact_profile(
             normal_acceleration,
             hanging_acceleration,
             normal,
+            support_angle,
             *(() if friction is None else (friction,)),
             *(() if coefficient is None else (coefficient,)),
             *(() if carrier is None else (carrier,)),

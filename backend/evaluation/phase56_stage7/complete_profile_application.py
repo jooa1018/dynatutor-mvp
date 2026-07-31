@@ -138,6 +138,8 @@ INCLINE_HANGING_GRAVITY_SYMBOL_ID = "sym_closure_incline_hanging_gravity"
 
 TABLE_PULLEY_WORLD_ID = "entity_closure_table_pulley_world"
 TABLE_PULLEY_WORLD_FRAME_ID = "frm_closure_table_pulley_world"
+TABLE_PULLEY_SUPPORT_FRAME_ID = "frm_closure_table_pulley_support"
+TABLE_PULLEY_ORIENTATION_RELATION_ID = "geo_closure_table_pulley_orientation"
 TABLE_PULLEY_CONTACT_POINT_ID = "pt_closure_table_pulley_contact"
 TABLE_PULLEY_GRAVITY_ID = "qty_closure_table_pulley_gravity"
 TABLE_PULLEY_GRAVITY_SYMBOL_ID = "sym_closure_table_pulley_gravity"
@@ -2257,6 +2259,24 @@ def _fixed_pulley_mass_value(quantity: Mapping[str, Any]) -> float | None:
     return value if type(value) is float and value > 0.0 else None
 
 
+def _exact_zero_source_angle(quantity: Mapping[str, Any]) -> bool:
+    """True only for a stated angle whose value is exactly zero.
+
+    Zero is the one angle that reads the same in every angular unit, so the
+    check needs no unit policy and cannot be widened by one: a value that is
+    absent, non-numeric, non-finite, or merely small is not a stated zero.
+    """
+
+    raw_value = quantity.get("raw_value")
+    if type(raw_value) is not str:
+        return False
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return False
+    return value == 0.0
+
+
 def _fixed_pulley_acceleration_transaction(
     payload: dict[str, Any], authority: TransactionAuthority
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
@@ -3394,10 +3414,36 @@ def _table_pulley_two_body_transaction(
         return None
     mass_by_id = {item[1]["subject_id"]: item for item in mass_records}
 
-    # The horizontal table owns no source angle and no friction coefficient;
-    # either quantity is typed evidence of a different contact shape.
+    # The support's orientation is the source's own statement or nothing.
+    # Exactly one evidenced angle, owned by the support entity, whose value is
+    # exactly zero, states that the support plane is horizontal — that the
+    # support tangent is the world horizontal axis and the support normal the
+    # world vertical one.  A generic `surface` primitive proves none of that
+    # on its own: the same primitive carries banked roads and vertical tracks.
+    # A missing angle is silence, not a zero, and a stated non-zero angle is a
+    # different contact shape.
+    support_angles = tuple(
+        item
+        for item in payload["quantities"]
+        if item["role"] == "angle"
+        and item["subject_id"] == surface_id
+        and item.get("evidence_refs")
+        and item.get("raw_value") is not None
+        and _exact_zero_source_angle(item)
+    )
+    if len(support_angles) != 1:
+        return None
+    support_angle = support_angles[0]
     if any(
-        item["role"] in {"angle", "force", "gravity", "coefficient_friction"}
+        item["role"] == "angle" and item["quantity_id"] != support_angle["quantity_id"]
+        for item in payload["quantities"]
+    ):
+        return None
+
+    # A friction coefficient or a stated force is typed evidence of a
+    # different contact shape.
+    if any(
+        item["role"] in {"force", "gravity", "coefficient_friction"}
         or (
             item["role"] == "acceleration"
             and item["quantity_id"] != query_quantity["quantity_id"]
@@ -3502,6 +3548,8 @@ def _table_pulley_two_body_transaction(
     ids = {
         "world": TABLE_PULLEY_WORLD_ID,
         "world_frame": TABLE_PULLEY_WORLD_FRAME_ID,
+        "support_frame": TABLE_PULLEY_SUPPORT_FRAME_ID,
+        "orientation": TABLE_PULLEY_ORIENTATION_RELATION_ID,
         "point": TABLE_PULLEY_CONTACT_POINT_ID,
         "gravity": TABLE_PULLEY_GRAVITY_ID,
         "gravity_symbol": TABLE_PULLEY_GRAVITY_SYMBOL_ID,
@@ -3547,9 +3595,12 @@ def _table_pulley_two_body_transaction(
     contact_evidence = tuple(frictionless[0]["evidence_refs"])
     mass_table_evidence = tuple(mass_table["evidence_refs"])
     mass_hanging_evidence = tuple(mass_hanging["evidence_refs"])
+    # The world axes exist because the source stated the support angle is
+    # zero; that statement is their evidence.
+    support_angle_evidence = tuple(support_angle["evidence_refs"])
     orientation_evidence = tuple(sorted(
-        set(rope_evidence) | set(pulley_evidence) | set(contact_evidence)
-        | set(gravity_evidence)
+        set(support_angle_evidence) | set(rope_evidence) | set(pulley_evidence)
+        | set(contact_evidence) | set(gravity_evidence)
     ))
     query_evidence = tuple(sorted(
         set(orientation_evidence) | set(mass_table_evidence) | set(mass_hanging_evidence)
@@ -3566,6 +3617,23 @@ def _table_pulley_two_body_transaction(
             {"axis": "y", "direction": axis_direction(ids["world_frame"], "y", 1)},
         ],
         "evidence_refs": list(orientation_evidence),
+    }
+    # The stated zero support angle, written down as the typed thing it means:
+    # the support's tangent is the world horizontal axis and the support's
+    # normal is the world vertical axis.  Nothing else in this transaction may
+    # bind a world axis, so if the statement is ever removed the whole world
+    # frame goes with it.
+    support_frame = {
+        "frame_id": ids["support_frame"], "frame_type": "cartesian_2d",
+        "origin": {"kind": "entity", "entity_id": surface_id},
+        "parent_frame_id": ids["world_frame"],
+        "axes": [
+            {"axis": "tangent",
+             "direction": axis_direction(ids["world_frame"], "x", 1)},
+            {"axis": "normal",
+             "direction": axis_direction(ids["world_frame"], "y", 1)},
+        ],
+        "evidence_refs": list(support_angle_evidence),
     }
 
     generated_quantities: list[dict[str, Any]] = []
@@ -3640,6 +3708,7 @@ def _table_pulley_two_body_transaction(
     unscoped_source_ids = {
         mass_table["quantity_id"],
         mass_hanging["quantity_id"],
+        support_angle["quantity_id"],
     }
     for item in payload["quantities"]:
         if item["quantity_id"] == query_quantity["quantity_id"]:
@@ -3691,6 +3760,11 @@ def _table_pulley_two_body_transaction(
         return None
 
     geometry = [
+        {"relation_id": ids["orientation"], "kind": "angle",
+         "participant_ids": [surface_id, ids["world"]], "expression": None,
+         "quantity_ids": [support_angle["quantity_id"]],
+         "interval_id": interval_id,
+         "evidence_refs": list(support_angle_evidence)},
         {"relation_id": ids["wrap"], "kind": "wraps",
          "participant_ids": [rope_id, pulley_id], "expression": None,
          "quantity_ids": [], "interval_id": interval_id,
@@ -3769,7 +3843,7 @@ def _table_pulley_two_body_transaction(
                     "owner_entity_id": table_body_id,
                     "frame_id": ids["world_frame"],
                     "evidence_refs": list(contact_evidence)}],
-        "reference_frames": [world_frame],
+        "reference_frames": [world_frame, support_frame],
         "motion_intervals": [updated_interval],
         "events": [],
         "symbols": [*payload["symbols"], *generated_symbols],
@@ -6439,6 +6513,8 @@ __all__ = [
     "ROLLING_GRAVITY_SYMBOL_ID",
     "TABLE_PULLEY_WORLD_ID",
     "TABLE_PULLEY_WORLD_FRAME_ID",
+    "TABLE_PULLEY_SUPPORT_FRAME_ID",
+    "TABLE_PULLEY_ORIENTATION_RELATION_ID",
     "TABLE_PULLEY_CONTACT_POINT_ID",
     "TABLE_PULLEY_GRAVITY_ID",
     "TABLE_PULLEY_GRAVITY_SYMBOL_ID",

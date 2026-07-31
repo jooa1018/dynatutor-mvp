@@ -2507,6 +2507,7 @@ class _DraftFacts:
         "rest_boundary_count",
         "rigid_fixed_axis_profile",
         "rigid_two_point_speed_profile",
+        "horizontal_support_orientation",
         "rolling_incline_energy_speed_profile",
         "rotating_relative_profile",
         "semantic_directions",
@@ -2553,6 +2554,73 @@ class _DraftFacts:
         self.rolling_incline_energy_speed_profile = (
             _rolling_incline_energy_speed_evidence(draft)
         )
+        self.horizontal_support_orientation = (
+            _horizontal_support_orientation(draft)
+        )
+
+
+def _exact_source_zero(raw_value: Any) -> bool:
+    """True only for a source number that is exactly zero.
+
+    Zero is the one angle whose value does not depend on the unit it was
+    stated in, so the reading needs no unit policy.  A value that is absent,
+    non-numeric, non-finite, or merely small is not zero.
+    """
+
+    if type(raw_value) is not str:
+        return False
+    try:
+        value = float(raw_value)
+    except ValueError:
+        return False
+    return value == 0.0
+
+
+def _horizontal_support_orientation(draft: Any) -> bool:
+    """True only when the source itself states that its support is horizontal.
+
+    ``EntityPrimitive.surface`` is a *generic* support.  The same primitive
+    carries a banked road, a vertical circular track, and a level floor, so
+    the primitive alone can never stand for a horizontal one.  The absence of
+    an incline primitive and the absence of an angle are equally silent:
+    information that was never stated is not evidence of a zero, and an
+    entity label that reads "table" or "floor" is not physics authority.
+
+    The one reading admitted here is the source's *own* support-angle
+    statement whose value is exactly zero — stated, owned by the support
+    entity, evidenced, and numerically zero.  Anything else leaves the
+    support's orientation unstated and the profile fails closed.
+    """
+
+    surface_ids = {
+        item.entity_id
+        for item in draft.entities
+        if item.primitive.value == "surface"
+    }
+    if not surface_ids:
+        return False
+    return any(
+        item.role.value == "angle"
+        and item.subject_id in surface_ids
+        and item.evidence_refs
+        and _exact_source_zero(item.raw_value)
+        for item in draft.quantities
+    )
+
+
+def _needs_horizontal_support(facts: "_DraftFacts") -> "PrerequisiteDisposition":
+    """The typed horizontal-support orientation, stated by the source or not.
+
+    There is no derivable fallback: an unstated orientation stays missing so
+    the plan reports an incomplete profile instead of closing a graph whose
+    world axes nothing licenses.
+    """
+
+    return (
+        PrerequisiteDisposition.explicit_source
+        if facts.horizontal_support_orientation
+        else PrerequisiteDisposition.missing
+    )
 
 
 # --------------------------------------------------------------------------
@@ -3327,9 +3395,10 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
         ),
     ),
     # A body on a horizontal table tied over a fixed ideal pulley to a hanging
-    # body.  The support is the typed `surface` primitive — never an incline
-    # with an invented zero angle — so the shape is disjoint from the
-    # incline-hanging profile by the source's own support primitive.  The
+    # body.  The horizontal orientation is the source's own zero-valued
+    # support angle and nothing else: the generic `surface` primitive, a
+    # missing incline primitive, and a missing angle are all silence, and
+    # silence is never a stated zero.  With the orientation stated, the
     # transaction derives only frames, force-bearing interactions, contact and
     # rope states, and value-free unknowns; the existing weight, Newton,
     # contact, and rope laws do all solving.
@@ -3340,9 +3409,11 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
             and bool(facts.geometry.get("lies_on"))
             and bool(facts.primitives.get("surface"))
             and not facts.primitives.get("incline")
-            and not facts.roles.get("angle")
+            and facts.horizontal_support_orientation
         ),
         (
+            ("orientation_horizontal_support", PrerequisiteKind.geometry,
+             _needs_horizontal_support),
             ("geometry_wraps", PrerequisiteKind.geometry, _needs_geometry("wraps")),
             ("geometry_rope", PrerequisiteKind.geometry,
              _needs_geometry("topology_connects")),

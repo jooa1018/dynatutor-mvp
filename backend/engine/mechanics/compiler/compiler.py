@@ -2035,9 +2035,19 @@ def _fixed_pulley_horizontal_contact_contract(
     frames = tuple(
         item for item in ir.reference_frames if item.frame_id in relevant
     )
-    if len(frames) != 1:
-        return None, failure("requires one evidenced Cartesian frame")
-    frame = frames[0]
+    if len(frames) != 2:
+        return None, failure(
+            "requires one evidenced Cartesian frame and one support frame"
+        )
+    world_frames = tuple(
+        item
+        for item in frames
+        if getattr(item.origin, "kind", None) == "world"
+    )
+    if len(world_frames) != 1:
+        return None, failure("requires exactly one world-origin frame")
+    frame = world_frames[0]
+    support_frame = next(item for item in frames if item is not frame)
     axis_signature = {
         (
             item.axis.value,
@@ -2050,7 +2060,6 @@ def _fixed_pulley_horizontal_contact_contract(
     }
     if (
         frame.frame_type.value != "cartesian_2d"
-        or getattr(frame.origin, "kind", None) != "world"
         or frame.parent_frame_id is not None
         or frame.translating_with_entity_id is not None
         or frame.rotating_about_point_id is not None
@@ -2064,6 +2073,40 @@ def _fixed_pulley_horizontal_contact_contract(
         }
     ):
         return None, failure("requires exact evidenced world +x/+y axes", frame.frame_id)
+    # The support frame is where "horizontal" is actually written down: the
+    # support's tangent *is* the world horizontal axis and its normal *is* the
+    # world vertical one.  Without it the world axes below would be describing
+    # a surface whose orientation nothing states, so the contract refuses.
+    support_axis_signature = {
+        (
+            item.axis.value,
+            getattr(item.direction, "kind", None),
+            getattr(item.direction, "frame_id", None),
+            getattr(getattr(item.direction, "axis", None), "value", None),
+            getattr(item.direction, "sign", None),
+        )
+        for item in support_frame.axes
+    }
+    if (
+        support_frame.frame_type.value != "cartesian_2d"
+        or getattr(support_frame.origin, "kind", None) != "entity"
+        or getattr(support_frame.origin, "entity_id", None) != surface_id
+        or support_frame.parent_frame_id != frame.frame_id
+        or support_frame.translating_with_entity_id is not None
+        or support_frame.rotating_about_point_id is not None
+        or support_frame.generalized_coordinate_symbol_ids
+        or not support_frame.evidence_refs
+        or len(support_frame.axes) != 2
+        or support_axis_signature
+        != {
+            ("tangent", "axis", frame.frame_id, "x", 1),
+            ("normal", "axis", frame.frame_id, "y", 1),
+        }
+    ):
+        return None, failure(
+            "requires the support tangent bound to world +x and its normal to world +y",
+            support_frame.frame_id,
+        )
 
     intervals = tuple(
         item for item in ir.motion_intervals if item.interval_id in relevant
@@ -2119,17 +2162,19 @@ def _fixed_pulley_horizontal_contact_contract(
 
     geometry = tuple(item for item in ir.geometry if item.relation_id in relevant)
     attached = tuple(item for item in geometry if item.kind.value == "attached")
+    orientations = tuple(item for item in geometry if item.kind.value == "angle")
     if (
-        len(geometry) != 3
+        len(geometry) != 4
         or len(wraps) != 1
         or len(attached) != 2
+        or len(orientations) != 1
         or any(
             item.expression is not None
             or item.quantity_ids
             or item.interval_id != interval.interval_id
             or not item.evidence_refs
             or len(item.participant_ids) != len(set(item.participant_ids))
-            for item in geometry
+            for item in (*wraps, *attached)
         )
         or len(wraps[0].participant_ids) != 2
         or set(wraps[0].participant_ids) != {rope_id, pulley_id}
@@ -2138,6 +2183,38 @@ def _fixed_pulley_horizontal_contact_contract(
     ):
         return None, failure(
             "requires one wrap and two exact evidenced rope attachments", rope_id
+        )
+    # The orientation relation must carry the source's own support angle, and
+    # that angle must be an explicit, evidenced, exactly-zero statement.  An
+    # absent, derived, non-zero, or merely small angle leaves the support's
+    # orientation unstated and the whole template fails closed: no reading of
+    # "surface" alone ever means "horizontal".
+    orientation = orientations[0]
+    orientation_angle = next(
+        (
+            item
+            for item in ir.quantities
+            if item.quantity_id in orientation.quantity_ids
+            and item.role is QuantityRole.angle
+        ),
+        None,
+    )
+    if (
+        orientation.expression is not None
+        or orientation.interval_id != interval.interval_id
+        or not orientation.evidence_refs
+        or len(orientation.participant_ids) != 2
+        or set(orientation.participant_ids) != {surface_id, environment_id}
+        or len(orientation.quantity_ids) != 1
+        or orientation_angle is None
+        or orientation_angle.subject_id != surface_id
+        or orientation_angle.provenance is not Provenance.explicit_source
+        or not orientation_angle.evidence_refs
+        or not isinstance(orientation_angle.si_value, float)
+        or orientation_angle.si_value != 0.0
+    ):
+        return None, failure(
+            "requires the source's own exactly-zero support angle", orientation.relation_id
         )
 
     states = tuple(
@@ -2650,6 +2727,7 @@ def _fixed_pulley_horizontal_contact_contract(
             normal_acceleration,
             hanging_acceleration,
             normal,
+            orientation_angle,
             *(() if friction is None else (friction,)),
             *(() if coefficient is None else (coefficient,)),
             *(() if carrier is None else (carrier,)),
