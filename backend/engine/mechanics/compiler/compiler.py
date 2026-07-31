@@ -165,45 +165,6 @@ def _sorted_unique(values: Iterable[str]) -> tuple[str, ...]:
     return tuple(sorted(set(values)))
 
 
-# Every typed record in which a mechanics model can live.  A force, a contact,
-# a rope, a field, a joint, a constraint, an idealisation, an axis, a located
-# point, a regime — each of these is a place where something that governs the
-# motion can be written down.
-_MECHANISM_RECORDS: tuple[str, ...] = (
-    "interactions",
-    "geometry",
-    "constraints",
-    "assumptions",
-    "reference_frames",
-    "points",
-    "state_conditions",
-)
-
-
-def _names_no_mechanism(ir: MechanicsProblemIRV1) -> bool:
-    """True when nothing in the record could govern the queried quantity.
-
-    A record can be short of *numbers* and still describe a model: the force
-    is named but unvalued, the contact is stated but the coefficient is
-    missing, the rope is there but a mass is not.  That is what
-    ``underdetermined`` means, and another value would close it.
-
-    This is the other thing.  Every typed place where a mechanism could be
-    written — interaction, geometry, constraint, assumption, reference frame,
-    point, state condition — is empty, so the record is a body, some
-    quantities, and nothing that relates them.  No additional value creates a
-    relation that was never stated, so the shortfall is not in the data: the
-    model the source is describing has no representation in this engine.
-
-    Reading only container emptiness keeps this generic.  No role, subject,
-    label, family, case identity, expected terminal, expected answer, problem
-    text, or numeric value is consulted, so the test is the same for every
-    record and cannot be tuned toward one.
-    """
-
-    return not any(getattr(ir, name) for name in _MECHANISM_RECORDS)
-
-
 def _issue(
     code: CompilerIssueCode,
     message: str,
@@ -11305,20 +11266,6 @@ class MechanicsCompiler:
                 )
             )
             status = CompilerStatus.resource_limit
-        elif underdetermined and _names_no_mechanism(safe_ir):
-            # "Underdetermined" says the model is short of equations.  This
-            # record is not short of equations — it has no model at all.
-            issues.append(
-                _issue(
-                    CompilerIssueCode.requires_specialized_model,
-                    "record names no interaction, geometry, constraint, "
-                    "assumption, reference frame, point, or state condition, "
-                    "so nothing in it can govern the queried quantity and no "
-                    "implemented model applies",
-                    "entities",
-                )
-            )
-            status = CompilerStatus.unsupported
         elif underdetermined:
             issues.append(
                 _issue(
