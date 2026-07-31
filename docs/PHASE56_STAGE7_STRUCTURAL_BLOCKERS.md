@@ -1274,3 +1274,214 @@ than being made silently inside a closure transaction.
 No structure was fabricated to make any number better. No test was deleted, no
 assertion weakened, no threshold relaxed. The public 100 distribution is
 unchanged by the work this document accompanies.
+
+---
+
+# Session addendum — Phase H hardening, B19, and the complete authority census
+
+This addendum supersedes nothing above; it adds what the session measured. The
+earlier sections' counts belong to their own heads and are kept as written.
+
+## H. Phase H — closing the two post-revoke authority gaps
+
+B15 and B16 were revoked in the previous session because each answered from
+authority the source never states. Both remain `INCOMPLETE`. What this session
+found is that revoking the *public* path left the **future-positive** path
+still able to invent the same authority, and closed that too.
+
+### H.1 The single root cause, now measured
+
+`ReferenceFrame.axes[].direction` is the only place in the Draft/IR contract
+where an axis identity is typed. `GeometryRelation` carries no axis field and
+`SemanticDirectionName` carries no surface- or slope-relative member. So a
+world or slope axis can only ever be *stated* by a source-authored frame.
+
+The census settles what that means for the public corpus:
+
+```
+structural_blockers.contexts_without_reference_frame = 97 / 97
+```
+
+**No public context carries a reference frame at all.** Any closure that needs
+an axis meaning must therefore either fail closed or manufacture one. Both
+revoked packages manufactured one.
+
+### H.2 B15 — `fix(stage7): require a typed reference for support orientation`
+
+The revoked closure required exactly one evidenced support-owned angle of
+exactly zero, and wrote the support's tangent onto world +x and its normal onto
+world +y. A zero fixes no reference: the same value is equally consistent with
+a plane level to the world horizontal, a plane measured from the vertical, and
+a plane measured from a second surface. The closure then read its own output
+back — the transaction minted the tangent/world-x binding and the law accepted
+that binding as evidence the orientation had been stated.
+
+`_stated_support_orientation` now admits only a source-authored support frame,
+anchored on the support entity and parented to a world frame, whose tangent
+binds to that world frame's x axis and whose normal to its y axis. Both halves
+are required and neither implies the other: the binding says which line the
+angle is measured from, the angle says the support is level with it. The frames
+are carried through byte-identical and are not created records.
+
+**68 focused tests** (was 57).
+
+### H.3 B16 — `fix(stage7): keep incline motion direction event- and frame-scoped`
+
+Two things were accepted as a statement of the slide's sense, and neither is
+one.
+
+*A world direction is not a slope sense.* `downward` says the velocity points
+down; a body constrained to a slope moves along the slope tangent, which points
+down only if the slope's facing says so, and no facing is typed anywhere.
+`_INCLINE_SLIDE_MOTION_SENSES` is now empty — the emptiness is the policy — and
+`_INCLINE_SLIDE_TANGENT_SIGNS` is gone rather than reduced.
+
+*An instant is not an interval.* `initial_velocity` states one moment's
+direction; a body that turns around later spent part of the same interval going
+the other way, and friction opposes the motion at each moment. The carrier must
+be a whole-interval `velocity` with no `event_role`.
+
+`_stated_slope_frames` requires the source's own `tangential_normal` frame
+anchored on the incline, and `_stated_slide_tangent_sign` requires the carrier
+velocity to be bound to that frame's tangent axis with a sign, in that frame,
+over the sliding interval and at no event.
+
+**65 focused tests** (was 47).
+
+### H.4 Phase H is score-neutral, and that was the point
+
+Strict public-100 at the pre-hardening head and at the post-hardening head are
+**identical**: supported 41/81 correct, wrong 0, deferred 12/12, terminal
+mapping 58/100, hard safety 23/23, strict 28 PASS / 11 FAIL. Neither hardening
+was a yield package; each closed a way to answer without authority.
+
+## B19. `UNSUPPORTED_OTHER_TYPED_TERMINALS` — **INCOMPLETE**, revoked forward
+
+The two expected-`unsupported_other` cases both stop at
+`compiler_failure :: underdetermined`. The attempt recorded here was to
+separate "the model is short of equations" from "there is no model", and it was
+**built, measured, landed, and then reverted** at `a4ced6a` because it
+contradicts a contract this engine already holds. The measurement is kept
+because it is correct and the next attempt should not repeat the work; the
+package is **not** accepted.
+
+### B19.1 What was tried
+
+`_names_no_mechanism` in the compiler asked whether every typed place a
+mechanism could live — interaction, geometry, constraint, assumption,
+reference frame, point, state condition — was empty. If it was, and the graph
+could not determine the query, the record was reported
+`requires_specialized_model` rather than `underdetermined`, on the reasoning
+that no additional *value* creates a relation the source never stated.
+
+### B19.2 The measurement, which stands
+
+Over all 100 public cases, "every mechanism container empty" **and** "graph
+cannot determine the query" selects exactly the two targets and none of the 93
+expected-`complete` cases:
+
+| Cohort | Count | Carries a mechanism? |
+|---|---:|---|
+| supported, underdetermined | 32 | all yes |
+| deferred `verified_unsupported` | 12 | all yes |
+| supported, `compiler_unsupported` | 8 | all yes |
+| supported, mechanismless | 12 | **all solve**, so never reach the branch |
+| expected `unsupported_other` | 2 | **all no** |
+
+Re-measured with the change in place: the 93 complete cases were unchanged at
+32/12/8/41 and both targets moved to `compiler_unsupported` carrying
+`requires_specialized_model` — not a course-scope deferred code, so the scorer
+accepted them as `unsupported_other`. The public delta would have been
+`unsupported_other` 0/2 -> 2/2 and terminal mapping 58 -> 60, with supported
+correct, wrong, and deferred all unchanged.
+
+### B19.3 Why it was reverted
+
+Exact-head CI at `dd42ebe` failed 11 tests across
+`test_phase56_mechanics_compiler.py`,
+`test_phase56_mechanics_observer_frame_attacks.py`, and
+`test_phase56_mechanics_observer_frame_unsupported.py`. Ten of them encode the
+opposite contract, stated in the engine's own words:
+
+> A source can name something without relating it to anything. Claiming a
+> specialized model on the strength of a dangling declaration would refuse a
+> problem the catalogue may well close, and would **permanently close the door
+> on ever solving it**.
+
+That is the more conservative reading and it is the one already in force. An
+absent mechanism is evidence about *today's* catalogue, not about the problem;
+`underdetermined` leaves the door open and `requires_specialized_model` shuts
+it. The observer-frame fixtures are structurally identical to the two targets —
+entities and quantities, nothing relating them — so no narrowing of the
+predicate separates them without reading something the predicate is not allowed
+to read.
+
+The eleventh failure was independent and trivial: the new docstring used the
+words "family" and "case", which
+`test_production_compiler_has_no_dynamic_math_or_evaluation_routing_tokens`
+forbids anywhere under `laws/` and `compiler/` so that routing on them stays
+impossible to write by accident.
+
+**Making those eleven tests pass would have meant weakening assertions that
+exist to prevent exactly this claim.** They were left untouched and the package
+was reverted instead. `unsupported_other` remains **0/2** and terminal mapping
+remains **58/100**.
+
+### B19.4 What would actually close it
+
+Not a compiler predicate. The two targets need either a typed
+`unsupported_features` entry the *source* supplies, or a catalogue entry for
+the specialized model itself (3D rotational dynamics; variable-mass dynamics).
+Both are corpus-contract or engine-capability work, not closure work.
+
+## C. The complete authority census of the remaining 40
+
+The 40 expected-supported cases that do not solve were partitioned into 17
+structural cohorts by typed structure alone, and each cohort's missing physical
+premise was identified with its required typed carrier. **Every one of the 40
+is blocked on a premise the corpus does not type.**
+
+| n | Cohort (typed shape) | Missing premise | Typed carrier that would supply it |
+|---:|---|---|---|
+| 3 | angle + radius, contact, frictionless -> velocity | the datum the bank angle is measured from | reference frame |
+| 3 | mu + radius, contact -> velocity | support is horizontal | reference frame |
+| 3 | mu + force + mass, `lies_on` -> acceleration x | support is horizontal | reference frame |
+| 3 | radius x2 + velocity, `lies_on` x2 -> point velocity | rigid two-point / instant-centre authority (B10) | frame + point kinematics |
+| 3 | mass x2 + inertia + radius, `wraps` -> acceleration | rope does not slip; axle reaction | `no_slip` / axle constraint |
+| 3 | angle + mu, `lies_on` -> tangential acceleration | which way the body slides (B16) | slope-frame-bound velocity |
+| 3 | omega + distance + velocity, `lies_on` x2 -> velocity y | rigid two-point authority (B10) | frame + point kinematics |
+| 3 | angle + height + velocity -> height at `highest_point` | the axis the launch angle is measured from | reference frame |
+| 3 | mass x2, `lies_on` + `wraps` -> acceleration | support is horizontal (B15) | reference frame |
+| 3 | displacement + mass + stiffness, spring -> velocity | displacement is from natural length (B17); support horizontal | typed endpoint + frame |
+| 3 | radius -> speed at `highest_point` | which side the contact normal acts on (B12) | `ContactSide` |
+| 2 | acceleration + alpha + omega + distance -> acceleration x | rigid two-point authority (B10) | frame + point kinematics |
+| 1 | restitution + mass x2 + velocity x2 -> velocity x | a negative value beside a stated direction (B18) | axis orientation |
+| 1 | acceleration + alpha + omega + distance -> acceleration y | rigid two-point authority (B10) | frame + point kinematics |
+| 1 | mass x2, fixed pulley -> **force** on the system | *which* force — tension, axle, or net | a typed interaction participant |
+| 1 | height + velocity, both `upward` -> duration | what condition ends the flight | typed endpoint state |
+| 1 | angle + height x2 + velocity -> height at `highest_point` | the axis the launch angle is measured from | reference frame |
+
+**40 total.** Eleven of the seventeen cohorts reduce to the same missing
+record: a reference frame. That is the same single root cause Phase H closed
+from the other side.
+
+### C.1 The projection is not the blocker
+
+Measured across all 52 unsolved contexts: for every case, the projected Draft
+carries **at least as many** relations, explicit facts, and assumptions as the
+gold states. There is no case where the projection drops a typed record the
+corpus supplies. The gap is in what the corpus types, not in what the evaluator
+reads.
+
+### C.2 What this means for the score
+
+Terminal mapping counts only matches. Every one of the 40 expects `accepted`,
+so no reclassification improves mapping — only new solves do. With B19 reverted,
+mapping stays at **58/100**, and every remaining mapping point costs a solve
+that no currently-typed authority supports.
+
+This is not a reason to lower the target and the target has not been lowered.
+It is a statement that the next Stage 7 packages are **corpus-contract
+packages**, not closure packages: until a case can state a reference frame, a
+contact side, a slope-relative direction, or an endpoint condition, the honest
+terminal for these 40 is the one they already reach.
