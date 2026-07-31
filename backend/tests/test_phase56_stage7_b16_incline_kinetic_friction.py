@@ -1,12 +1,14 @@
 """B16: source-typed gravity-driven kinetic slide on an incline."""
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import replace
 import hashlib
 import math
 
 import pytest
 
-from engine.mechanics.contracts import Provenance
+from engine.mechanics.contracts import MechanicsProblemDraftV1, Provenance
 from evaluation.phase56_stage7.complete_profile import (
     PlanDisposition,
     ProfileId,
@@ -14,8 +16,6 @@ from evaluation.phase56_stage7.complete_profile import (
 )
 from evaluation.phase56_stage7.complete_profile_application import (
     INCLINE_SLIDING_GRAVITY_ID,
-    INCLINE_SLIDING_SLOPE_FRAME_ID,
-    INCLINE_SLIDING_WORLD_FRAME_ID,
     ApplicationOutcome,
     apply_selected_profile,
 )
@@ -38,6 +38,9 @@ pytestmark = pytest.mark.slow
 
 
 EXPECTED_LAWS = {"incline_sliding_kinetic_acceleration"}
+
+# Down-slope is the tangent's + sense; up-slope its -.
+_SENSE_SIGNS = {"downward": 1, "upward": -1}
 
 
 def _fact(
@@ -302,17 +305,155 @@ def _case(
     return PublicCorpusCaseV1(**record)
 
 
-def _projection(case: PublicCorpusCaseV1):
+# The frame identities a *fully authored* source Draft supplies.  They are
+# fixture-owned on purpose: the closure no longer mints frames, so no product
+# constant names them.
+AUTHORED_WORLD_FRAME_ID = "frm_source_incline_sliding_world"
+AUTHORED_SLOPE_FRAME_ID = "frm_source_incline_sliding_slope"
+SLIDE_MOTION_ASSUMPTION_ID = "asm_closure_incline_slide_motion"
+SLIDE_MOTION_ASSUMPTION_KIND = "typed_incline_slide_motion"
+
+
+def _authored_axis(frame_id: str, axis: str, sign: int = 1) -> dict:
+    return {"kind": "axis", "frame_id": frame_id, "axis": axis, "sign": sign}
+
+
+def _stated_slope_frames(
+    *,
+    incline_id: str = "incline",
+    frame_type: str = "tangential_normal",
+    parent_frame_id: str | None = AUTHORED_WORLD_FRAME_ID,
+    origin_entity_id: str | None = None,
+    evidence: tuple[str, ...] = (),
+) -> list[dict]:
+    """The two frames a source authors to give the slope a tangent axis."""
+
+    return [
+        {
+            "frame_id": AUTHORED_WORLD_FRAME_ID,
+            "frame_type": "cartesian_2d",
+            "origin": {"kind": "world"},
+            "axes": [
+                {"axis": "x", "direction": _authored_axis(AUTHORED_WORLD_FRAME_ID, "x")},
+                {"axis": "y", "direction": _authored_axis(AUTHORED_WORLD_FRAME_ID, "y")},
+            ],
+            "evidence_refs": list(evidence),
+        },
+        {
+            "frame_id": AUTHORED_SLOPE_FRAME_ID,
+            "frame_type": frame_type,
+            "origin": {
+                "kind": "entity",
+                "entity_id": origin_entity_id or incline_id,
+            },
+            "parent_frame_id": parent_frame_id,
+            "axes": [
+                {
+                    "axis": "tangent",
+                    "direction": _authored_axis(AUTHORED_SLOPE_FRAME_ID, "tangent"),
+                },
+                {
+                    "axis": "normal",
+                    "direction": _authored_axis(AUTHORED_SLOPE_FRAME_ID, "normal"),
+                },
+            ],
+            "evidence_refs": list(evidence),
+        },
+    ]
+
+
+def _state_slide_direction(
+    projection,
+    *,
+    sign: int = 1,
+    velocity_frame_id: str | None = AUTHORED_SLOPE_FRAME_ID,
+    direction_frame_id: str | None = AUTHORED_SLOPE_FRAME_ID,
+    direction_axis: str = "tangent",
+    event_scoped: bool = False,
+    interval_id: str | None = None,
+    drop_authority: bool = False,
+    **frame_overrides,
+):
+    """Return the same projection with the slide's sense stated slope-relatively.
+
+    The public corpus cannot express this: it types no reference frames, so
+    there is no slope tangent for a velocity to be *along*.  Only a fully
+    authored Draft can say it, and this builds exactly that Draft — the two
+    frames, the velocity bound to the slope tangent with a sign, and the
+    typed motion authority that names the statement.
+    """
+
+    payload = projection.draft.model_dump(mode="json", warnings="none")
+    interval = interval_id or payload["motion_intervals"][0]["interval_id"]
+    velocities = [
+        item for item in payload["quantities"] if item["role"] == "velocity"
+    ]
+    evidence = tuple(velocities[0]["evidence_refs"]) if velocities else (
+        payload["source_evidence"][0]["evidence_id"],
+    )
+    frame_overrides.setdefault("evidence", evidence)
+    payload["reference_frames"] = _stated_slope_frames(**frame_overrides)
+    body_id = velocities[0]["subject_id"] if velocities else None
+    for item in velocities:
+        item["frame_id"] = velocity_frame_id
+        item["component"] = "tangential"
+        item["interval_id"] = None if event_scoped else interval
+        item["event_id"] = (
+            payload["events"][0]["event_id"]
+            if event_scoped and payload["events"]
+            else None
+        )
+        item["direction"] = (
+            None
+            if direction_frame_id is None
+            else _authored_axis(direction_frame_id, direction_axis, sign)
+        )
+    approvable = tuple(projection.approvable_assumption_ids)
+    if not drop_authority and body_id is not None:
+        payload["assumptions"] = [
+            *payload["assumptions"],
+            {
+                "assumption_id": SLIDE_MOTION_ASSUMPTION_ID,
+                "kind": SLIDE_MOTION_ASSUMPTION_KIND,
+                "subject_id": body_id,
+                "interval_id": interval,
+                "disposition": "approved",
+                "reason": (
+                    "source-stated slide direction: the velocity of the "
+                    "sliding body is bound to the slope tangent"
+                ),
+                "evidence_refs": list(evidence),
+            },
+        ]
+        approvable = (*approvable, SLIDE_MOTION_ASSUMPTION_ID)
+    return replace(
+        projection,
+        draft=MechanicsProblemDraftV1.model_validate(payload),
+        approvable_assumption_ids=approvable,
+    )
+
+
+def _projection(case: PublicCorpusCaseV1, *, stated: bool = False, **overrides):
     projection = project_case_to_draft(case)
     assert projection.terminal is DraftProjectionTerminal.projected, (
         projection.sanitized_reason
     )
     assert projection.draft is not None
-    return projection
+    return _state_slide_direction(projection, **overrides) if stated else projection
 
 
-def _run(case: PublicCorpusCaseV1, nonce: str):
+def _run(case: PublicCorpusCaseV1, nonce: str, *, stated: bool = False, **overrides):
+    """Run one case.
+
+    ``stated=False`` is the public corpus exactly as it projects — no frames,
+    hence no slope tangent, hence no slope-relative direction and no closure.
+    ``stated=True`` is the fully authored Draft in which the source did state
+    which way along the slope the body is going.
+    """
+
     projection = project_case_to_draft(case)
+    if stated and projection.draft is not None:
+        projection = _state_slide_direction(projection, **overrides)
     return run_lane_b_case(
         projection,
         execution_token=deterministic_token(0, run_nonce=nonce),
@@ -341,7 +482,17 @@ def _expected(
 
 
 def test_projection_carries_the_source_stated_slide_direction() -> None:
-    projection = _projection(_case())
+    """A stated slide sense is slope-relative, and it stays on the physics record.
+
+    The corpus can only say ``downward``, which is a *world* sense and states
+    no slope sense at all, so the public projection derives no motion
+    authority — see
+    ``test_a_world_direction_alone_never_states_a_slope_sense``.  What a
+    source-authored Draft states instead is this: a velocity bound to the
+    slope frame's own tangent axis, with a sign.
+    """
+
+    projection = _projection(_case(), stated=True)
     derived = [
         item
         for item in projection.draft.assumptions
@@ -355,7 +506,10 @@ def test_projection_carries_the_source_stated_slide_direction() -> None:
     velocity = next(
         item for item in projection.draft.quantities if item.role.value == "velocity"
     )
-    assert velocity.direction.direction.value == "downward"
+    assert velocity.direction.frame_id == AUTHORED_SLOPE_FRAME_ID
+    assert velocity.direction.axis.value == "tangent"
+    assert velocity.direction.sign == 1
+    assert velocity.event_id is None
     assert velocity.evidence_refs
     plan = plan_complete_profile(
         ProfileId.incline_kinetic_sliding,
@@ -392,6 +546,8 @@ def test_kinetic_incline_acceleration_follows_the_stated_slide_direction(
     result = _run(
         _case(angle=angle, coefficient=coefficient, motion_direction=sense),
         f"b16-positive-{angle}-{coefficient}-{sense}",
+        stated=True,
+        sign=_SENSE_SIGNS[sense],
     )
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(expected, rel=1.0e-12, abs=1.0e-12)
@@ -407,8 +563,12 @@ def test_kinetic_incline_acceleration_follows_the_stated_slide_direction(
 
 
 def test_adding_a_source_mass_does_not_change_the_acceleration() -> None:
-    baseline = _run(_case(), "b16-mass-free")
-    with_mass = _run(_case(include_mass=True, case_id="fx_public_dev_0962"), "b16-with-mass")
+    baseline = _run(_case(), "b16-mass-free", stated=True)
+    with_mass = _run(
+        _case(include_mass=True, case_id="fx_public_dev_0962"),
+        "b16-with-mass",
+        stated=True,
+    )
     assert baseline.terminal is with_mass.terminal is LaneBTerminal.solved
     assert with_mass.answer_value_si == pytest.approx(
         baseline.answer_value_si, rel=1.0e-12, abs=1.0e-12
@@ -417,7 +577,7 @@ def test_adding_a_source_mass_does_not_change_the_acceleration() -> None:
 
 
 def test_transaction_adds_only_typed_topology_and_the_value_free_unknown() -> None:
-    projection = _projection(_case())
+    projection = _projection(_case(), stated=True)
     pristine = projection.draft.model_dump(mode="json", warnings="none")
     bundle = build_lane_b_authority_bundle(projection)
     application = apply_selected_profile(
@@ -430,8 +590,8 @@ def test_transaction_adds_only_typed_topology_and_the_value_free_unknown() -> No
     assert projection.draft.model_dump(mode="json", warnings="none") == pristine
     closed = application.draft
     assert {item.frame_id for item in closed.reference_frames} == {
-        INCLINE_SLIDING_WORLD_FRAME_ID,
-        INCLINE_SLIDING_SLOPE_FRAME_ID,
+        AUTHORED_WORLD_FRAME_ID,
+        AUTHORED_SLOPE_FRAME_ID,
     }
     gravity = next(
         item for item in closed.quantities if item.quantity_id == INCLINE_SLIDING_GRAVITY_ID
@@ -458,7 +618,7 @@ def test_transaction_adds_only_typed_topology_and_the_value_free_unknown() -> No
     motion = next(
         item for item in closed.quantities if item.role.value == "velocity"
     )
-    assert motion.frame_id == INCLINE_SLIDING_SLOPE_FRAME_ID
+    assert motion.frame_id == AUTHORED_SLOPE_FRAME_ID
     assert motion.component.value == "tangential"
     assert motion.direction.axis.value == "tangent"
     assert motion.direction.sign == 1
@@ -474,7 +634,7 @@ def test_transaction_adds_only_typed_topology_and_the_value_free_unknown() -> No
 
 
 def test_an_up_slope_slide_binds_the_carrier_to_the_negative_tangent() -> None:
-    projection = _projection(_case(motion_direction="upward"))
+    projection = _projection(_case(motion_direction="upward"), stated=True, sign=-1)
     bundle = build_lane_b_authority_bundle(projection)
     application = apply_selected_profile(
         projection.draft,
@@ -498,8 +658,10 @@ def test_friction_opposes_the_stated_motion_rather_than_gravity() -> None:
     """The friction term flips with the stated direction and nothing else."""
 
     angle, coefficient = math.radians(25.0), 0.12
-    down = _run(_case(), "b16-friction-sign-down")
-    up = _run(_case(motion_direction="upward"), "b16-friction-sign-up")
+    down = _run(_case(), "b16-friction-sign-down", stated=True, sign=1)
+    up = _run(
+        _case(motion_direction="upward"), "b16-friction-sign-up", stated=True, sign=-1
+    )
     assert down.terminal is up.terminal is LaneBTerminal.solved
     gravity_only = 9.81 * math.sin(angle)
     friction = 9.81 * coefficient * math.cos(angle)
@@ -543,7 +705,7 @@ def test_b15_horizontal_repair_and_b16_direction_repair_do_not_interfere() -> No
         plan_complete_profile as _plan,
     )
 
-    projection = _projection(_case())
+    projection = _projection(_case(), stated=True)
     # A stated slide direction is not a stated horizontal support.
     table_plan = _plan(
         _ProfileId.table_pulley_two_body,
@@ -561,7 +723,7 @@ def test_b15_horizontal_repair_and_b16_direction_repair_do_not_interfere() -> No
 
 
 def test_units_ids_and_source_order_are_not_authority() -> None:
-    baseline = _run(_case(), "b16-invariance-base")
+    baseline = _run(_case(), "b16-invariance-base", stated=True)
     equivalent = _run(
         _case(
             angle=str(math.radians(25.0)),
@@ -572,6 +734,7 @@ def test_units_ids_and_source_order_are_not_authority() -> None:
             fake_answer=999999.0,
         ),
         "b16-invariance-equivalent",
+        stated=True,
     )
     assert baseline.terminal is equivalent.terminal is LaneBTerminal.solved
     assert equivalent.answer_value_si == pytest.approx(
@@ -593,17 +756,26 @@ def test_a_high_friction_down_slope_slide_decelerates_and_still_solves() -> None
 
     expected = _expected(math.radians(10.0), 0.4)
     assert expected < 0.0
-    result = _run(_case(angle="10", coefficient="0.4"), "b16-high-friction-downslope")
+    result = _run(
+        _case(angle="10", coefficient="0.4"),
+        "b16-high-friction-downslope",
+        stated=True,
+        sign=1,
+    )
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(expected, rel=1.0e-12, abs=1.0e-12)
     assert result.candidate_count == result.verified_candidate_count == 1
 
 
 def test_the_same_high_friction_slope_going_up_accelerates_the_other_way() -> None:
-    down = _run(_case(angle="10", coefficient="0.4"), "b16-updown-down")
+    down = _run(
+        _case(angle="10", coefficient="0.4"), "b16-updown-down", stated=True, sign=1
+    )
     up = _run(
         _case(angle="10", coefficient="0.4", motion_direction="upward"),
         "b16-updown-up",
+        stated=True,
+        sign=-1,
     )
     assert down.terminal is up.terminal is LaneBTerminal.solved
     assert down.answer_value_si < 0.0 < up.answer_value_si
@@ -634,7 +806,7 @@ def test_missing_coefficient_stays_a_reader_decision() -> None:
         {"query_component": "magnitude"},
         {"query_component": "normal"},
         {"query_event": "start"},
-        {"collision_id": INCLINE_SLIDING_WORLD_FRAME_ID},
+        {"collision_id": AUTHORED_WORLD_FRAME_ID},
         # A declared slide with no stated direction: `sliding_on_incline` says
         # a body slides, never which way, so the closure has no friction sign.
         {"motion_direction": None},
@@ -670,9 +842,9 @@ def test_structural_near_misses_fail_closed_without_numeric_output(
 
 
 def test_physics_changing_angle_and_coefficient_change_the_answer() -> None:
-    first = _run(_case(angle="25", coefficient="0.12"), "b16-physics-a")
-    second = _run(_case(angle="25", coefficient="0.2"), "b16-physics-b")
-    third = _run(_case(angle="30", coefficient="0.12"), "b16-physics-c")
+    first = _run(_case(angle="25", coefficient="0.12"), "b16-physics-a", stated=True)
+    second = _run(_case(angle="25", coefficient="0.2"), "b16-physics-b", stated=True)
+    third = _run(_case(angle="30", coefficient="0.12"), "b16-physics-c", stated=True)
     assert first.terminal is second.terminal is third.terminal is LaneBTerminal.solved
     assert first.answer_value_si != pytest.approx(second.answer_value_si)
     assert first.answer_value_si != pytest.approx(third.answer_value_si)
@@ -688,3 +860,185 @@ def test_incline_hanging_shape_is_never_claimed_by_the_sliding_profile() -> None
     # The unimplemented census profile still measures the same Draft without
     # claiming it: only the kinetic-sliding profile closes.
     assert plan.disposition is not PlanDisposition.complete
+
+
+# ---------------------------------------------------------------------------
+# The two things a slide sense has to be: slope-relative, and interval-wide.
+#
+# A world word is not a slope sense, and one instant is not an interval.  These
+# tests hold both lines.
+# ---------------------------------------------------------------------------
+
+
+def test_a_world_direction_alone_never_states_a_slope_sense() -> None:
+    """The public corpus shape: a stated ``downward``, and nothing slope-relative.
+
+    This is what every kinetic-incline case in the public corpus actually
+    projects to, so this test is also the standing proof that the profile
+    cannot answer one.  ``downward`` says the velocity points down; a body on
+    a slope moves along the slope tangent, which points down only if the
+    slope's facing says so, and no facing is typed anywhere.
+    """
+
+    projection = _projection(_case())
+    assert projection.draft.reference_frames == []
+    velocity = next(
+        item for item in projection.draft.quantities if item.role.value == "velocity"
+    )
+    assert velocity.direction.direction.value == "downward"
+    # No motion authority is derived from it.
+    assert not [
+        item
+        for item in projection.draft.assumptions
+        if item.assumption_id == SLIDE_MOTION_ASSUMPTION_ID
+    ]
+    plan = plan_complete_profile(
+        ProfileId.incline_kinetic_sliding,
+        projection.draft,
+        approved_assumption_ids=projection.approvable_assumption_ids,
+    )
+    assert plan.disposition is not PlanDisposition.complete
+
+    result = _run(_case(), "b16-world-word-only")
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+
+
+@pytest.mark.parametrize("sense", ("downward", "upward"))
+def test_neither_world_sense_is_promoted_to_a_tangent_sign(sense: str) -> None:
+    result = _run(_case(motion_direction=sense), f"b16-world-{sense}")
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+
+
+def test_an_initial_velocity_never_becomes_the_interval_direction() -> None:
+    """One moment's direction is not the whole interval's.
+
+    A body that turns around later spent part of the same interval going the
+    other way, and kinetic friction opposes the motion that exists at each
+    moment — so an opening instant can never carry the interval's sense.
+    """
+
+    result = _run(_case(initial_velocity=True), "b16-initial-velocity")
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+
+
+def test_an_event_scoped_velocity_is_refused_even_when_slope_bound() -> None:
+    """Scope is checked on the carrier itself, not only on the corpus fact."""
+
+    result = _run(
+        _case(), "b16-event-scoped-carrier", stated=True, event_scoped=True
+    )
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+
+
+@pytest.mark.parametrize(
+    ("overrides", "why"),
+    (
+        (
+            {"direction_frame_id": None},
+            "a velocity with no direction states no sense",
+        ),
+        (
+            {"direction_axis": "normal"},
+            "the normal is across the slope, not along it",
+        ),
+        (
+            {"direction_frame_id": AUTHORED_WORLD_FRAME_ID},
+            "a direction naming the world frame is a world sense again",
+        ),
+        (
+            {"velocity_frame_id": None},
+            "a direction on the slope axis needs the quantity in that frame",
+        ),
+        (
+            {"velocity_frame_id": AUTHORED_WORLD_FRAME_ID},
+            "the carrier and its direction must name the same frame",
+        ),
+        (
+            {"origin_entity_id": "object"},
+            "a frame anchored on the body is not the slope's frame",
+        ),
+        (
+            {"parent_frame_id": None},
+            "an unparented slope frame belongs to no world",
+        ),
+        (
+            {"frame_type": "cartesian_2d"},
+            "a cartesian frame declares no tangent to slide along",
+        ),
+        (
+            {"evidence": ()},
+            "an unevidenced frame is an assertion, not a source statement",
+        ),
+        (
+            {"drop_authority": True},
+            "the typed motion authority must name the statement",
+        ),
+    ),
+)
+def test_only_a_slope_tangent_binding_states_the_slide_sense(
+    overrides: dict, why: str
+) -> None:
+    result = _run(
+        _case(), f"b16-carrier-{sorted(overrides)}", stated=True, **overrides
+    )
+    assert result.terminal is not LaneBTerminal.solved, why
+    assert result.answer_value_si is None
+    assert result.verified_candidate_count == 0
+
+
+def test_the_stated_sign_is_the_source_s_and_decides_the_friction_term() -> None:
+    """The sign is read, never chosen — and reading it the other way is the
+    other physics.
+
+    Same slope, same coefficient, same speed: only the source's tangent sign
+    differs, and the two answers are the two friction forms.
+    """
+
+    down = _run(_case(), "b16-sign-plus", stated=True, sign=1)
+    up = _run(_case(), "b16-sign-minus", stated=True, sign=-1)
+    assert down.terminal is up.terminal is LaneBTerminal.solved
+    assert down.answer_value_si == pytest.approx(
+        _expected(math.radians(25.0), 0.12), rel=1.0e-12, abs=1.0e-12
+    )
+    assert up.answer_value_si == pytest.approx(
+        _expected(math.radians(25.0), 0.12, sense="upward"), rel=1.0e-12, abs=1.0e-12
+    )
+    assert down.answer_value_si != up.answer_value_si
+
+
+def test_the_closure_never_creates_the_slope_axis_it_reads() -> None:
+    """No frame is a created record, and the frames survive byte-identical."""
+
+    projection = _projection(_case(), stated=True)
+    bundle = build_lane_b_authority_bundle(projection)
+    application = apply_selected_profile(
+        projection.draft,
+        ProfileId.incline_kinetic_sliding,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+    assert application.outcome is ApplicationOutcome.applied
+    assert not set(application.created_record_ids) & {
+        item.frame_id for item in application.draft.reference_frames
+    }
+    authored = projection.draft.model_dump(mode="json", warnings="none")
+    closed = application.draft.model_dump(mode="json", warnings="none")
+    assert closed["reference_frames"] == authored["reference_frames"]
+
+
+def test_b15_and_b16_stated_authorities_do_not_substitute_for_each_other() -> None:
+    """A stated slope tangent is not a stated horizontal support, and vice versa."""
+
+    projection = _projection(_case(), stated=True)
+    table_plan = plan_complete_profile(
+        ProfileId.table_pulley_two_body,
+        projection.draft,
+        approved_assumption_ids=projection.approvable_assumption_ids,
+    )
+    assert table_plan.disposition is not PlanDisposition.complete

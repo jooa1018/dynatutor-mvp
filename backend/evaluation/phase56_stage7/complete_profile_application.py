@@ -207,8 +207,6 @@ TABLE_PULLEY_GRAVITY_ID = "qty_closure_table_pulley_gravity"
 TABLE_PULLEY_GRAVITY_SYMBOL_ID = "sym_closure_table_pulley_gravity"
 
 INCLINE_SLIDING_WORLD_ID = "entity_closure_incline_sliding_world"
-INCLINE_SLIDING_WORLD_FRAME_ID = "frm_closure_incline_sliding_world"
-INCLINE_SLIDING_SLOPE_FRAME_ID = "frm_closure_incline_sliding_slope"
 INCLINE_SLIDING_CONTACT_POINT_ID = "pt_closure_incline_sliding_contact"
 INCLINE_SLIDING_GRAVITY_ID = "qty_closure_incline_sliding_gravity"
 INCLINE_SLIDING_GRAVITY_SYMBOL_ID = "sym_closure_incline_sliding_gravity"
@@ -234,14 +232,14 @@ _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
     "ideal_massless_frictionless_pulley": "asm_closure_fixed_pulley_ideal",
 }
 _MASS_DIMENSION = DimensionVector(mass=1)
-# A body typed as sliding on an incline moves along the slope tangent, so a
-# source-stated downward velocity is the down-slope sense (+1 on the
-# down-slope-positive tangent) and an upward one is the up-slope sense.
-# Nothing else resolves a slope sense, so nothing else appears here.
-_INCLINE_SLIDE_TANGENT_SIGNS: dict[str, int] = {
-    "downward": 1,
-    "upward": -1,
-}
+# A slope sense is slope-relative or it is nothing.  A *world* `downward` says
+# the velocity points down, and a body constrained to a slope moves along the
+# slope tangent — which points down only if the slope's facing says so, and no
+# facing is typed anywhere.  Mapping a world word onto a tangent sign supplies
+# that facing silently, so no such mapping exists any more: the sense is read
+# from a velocity the source bound to the slope frame's own tangent axis, sign
+# included, by `_stated_slide_tangent_sign`.
+_INCLINE_SLIDE_TANGENT_AXIS = "tangent"
 _FORCE_DIMENSION: dict[str, int] = {"mass": 1, "length": 1, "time": -2}
 
 _POLAR_COMPONENT_IDS: Mapping[tuple[str, str], tuple[str, str]] = {
@@ -2452,6 +2450,95 @@ def _stated_support_orientation(
     return dict(world), dict(support)
 
 
+def _stated_slope_frames(
+    payload: Mapping[str, Any], *, incline_id: str
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    """The source's own slope frame, the only thing a slide sense can name.
+
+    A slope's tangent is an axis the source has to declare before any velocity
+    can be *along* it.  This admits exactly one shape: a world frame, plus a
+    ``tangential_normal`` frame anchored on the incline and parented to that
+    world frame, each carrying its own evidence.
+
+    The slope frame deliberately does **not** have to bind its tangent to a
+    world axis — a slope's facing is not required here, because nothing in
+    this closure converts between world and slope senses any more.  What the
+    frame supplies is the axis itself, so that a source velocity can name it.
+    """
+
+    frames = payload.get("reference_frames")
+    if not isinstance(frames, list) or len(frames) != 2:
+        return None
+    world_frames = [
+        item
+        for item in frames
+        if isinstance(item, Mapping)
+        and isinstance(item.get("origin"), Mapping)
+        and item["origin"].get("kind") == "world"
+    ]
+    if len(world_frames) != 1:
+        return None
+    world = world_frames[0]
+    slope = next(item for item in frames if item is not world)
+    if not isinstance(slope, Mapping):
+        return None
+    world_id = world.get("frame_id")
+    world_axes = _axis_bindings(world)
+    slope_axes = _axis_bindings(slope)
+    if (
+        type(world_id) is not str
+        or not _frame_is_plain(world)
+        or world.get("parent_frame_id") is not None
+        or not _world_axis_direction(world_axes.get("x"), world_id, "x")
+        or not _world_axis_direction(world_axes.get("y"), world_id, "y")
+        or slope.get("frame_type") != "tangential_normal"
+        or slope.get("translating_with_entity_id") is not None
+        or slope.get("rotating_about_point_id") is not None
+        or slope.get("generalized_coordinate_symbol_ids")
+        or not slope.get("evidence_refs")
+        or not isinstance(slope.get("origin"), Mapping)
+        or slope["origin"].get("kind") != "entity"
+        or slope["origin"].get("entity_id") != incline_id
+        or slope.get("parent_frame_id") != world_id
+        or set(slope_axes) != {"tangent", "normal"}
+    ):
+        return None
+    slope_id = slope.get("frame_id")
+    if type(slope_id) is not str or not all(
+        _world_axis_direction(slope_axes[axis], slope_id, axis)
+        for axis in ("tangent", "normal")
+    ):
+        return None
+    return dict(world), dict(slope)
+
+
+def _stated_slide_tangent_sign(
+    quantity: Mapping[str, Any], *, slope_frame_id: str, interval_id: str
+) -> int | None:
+    """The slide sense the source stated, or ``None``.
+
+    Admitted only when the source bound this velocity to the slope frame's own
+    tangent axis and gave it a sign, and only when the statement covers the
+    whole sliding interval.  An event-scoped velocity is an instant: a body
+    that reverses later was going the other way inside the same interval, so
+    an instant can never carry the interval's kinetic-friction sense.
+    """
+
+    direction = quantity.get("direction")
+    if (
+        not isinstance(direction, Mapping)
+        or direction.get("kind") != "axis"
+        or direction.get("frame_id") != slope_frame_id
+        or direction.get("axis") != _INCLINE_SLIDE_TANGENT_AXIS
+        or direction.get("sign") not in (-1, 1)
+        or quantity.get("frame_id") != slope_frame_id
+        or quantity.get("event_id") is not None
+        or quantity.get("interval_id") != interval_id
+    ):
+        return None
+    return int(direction["sign"])
+
+
 def _fixed_pulley_acceleration_transaction(
     payload: dict[str, Any], authority: TransactionAuthority
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
@@ -4057,7 +4144,6 @@ def _incline_kinetic_sliding_transaction(
     if (
         len(payload["queries"]) != 1
         or len(payload["motion_intervals"]) != 1
-        or payload["reference_frames"]
         or payload["points"]
         or payload["interactions"]
         or payload["constraints"]
@@ -4115,6 +4201,15 @@ def _incline_kinetic_sliding_transaction(
     ):
         return None
 
+    # The slope's own axis, declared by the source.  It is read before the
+    # velocity because it is what the velocity has to name: without a stated
+    # tangent there is no slope-relative direction to state, and a world word
+    # cannot stand in for one.
+    stated_slope = _stated_slope_frames(payload, incline_id=incline_id)
+    if stated_slope is None:
+        return None
+    world_frame, slope_frame = stated_slope
+
     angle_records = tuple(
         item for item in payload["quantities"]
         if item["role"] == "angle" and item["subject_id"] == incline_id
@@ -4130,13 +4225,17 @@ def _incline_kinetic_sliding_transaction(
     )
     # The source's own statement of which way the slide is going.  Kinetic
     # friction opposes the motion that exists, so without this the tangential
-    # equation has no determined sign and the closure must refuse.
+    # equation has no determined sign and the closure must refuse.  The
+    # statement has to be in the slope's terms — a velocity the source bound
+    # to this slope frame's tangent axis, over the whole sliding interval.
     motion_records = tuple(
         item for item in payload["quantities"]
         if item["role"] == "velocity"
         and item["subject_id"] == body_id
-        and item.get("direction", {}).get("kind") == "semantic"
-        and item["direction"].get("direction") in _INCLINE_SLIDE_TANGENT_SIGNS
+        and _stated_slide_tangent_sign(
+            item, slope_frame_id=slope_frame["frame_id"], interval_id=interval_id
+        )
+        is not None
     )
     if (
         len(angle_records) != 1
@@ -4159,9 +4258,13 @@ def _incline_kinetic_sliding_transaction(
     angle_quantity = angle_records[0]
     coefficient_quantity = coefficient_records[0]
     motion_quantity = motion_records[0]
-    motion_sign = _INCLINE_SLIDE_TANGENT_SIGNS[
-        motion_quantity["direction"]["direction"]
-    ]
+    motion_sign = _stated_slide_tangent_sign(
+        motion_quantity,
+        slope_frame_id=slope_frame["frame_id"],
+        interval_id=interval_id,
+    )
+    if motion_sign is None:
+        return None
     try:
         motion_speed = normalize_quantity(
             motion_quantity["raw_value"],
@@ -4256,8 +4359,6 @@ def _incline_kinetic_sliding_transaction(
 
     ids = {
         "world": INCLINE_SLIDING_WORLD_ID,
-        "world_frame": INCLINE_SLIDING_WORLD_FRAME_ID,
-        "slope_frame": INCLINE_SLIDING_SLOPE_FRAME_ID,
         "point": INCLINE_SLIDING_CONTACT_POINT_ID,
         "gravity": INCLINE_SLIDING_GRAVITY_ID,
         "gravity_symbol": INCLINE_SLIDING_GRAVITY_SYMBOL_ID,
@@ -4270,6 +4371,12 @@ def _incline_kinetic_sliding_transaction(
     }
     if _authored_draft_ids(payload) & set(ids.values()):
         return None
+    # The two frames are the source's, not this closure's.  They join the id
+    # map after the collision check so the records below can reference them by
+    # name, and they stay out of the created-record report.
+    created_ids = tuple(sorted(ids.values()))
+    ids["world_frame"] = world_frame["frame_id"]
+    ids["slope_frame"] = slope_frame["frame_id"]
 
     gravity_evidence = tuple(gravity_assumption["evidence_refs"])
     motion_authority_evidence = tuple(motion_authority["evidence_refs"])
@@ -4291,25 +4398,10 @@ def _incline_kinetic_sliding_transaction(
     def axis_direction(frame_id: str, axis: str, sign: int) -> dict[str, Any]:
         return {"kind": "axis", "frame_id": frame_id, "axis": axis, "sign": sign}
 
-    world_frame = {
-        "frame_id": ids["world_frame"], "frame_type": "cartesian_2d",
-        "origin": {"kind": "world"},
-        "axes": [
-            {"axis": "x", "direction": axis_direction(ids["world_frame"], "x", 1)},
-            {"axis": "y", "direction": axis_direction(ids["world_frame"], "y", 1)},
-        ],
-        "evidence_refs": list(orientation_evidence),
-    }
-    slope_frame = {
-        "frame_id": ids["slope_frame"], "frame_type": "tangential_normal",
-        "origin": {"kind": "entity", "entity_id": incline_id},
-        "axes": [
-            {"axis": "tangent", "direction": axis_direction(ids["slope_frame"], "tangent", 1)},
-            {"axis": "normal", "direction": axis_direction(ids["slope_frame"], "normal", 1)},
-        ],
-        "parent_frame_id": ids["world_frame"],
-        "evidence_refs": list(orientation_evidence),
-    }
+    # No frame is built here.  The world axes and the slope's tangent/normal
+    # axes are the source's own, validated by `_stated_slope_frames` and
+    # carried through untouched; a closure that minted the axis a direction
+    # names would be writing the reference it is supposed to be reading.
 
     gravity_quantity = {
         "quantity_id": ids["gravity"], "symbol_id": ids["gravity_symbol"],
@@ -4460,7 +4552,8 @@ def _incline_kinetic_sliding_transaction(
                     "owner_entity_id": body_id,
                     "frame_id": ids["slope_frame"],
                     "evidence_refs": list(support_evidence)}],
-        "reference_frames": [world_frame, slope_frame],
+        # Carried through exactly as the source authored them.
+        "reference_frames": list(payload["reference_frames"]),
         "motion_intervals": [updated_interval],
         "events": [],
         "symbols": symbols,
@@ -4471,7 +4564,7 @@ def _incline_kinetic_sliding_transaction(
         "queries": queries,
         "assumptions": [gravity_assumption, motion_authority],
     })
-    return closed, tuple(sorted(ids.values())), (query_quantity["quantity_id"],)
+    return closed, created_ids, (query_quantity["quantity_id"],)
 
 
 # Only a profile whose partial-attachment hazards already have engine-level
@@ -6751,8 +6844,6 @@ __all__ = [
     "TABLE_PULLEY_GRAVITY_ID",
     "TABLE_PULLEY_GRAVITY_SYMBOL_ID",
     "INCLINE_SLIDING_WORLD_ID",
-    "INCLINE_SLIDING_WORLD_FRAME_ID",
-    "INCLINE_SLIDING_SLOPE_FRAME_ID",
     "INCLINE_SLIDING_CONTACT_POINT_ID",
     "INCLINE_SLIDING_GRAVITY_ID",
     "INCLINE_SLIDING_GRAVITY_SYMBOL_ID",

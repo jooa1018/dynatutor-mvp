@@ -807,16 +807,21 @@ _INCLINE_SLIDE_MOTION_ASSUMPTION_ID = "asm_closure_incline_slide_motion"
 # A body typed as sliding on an incline has its velocity along the slope
 # tangent, so a source that states the velocity points downward has stated the
 # down-slope sense and one that states upward has stated the up-slope sense.
-# Every other direction the corpus can state — `left`, `right`, `along_motion`,
-# `opposite_motion`, `unspecified`, `not_applicable` — resolves no slope sense
-# without a slope facing the source never gives, so it is deliberately absent.
-_INCLINE_SLIDE_MOTION_SENSES: dict[str, str] = {
-    "downward": "down_slope",
-    "upward": "up_slope",
-}
-_INCLINE_SLIDE_VELOCITY_KEYS: frozenset[str] = frozenset(
-    {"velocity", "initial_velocity"}
-)
+# No direction the corpus can state resolves a slope sense.  `downward` and
+# `upward` are *world* senses: a body constrained to a slope moves along the
+# slope tangent, which is world-downward only if the slope's facing says so,
+# and the corpus types no facing.  Reading `downward` as "down-slope" is a
+# reinterpretation of the word, not a reading of it, and it is the reason this
+# mapping is now empty rather than absent — the emptiness is the policy.
+# `left`, `right`, `along_motion`, `opposite_motion`, `unspecified`, and
+# `not_applicable` resolve no slope sense either.
+_INCLINE_SLIDE_MOTION_SENSES: dict[str, str] = {}
+# The instant a slide starts is not the interval it runs over.  An
+# `initial_velocity` states one moment's direction, and a body that turns
+# around later was moving the other way for part of the same interval, so it
+# can never carry an interval-wide kinetic-friction sense.  Only a
+# whole-interval `velocity` is even a candidate.
+_INCLINE_SLIDE_VELOCITY_KEYS: frozenset[str] = frozenset({"velocity"})
 # One authority kind, whichever way the slide goes.  The *sense* is not a
 # label on the authority: it stays on the source velocity quantity, whose
 # typed direction the closure binds to the slope tangent, so a law reads the
@@ -846,16 +851,35 @@ def _derive_incline_slide_motion_authority(
     velocity is silence, not proof of a down-slope slide, and ``μ tan θ``
     comparisons decide nothing about the current direction either.
 
-    So the sense must be *stated*.  This policy admits exactly one carrier:
-    a source velocity fact about the sliding body, inside the sliding segment,
-    whose typed direction is ``downward`` or ``upward``.  A body constrained to
-    the slope moves along the slope tangent, so a downward-directed velocity is
-    the down-slope sense and an upward-directed one the up-slope sense.  Every
-    other model-completeness requirement stays: one free body, one incline, one
-    ``slides_on`` support, one source angle, one source coefficient, an
-    approved constant-gravity authority, and nothing else.  No sentence
-    keyword, entity label, case identity, family, expected terminal, or numeric
-    answer is read.
+    So the sense must be *stated*, and stated in the slope's own terms.  Two
+    things this derivation used to accept do not state it.
+
+    A **world** direction does not.  ``downward`` says the velocity points
+    down; a body constrained to a slope moves along the slope tangent, which
+    points down only if the slope's facing says so, and no facing is typed
+    anywhere in this corpus.  Reading ``downward`` as "down-slope" reinterprets
+    the word rather than reading it, and the reinterpretation silently supplies
+    the facing.  ``_INCLINE_SLIDE_MOTION_SENSES`` is empty for that reason.
+
+    An **instant** does not.  A slide's opening moment is not the interval it
+    runs over: a body that turns around later spent part of the same interval
+    going the other way, and kinetic friction opposes the motion that exists at
+    each moment.  So the carrier must be a whole-interval ``velocity`` with no
+    ``event_role``, never an ``initial_velocity``.
+
+    What would state it is a velocity bound to a source-authored slope frame's
+    tangent axis, sign and all — the closure's own requirement. The public
+    corpus cannot express that: ``project_case_to_draft`` emits
+    ``reference_frames: []`` for every case, so there is no slope frame for a
+    direction to name, and this derivation consequently never fires for a
+    public case.  It is kept, and kept exact, because it is the statement of
+    what the source would have to say.
+
+    Every other model-completeness requirement stays: one free body, one
+    incline, one ``slides_on`` support, one source angle, one source
+    coefficient, an approved constant-gravity authority, and nothing else.  No
+    sentence keyword, entity label, case identity, family, expected terminal,
+    or numeric answer is read.
     """
 
     if (
@@ -947,13 +971,18 @@ def _derive_incline_slide_motion_authority(
         and fact.event_role is None
         and fact.temporal_role == "timeless"
     )
-    # The one carrier of the slide's direction.
+    # The one carrier of the slide's direction: a whole-interval velocity of
+    # the sliding body whose stated direction is slope-relative.  A fact
+    # pinned to an event states an instant, and an instant's direction is not
+    # the interval's, so `event_role` must be absent rather than merely
+    # inside the segment.
     motion_facts = tuple(
         fact
         for fact in gold.explicit_facts
         if fact.semantic_key in _INCLINE_SLIDE_VELOCITY_KEYS
         and fact.subject_role == body_id
         and fact.segment_role == interval_id
+        and fact.event_role is None
         and fact.direction in _INCLINE_SLIDE_MOTION_SENSES
     )
     if (
