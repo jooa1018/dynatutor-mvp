@@ -172,6 +172,14 @@ _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
     "ideal_massless_frictionless_pulley": "asm_closure_fixed_pulley_ideal",
 }
 _MASS_DIMENSION = DimensionVector(mass=1)
+# A body typed as sliding on an incline moves along the slope tangent, so a
+# source-stated downward velocity is the down-slope sense (+1 on the
+# down-slope-positive tangent) and an upward one is the up-slope sense.
+# Nothing else resolves a slope sense, so nothing else appears here.
+_INCLINE_SLIDE_TANGENT_SIGNS: dict[str, int] = {
+    "downward": 1,
+    "upward": -1,
+}
 _FORCE_DIMENSION: dict[str, int] = {"mass": 1, "length": 1, "time": -2}
 
 _POLAR_COMPONENT_IDS: Mapping[tuple[str, str], tuple[str, str]] = {
@@ -3957,6 +3965,16 @@ def _incline_kinetic_sliding_transaction(
         item for item in payload["quantities"]
         if item["role"] == "mass" and item["subject_id"] == body_id
     )
+    # The source's own statement of which way the slide is going.  Kinetic
+    # friction opposes the motion that exists, so without this the tangential
+    # equation has no determined sign and the closure must refuse.
+    motion_records = tuple(
+        item for item in payload["quantities"]
+        if item["role"] == "velocity"
+        and item["subject_id"] == body_id
+        and item.get("direction", {}).get("kind") == "semantic"
+        and item["direction"].get("direction") in _INCLINE_SLIDE_TANGENT_SIGNS
+    )
     if (
         len(angle_records) != 1
         or not angle_records[0].get("evidence_refs")
@@ -3964,12 +3982,34 @@ def _incline_kinetic_sliding_transaction(
         or not coefficient_records[0].get("evidence_refs")
         or len(mass_records) > 1
         or any(not item.get("evidence_refs") for item in mass_records)
+        or len(motion_records) != 1
+        or not motion_records[0].get("evidence_refs")
+        or any(
+            item["role"] == "velocity"
+            and item["quantity_id"] != motion_records[0]["quantity_id"]
+            for item in payload["quantities"]
+        )
         or len(payload["quantities"])
-        != 2 + len(mass_records) + 1
+        != 2 + len(mass_records) + 1 + 1
     ):
         return None
     angle_quantity = angle_records[0]
     coefficient_quantity = coefficient_records[0]
+    motion_quantity = motion_records[0]
+    motion_sign = _INCLINE_SLIDE_TANGENT_SIGNS[
+        motion_quantity["direction"]["direction"]
+    ]
+    try:
+        motion_speed = normalize_quantity(
+            motion_quantity["raw_value"],
+            motion_quantity["raw_unit"],
+            "scalar",
+            DimensionVector(length=1, time=-1),
+        ).value
+    except Exception:
+        return None
+    if type(motion_speed) is not float or motion_speed <= 0.0:
+        return None
     try:
         angle_value = normalize_quantity(
             angle_quantity["raw_value"],
@@ -4021,8 +4061,8 @@ def _incline_kinetic_sliding_transaction(
     )
     downslope_assumptions = tuple(
         item for item in payload["assumptions"]
-        if item["kind"] == "gravity_driven_downslope_sliding"
-        and item["assumption_id"] == "asm_closure_downslope_sliding"
+        if item["kind"] == "typed_incline_slide_motion"
+        and item["assumption_id"] == "asm_closure_incline_slide_motion"
         and item["disposition"] == "approved"
         and item["assumption_id"] in authority.approved_assumption_ids
         and item["interval_id"] == interval_id
@@ -4070,6 +4110,7 @@ def _incline_kinetic_sliding_transaction(
 
     gravity_evidence = tuple(gravity_assumption["evidence_refs"])
     downslope_evidence = tuple(downslope_assumption["evidence_refs"])
+    motion_evidence = tuple(motion_quantity["evidence_refs"])
     angle_evidence = tuple(angle_quantity["evidence_refs"])
     coefficient_evidence = tuple(coefficient_quantity["evidence_refs"])
     # The source states the support as a relation without its own quote; the
@@ -4130,6 +4171,17 @@ def _incline_kinetic_sliding_transaction(
         "direction": axis_direction(ids["slope_frame"], "tangent", 1),
         "evidence_refs": list(query_evidence),
     })
+    # The source's velocity keeps its own value and evidence; the closure only
+    # writes down, in typed form, the slope axis the source's own direction
+    # already named.  No speed, sign, or direction is invented here.
+    rebound_motion_quantity = dict(motion_quantity)
+    rebound_motion_quantity.update({
+        "frame_id": ids["slope_frame"],
+        "interval_id": interval_id,
+        "event_id": None,
+        "component": "tangential",
+        "direction": axis_direction(ids["slope_frame"], "tangent", motion_sign),
+    })
     quantities = []
     unscoped_source_ids = {
         angle_quantity["quantity_id"],
@@ -4139,6 +4191,8 @@ def _incline_kinetic_sliding_transaction(
     for item in payload["quantities"]:
         if item["quantity_id"] == query_quantity["quantity_id"]:
             quantities.append(rebound_query_quantity)
+        elif item["quantity_id"] == motion_quantity["quantity_id"]:
+            quantities.append(rebound_motion_quantity)
         elif item["quantity_id"] in unscoped_source_ids:
             entry = dict(item)
             entry["interval_id"] = None
@@ -4218,7 +4272,8 @@ def _incline_kinetic_sliding_transaction(
          )))},
         {"state_condition_id": ids["motion_state"], "kind": "motion", "state": "moving",
          "subject_id": body_id, "interval_id": interval_id, "event_id": None,
-         "quantity_ids": [], "evidence_refs": list(downslope_evidence)},
+         "quantity_ids": [motion_quantity["quantity_id"]],
+         "evidence_refs": list(motion_evidence)},
         {"state_condition_id": ids["incline_state"], "kind": "motion", "state": "at_rest",
          "subject_id": incline_id, "interval_id": interval_id, "event_id": None,
          "quantity_ids": [], "evidence_refs": list(support_evidence)},

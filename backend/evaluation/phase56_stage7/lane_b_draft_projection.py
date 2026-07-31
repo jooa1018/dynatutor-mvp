@@ -803,7 +803,25 @@ def _derive_direct_constant_force_work_assumption(
     approved.append(_DIRECT_CONSTANT_FORCE_WORK_ASSUMPTION_ID)
 
 
-_DOWNSLOPE_SLIDING_ASSUMPTION_ID = "asm_closure_downslope_sliding"
+_DOWNSLOPE_SLIDING_ASSUMPTION_ID = "asm_closure_incline_slide_motion"
+# A body typed as sliding on an incline has its velocity along the slope
+# tangent, so a source that states the velocity points downward has stated the
+# down-slope sense and one that states upward has stated the up-slope sense.
+# Every other direction the corpus can state — `left`, `right`, `along_motion`,
+# `opposite_motion`, `unspecified`, `not_applicable` — resolves no slope sense
+# without a slope facing the source never gives, so it is deliberately absent.
+_INCLINE_SLIDE_MOTION_SENSES: dict[str, str] = {
+    "downward": "down_slope",
+    "upward": "up_slope",
+}
+_INCLINE_SLIDE_VELOCITY_KEYS: frozenset[str] = frozenset(
+    {"velocity", "initial_velocity"}
+)
+# One authority kind, whichever way the slide goes.  The *sense* is not a
+# label on the authority: it stays on the source velocity quantity, whose
+# typed direction the closure binds to the slope tangent, so a law reads the
+# direction from the physics record rather than from a string.
+_INCLINE_SLIDE_MOTION_KIND = "typed_incline_slide_motion"
 
 
 def _derive_downslope_sliding_assumption(
@@ -816,21 +834,28 @@ def _derive_downslope_sliding_assumption(
     assumptions: list[dict[str, Any]],
     approved: list[str],
 ) -> None:
-    """Authorise the gravity-driven down-slope reading of one kinetic slide.
+    """Carry the source's own statement of which way the slide is going.
 
-    The policy consumes only source-side typed structure: exactly one free
-    body on exactly one incline, one source-declared ``sliding_on_incline``
-    segment whose only actor is that body, one ``slides_on`` support
-    relation, one source-valued incline angle, one source-valued friction
-    coefficient, and an approved constant-gravity authority.  In that model
-    gravity is the *entire* typed driving system: there is no stated
-    velocity, no applied force, no rope, no spring, no second contact, and
-    no rest boundary, so the only reading of the declared slide that the
-    closed model supports is motion down the slope with friction opposing
-    it.  A statement of model completeness, never a guess: any stated
-    motion evidence, force, extra body, extra relation, or extra proposal
-    refuses the derivation outright.  No sentence keyword, case identity,
-    family, expected terminal, or numeric answer is read.
+    ``sliding_on_incline`` says a body slides; it does not say *which way*.
+    The same typed structure describes a block sliding down and a block
+    coasting up, and those are different physics: with the down-slope tangent
+    positive, a down-slope slide obeys ``a = g(sin θ − μ cos θ)`` and an
+    up-slope slide obeys ``a = g(sin θ + μ cos θ)``, because kinetic friction
+    opposes the motion that exists rather than the motion gravity would start.
+    Neither can be recovered from what the source leaves out: no stated
+    velocity is silence, not proof of a down-slope slide, and ``μ tan θ``
+    comparisons decide nothing about the current direction either.
+
+    So the sense must be *stated*.  This policy admits exactly one carrier:
+    a source velocity fact about the sliding body, inside the sliding segment,
+    whose typed direction is ``downward`` or ``upward``.  A body constrained to
+    the slope moves along the slope tangent, so a downward-directed velocity is
+    the down-slope sense and an upward-directed one the up-slope sense.  Every
+    other model-completeness requirement stays: one free body, one incline, one
+    ``slides_on`` support, one source angle, one source coefficient, an
+    approved constant-gravity authority, and nothing else.  No sentence
+    keyword, entity label, case identity, family, expected terminal, or numeric
+    answer is read.
     """
 
     if (
@@ -922,27 +947,49 @@ def _derive_downslope_sliding_assumption(
         and fact.event_role is None
         and fact.temporal_role == "timeless"
     )
+    # The one carrier of the slide's direction.
+    motion_facts = tuple(
+        fact
+        for fact in gold.explicit_facts
+        if fact.semantic_key in _INCLINE_SLIDE_VELOCITY_KEYS
+        and fact.subject_role == body_id
+        and fact.segment_role == interval_id
+        and fact.direction in _INCLINE_SLIDE_MOTION_SENSES
+    )
     if (
         len(angle_facts) != 1
         or len(coefficient_facts) != 1
         or len(mass_facts) > 1
+        or len(motion_facts) != 1
         or len(gold.explicit_facts)
-        != len(angle_facts) + len(coefficient_facts) + len(mass_facts)
+        != len(angle_facts)
+        + len(coefficient_facts)
+        + len(mass_facts)
+        + len(motion_facts)
     ):
         return
+    motion_fact = motion_facts[0]
 
     by_id = {item["quantity_id"]: item for item in quantities}
     angle = by_id.get(f"qty_{angle_facts[0].role}")
     coefficient = by_id.get(f"qty_{coefficient_facts[0].role}")
+    motion = by_id.get(f"qty_{motion_fact.role}")
     if (
         angle is None
         or coefficient is None
+        or motion is None
         or angle.get("role") != "angle"
         or angle.get("raw_value") is None
         or not angle.get("evidence_refs")
         or coefficient.get("role") != "coefficient_friction"
         or coefficient.get("raw_value") is None
         or not coefficient.get("evidence_refs")
+        or motion.get("role") != "velocity"
+        or motion.get("raw_value") is None
+        or not motion.get("evidence_refs")
+        or motion.get("subject_id") != body_id
+        or motion.get("direction")
+        != {"kind": "semantic", "direction": motion_fact.direction}
     ):
         return
 
@@ -963,7 +1010,7 @@ def _derive_downslope_sliding_assumption(
         return
     if any(
         item["assumption_id"] == _DOWNSLOPE_SLIDING_ASSUMPTION_ID
-        or item["kind"] == "gravity_driven_downslope_sliding"
+        or item["kind"] == _INCLINE_SLIDE_MOTION_KIND
         for item in assumptions
     ):
         return
@@ -971,16 +1018,17 @@ def _derive_downslope_sliding_assumption(
     assumptions.append(
         {
             "assumption_id": _DOWNSLOPE_SLIDING_ASSUMPTION_ID,
-            "kind": "gravity_driven_downslope_sliding",
+            "kind": _INCLINE_SLIDE_MOTION_KIND,
             "subject_id": body_id,
             "interval_id": interval_id,
             "disposition": "approved",
             "reason": (
-                "closed server policy: gravity is the entire typed driving "
-                "system of this source-declared kinetic slide"
+                "source-stated slide direction: the velocity of the sliding "
+                "body carries a typed slope-tangent sense"
             ),
             "evidence_refs": sorted(
-                set(angle["evidence_refs"])
+                set(motion["evidence_refs"])
+                | set(angle["evidence_refs"])
                 | set(coefficient["evidence_refs"])
                 | set(gravity_records[0]["evidence_refs"])
             ),

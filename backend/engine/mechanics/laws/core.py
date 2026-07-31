@@ -93,7 +93,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("fixed_contact_no_penetration", "constraint", (QuantityRole.acceleration,), interactions=(InteractionKind.contact.value,), cost=2, hooks=("contact_validity", "constraint_residual")),
     _rule("incline_sticking_static_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.force, QuantityRole.coefficient_friction), interactions=(InteractionKind.contact.value,), cost=2, hooks=("friction_regime", "constraint_residual")),
     _rule("contact_sticking_static_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.force, QuantityRole.coefficient_friction), interactions=(InteractionKind.contact.value,), cost=2, hooks=("friction_regime", "constraint_residual")),
-    _rule("incline_sliding_kinetic_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.coefficient_friction, QuantityRole.angle, QuantityRole.gravity), interactions=(InteractionKind.contact.value,), assumptions=("gravity_driven_downslope_sliding",), cost=2, hooks=("friction_regime", "constraint_residual", "direction_residual")),
+    _rule("incline_sliding_kinetic_acceleration", "constraint", (QuantityRole.acceleration, QuantityRole.coefficient_friction, QuantityRole.angle, QuantityRole.gravity), interactions=(InteractionKind.contact.value,), assumptions=("typed_incline_slide_motion",), cost=2, hooks=("friction_regime", "constraint_residual", "direction_residual")),
     _rule("contact_sliding_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime", "direction_residual")),
     _rule("spring_force", "newton_second_law", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.force), interactions=(InteractionKind.spring.value,), cost=3, hooks=("constitutive_residual",)),
     _rule("damper_force", "vibration", (QuantityRole.damping, QuantityRole.velocity, QuantityRole.force), interactions=(InteractionKind.damping.value,), cost=3, hooks=("constitutive_residual",)),
@@ -4401,6 +4401,10 @@ class _InclineKineticSlidingLawProfile:
     coefficient: BoundQuantity
     gravity: BoundQuantity
     tangential_acceleration: BoundQuantity
+    # The source's own slide direction, expressed on the down-slope-positive
+    # tangent: +1 down the slope, -1 up it.  Kinetic friction opposes it.
+    motion: BoundQuantity
+    motion_sign: int
     assumption_ids: tuple[str, ...]
     constraint_ids: tuple[str, ...]
 
@@ -4600,17 +4604,24 @@ def _incline_kinetic_sliding_profile(
         for item in context.quantities
         if item.role is QuantityRole.mass
     )
+    velocities = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.velocity
+    )
     if (
         angle is None
         or coefficient is None
         or len(gravities) != 1
         or len(tangential) != 1
+        or len(velocities) != 1
         or len(masses) > 1
-        or len(context.quantities) != 4 + len(masses)
+        or len(context.quantities) != 5 + len(masses)
     ):
         return None
     gravity = gravities[0]
     acceleration = tangential[0]
+    motion = velocities[0]
 
     def exact_known(
         item: BoundQuantity,
@@ -4686,6 +4697,33 @@ def _incline_kinetic_sliding_profile(
         or gravity.dimension != acceleration.dimension
     ):
         return None
+    # The slide's direction is a *stated* physical record, not a premise.  It
+    # is a source velocity of the sliding body, bound to the same slope tangent
+    # the answer is asked on, with a real positive speed.  Its sign is the only
+    # thing that decides which way kinetic friction points.
+    if (
+        motion.subject_id != body_id
+        or motion.shape is not QuantityShape.scalar
+        or motion.symbol_id is None
+        or motion.point_id is not None
+        or motion.frame_id != slope_frame.frame_id
+        or motion.interval_id != interval.interval_id
+        or motion.event_id is not None
+        or motion.component is not QuantityComponent.tangential
+        or motion.dimension != DimensionVector(length=1, time=-1)
+        or not motion.evidence_ids
+        or motion.direction_sign not in {-1, 1}
+        or not _axis_bound(
+            motion,
+            slope_frame.frame_id,
+            QuantityComponent.tangential,
+            motion.direction_sign,
+        )
+        or type(motion.known_si_value) is not float
+        or not math.isfinite(motion.known_si_value)
+        or motion.known_si_value <= 0.0
+    ):
+        return None
 
     states = tuple(context.state_conditions)
     if len(states) != 4 or any(
@@ -4708,7 +4746,7 @@ def _incline_kinetic_sliding_profile(
             body_id,
             (coefficient.quantity_id,),
         ),
-        (StateKind.motion, StateValue.moving, body_id, ()),
+        (StateKind.motion, StateValue.moving, body_id, (motion.quantity_id,)),
         (StateKind.motion, StateValue.at_rest, incline_id, ()),
     }:
         return None
@@ -4717,7 +4755,7 @@ def _incline_kinetic_sliding_profile(
         "constant_gravity", body_id, interval.interval_id
     )
     downslope_ids = context.approved_assumptions(
-        "gravity_driven_downslope_sliding", body_id, interval.interval_id
+        "typed_incline_slide_motion", body_id, interval.interval_id
     )
     if (
         len(gravity_ids) != 1
@@ -4736,6 +4774,8 @@ def _incline_kinetic_sliding_profile(
         coefficient=coefficient,
         gravity=gravity,
         tangential_acceleration=acceleration,
+        motion=motion,
+        motion_sign=motion.direction_sign,
         assumption_ids=tuple(sorted({*gravity_ids, *downslope_ids})),
         constraint_ids=tuple(
             sorted(
@@ -4750,14 +4790,26 @@ def _incline_kinetic_sliding_profile(
 
 
 def _incline_kinetic_sliding_emissions(context: LawContext) -> list[LawEmission]:
-    """Close the gravity-driven kinetic slide the projection authorised.
+    """Close the kinetic slide whose direction the source stated.
 
-    The equality is Newton's second law along the slope with the Coulomb
+    Newton's second law along the slope, per unit mass, with the Coulomb
     kinetic friction bound and the gravity projections already substituted —
-    the same per-mass closure the sticking twin states for the static
-    regime.  The companion inequality states the authority's own premise: a
-    gravity-driven slide cannot accelerate up the slope, so a typed model
-    whose numbers contradict that refuses instead of answering.
+    the same closure the sticking twin states for the static regime.  On the
+    down-slope-positive tangent, gravity always drives ``+g sin θ``, while
+    kinetic friction opposes *the motion that exists*:
+
+        stated down-slope motion →  a = g(sin θ − μ cos θ)
+        stated up-slope motion   →  a = g(sin θ + μ cos θ)
+
+    So the friction term carries the sign of the stated motion, and nothing
+    else.  A high-friction down-slope slide therefore yields a negative
+    tangential acceleration — a decelerating block, which is ordinary physics
+    and a perfectly good answer.  There is deliberately no "a ≥ 0" premise
+    here: that would confuse "gravity could start this motion" with "this
+    motion is happening", and would refuse the correct answer whenever
+    ``μ > tan θ``.  The companion inequality states the one thing the model
+    really does require of a source value: a friction coefficient is never
+    negative.
     """
 
     profile = _incline_kinetic_sliding_profile(context)
@@ -4780,8 +4832,15 @@ def _incline_kinetic_sliding_emissions(context: LawContext) -> list[LawEmission]
         ),
         dimension=dimension,
     )
-    downslope = Add(
-        terms=(drive, Negate(operand=resist, dimension=dimension)),
+    # Friction opposes the stated motion: subtract it for a down-slope slide,
+    # add it for an up-slope one.
+    friction_term = (
+        Negate(operand=resist, dimension=dimension)
+        if profile.motion_sign == 1
+        else resist
+    )
+    tangential = Add(
+        terms=(drive, friction_term),
         dimension=dimension,
     )
     quantities = (
@@ -4789,6 +4848,7 @@ def _incline_kinetic_sliding_emissions(context: LawContext) -> list[LawEmission]
         profile.coefficient,
         profile.angle,
         profile.gravity,
+        profile.motion,
     )
     return [
         _emit(
@@ -4796,7 +4856,7 @@ def _incline_kinetic_sliding_emissions(context: LawContext) -> list[LawEmission]
             "incline_sliding_kinetic_acceleration",
             Equality(
                 left=_signed(profile.tangential_acceleration),
-                right=downslope,
+                right=tangential,
             ),
             quantities,
             assumption_ids=profile.assumption_ids,
@@ -4808,8 +4868,10 @@ def _incline_kinetic_sliding_emissions(context: LawContext) -> list[LawEmission]
             "incline_sliding_kinetic_acceleration",
             Inequality(
                 relation=InequalityRelation.ge,
-                left=_signed(profile.tangential_acceleration),
-                right=LiteralNode(value=0.0, dimension=dimension),
+                left=profile.coefficient.expression,
+                right=LiteralNode(
+                    value=0.0, dimension=profile.coefficient.dimension
+                ),
             ),
             quantities,
             assumption_ids=profile.assumption_ids,

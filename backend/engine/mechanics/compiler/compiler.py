@@ -1630,7 +1630,7 @@ def _incline_friction_contract_issue(
 
     downslope_authorised = any(
         item.assumption_id in relevant
-        and item.kind == "gravity_driven_downslope_sliding"
+        and item.kind == "typed_incline_slide_motion"
         and item.subject_id == body_id
         and item.disposition is AssumptionDisposition.approved
         and item.interval_id == query.target.interval_id
@@ -7194,7 +7194,7 @@ def _structural_template_support_issue(
             )
             and any(
                 item.assumption_id in relevant
-                and item.kind == "gravity_driven_downslope_sliding"
+                and item.kind == "typed_incline_slide_motion"
                 and item.subject_id == state.subject_id
                 and item.disposition is AssumptionDisposition.approved
                 and item.assumption_id in approved_assumption_ids

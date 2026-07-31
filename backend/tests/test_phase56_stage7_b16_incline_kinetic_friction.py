@@ -81,6 +81,15 @@ def _case(
     second_support: bool = False,
     extra_force: bool = False,
     initial_velocity: bool = False,
+    motion_direction: str | None = "downward",
+    motion_speed: str = "3",
+    motion_speed_unit: str = "m/s",
+    motion_subject: str = "object",
+    motion_segment: str | None = "motion_1",
+    duplicate_motion: bool = False,
+    conflicting_motion: bool = False,
+    motion_event: str | None = None,
+    rope_partner: bool = False,
     extra_assumption: str | None = None,
     missing_gravity: bool = False,
     query_component: str = "tangential",
@@ -106,6 +115,9 @@ def _case(
     ]
     if second_support:
         entities.append({"role": "incline_2", "kind": "incline", "label": "둘째 경사면"})
+    if rope_partner:
+        entities.append({"role": "rope", "kind": "rope", "label": "줄"})
+        entities.append({"role": "mass_b", "kind": "block", "label": "매달린 추"})
     if collision_id is not None:
         entities.append({"role": collision_id, "kind": "other", "label": "무관 항목"})
 
@@ -134,6 +146,36 @@ def _case(
             _fact("v0", "initial_velocity", "2", "m/s", velocity_quote, "object",
                   temporal="initial", event="start")
         )
+    if motion_direction is not None:
+        motion_quote = f"블록은 {motion_speed} {motion_speed_unit}로 움직이고 있다"
+        text += f" {motion_quote}."
+        motion_fact = _fact(
+            "v", "velocity", motion_speed, motion_speed_unit, motion_quote,
+            motion_subject, direction=motion_direction, temporal="during",
+        )
+        motion_fact["segment_role"] = motion_segment
+        motion_fact["event_role"] = motion_event
+        facts.append(motion_fact)
+        if conflicting_motion:
+            opposite = "upward" if motion_direction == "downward" else "downward"
+            conflict_quote = f"블록은 반대로 {motion_speed} {motion_speed_unit}로도 움직인다"
+            text += f" {conflict_quote}."
+            conflict = _fact(
+                "v_conflict", "velocity", motion_speed, motion_speed_unit,
+                conflict_quote, motion_subject, direction=opposite,
+                temporal="during",
+            )
+            conflict["segment_role"] = motion_segment
+            facts.append(conflict)
+        if duplicate_motion:
+            second_quote = f"블록은 다시 {motion_speed} {motion_speed_unit}로 움직인다"
+            text += f" {second_quote}."
+            second = _fact(
+                "v2", "velocity", motion_speed, motion_speed_unit, second_quote,
+                motion_subject, direction=motion_direction, temporal="during",
+            )
+            second["segment_role"] = motion_segment
+            facts.append(second)
 
     relations = []
     if not missing_relation:
@@ -148,6 +190,13 @@ def _case(
             "role": "slide_2",
             "kind": "slides_on",
             "participant_roles": ["object", "incline_2"],
+            "segment_role": "motion_1",
+        })
+    if rope_partner:
+        relations.append({
+            "role": "rope_link",
+            "kind": "connected_by_rope",
+            "participant_roles": ["object", "mass_b"],
             "segment_role": "motion_1",
         })
 
@@ -270,21 +319,44 @@ def _run(case: PublicCorpusCaseV1, nonce: str):
     )
 
 
-def _expected(angle_radians: float, coefficient: float, gravity: float = 9.81) -> float:
-    return gravity * (math.sin(angle_radians) - coefficient * math.cos(angle_radians))
+def _expected(
+    angle_radians: float,
+    coefficient: float,
+    gravity: float = 9.81,
+    *,
+    sense: str = "downward",
+) -> float:
+    """Tangential acceleration on the down-slope-positive slope axis.
+
+    Kinetic friction opposes the motion that exists: it subtracts for a slide
+    going down the slope and adds for one coasting up it.
+    """
+
+    friction = coefficient * math.cos(angle_radians)
+    return gravity * (
+        math.sin(angle_radians) - friction
+        if sense == "downward"
+        else math.sin(angle_radians) + friction
+    )
 
 
-def test_projection_derives_the_downslope_sliding_authority() -> None:
+def test_projection_carries_the_source_stated_slide_direction() -> None:
     projection = _projection(_case())
     derived = [
         item
         for item in projection.draft.assumptions
-        if item.assumption_id == "asm_closure_downslope_sliding"
+        if item.assumption_id == "asm_closure_incline_slide_motion"
     ]
     assert len(derived) == 1
-    assert derived[0].kind == "gravity_driven_downslope_sliding"
+    assert derived[0].kind == "typed_incline_slide_motion"
     assert derived[0].subject_id == "object"
     assert derived[0].evidence_refs
+    # The direction lives on the source's own velocity record, not on a label.
+    velocity = next(
+        item for item in projection.draft.quantities if item.role.value == "velocity"
+    )
+    assert velocity.direction.direction.value == "downward"
+    assert velocity.evidence_refs
     plan = plan_complete_profile(
         ProfileId.incline_kinetic_sliding,
         projection.draft,
@@ -295,19 +367,31 @@ def test_projection_derives_the_downslope_sliding_authority() -> None:
 
 
 @pytest.mark.parametrize(
-    ("angle", "coefficient", "expected"),
+    ("angle", "coefficient", "sense", "expected"),
     (
-        ("25", "0.12", _expected(math.radians(25.0), 0.12)),
-        ("32", "0.18", _expected(math.radians(32.0), 0.18)),
-        ("18", "0.08", _expected(math.radians(18.0), 0.08)),
+        ("25", "0.12", "downward", _expected(math.radians(25.0), 0.12)),
+        ("32", "0.18", "downward", _expected(math.radians(32.0), 0.18)),
+        ("18", "0.08", "downward", _expected(math.radians(18.0), 0.08)),
+        (
+            "25",
+            "0.12",
+            "upward",
+            _expected(math.radians(25.0), 0.12, sense="upward"),
+        ),
+        (
+            "32",
+            "0.18",
+            "upward",
+            _expected(math.radians(32.0), 0.18, sense="upward"),
+        ),
     ),
 )
-def test_kinetic_incline_acceleration_uses_the_sliding_regime_law(
-    angle: str, coefficient: str, expected: float
+def test_kinetic_incline_acceleration_follows_the_stated_slide_direction(
+    angle: str, coefficient: str, sense: str, expected: float
 ) -> None:
     result = _run(
-        _case(angle=angle, coefficient=coefficient),
-        f"b16-positive-{angle}-{coefficient}",
+        _case(angle=angle, coefficient=coefficient, motion_direction=sense),
+        f"b16-positive-{angle}-{coefficient}-{sense}",
     )
     assert result.terminal is LaneBTerminal.solved
     assert result.answer_value_si == pytest.approx(expected, rel=1.0e-12, abs=1.0e-12)
@@ -368,6 +452,112 @@ def test_transaction_adds_only_typed_topology_and_the_value_free_unknown() -> No
     assert closed.queries[0].target.direction.sign == 1
     assert not closed.constraints
     assert not any(item.role.value == "force" for item in closed.quantities)
+    # The source's velocity keeps its own value and is bound to the same
+    # down-slope-positive tangent the answer is asked on.  The typed motion
+    # state carries it, so the friction sign is read from a physics record.
+    motion = next(
+        item for item in closed.quantities if item.role.value == "velocity"
+    )
+    assert motion.frame_id == INCLINE_SLIDING_SLOPE_FRAME_ID
+    assert motion.component.value == "tangential"
+    assert motion.direction.axis.value == "tangent"
+    assert motion.direction.sign == 1
+    assert motion.raw_value == "3"
+    assert motion.quantity_id not in application.created_record_ids
+    motion_state = next(
+        item
+        for item in closed.state_conditions
+        if item.kind.value == "motion" and item.subject_id == "object"
+    )
+    assert motion_state.state.value == "moving"
+    assert list(motion_state.quantity_ids) == [motion.quantity_id]
+
+
+def test_an_up_slope_slide_binds_the_carrier_to_the_negative_tangent() -> None:
+    projection = _projection(_case(motion_direction="upward"))
+    bundle = build_lane_b_authority_bundle(projection)
+    application = apply_selected_profile(
+        projection.draft,
+        ProfileId.incline_kinetic_sliding,
+        approved_assumption_ids=bundle.approved_assumption_ids,
+        authorized_assumptions=bundle.authorization_map(),
+    )
+    assert application.outcome is ApplicationOutcome.applied
+    motion = next(
+        item
+        for item in application.draft.quantities
+        if item.role.value == "velocity"
+    )
+    # Same down-slope-positive axis, opposite sign: the source said "up".
+    assert motion.direction.axis.value == "tangent"
+    assert motion.direction.sign == -1
+    assert application.draft.queries[0].target.direction.sign == 1
+
+
+def test_friction_opposes_the_stated_motion_rather_than_gravity() -> None:
+    """The friction term flips with the stated direction and nothing else."""
+
+    angle, coefficient = math.radians(25.0), 0.12
+    down = _run(_case(), "b16-friction-sign-down")
+    up = _run(_case(motion_direction="upward"), "b16-friction-sign-up")
+    assert down.terminal is up.terminal is LaneBTerminal.solved
+    gravity_only = 9.81 * math.sin(angle)
+    friction = 9.81 * coefficient * math.cos(angle)
+    assert down.answer_value_si == pytest.approx(
+        gravity_only - friction, rel=1.0e-12, abs=1.0e-12
+    )
+    assert up.answer_value_si == pytest.approx(
+        gravity_only + friction, rel=1.0e-12, abs=1.0e-12
+    )
+    # Both sit symmetrically about the frictionless value: the sign of the
+    # friction term is the only thing the direction changed.
+    assert (down.answer_value_si + up.answer_value_si) / 2.0 == pytest.approx(
+        gravity_only, rel=1.0e-12, abs=1.0e-12
+    )
+
+
+def test_the_declared_sliding_regime_is_what_makes_the_coefficient_kinetic() -> None:
+    """A regime the source did not declare as sliding cannot use this law."""
+
+    for motion_model in ("unknown", "energy_interval", "constant_acceleration_1d"):
+        result = _run(
+            _case(motion_model=motion_model),
+            f"b16-regime-{motion_model}",
+        )
+        assert result.terminal is not LaneBTerminal.solved
+        assert result.answer_value_si is None
+        assert result.verified_candidate_count == 0
+    # A stated rest boundary contradicts a slide in progress.
+    at_rest = _run(
+        _case(extra_assumption="starts_from_rest"), "b16-regime-starts-from-rest"
+    )
+    assert at_rest.terminal is not LaneBTerminal.solved
+    assert at_rest.verified_candidate_count == 0
+
+
+def test_b15_horizontal_repair_and_b16_direction_repair_do_not_interfere() -> None:
+    """Neither repair's authority can stand in for the other's."""
+
+    from evaluation.phase56_stage7.complete_profile import (
+        ProfileId as _ProfileId,
+        plan_complete_profile as _plan,
+    )
+
+    projection = _projection(_case())
+    # A stated slide direction is not a stated horizontal support.
+    table_plan = _plan(
+        _ProfileId.table_pulley_two_body,
+        projection.draft,
+        approved_assumption_ids=projection.approvable_assumption_ids,
+    )
+    assert table_plan.disposition is not PlanDisposition.complete
+    # And the incline shape keeps closing on its own authority.
+    incline_plan = _plan(
+        ProfileId.incline_kinetic_sliding,
+        projection.draft,
+        approved_assumption_ids=projection.approvable_assumption_ids,
+    )
+    assert incline_plan.disposition is PlanDisposition.complete
 
 
 def test_units_ids_and_source_order_are_not_authority() -> None:
@@ -390,14 +580,36 @@ def test_units_ids_and_source_order_are_not_authority() -> None:
     assert equivalent.applied_law_ids == baseline.applied_law_ids
 
 
-def test_a_slide_gravity_cannot_drive_refuses_instead_of_answering() -> None:
-    # tan(10°) ≈ 0.176 < 0.4: the declared down-slope slide contradicts its
-    # own gravity-driven authority, so the candidate is rejected with no
-    # numeric output rather than a negative "acceleration".
-    result = _run(_case(angle="10", coefficient="0.4"), "b16-contradicted-drive")
-    assert result.terminal is not LaneBTerminal.solved
-    assert result.answer_value_si is None
-    assert result.verified_candidate_count == 0
+def test_a_high_friction_down_slope_slide_decelerates_and_still_solves() -> None:
+    """tan(10 deg) < 0.4, and that is not a contradiction.
+
+    A block already sliding down a shallow rough slope decelerates: on the
+    down-slope-positive axis its tangential acceleration is negative.  The
+    stated motion is what makes this well posed, so the engine answers with
+    the negative number instead of refusing.  Treating "gravity could not
+    start this slide" as "this slide is not happening" was the error this
+    test replaces.
+    """
+
+    expected = _expected(math.radians(10.0), 0.4)
+    assert expected < 0.0
+    result = _run(_case(angle="10", coefficient="0.4"), "b16-high-friction-downslope")
+    assert result.terminal is LaneBTerminal.solved
+    assert result.answer_value_si == pytest.approx(expected, rel=1.0e-12, abs=1.0e-12)
+    assert result.candidate_count == result.verified_candidate_count == 1
+
+
+def test_the_same_high_friction_slope_going_up_accelerates_the_other_way() -> None:
+    down = _run(_case(angle="10", coefficient="0.4"), "b16-updown-down")
+    up = _run(
+        _case(angle="10", coefficient="0.4", motion_direction="upward"),
+        "b16-updown-up",
+    )
+    assert down.terminal is up.terminal is LaneBTerminal.solved
+    assert down.answer_value_si < 0.0 < up.answer_value_si
+    assert up.answer_value_si == pytest.approx(
+        _expected(math.radians(10.0), 0.4, sense="upward"), rel=1.0e-12, abs=1.0e-12
+    )
 
 
 def test_missing_coefficient_stays_a_reader_decision() -> None:
@@ -423,6 +635,29 @@ def test_missing_coefficient_stays_a_reader_decision() -> None:
         {"query_component": "normal"},
         {"query_event": "start"},
         {"collision_id": INCLINE_SLIDING_WORLD_FRAME_ID},
+        # A declared slide with no stated direction: `sliding_on_incline` says
+        # a body slides, never which way, so the closure has no friction sign.
+        {"motion_direction": None},
+        # Directions that name no slope sense.
+        {"motion_direction": "unspecified"},
+        {"motion_direction": "along_motion"},
+        {"motion_direction": "opposite_motion"},
+        {"motion_direction": "left"},
+        {"motion_direction": "right"},
+        {"motion_direction": "not_applicable"},
+        # Contradictory or duplicated direction statements.
+        {"conflicting_motion": True},
+        {"duplicate_motion": True},
+        # A direction stated about something else, somewhere else, or at an
+        # instant rather than across the slide.
+        {"motion_subject": "incline"},
+        {"motion_segment": None},
+        {"motion_event": "start"},
+        # A zero or negative speed is not a slide in progress.
+        {"motion_speed": "0"},
+        {"motion_speed": "-3"},
+        # A second body roped to the slider is a different, unclosed model.
+        {"rope_partner": True},
     ),
 )
 def test_structural_near_misses_fail_closed_without_numeric_output(

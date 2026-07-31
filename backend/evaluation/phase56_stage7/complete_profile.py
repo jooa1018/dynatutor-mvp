@@ -3717,7 +3717,7 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
             and bool(facts.roles.get("angle"))
             and bool(facts.roles.get("coefficient_friction"))
             and bool(facts.primitives.get("incline"))
-            and "gravity_driven_downslope_sliding" in facts.approved
+            and "typed_incline_slide_motion" in facts.approved
         ),
         (
             ("geometry_support", PrerequisiteKind.geometry,
@@ -3725,7 +3725,7 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
             ("geometry_angle", PrerequisiteKind.geometry,
              _derivable_from_authority("constant_gravity")),
             ("interaction_contact", PrerequisiteKind.interaction,
-             _derivable_from_authority("gravity_driven_downslope_sliding")),
+             _derivable_from_authority("typed_incline_slide_motion")),
             ("quantity_angle", PrerequisiteKind.interaction_quantity,
              _needs_role("angle")),
             ("quantity_coefficient_friction", PrerequisiteKind.interaction_quantity,
@@ -3733,11 +3733,11 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
             ("authority_constant_gravity", PrerequisiteKind.authority,
              _needs_authority("constant_gravity")),
             ("authority_downslope_sliding", PrerequisiteKind.authority,
-             _needs_authority("gravity_driven_downslope_sliding")),
+             _needs_authority("typed_incline_slide_motion")),
             ("frame_tangential_normal", PrerequisiteKind.reference_frame,
              _derivable_from_authority("constant_gravity")),
             ("state_friction_regime", PrerequisiteKind.state_condition,
-             _derivable_from_authority("gravity_driven_downslope_sliding")),
+             _derivable_from_authority("typed_incline_slide_motion")),
             ("symbol_tangential_acceleration", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
         ),
