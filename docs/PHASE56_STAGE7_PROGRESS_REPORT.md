@@ -6,6 +6,73 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
+## Phase H, B19, and the authority census (2026-07-31, later session) — read this first
+
+This session is **superseded by nothing**; the section below it records the
+earlier same-day session and stays as written.
+
+Forward-only from `d01b4db`. No reset, rebase, amend, squash, force-push, or
+history rewrite; B19 was withdrawn by a **revert commit**, not by deleting
+history.
+
+| Item | Commit | Disposition |
+|---|---|---|
+| B15 `TABLE_PULLEY_TWO_BODY` future-positive path | `dc8795d` | **hardened**, still INCOMPLETE, public delta **0** |
+| B16 `PARTICLE_ON_INCLINE_KINETIC_FRICTION` future-positive path | `b2add89` | **hardened**, still INCOMPLETE, public delta **0** |
+| B19 `UNSUPPORTED_OTHER_TYPED_TERMINALS` | `dd42ebe` landed, `a4ced6a` **reverted** | **INCOMPLETE**, public delta **0** |
+| Documentation | `0355845` | authority census of the remaining 40 |
+| **Final code head** | **`a4ced6a`** | backend byte-identical to `b2add89` |
+| **Documentation head** | **`0355845`** | |
+| `OBSERVED_PUBLIC_SCORE` | **41/81** | unchanged |
+| `AUTHORITY_ACCEPTED_SCORE` | **41/81** | observed = accepted |
+| Supported wrong / solved-but-unscored / downgraded | **0 / 0 / 0** | |
+| Deferred | 12/12; needs_figure 2/2; needs_confirmation 2/2; insufficient 1/1 | |
+| unsupported_other | 0/2 (unchanged known gap) | |
+| Terminal mapping | 58/100 (unchanged) | |
+| Hard safety | 23/23 measured, 0 unbound, 0 nonzero | |
+
+**Nothing moved, and each reason is measured.**
+
+*Phase H closed the future-positive halves of two already-revoked packages.*
+Revoking the public path last session left the closures still able to
+manufacture the authority they were revoked for: B15 minted a
+tangent/world-x binding out of a bare zero angle and then read that binding back
+as evidence the orientation had been stated, and B16 converted a **world**
+`downward` into a **slope-tangent** sign and promoted an `initial_velocity`
+instant to the whole interval. Both now consume a source-authored reference
+frame or refuse. Strict public-100 is identical before and after — a hardening
+package that moved the score would have been the wrong shape.
+
+*B19 was built, measured, landed, and reverted.* Its discriminator was clean:
+over all 100 public cases, "every mechanism container empty" and "graph cannot
+determine the query" selected exactly the two `unsupported_other` targets and
+none of the 93 expected-`complete` cases, and would have delivered 2/2 and
+mapping 60. Exact-head CI then failed eleven tests, ten of which hold the
+opposite and more conservative contract: naming something without relating it
+is not evidence of a specialized model, because `underdetermined` leaves the
+door open to solving the problem later and `requires_specialized_model` shuts
+it. Passing them would have meant weakening the assertions that exist to
+prevent exactly that claim, so the package was withdrawn instead.
+
+*The remaining gap is now measured exhaustively.* All 40 expected-supported
+cases that do not solve were partitioned into 17 typed cohorts, and each
+cohort's missing physical premise identified with the typed carrier that would
+supply it. **Every one is blocked on a premise the corpus does not type**, and
+eleven of the seventeen reduce to the same missing record — a reference frame
+(`contexts_without_reference_frame = 97/97`). Separately measured: the
+projection drops nothing, so the gap is in what the corpus states, not in what
+the evaluator reads. The table is in
+`docs/PHASE56_STAGE7_STRUCTURAL_BLOCKERS.md`.
+
+**Next exact task.** Not another closure package. Terminal mapping counts only
+matches and all 40 expect `accepted`, so the next point costs a solve that no
+currently-typed authority supports. The next Stage 7 packages are
+**corpus-contract packages** — a case must be able to state a reference frame,
+a contact side, a slope-relative direction, or an endpoint condition before any
+of the 40 can be closed honestly.
+
+Stage 8 must not start.
+
 ## B15/B16 authority repair and B18 residual session (2026-07-31) — read this first
 
 An independent authority audit found that **B15 and B16 both produced
