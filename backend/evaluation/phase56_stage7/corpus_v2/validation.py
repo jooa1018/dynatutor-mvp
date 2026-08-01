@@ -23,14 +23,17 @@ from collections import Counter
 from enum import Enum
 from typing import Iterable, Sequence
 
+from evaluation.phase56_stage7.corpus_v2.merge import ENGINE_AXIS_NAMES
 from evaluation.phase56_stage7.corpus_v2.records import (
     V2_IDENTIFIER_PREFIX,
     CorpusV2AugmentationV1,
+    FrameOriginKind,
+    FrameType,
     ScalarEncoding,
 )
 
 
-CORPUS_V2_VALIDATION_VERSION = "phase56-stage7-corpus-v2-validation-v1"
+CORPUS_V2_VALIDATION_VERSION = "phase56-stage7-corpus-v2-validation-v2"
 
 
 class V2ValidationReason(str, Enum):
@@ -40,6 +43,16 @@ class V2ValidationReason(str, Enum):
     dangling_frame_parent = "dangling_frame_parent"
     frame_axis_self_reference = "frame_axis_self_reference"
     duplicate_axis_name = "duplicate_axis_name"
+    # Typed axis-identity binding (B15/B16 parity).  A frame axis without a
+    # complete axis(frame, name, sign) binding cannot be projected, and its
+    # `sense` spelling is never read in its place.
+    axis_binding_missing = "axis_binding_missing"
+    axis_binding_frame_unknown = "axis_binding_frame_unknown"
+    axis_binding_axis_unknown = "axis_binding_axis_unknown"
+    axis_name_unknown = "axis_name_unknown"
+    frame_cycle = "frame_cycle"
+    frame_origin_invalid = "frame_origin_invalid"
+    world_frame_parent_forbidden = "world_frame_parent_forbidden"
     angle_datum_frame_unknown = "angle_datum_frame_unknown"
     angle_datum_axis_unknown = "angle_datum_axis_unknown"
     ambiguous_angle_datum = "ambiguous_angle_datum"
@@ -173,6 +186,68 @@ def validate_augmentation(
         for axis in frame.axes:
             if axis.anchor_entity_id == frame.frame_id:
                 raise _fail(V2ValidationReason.frame_axis_self_reference)
+
+    # --- frame origins and the world frame's special shape ------------------
+    for frame in frames:
+        resolved = frame.resolved_origin_kind
+        is_world = frame.frame_type is FrameType.world_cartesian
+        if is_world:
+            # A world frame is anchored at the world, parents nothing above
+            # it, and never rides on a pseudo entity.
+            if resolved is not FrameOriginKind.world or frame.origin_point_id:
+                raise _fail(V2ValidationReason.frame_origin_invalid)
+            if frame.parent_frame_id is not None:
+                raise _fail(V2ValidationReason.world_frame_parent_forbidden)
+        else:
+            # Only the world frame may claim the world anchor; every other
+            # frame states an entity or point origin the source contains.
+            if resolved is FrameOriginKind.world:
+                raise _fail(V2ValidationReason.frame_origin_invalid)
+            if resolved is FrameOriginKind.point and not frame.origin_point_id:
+                raise _fail(V2ValidationReason.frame_origin_invalid)
+
+    # --- typed axis-identity bindings ---------------------------------------
+    # Every axis must carry a complete axis(frame, name, sign) binding whose
+    # names the engine's closed `AxisName` vocabulary can hold and whose
+    # referenced frame and axis exist among the stated frames.  The `sense`
+    # spelling never substitutes for a missing binding.
+    for frame in frames:
+        for axis in frame.axes:
+            if axis.axis not in ENGINE_AXIS_NAMES:
+                raise _fail(V2ValidationReason.axis_name_unknown)
+            if not axis.binding_complete:
+                raise _fail(V2ValidationReason.axis_binding_missing)
+            if axis.bound_axis not in ENGINE_AXIS_NAMES:
+                raise _fail(V2ValidationReason.axis_name_unknown)
+            bound = frame_by_id.get(axis.bound_frame_id)
+            if bound is None:
+                raise _fail(V2ValidationReason.axis_binding_frame_unknown)
+            if not any(item.axis == axis.bound_axis for item in bound.axes):
+                raise _fail(V2ValidationReason.axis_binding_axis_unknown)
+
+    # --- no cycles through parents or cross-frame bindings ------------------
+    edges: dict[str, set[str]] = {frame.frame_id: set() for frame in frames}
+    for frame in frames:
+        if frame.parent_frame_id is not None:
+            edges[frame.frame_id].add(frame.parent_frame_id)
+        for axis in frame.axes:
+            if axis.bound_frame_id and axis.bound_frame_id != frame.frame_id:
+                edges[frame.frame_id].add(axis.bound_frame_id)
+
+    def _reaches(start: str, target: str, seen: set[str]) -> bool:
+        if start == target:
+            return True
+        if start in seen:
+            return False
+        seen.add(start)
+        return any(
+            _reaches(next_id, target, seen) for next_id in edges.get(start, ())
+        )
+
+    for frame_id, nexts in edges.items():
+        for next_id in nexts:
+            if _reaches(next_id, frame_id, set()):
+                raise _fail(V2ValidationReason.frame_cycle)
 
     def _axis_exists(frame_id: str, axis: str) -> bool:
         frame = frame_by_id.get(frame_id)

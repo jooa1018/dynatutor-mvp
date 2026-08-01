@@ -101,9 +101,21 @@ def _frame(**overrides: Any) -> ReferenceFrameV2:
         frame_type=FrameType.incline_tangent_normal,
         subject_id="ramp",
         axes=(
-            FrameAxisV2(axis="tangent", sense=AxisSense.down_slope, evidence_refs=EV),
             FrameAxisV2(
-                axis="normal", sense=AxisSense.away_from_surface, evidence_refs=EV
+                axis="tangent",
+                sense=AxisSense.down_slope,
+                bound_frame_id="v2_slope",
+                bound_axis="tangent",
+                bound_sign=1,
+                evidence_refs=EV,
+            ),
+            FrameAxisV2(
+                axis="normal",
+                sense=AxisSense.away_from_surface,
+                bound_frame_id="v2_slope",
+                bound_axis="normal",
+                bound_sign=1,
+                evidence_refs=EV,
             ),
         ),
         evidence_refs=EV,

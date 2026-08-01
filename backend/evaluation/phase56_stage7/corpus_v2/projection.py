@@ -27,7 +27,6 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from evaluation.phase56_stage7.corpus_v2.merge import (
-    ENGINE_AXIS_NAMES,
     ENGINE_CONSTRAINT_STATE,
     ENGINE_CONTACT_SIDE,
     ENGINE_FRAME_TYPE,
@@ -36,33 +35,62 @@ from evaluation.phase56_stage7.corpus_v2.merge import (
     projected_sense_direction,
 )
 from evaluation.phase56_stage7.corpus_v2.records import (
-    AxisSense,
     CorpusV2AugmentationV1,
+    FrameOriginKind,
+    FrameType,
+    ReferenceFrameV2,
+)
+from evaluation.phase56_stage7.corpus_v2.validation import (
+    V2ValidationError,
+    V2ValidationReason,
 )
 
 
-CORPUS_V2_PROJECTION_VERSION = "phase56-stage7-corpus-v2-projection-v2"
+CORPUS_V2_PROJECTION_VERSION = "phase56-stage7-corpus-v2-projection-v3"
 
-# An axis sense onto the engine's semantic direction vocabulary.  The engine's
-# `SemanticDirection` carries a name and no sign, and that is the right shape:
-# a frame axis names an *identity* — this is the tangent, that is the normal —
-# while the sign of a body's motion along it belongs to the quantity, where
-# `AxisDirection` does carry one.  Splitting them this way is what stops a
-# frame from silently asserting which way a body is going, which is the B16
-# defect.
-_ENGINE_AXIS_DIRECTION: dict[AxisSense, str] = {
-    AxisSense.up_the_page: "upward",
-    AxisSense.down_the_page: "downward",
-    AxisSense.along_surface_forward: "tangential",
-    AxisSense.along_surface_backward: "tangential",
-    AxisSense.away_from_surface: "normal",
-    AxisSense.into_surface: "normal",
-    AxisSense.up_slope: "tangential",
-    AxisSense.down_slope: "tangential",
-    AxisSense.outward_from_centre: "radial",
-    AxisSense.inward_to_centre: "radial",
-    AxisSense.along_line_of_impact: "positive",
-}
+# The engine axis names that name cartesian identities.  A tangent/normal
+# frame whose axes are all *bound onto* another frame's cartesian axes is a
+# world-aligned statement — B15's "this support's tangent is the world's x" —
+# and the engine holds that statement as a `cartesian_2d` frame.  A frame
+# whose axes are self-referential identities stays what its type says it is.
+_CARTESIAN_AXIS_NAMES: frozenset[str] = frozenset({"x", "y", "z"})
+
+
+def _projected_origin(frame: ReferenceFrameV2) -> dict[str, Any]:
+    """The typed engine origin.  A world frame is anchored at the world.
+
+    The first projection anchored every frame — the world frame included — to
+    a pseudo entity, which produced a frame shape the B15/B16 hardening had
+    never licensed.  The engine's own `WorldOrigin` is the only correct
+    projection of a stated world frame.
+    """
+
+    resolved = frame.resolved_origin_kind
+    if resolved is FrameOriginKind.world:
+        return {"kind": "world"}
+    if resolved is FrameOriginKind.point:
+        return {"kind": "point", "point_id": frame.origin_point_id}
+    return {"kind": "entity", "entity_id": frame.subject_id}
+
+
+def _projected_frame_type(frame: ReferenceFrameV2) -> str:
+    """The engine frame type, from the typed binding structure.
+
+    Deterministic over typed structure alone: a tangent/normal frame whose
+    every axis binds into another frame's cartesian axes *is* the statement
+    that its directions coincide with that frame's — the engine's
+    `cartesian_2d` — while self-referential axes keep the tangential-normal
+    identity whose world orientation an angle datum states separately.
+    """
+
+    engine_type = ENGINE_FRAME_TYPE[frame.frame_type]
+    if engine_type == "tangential_normal" and all(
+        axis.bound_frame_id != frame.frame_id
+        and axis.bound_axis in _CARTESIAN_AXIS_NAMES
+        for axis in frame.axes
+    ):
+        return "cartesian_2d"
+    return engine_type
 
 
 def project_augmentation(
@@ -91,35 +119,31 @@ def project_augmentation(
     # --- frames -------------------------------------------------------------
     frames = list(payload.get("reference_frames") or [])
     for frame in augmentation.reference_frames:
-        engine_type = ENGINE_FRAME_TYPE.get(frame.frame_type)
-        if engine_type is None:
-            continue
-        axes = [
-            {
-                "axis": axis.axis,
-                "direction": {
-                    "kind": "semantic",
-                    "direction": _ENGINE_AXIS_DIRECTION[axis.sense],
-                },
-            }
-            for axis in frame.axes
-            if axis.sense in _ENGINE_AXIS_DIRECTION
-            and axis.axis in ENGINE_AXIS_NAMES
-        ]
-        if len(axes) != len(frame.axes):
-            # One axis of this frame did not project, so the frame the engine
-            # would see is not the frame the source stated.  A partial frame is
-            # a different frame, so none of it is projected.
-            continue
+        axes = []
+        for axis in frame.axes:
+            if not axis.binding_complete:
+                # An axis without its typed identity binding cannot be
+                # projected, and its `sense` spelling is never read in its
+                # place.  Refused — a partial frame is a different frame, and
+                # silently dropping it would make the shadow run measure the
+                # drop instead of the carrier.
+                raise V2ValidationError(V2ValidationReason.axis_binding_missing)
+            axes.append(
+                {
+                    "axis": axis.axis,
+                    "direction": {
+                        "kind": "axis",
+                        "frame_id": axis.bound_frame_id,
+                        "axis": axis.bound_axis,
+                        "sign": axis.bound_sign,
+                    },
+                }
+            )
         frames.append(
             {
                 "frame_id": frame.frame_id,
-                "frame_type": engine_type,
-                "origin": (
-                    {"kind": "point", "point_id": frame.origin_point_id}
-                    if frame.origin_point_id
-                    else {"kind": "entity", "entity_id": frame.subject_id}
-                ),
+                "frame_type": _projected_frame_type(frame),
+                "origin": _projected_origin(frame),
                 "parent_frame_id": frame.parent_frame_id,
                 "axes": axes,
                 "translating_with_entity_id": frame.translating_with_entity_id,

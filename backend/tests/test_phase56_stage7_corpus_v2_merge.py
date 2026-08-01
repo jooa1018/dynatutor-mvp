@@ -481,11 +481,19 @@ def test_every_accepted_augmentation_leaves_v1_meaning_unchanged() -> None:
                 subject_id="ramp",
                 axes=(
                     FrameAxisV2(
-                        axis="tangent", sense=AxisSense.down_slope, evidence_refs=EV
+                        axis="tangent",
+                        sense=AxisSense.down_slope,
+                        bound_frame_id="v2_slope",
+                        bound_axis="tangent",
+                        bound_sign=1,
+                        evidence_refs=EV,
                     ),
                     FrameAxisV2(
                         axis="normal",
                         sense=AxisSense.away_from_surface,
+                        bound_frame_id="v2_slope",
+                        bound_axis="normal",
+                        bound_sign=1,
                         evidence_refs=EV,
                     ),
                 ),
@@ -565,7 +573,12 @@ def test_a_v2_frame_may_not_claim_a_source_frame_identity() -> None:
                     subject_id="ramp",
                     axes=(
                         FrameAxisV2(
-                            axis="x", sense=AxisSense.up_the_page, evidence_refs=EV
+                            axis="x",
+                            sense=AxisSense.up_the_page,
+                            bound_frame_id="v2_slope",
+                            bound_axis="x",
+                            bound_sign=1,
+                            evidence_refs=EV,
                         ),
                     ),
                     evidence_refs=EV,

@@ -43,7 +43,7 @@ from evaluation.phase56_stage7.contracts import FrozenStrictModel
 
 
 CORPUS_V2_SCHEMA_VERSION = "dynatutor-ko-corpus-v2.0-candidate"
-CORPUS_V2_RECORD_BINDING_VERSION = "phase56-stage7-corpus-v2-record-binding-v1"
+CORPUS_V2_RECORD_BINDING_VERSION = "phase56-stage7-corpus-v2-record-binding-v2"
 
 # Identifiers authored inside a v2 augmentation.  The prefix is reserved and
 # enforced: an augmentation may not mint an identifier that could collide with
@@ -98,6 +98,19 @@ class AxisSense(str, Enum):
 class OrientationConvention(str, Enum):
     clockwise_positive = "clockwise_positive"
     counterclockwise_positive = "counterclockwise_positive"
+
+
+class FrameOriginKind(str, Enum):
+    """Where a stated frame's origin is anchored.
+
+    ``world`` is its own member because the engine's `WorldOrigin` is its own
+    type: a world frame anchored to a pseudo entity is a different — wrong —
+    statement, and the first frame projection made exactly that mistake.
+    """
+
+    world = "world"
+    entity = "entity"
+    point = "point"
 
 
 class MotionSense(str, Enum):
@@ -209,12 +222,41 @@ class _Scoped(_Evidenced):
 
 
 class FrameAxisV2(_Evidenced):
-    """One named axis of one frame, and which way it points."""
+    """One named axis of one frame: its identity binding, and which way it points.
+
+    The *binding* is the projection authority: a typed ``axis(frame, name,
+    sign)`` triple, exactly what the engine's `AxisDirection` holds and what
+    the B15/B16 hardening consumes.  A self-referential binding states an
+    identity (this frame's tangent is its own tangential direction); a binding
+    into another frame states a coincidence (this support's tangent *is* the
+    world's x).  The sign is part of the statement — ``along_surface_forward``
+    and ``along_surface_backward`` are opposite directions, and a projection
+    that collapses them has changed the physics.
+
+    `sense` remains as descriptive vocabulary and is **not** projection
+    authority: an axis whose binding is incomplete is refused, never inferred
+    from its sense's spelling.
+    """
 
     axis: Annotated[str, StringConstraints(min_length=1, max_length=16)]
     sense: AxisSense
     # What the sense is measured against: a surface, an incline, a centre.
     anchor_entity_id: Identifier | None = None
+    # The typed identity binding.  All three travel together; a partial
+    # binding is refused by the validator rather than completed by a default.
+    bound_frame_id: Identifier | None = None
+    bound_axis: Annotated[
+        str, StringConstraints(min_length=1, max_length=16)
+    ] | None = None
+    bound_sign: Literal[-1, 1] | None = None
+
+    @property
+    def binding_complete(self) -> bool:
+        return (
+            self.bound_frame_id is not None
+            and self.bound_axis is not None
+            and self.bound_sign is not None
+        )
 
 
 class ReferenceFrameV2(_Scoped):
@@ -222,6 +264,7 @@ class ReferenceFrameV2(_Scoped):
 
     frame_id: Identifier
     frame_type: FrameType
+    origin_kind: FrameOriginKind | None = None
     origin_point_id: Identifier | None = None
     parent_frame_id: Identifier | None = None
     axes: tuple[FrameAxisV2, ...] = Field(min_length=1, max_length=3)
@@ -239,7 +282,31 @@ class ReferenceFrameV2(_Scoped):
             raise ValueError("a translating frame must name what it translates with")
         if self.frame_type is FrameType.rotating and not self.rotating_about_point_id:
             raise ValueError("a rotating frame must name what it rotates about")
+        if self.origin_kind is FrameOriginKind.point and not self.origin_point_id:
+            raise ValueError("a point origin must name its point")
+        if self.origin_kind is FrameOriginKind.world and self.origin_point_id:
+            raise ValueError("a world origin carries no point identifier")
+        if self.origin_kind is FrameOriginKind.entity and self.origin_point_id:
+            raise ValueError("an entity origin carries no point identifier")
         return self
+
+    @property
+    def resolved_origin_kind(self) -> FrameOriginKind:
+        """The stated origin kind, or the deterministic typed reading.
+
+        A world frame is anchored at the world; a frame with a point is
+        anchored at that point; everything else is anchored at its subject
+        entity.  This resolves *shape*, never physics: it decides which typed
+        engine origin holds the anchor the record already names.
+        """
+
+        if self.origin_kind is not None:
+            return self.origin_kind
+        if self.frame_type is FrameType.world_cartesian:
+            return FrameOriginKind.world
+        if self.origin_point_id is not None:
+            return FrameOriginKind.point
+        return FrameOriginKind.entity
 
 
 class AngleDatumV2(_Scoped):
@@ -425,6 +492,7 @@ __all__ = [
     "EndpointConditionV2",
     "ForceComponentKind",
     "FrameAxisV2",
+    "FrameOriginKind",
     "FrameType",
     "InteractionSide",
     "InteractionTargetV2",
