@@ -6,6 +6,145 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
+## Reproducible evidence and the v2 candidate (2026-08-01) — read this first
+
+This session produced no change to the official v1 score and two things that
+were previously only claims: a strict report that reproduces, and a census that
+executes.  The sections below it are kept as written and are superseded only
+where this section says so.
+
+Forward-only from `e391672`.  No reset, rebase, amend, squash, force-push, or
+history rewrite.
+
+| Item | Commit | Disposition |
+|---|---|---|
+| B20 strict environment reproducibility | `c37166d` | **ACCEPTED** |
+| B21 executable authority census | `1a1530d` | **ACCEPTED** |
+| B21 census correction | `c376b29` | **ACCEPTED** |
+| B22 semantic preservation audit | `830561e` | **ACCEPTED** |
+| B23 corpus contract v2 foundation | `1b2220a` | **ACCEPTED** |
+| B24 typed reference frame and angle datum | `1b2220a` | **INCOMPLETE** — yields 0, regresses 3 |
+| B25 typed contact side | `1b2220a` | **INCOMPLETE** — 6 carried, 0 yield, 0 regression |
+| B26 typed motion sense and endpoint | `1b2220a` | **INCOMPLETE** — 6 endpoints carried, 0 yield |
+| B27 v2 migration, archive and shadow evaluation | `1b2220a` | **ACCEPTED as a measurement**, 0 pilot closures |
+| `OBSERVED_PUBLIC_SCORE` | **41/81** | unchanged |
+| Supported wrong / unscored / downgraded | **0 / 0 / 0** | |
+| Terminal mapping | 58/100 | unchanged |
+| Hard safety | 23/23 measured, 0 unbound, 0 nonzero | |
+
+### B20 — Lane D was the environment, and now that is provable
+
+The last strict report failed Lane D on one test, and the failure was
+unattributable: it reproduced in an unpinned container and passed in exact-head
+CI, so neither "the engine is broken" nor "the container is wrong" could be read
+off the evidence.  A strict report that cannot say which of those it is, is not
+evidence about the engine.
+
+`backend/evaluation/phase56_stage7/locked_environment.py` states the environment
+as a contract and `backend/tools/run_phase56_stage7_locked_strict.py` runs the
+real gate under it: the lock installed into a dedicated interpreter and verified
+back, a detached worktree pinned to an exact commit, and credentials removed
+from the child environment rather than assumed absent.
+
+Under the lock, at `c37166d`: the isolated test **passes**, Lane D **passes
+24/24**, and strict public-100 is **29 PASS / 10 FAIL** where it was 28 / 11.
+**Lane C, D and E all PASS.**  Every remaining FAIL is a Stage-7-incomplete gate.
+Nothing about the score moved.
+
+Locked environment: Python 3.11.15, fastapi 0.128.2, starlette 0.50.0,
+pydantic 2.13.4, pydantic-core 2.46.4, pytest 9.0.2, sympy 1.14.0,
+numpy 2.3.5, scipy 1.17.0, httpx 0.28.1, pint 0.25.3.
+
+### B21 — the census now executes, and it corrects the document
+
+The previous census lived in a table: seventeen cohorts, every one blocked on a
+premise the corpus does not type, eleven of the seventeen reducing to a missing
+reference frame.  `authority_census.py` computes it instead.
+
+| Figure | Document | Measured |
+|---|---:|---:|
+| supported unsolved | 40 | **40** |
+| supported-unsolved cohorts | 17 | **17** |
+| authority-blocked | 40 | **33** |
+| capability-blocked (engine declares out of scope) | — | **8** |
+| closure candidates | 0 | **1** |
+| reference-frame dependent | 11 of 17 cohorts | **13 contexts / 6 cohorts** |
+
+The first two reproduce.  The rest did not, and the measurement stands.
+
+The census also publishes its own negative control and its own precision.  Per
+carrier, how often its absence coincides with a solve as well as with a
+non-solve: `contact_side` 0 and 6, `constraint_authority` 0 and 3,
+`interaction_target` 0 and 1, `angle_reference_datum` 3 and 10,
+`endpoint_condition` 9 and 9, `reference_frame` 13 and 13.  The last two are
+coin flips and are reported as such rather than tuned until they read zero — a
+rule adjusted until its negative control vanished would have been fitted to the
+outcome it is supposed to explain.
+
+Four rules were wrong in the first run and each correction is a test.  Chief
+among them: an endpoint carrier counted as *available* whenever any event-bound
+condition existed, so a stated "starts from rest" satisfied a requirement about
+what holds at the finish.
+
+### v1 closure-safe yield is **0**, and that is now measured
+
+Every one of the forty supported-unsolved contexts is traced to a carrier the v1
+source contract cannot state, or to a model the engine itself declares out of
+scope.  The single remaining automated candidate is the free-flight cohort whose
+interval ends on `reaches_condition` — an event kind that says a condition was
+reached without saying which — and B22 shows the contract has no field to state
+it.  No v1 closure package was opened, because opening one would have meant
+inventing the premise.
+
+### B22 — the projection drops nearly nothing, and the contract states nothing
+
+"The projection drops nothing" was measured by counting records.  Equal counts
+are not preservation: every revoked meaning survived that count and lost the
+thing that mattered.  `semantic_preservation.py` traces meaning instead, over
+32 source field categories and 97 projected contexts.
+
+- **Seven engine carriers have no source field at all** — reference frame (34
+  contexts need one), angle datum (13), frame axis direction, motion sense,
+  contact side, query objective, quantity frame binding.
+- Projection loss: **1 field category, 3 contexts, 3 occurrences**.
+- Normalization loss: **0**.
+- Law-consumption gaps: **1** (`occurrence_index`, stated 276 times and read by
+  nothing).
+
+Three false alarms in the audit's own first run were found and fixed, and each
+is a test: reading a `DirectionBinding.name` field the contract does not have
+reported all 105 stated directions as dropped; comparing an event's segment
+against `occurs_in_interval_ids` reported 104 of 132 bindings as dropped when
+the interval's own boundary fields carry every one; and tracing refused
+projections reported a hundred fields of three contexts as lost when the engine
+had simply declined to model them.
+
+Every revoked meaning is pinned as a regression — B10, B12, B15, B16, B17, B18 —
+each asserting the source still cannot supply it.
+
+### B23–B27 — the v2 candidate carries the physics; the compiler does not yet read it
+
+Full record in `docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md`.
+
+`dynatutor-ko-corpus-v2.0-candidate` adds the seven missing carriers, additively
+and separately: v1 loader, schema and strict scoring untouched, no automatic
+upgrade, migration driven by an explicit manifest that a structural scan forbids
+from naming any answer-bearing field.  The original v1 record is carried
+byte-identical, rollback is deterministic, and two independent rebuilds against
+the public archive produced byte-identical archives and reports.
+
+The shadow evaluation exercised **5 carrier categories over 22 augmented
+contexts** and produced **0 new solves, 0 wrong, and 3 regressions**.  Supplying
+a stated reference frame moves three contexts that currently verify a correct
+answer to `compiler_unsupported :: requires_specialized_model` — the compiler
+reads a stated frame as evidence that a specialized model is needed, which is
+the opposite of what the v2 hypothesis predicted.
+
+So the corpus-side work is done and the engine-side work is not.  The next Stage
+7 package is a compiler package: a stated reference frame must be authority to
+proceed, not a reason to refuse.  That is recorded, not fabricated, and it was
+not opened this session.
+
 ## Phase H, B19, and the authority census (2026-07-31, later session) — read this first
 
 This session is **superseded by nothing**; the section below it records the

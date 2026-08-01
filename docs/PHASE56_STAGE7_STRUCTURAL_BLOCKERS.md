@@ -1,5 +1,44 @@
 # Phase 56 Stage 7 — measured structural blockers on the Lane B distribution
 
+## Superseded in part by the executable census (2026-08-01)
+
+The cohort table below was written by hand.  It is now computed, and the two
+disagree in three places.  Where they disagree, the measurement stands; the
+table is kept because its per-cohort *reasoning* is still the record of what was
+looked at, and only its counts are superseded.
+
+`backend/evaluation/phase56_stage7/authority_census.py`, run against the
+authorised archive:
+
+| Claim | This document | Measured |
+|---|---:|---:|
+| supported unsolved | 40 | **40** — reproduced |
+| supported-unsolved cohorts | 17 | **17** — reproduced |
+| "every one is authority-blocked" | 40 | **33** authority-blocked, **8** capability-blocked, **1** candidate |
+| "eleven of seventeen reduce to a reference frame" | 11 cohorts | **6** cohorts, **13** contexts |
+
+Two corrections matter for how this table should be read.
+
+*Capability-blocked is not authority-blocked.*  Eight contexts are answered
+`requires_specialized_model` by the compiler itself.  They are short of a
+**model**, not of a source carrier, so no amount of corpus authority closes
+them and offering them as closure candidates would be offering a package that
+cannot be delivered.
+
+*A carrier claim needs a precision, not just a count.*  The census publishes,
+per carrier, how often its absence coincides with a solve as well as with a
+non-solve.  `contact_side` is 0 and 6, `constraint_authority` 0 and 3,
+`interaction_target` 0 and 1 — those discriminate.  `reference_frame` is 13 and
+13 and `endpoint_condition` is 9 and 9 — those do not, and the sentence "eleven
+cohorts reduce to a missing reference frame" was resting on the weaker of the
+two.
+
+**v1 closure-safe yield is 0** and is now measured rather than asserted: every
+one of the forty is traced to a carrier the v1 source contract cannot state, or
+to a model the engine declares out of scope.  The seven carriers the contract
+cannot state are enumerated in `docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md`.
+
+
 Status: **`STAGE_7_IN_PROGRESS`**. Stage 7 is not accepted, Lane B has not
 reached the frozen distribution, and Stage 8 has not started. This document
 records what the remaining gap *is*, measured rather than estimated, so the next
