@@ -653,7 +653,7 @@ def test_the_original_fingerprint_survives_migration_and_rolls_back() -> None:
         )
     )
 
-    migrated = migrate_record(record, manifest)
+    migrated = migrate_record(record, manifest, known_evidence_ids=EV)
 
     assert migrated.original_fingerprint == fingerprint
     assert migrated.augmentation_fingerprint != fingerprint
@@ -687,8 +687,9 @@ def test_rebuilding_an_archive_yields_an_identical_digest() -> None:
         )
     )
 
-    first = build_candidate_archive(records, manifest)
-    second = build_candidate_archive(records, manifest)
+    context_ids = {record_fingerprint(records[0]): {"evidence": list(EV)}}
+    first = build_candidate_archive(records, manifest, context_ids=context_ids)
+    second = build_candidate_archive(records, manifest, context_ids=context_ids)
 
     assert archive_digest(first) == archive_digest(second)
     assert first[1].review_status is ReviewStatus.unresolved
@@ -791,6 +792,8 @@ def _shadow(baseline: str, shadow: str, augmented: bool = True):
         draft_payload=payload,
         augmentation=augmentation,
         run=lambda _: next(calls),
+        original_v1_archive_sha256="f" * 64,
+        context_index=0,
     )
 
 
@@ -824,12 +827,22 @@ def test_an_unaugmented_context_that_stays_put_is_fine() -> None:
     assert still.augmented is False
 
 
-def test_a_solved_context_nobody_could_compare_is_neither_correct_nor_wrong() -> None:
+def test_the_runtime_phase_reaches_no_verdict_of_its_own() -> None:
+    """The runner records what happened.  Whether it was right is Phase G.
+
+    This used to assert that an uncompared solve was `shadow_correct=False,
+    shadow_wrong=False` — true, but it was true because nothing had compared,
+    and the aggregate then published that as `wrong: 0`.  The runner now has no
+    verdict to report at all, and the three counts live in the scored report
+    where an unscored solve fails acceptance instead of reading as clean.
+    """
+
     result = _shadow("blocked", "solved")
 
     assert result.shadow_solved is True
-    assert result.shadow_correct is False
-    assert result.shadow_wrong is False
+    assert not hasattr(result, "shadow_correct")
+    assert not hasattr(result, "shadow_wrong")
+    assert result.answer_value_si is None or isinstance(result.answer_value_si, float)
 
 
 def test_the_shadow_scorecard_is_stamped_and_cannot_be_read_as_official() -> None:

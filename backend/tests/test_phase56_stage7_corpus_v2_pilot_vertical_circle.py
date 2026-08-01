@@ -50,6 +50,10 @@ from tests.test_phase56_stage7_b12_vertical_circle_top_speed import (
 
 pytestmark = pytest.mark.slow
 
+# Any archive digest will do: the handle is a pairing label, and this suite
+# never pairs a gold case to anything.
+_PILOT_ARCHIVE = "0" * 64
+
 
 def _pilot_augmentation(
     payload: dict,
@@ -143,6 +147,8 @@ def _shadow(case=None, **augmentation_knobs):
             augmentation=augmentation,
             run=run,
             problem_text=projection.problem_text,
+            original_v1_archive_sha256=_PILOT_ARCHIVE,
+            context_index=0,
         ),
         run,
         payload,
@@ -264,6 +270,8 @@ def test_a_quote_the_source_never_wrote_refuses_the_projection() -> None:
             augmentation=augmentation,
             run=run,
             problem_text=projection.problem_text,
+            original_v1_archive_sha256=_PILOT_ARCHIVE,
+            context_index=0,
         )
     assert caught.value.reason is V2ValidationReason.evidence_quote_not_in_source
 
@@ -295,6 +303,8 @@ def test_an_empty_augmentation_still_moves_nothing() -> None:
         augmentation=CorpusV2AugmentationV1(),
         run=run,
         problem_text=projection.problem_text,
+        original_v1_archive_sha256=_PILOT_ARCHIVE,
+        context_index=0,
     )
     assert result.baseline_rung == result.shadow_rung
     assert result.augmented is False

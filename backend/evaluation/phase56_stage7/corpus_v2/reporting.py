@@ -25,10 +25,15 @@ from evaluation.phase56_stage7.contracts import FrozenStrictModel, Sha256
 
 
 CORPUS_V2_REPORTING_VERSION = "phase56-stage7-corpus-v2-reporting-v1"
+CORPUS_V2_SCORED_REPORTING_VERSION = "phase56-stage7-corpus-v2-scored-reporting-v2"
 
 # Stamped into every shadow report.  Not decorative: a reader who sees only a
 # fragment of this artifact still learns it is not an official score.
 SCORE_CLASS = "EXPERIMENTAL_V2_SHADOW"
+# The scored class is its own name.  A V1 report says a shadow run happened; a
+# scored report says its answers were compared to the gold, which is a strictly
+# stronger claim and must not be readable off the older stamp.
+SCORED_SCORE_CLASS = "EXPERIMENTAL_V2_SHADOW_SCORED"
 OFFICIAL_SCORE_CLASS = "OFFICIAL_V1"
 
 _Token = Annotated[str, StringConstraints(min_length=1, max_length=120)]
@@ -135,6 +140,148 @@ def build_shadow_scorecard(
     )
 
 
+class ShadowScorecardV2(FrozenStrictModel):
+    """The gold-scored v2 shadow result.  Still never an official score.
+
+    A separate version rather than new fields on `ShadowScorecardV1`, because
+    the two mean different things and a reader must not have to know which
+    runner produced a given artifact to know whether `wrong: 0` was measured.
+    A V1 report's `shadow_wrong` was only ever "nothing compared"; a V2
+    report's `newly_solved_wrong` is a comparison that ran.
+
+    `newly_solved_unscored` exists so the gap can never hide inside the other
+    two.  An accepted shadow run has it at zero, and a run that does not is a
+    run whose yield has not been shown correct.
+    """
+
+    version: str = CORPUS_V2_SCORED_REPORTING_VERSION
+    score_class: str = SCORED_SCORE_CLASS
+    scorer_version: str = CORPUS_V2_SCORED_REPORTING_VERSION
+    runtime_contract_version: str = ""
+    candidate_archive_sha256: Sha256
+    augmentation_manifest_sha256: Sha256
+    original_v1_archive_sha256: Sha256
+    runtime_snapshot_sha256: Sha256
+    exact_code_head: Annotated[str, StringConstraints(max_length=64)] | None = None
+    context_count: int = 0
+    augmented_context_count: int = 0
+    unresolved_augmentation_count: int = 0
+    baseline_solved: int = 0
+    shadow_solved: int = 0
+    newly_solved: int = 0
+    newly_solved_correct: int = 0
+    newly_solved_wrong: int = 0
+    newly_solved_unscored: int = 0
+    all_shadow_correct: int = 0
+    all_shadow_wrong: int = 0
+    all_shadow_unscored: int = 0
+    forbidden_class_solve: int = 0
+    regressed: int = 0
+    query_binding_mismatch: int = 0
+    scoring_defect_counts: tuple[tuple[str, int], ...] = ()
+    carrier_coverage: tuple[tuple[str, int], ...] = ()
+    cohort_yield: tuple[tuple[str, int], ...] = ()
+    migration_ambiguities: tuple[tuple[str, int], ...] = ()
+
+    @property
+    def digest(self) -> str:
+        material = repr(self.model_dump(mode="json")).encode("utf-8")
+        return hashlib.sha256(material).hexdigest()
+
+    @property
+    def cohort_yield_count(self) -> int:
+        return len(self.cohort_yield)
+
+    @property
+    def acceptance_failures(self) -> tuple[str, ...]:
+        """Every reason this run may not be reported as an accepted measurement.
+
+        Kept as a list rather than a boolean so a caller reports what failed
+        instead of only that something did.  A newly solved context nobody
+        could score is on this list: an unscored yield is not a yield.
+        """
+
+        failures: list[str] = []
+        if self.newly_solved_wrong:
+            failures.append("newly_solved_wrong")
+        if self.newly_solved_unscored:
+            failures.append("newly_solved_unscored")
+        if self.all_shadow_wrong:
+            failures.append("all_shadow_wrong")
+        if self.forbidden_class_solve:
+            failures.append("forbidden_class_solve")
+        if self.regressed:
+            failures.append("regressed")
+        if self.query_binding_mismatch:
+            failures.append("query_binding_mismatch")
+        return tuple(failures)
+
+
+def build_scored_shadow_scorecard(
+    scored: Iterable[Any],
+    totals: Any,
+    *,
+    snapshot: Any,
+    carrier_coverage: tuple[tuple[str, int], ...] = (),
+) -> ShadowScorecardV2:
+    """Aggregate a scored shadow run against the snapshot it was scored from.
+
+    Every identifying hash is taken from the snapshot rather than passed in
+    again, so a report cannot claim to describe a run it was not built from.
+    """
+
+    rows = tuple(scored)
+    return ShadowScorecardV2(
+        runtime_contract_version=snapshot.runtime_contract_version,
+        candidate_archive_sha256=snapshot.candidate_archive_sha256,
+        augmentation_manifest_sha256=snapshot.augmentation_manifest_sha256,
+        original_v1_archive_sha256=snapshot.original_v1_archive_sha256,
+        runtime_snapshot_sha256=snapshot.runtime_snapshot_digest,
+        exact_code_head=snapshot.exact_code_head,
+        context_count=snapshot.context_count,
+        augmented_context_count=snapshot.augmented_context_count,
+        unresolved_augmentation_count=snapshot.unresolved_augmentation_count,
+        baseline_solved=sum(1 for row in snapshot.records if row.baseline_solved),
+        shadow_solved=sum(1 for row in rows if row.shadow_solved),
+        newly_solved=totals.newly_solved,
+        newly_solved_correct=totals.newly_solved_correct,
+        newly_solved_wrong=totals.newly_solved_wrong,
+        newly_solved_unscored=totals.newly_solved_unscored,
+        all_shadow_correct=totals.all_shadow_correct,
+        all_shadow_wrong=totals.all_shadow_wrong,
+        all_shadow_unscored=totals.all_shadow_unscored,
+        forbidden_class_solve=totals.forbidden_class_solve,
+        regressed=totals.regressed,
+        query_binding_mismatch=totals.query_binding_mismatch,
+        scoring_defect_counts=totals.defect_counts,
+        carrier_coverage=carrier_coverage,
+        cohort_yield=totals.cohort_yield,
+        migration_ambiguities=snapshot.migration_ambiguities,
+    )
+
+
+def scored_scorecard_as_dict(scorecard: ShadowScorecardV2) -> dict[str, Any]:
+    """The scored shadow report as plain JSON, with its class stamped at the top.
+
+    No per-context row reaches this payload.  The scoring handles exist to pair
+    a runtime record with its gold case inside the scorer and have no business
+    in a published artifact, so they are not carried here at all.
+    """
+
+    payload = scorecard.model_dump(mode="json")
+    payload["digest"] = scorecard.digest
+    payload["score_class"] = SCORED_SCORE_CLASS
+    payload["is_official_score"] = False
+    payload["acceptance_failures"] = list(scorecard.acceptance_failures)
+    payload["official_score_note"] = (
+        "This is a gold-scored v2 candidate shadow measurement against an "
+        "out-of-tree archive that is not the frozen public corpus. It is not "
+        "the official v1 public score and must never be reported as one, nor "
+        "added to one."
+    )
+    return payload
+
+
 def scorecard_as_dict(scorecard: ShadowScorecardV1) -> dict[str, Any]:
     """The shadow report as plain JSON, with its class stamped at the top."""
 
@@ -160,7 +307,7 @@ def assert_scores_are_separated(
     carries an official one, is a report a reader could quote either way.
     """
 
-    if shadow.get("score_class") != SCORE_CLASS:
+    if shadow.get("score_class") not in (SCORE_CLASS, SCORED_SCORE_CLASS):
         raise ValueError("shadow report is not stamped as a shadow score")
     if shadow.get("is_official_score") is not False:
         raise ValueError("shadow report must state that it is not official")
@@ -170,8 +317,10 @@ def assert_scores_are_separated(
     shadow_only = {
         "candidate_archive_sha256",
         "augmentation_manifest_sha256",
+        "runtime_snapshot_sha256",
         "shadow_correct",
         "newly_solved",
+        "newly_solved_correct",
     }
     if shadow_only & set(official):
         raise ValueError("official report carries a shadow-score field")
@@ -179,11 +328,16 @@ def assert_scores_are_separated(
 
 __all__ = [
     "CORPUS_V2_REPORTING_VERSION",
+    "CORPUS_V2_SCORED_REPORTING_VERSION",
     "OFFICIAL_SCORE_CLASS",
     "SCORE_CLASS",
+    "SCORED_SCORE_CLASS",
     "ShadowContextResultV1",
     "ShadowScorecardV1",
+    "ShadowScorecardV2",
     "assert_scores_are_separated",
+    "build_scored_shadow_scorecard",
     "build_shadow_scorecard",
     "scorecard_as_dict",
+    "scored_scorecard_as_dict",
 ]

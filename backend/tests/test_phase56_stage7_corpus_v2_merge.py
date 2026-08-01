@@ -612,7 +612,12 @@ def test_migration_refuses_a_conflicting_entry_before_any_archive_exists() -> No
     payload = _payload(queries=[{"query_id": "y1", "objective": "minimum"}])
 
     with pytest.raises(MigrationError) as caught:
-        migrate_record(record, manifest, draft_payload=payload)
+        migrate_record(
+            record,
+            manifest,
+            draft_payload=payload,
+            known_evidence_ids=EV,
+        )
     assert caught.value.reason is MigrationReason.augmentation_conflicts_with_source
     assert caught.value.detail == (
         V2MergeConflictReason.objective_conflicts_with_source,
@@ -620,7 +625,10 @@ def test_migration_refuses_a_conflicting_entry_before_any_archive_exists() -> No
 
     with pytest.raises(MigrationError):
         build_candidate_archive(
-            [record], manifest, draft_payloads={fingerprint: payload}
+            [record],
+            manifest,
+            draft_payloads={fingerprint: payload},
+            context_ids={fingerprint: {"evidence": list(EV)}},
         )
 
 
@@ -639,7 +647,9 @@ def test_a_non_conflicting_entry_still_migrates_with_the_payload_supplied() -> N
         )
     )
 
-    migrated = migrate_record(record, manifest, draft_payload=_payload())
+    migrated = migrate_record(
+        record, manifest, draft_payload=_payload(), known_evidence_ids=EV
+    )
     assert migrated.augmented is True
 
 

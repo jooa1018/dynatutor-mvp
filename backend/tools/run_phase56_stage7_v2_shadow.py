@@ -1,17 +1,36 @@
-"""Build the v2 candidate archive and run the shadow evaluation over it.
+"""Build the v2 candidate archive, run the shadow evaluation, then score it.
 
-Three artifacts come out, all outside the repository: the migrated candidate
-archive, the shadow report, and the hashes that tie them to the v1 archive and
-the augmentation manifest they were built from.
+Four artifacts come out, all outside the repository: the migrated candidate
+archive, the frozen runtime snapshot, the gold-scored shadow report, and the
+hashes that tie them to the v1 archive and the augmentation manifest they were
+built from.
 
 The shadow result is **not** the official score and this runner will not let it
 be mistaken for one.  It prints under `STAGE7_V2_SHADOW_*` keys, the report
-carries `score_class = EXPERIMENTAL_V2_SHADOW`, and
+carries `score_class = EXPERIMENTAL_V2_SHADOW_SCORED`, and
 `assert_scores_are_separated` runs before anything is written.
 
 Every context is run twice through the same deterministic pipeline — once on
 its v1 Draft, once with the augmentation attached — so a reported gain is a
 measured difference and not a different run.
+
+**Two phases, in this order, and the order is the contract.**
+
+*Phase R* projects, compiles, solves and verifies, and reads no expected
+answer, expected terminal, expected failure code, family or case id while doing
+it.  It ends by freezing every runtime record into a `ShadowRuntimeSnapshotV2`
+and hashing it.
+
+*Phase G* opens the gold for the first time, pairs each gold case to a frozen
+runtime record by an opaque handle, and compares — using the official strict
+scorer's own comparator, not a second one.  It cannot re-run the pipeline: it
+holds a snapshot, not a Draft.
+
+Until this session Phase G did not exist.  `run_shadow_context` accepted an
+optional comparator, this runner never passed one, and the resulting report said
+`wrong: 0` — which meant "nothing was compared" and read as "nothing was wrong".
+The three counts are now separate and a newly solved context that could not be
+scored fails acceptance instead of disappearing.
 """
 
 from __future__ import annotations
@@ -43,10 +62,18 @@ from evaluation.phase56_stage7.corpus_v2.migration import (  # noqa: E402
     build_candidate_archive,
     record_fingerprint,
 )
+from evaluation.phase56_stage7.corpus_v2.gold_scoring import (  # noqa: E402
+    build_gold_index,
+    score_shadow_snapshot,
+    totals,
+)
 from evaluation.phase56_stage7.corpus_v2.reporting import (  # noqa: E402
     assert_scores_are_separated,
-    build_shadow_scorecard,
-    scorecard_as_dict,
+    build_scored_shadow_scorecard,
+    scored_scorecard_as_dict,
+)
+from evaluation.phase56_stage7.corpus_v2.runtime_snapshot import (  # noqa: E402
+    freeze_runtime_snapshot,
 )
 from evaluation.phase56_stage7.corpus_v2.shadow_runner import (  # noqa: E402
     assert_no_regression,
@@ -102,7 +129,9 @@ def main() -> int:
     parser.add_argument("--corpus-archive", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--candidate-archive", type=Path, required=True)
+    parser.add_argument("--runtime-snapshot", type=Path, required=True)
     parser.add_argument("--shadow-report", type=Path, required=True)
+    parser.add_argument("--exact-code-head", type=str, default=None)
     parser.add_argument(
         "--record-regressions",
         action="store_true",
@@ -186,7 +215,7 @@ def main() -> int:
     )
     args.candidate_archive.write_text(candidate_body, encoding="utf-8")
 
-    # --- shadow evaluation, one context at a time --------------------------
+    # --- PHASE R: runtime only.  No gold member is read below this line -----
     def _run_index(index: int):
         template = projections[index]
 
@@ -200,7 +229,9 @@ def main() -> int:
         return run
 
     results = []
+    scored_indices: list[int] = []
     ambiguities: Counter[str] = Counter()
+    coverage: Counter[str] = Counter()
     for index, (case, projection, record) in enumerate(
         zip(cases, projections, records)
     ):
@@ -216,26 +247,66 @@ def main() -> int:
                     augmentation=entry.augmentation,
                     run=_run_index(index),
                     problem_text=projection.problem_text,
+                    original_v1_archive_sha256=inventory.archive_sha256,
+                    context_index=index,
                 )
             )
         except Exception as exc:  # only the type reaches the artifact
             ambiguities[type(exc).__name__] += 1
+            continue
+        scored_indices.append(index)
+        for name, count in entry.augmentation.carrier_counts():
+            if count:
+                coverage[name] += 1
 
     assert_no_unaugmented_movement(results)
     if not args.record_regressions:
         assert_no_regression(results)
 
-    scorecard = build_shadow_scorecard(
+    snapshot = freeze_runtime_snapshot(
         results,
-        candidate_archive_sha256=candidate_sha,
-        augmentation_manifest_sha256=manifest.digest,
         original_v1_archive_sha256=inventory.archive_sha256,
+        augmentation_manifest_sha256=manifest.digest,
+        candidate_archive_sha256=candidate_sha,
+        exact_code_head=args.exact_code_head,
         unresolved_augmentation_count=sum(
             1 for item in migrated if item.review_status is ReviewStatus.unresolved
         ),
         migration_ambiguities=tuple(sorted(ambiguities.items())),
     )
-    payload = scorecard_as_dict(scorecard)
+
+    snapshot_payload = snapshot.model_dump(mode="json")
+    # The handles pair a runtime record to its gold case inside the scorer and
+    # have no business in an artifact, so they leave before anything is written.
+    published_snapshot = dict(snapshot_payload)
+    published_snapshot["records"] = [
+        {key: value for key, value in row.items() if key != "scoring_handle"}
+        for row in snapshot_payload["records"]
+    ]
+    assert_privacy_safe_artifact(published_snapshot)
+    args.runtime_snapshot.parent.mkdir(parents=True, exist_ok=True)
+    snapshot_body = (
+        json.dumps(published_snapshot, ensure_ascii=False, sort_keys=True, indent=2)
+        + "\n"
+    )
+    args.runtime_snapshot.write_text(snapshot_body, encoding="utf-8")
+
+    # --- PHASE G: the gold opens here, and the pipeline is already closed ---
+    gold_by_handle = build_gold_index(
+        cases,
+        scored_indices,
+        original_v1_archive_sha256=inventory.archive_sha256,
+    )
+    scored = score_shadow_snapshot(snapshot, gold_by_handle)
+    score_totals = totals(scored)
+
+    scorecard = build_scored_shadow_scorecard(
+        scored,
+        score_totals,
+        snapshot=snapshot,
+        carrier_coverage=tuple(sorted(coverage.items())),
+    )
+    payload = scored_scorecard_as_dict(scorecard)
     assert_privacy_safe_artifact(payload)
     assert_scores_are_separated({"observed_public_score": "41/81"}, payload)
 
@@ -254,6 +325,11 @@ def main() -> int:
         "STAGE7_V2_SHADOW_CANDIDATE_FILE_SHA256="
         + hashlib.sha256(candidate_body.encode("utf-8")).hexdigest()
     )
+    print(f"STAGE7_V2_SHADOW_RUNTIME_SNAPSHOT_SHA256={snapshot.runtime_snapshot_digest}")
+    print(
+        "STAGE7_V2_SHADOW_RUNTIME_SNAPSHOT_FILE_SHA256="
+        + hashlib.sha256(snapshot_body.encode("utf-8")).hexdigest()
+    )
     print(
         "STAGE7_V2_SHADOW_REPORT_FILE_SHA256="
         + hashlib.sha256(report_body.encode("utf-8")).hexdigest()
@@ -263,6 +339,13 @@ def main() -> int:
     print(f"STAGE7_V2_SHADOW_AUGMENTED={scorecard.augmented_context_count}")
     print(f"STAGE7_V2_SHADOW_UNRESOLVED={scorecard.unresolved_augmentation_count}")
     print(f"STAGE7_V2_SHADOW_NEWLY_SOLVED={scorecard.newly_solved}")
+    print(f"STAGE7_V2_SHADOW_NEWLY_SOLVED_CORRECT={scorecard.newly_solved_correct}")
+    print(f"STAGE7_V2_SHADOW_NEWLY_SOLVED_WRONG={scorecard.newly_solved_wrong}")
+    print(f"STAGE7_V2_SHADOW_NEWLY_SOLVED_UNSCORED={scorecard.newly_solved_unscored}")
+    print(f"STAGE7_V2_SHADOW_ALL_CORRECT={scorecard.all_shadow_correct}")
+    print(f"STAGE7_V2_SHADOW_ALL_WRONG={scorecard.all_shadow_wrong}")
+    print(f"STAGE7_V2_SHADOW_ALL_UNSCORED={scorecard.all_shadow_unscored}")
+    print(f"STAGE7_V2_SHADOW_FORBIDDEN_CLASS_SOLVE={scorecard.forbidden_class_solve}")
     print(f"STAGE7_V2_SHADOW_REGRESSED={scorecard.regressed}")
     if scorecard.regressed:
         print(
@@ -272,8 +355,15 @@ def main() -> int:
     print(f"STAGE7_V2_SHADOW_COHORT_YIELD={scorecard.cohort_yield_count}")
     for name, count in scorecard.carrier_coverage:
         print(f"STAGE7_V2_SHADOW_CARRIER_{name}={count}")
+    for name, count in scorecard.scoring_defect_counts:
+        print(f"STAGE7_V2_SHADOW_DEFECT_{name}={count}")
     for name, count in scorecard.migration_ambiguities:
         print(f"STAGE7_V2_SHADOW_AMBIGUITY_{name}={count}")
+    failures = scorecard.acceptance_failures
+    print(
+        "STAGE7_V2_SHADOW_ACCEPTANCE="
+        + ("PASS" if not failures else "FAIL:" + ",".join(failures))
+    )
     return 0
 
 

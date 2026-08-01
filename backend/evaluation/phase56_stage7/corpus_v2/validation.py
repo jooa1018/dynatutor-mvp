@@ -26,6 +26,7 @@ from typing import Iterable, Sequence
 from evaluation.phase56_stage7.corpus_v2.merge import ENGINE_AXIS_NAMES
 from evaluation.phase56_stage7.corpus_v2.records import (
     V2_IDENTIFIER_PREFIX,
+    AxisSense,
     CorpusV2AugmentationV1,
     FrameOriginKind,
     FrameType,
@@ -33,7 +34,49 @@ from evaluation.phase56_stage7.corpus_v2.records import (
 )
 
 
-CORPUS_V2_VALIDATION_VERSION = "phase56-stage7-corpus-v2-validation-v2"
+CORPUS_V2_VALIDATION_VERSION = "phase56-stage7-corpus-v2-validation-v3"
+
+# `AxisSense` is descriptive vocabulary, never projection authority.  The typed
+# `axis(frame, name, sign)` binding decides what an axis is; the sense only says
+# what the source called it, and no missing sign, frame or axis is ever inferred
+# from a sense's spelling.
+#
+# The one thing a sense is good for is catching a statement that contradicts
+# itself.  Two senses are comparable exactly when they are the two directions of
+# one opposition — `up_slope` against `down_slope`, `away_from_surface` against
+# `into_surface`.  Within such a pair, a cross-frame binding that says "this
+# axis points up the slope and *is* the axis that points down the slope, with
+# sign +1" is not a coincidence anyone stated; it is two readings of one arrow.
+#
+# Senses drawn from different oppositions — `up_the_page` against
+# `away_from_surface` — are not comparable at all: a surface normal genuinely
+# may or may not point up the page, and that depends on geometry this contract
+# does not carry.  For those the binding is the only authority and the sense is
+# not consulted, because a guess here would be the invented premise v2 exists to
+# refuse.
+_SENSE_OPPOSITIONS: tuple[tuple[AxisSense, AxisSense], ...] = (
+    (AxisSense.up_the_page, AxisSense.down_the_page),
+    (AxisSense.along_surface_forward, AxisSense.along_surface_backward),
+    (AxisSense.away_from_surface, AxisSense.into_surface),
+    (AxisSense.up_slope, AxisSense.down_slope),
+    (AxisSense.outward_from_centre, AxisSense.inward_to_centre),
+)
+_SENSE_FAMILY: dict[AxisSense, int] = {
+    sense: index
+    for index, pair in enumerate(_SENSE_OPPOSITIONS)
+    for sense in pair
+}
+
+
+def _senses_are_comparable(left: AxisSense, right: AxisSense) -> bool:
+    family = _SENSE_FAMILY.get(left)
+    return family is not None and family == _SENSE_FAMILY.get(right)
+
+
+def _sense_agreement_sign(left: AxisSense, right: AxisSense) -> int:
+    """+1 when two comparable senses point the same way, -1 when opposite."""
+
+    return 1 if left is right else -1
 
 
 class V2ValidationReason(str, Enum):
@@ -49,6 +92,10 @@ class V2ValidationReason(str, Enum):
     axis_binding_missing = "axis_binding_missing"
     axis_binding_frame_unknown = "axis_binding_frame_unknown"
     axis_binding_axis_unknown = "axis_binding_axis_unknown"
+    # A cross-frame binding whose two axes carry directly opposed senses and a
+    # sign that agrees with neither reading.  Refused, never resolved: picking
+    # one of two mirror-image statements is picking.
+    axis_sense_contradicts_binding = "axis_sense_contradicts_binding"
     axis_name_unknown = "axis_name_unknown"
     frame_cycle = "frame_cycle"
     frame_origin_invalid = "frame_origin_invalid"
@@ -184,7 +231,14 @@ def validate_augmentation(
         if carrier.event_id is not None and events and carrier.event_id not in events:
             raise _fail(V2ValidationReason.cross_event_scope)
     for carrier in (*scoped, *augmentation.query_objectives):
-        if evidence and any(ref not in evidence for ref in carrier.evidence_refs):
+        # Not `if evidence and ...`.  Guarding the membership test on a
+        # non-empty universe made the check fail *open* in exactly the case it
+        # exists for: a context whose v1 record declares no source evidence and
+        # whose augmentation authors no quote has an empty universe, so every
+        # `evidence_refs` entry — including one naming nothing at all — passed
+        # unexamined.  A carrier cites evidence or it is an assertion; an
+        # unknown reference is unknown whether or not anything else is known.
+        if any(ref not in evidence for ref in carrier.evidence_refs):
             raise _fail(V2ValidationReason.evidence_ref_unknown)
 
     # --- frames -------------------------------------------------------------
@@ -233,8 +287,21 @@ def validate_augmentation(
             bound = frame_by_id.get(axis.bound_frame_id)
             if bound is None:
                 raise _fail(V2ValidationReason.axis_binding_frame_unknown)
-            if not any(item.axis == axis.bound_axis for item in bound.axes):
+            target = next(
+                (item for item in bound.axes if item.axis == axis.bound_axis), None
+            )
+            if target is None:
                 raise _fail(V2ValidationReason.axis_binding_axis_unknown)
+            # Sense is consulted here and nowhere else, and only to refuse.  It
+            # cannot supply a sign, a frame or an axis — those are already
+            # required above — and two senses from different oppositions are
+            # left alone entirely.
+            if axis.bound_frame_id == frame.frame_id:
+                continue
+            if not _senses_are_comparable(axis.sense, target.sense):
+                continue
+            if _sense_agreement_sign(axis.sense, target.sense) != axis.bound_sign:
+                raise _fail(V2ValidationReason.axis_sense_contradicts_binding)
 
     # --- no cycles through parents or cross-frame bindings ------------------
     edges: dict[str, set[str]] = {frame.frame_id: set() for frame in frames}

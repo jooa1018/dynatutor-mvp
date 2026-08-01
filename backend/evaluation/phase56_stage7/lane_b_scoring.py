@@ -455,6 +455,90 @@ def _runtime_dimensionality(registry: Any, unit: str | None) -> Any | None:
         return None
 
 
+class AnswerVerdict(str, Enum):
+    """The three outcomes of comparing one runtime answer against one gold answer.
+
+    `unscored` is not a pass and not a failure of the engine: it is the scorer
+    saying it could not compare, which every caller must then account for
+    explicitly.  Collapsing it into `wrong` would blame the engine for the
+    evaluator's gap; collapsing it into `correct` — or, as the first v2 shadow
+    runner did, into "wrong: 0" — would hide the gap entirely.
+    """
+
+    correct = "correct"
+    wrong = "wrong"
+    unscored = "unscored"
+
+
+@dataclass(frozen=True, slots=True)
+class AnswerComparison:
+    verdict: AnswerVerdict
+    defect: SupportedDefect | None = None
+    unit_ok: bool = False
+
+    @property
+    def correct(self) -> bool:
+        return self.verdict is AnswerVerdict.correct
+
+    @property
+    def wrong(self) -> bool:
+        return self.verdict is AnswerVerdict.wrong
+
+    @property
+    def unscored(self) -> bool:
+        return self.verdict is AnswerVerdict.unscored
+
+
+def compare_answer_to_gold(
+    registry: Any,
+    gold_answer: Any,
+    *,
+    value_si: float | None,
+    unit: str | None,
+) -> AnswerComparison:
+    """Compare one runtime answer against one gold answer.  The only comparison.
+
+    Every Stage 7 answer judgement goes through this function — the official v1
+    strict scorer and the experimental v2 shadow scorer alike — so a shadow
+    result cannot be produced by a second, gentler comparator that nobody
+    noticed had been written.  The corpus's declared tolerance is applied
+    exactly, the dimension of the runtime's own declared output unit must match
+    the gold answer's, and no floor or relative slack is invented anywhere.
+
+    The registry and the gold answer arrive from the caller; this function
+    reaches nothing on its own, which is what lets the same code serve a
+    domain-isolated shadow pass.
+    """
+
+    if value_si is None:
+        return AnswerComparison(AnswerVerdict.unscored, SupportedDefect.answer_missing)
+    if value_si != value_si or value_si in (float("inf"), float("-inf")):
+        return AnswerComparison(
+            AnswerVerdict.unscored, SupportedDefect.answer_not_finite
+        )
+    expected = _gold_answer_in_si(registry, gold_answer)
+    if expected is None:
+        return AnswerComparison(
+            AnswerVerdict.unscored, SupportedDefect.unit_unconvertible
+        )
+    if not unit:
+        return AnswerComparison(AnswerVerdict.wrong, SupportedDefect.output_unit_missing)
+    actual_dimensionality = _runtime_dimensionality(registry, unit)
+    if actual_dimensionality is None:
+        return AnswerComparison(AnswerVerdict.wrong, SupportedDefect.unit_unconvertible)
+    if actual_dimensionality != expected.dimensionality:
+        return AnswerComparison(
+            AnswerVerdict.wrong, SupportedDefect.unit_dimension_mismatch
+        )
+    if not _within_declared_tolerance(value_si, expected.value, expected.tolerance):
+        return AnswerComparison(
+            AnswerVerdict.wrong,
+            SupportedDefect.numeric_outside_tolerance,
+            unit_ok=True,
+        )
+    return AnswerComparison(AnswerVerdict.correct, None, unit_ok=True)
+
+
 @dataclass(frozen=True, slots=True)
 class _SupportedOutcome:
     """The independent judgements one supported case earns.
@@ -535,50 +619,27 @@ def _score_supported(
     answers = case.gold.answers
     if len(answers) != 1:
         raise ScoringFailure(ScoringFailureReason.gold_answer_shape_invalid)
-    expected = _gold_answer_in_si(registry, answers[0])
-    if expected is None:
-        defects[SupportedDefect.unit_unconvertible.value] += 1
+
+    # The one comparison.  The unit/dimension judgement and the corpus's own
+    # frozen tolerance both live inside it, so the v2 shadow scorer cannot
+    # reach a different answer about the same pair of numbers.
+    comparison = compare_answer_to_gold(
+        registry, answers[0], value_si=value, unit=record.answer_unit
+    )
+    if comparison.defect is not None:
+        defects[comparison.defect.value] += 1
+    if comparison.unscored:
         return partial
-
-    # --- unit / dimension: the runtime's own declared output unit must carry
-    # the same dimension as the gold answer.  A number that happens to match
-    # numerically in the wrong dimension is not a correct answer.
-    if not record.answer_unit:
-        defects[SupportedDefect.output_unit_missing.value] += 1
-        unit_ok = False
-    else:
-        actual_dimensionality = _runtime_dimensionality(registry, record.answer_unit)
-        if actual_dimensionality is None:
-            defects[SupportedDefect.unit_unconvertible.value] += 1
-            unit_ok = False
-        elif actual_dimensionality != expected.dimensionality:
-            defects[SupportedDefect.unit_dimension_mismatch.value] += 1
-            unit_ok = False
-        else:
-            unit_ok = True
-    if not unit_ok:
-        return _SupportedOutcome(
-            solved=True,
-            wrong=True,
-            query_ok=query_ok,
-            coverage_ok=coverage_ok,
-            residual_ok=residual_ok,
-        )
-
-    # --- the corpus's own frozen tolerance, applied exactly
-    within = _within_declared_tolerance(value, expected.value, expected.tolerance)
-    if not within:
-        defects[SupportedDefect.numeric_outside_tolerance.value] += 1
     # Direction/sign is proven by the *signed* comparison above together with an
     # explicitly bound component: an unsigned magnitude that happens to match is
     # not evidence that the direction was resolved.  It is a distinct judgement
     # from unit accuracy, which is why it is measured separately.
-    direction_ok = within and record.answer_component is not None
+    direction_ok = comparison.correct and record.answer_component is not None
     return _SupportedOutcome(
         solved=True,
-        correct=within,
-        wrong=not within,
-        unit_ok=True,
+        correct=comparison.correct,
+        wrong=comparison.wrong,
+        unit_ok=comparison.unit_ok,
         query_ok=query_ok,
         coverage_ok=coverage_ok,
         residual_ok=residual_ok,
@@ -770,11 +831,26 @@ def score_lane_b_cases(
 
 __all__ = [
     "LANE_B_SCORING_VERSION",
+    "AnswerComparison",
+    "AnswerVerdict",
     "BlockedDefect",
     "LaneBScorecard",
     "ScoringFailure",
     "ScoringFailureReason",
     "SupportedAnswerScore",
     "SupportedDefect",
+    "compare_answer_to_gold",
+    "gold_scoring_registry",
     "score_lane_b_cases",
 ]
+
+
+def gold_scoring_registry() -> Any:
+    """The unit registry the gold comparison runs in.
+
+    Exposed so a second gold-domain scorer uses the same registry construction
+    as the strict one and fails the same typed way when the dependency is
+    missing, instead of quietly falling back to string equality.
+    """
+
+    return _registry()

@@ -250,10 +250,12 @@ def test_validation_accepts_the_parity_shapes() -> None:
     validate_augmentation(
         CorpusV2AugmentationV1(
             reference_frames=(_world_frame(), _support_frame())
-        )
+        ),
+        known_evidence_ids=EV,
     )
     validate_augmentation(
-        CorpusV2AugmentationV1(reference_frames=(_world_frame(), _slope_frame()))
+        CorpusV2AugmentationV1(reference_frames=(_world_frame(), _slope_frame())),
+        known_evidence_ids=EV,
     )
 
 
@@ -265,7 +267,8 @@ def test_validation_accepts_the_parity_shapes() -> None:
 def _expect(reason: V2ValidationReason, *frames: ReferenceFrameV2) -> None:
     with pytest.raises(V2ValidationError) as caught:
         validate_augmentation(
-            CorpusV2AugmentationV1(reference_frames=tuple(frames))
+            CorpusV2AugmentationV1(reference_frames=tuple(frames)),
+            known_evidence_ids=EV,
         )
     assert caught.value.reason is reason
 
@@ -389,7 +392,8 @@ def test_an_axis_name_outside_the_engine_vocabulary_is_refused() -> None:
                         evidence_refs=EV,
                     ),
                 )
-            )
+            ),
+            known_evidence_ids=EV,
         )
     assert caught.value.reason is V2ValidationReason.axis_name_unknown
 
