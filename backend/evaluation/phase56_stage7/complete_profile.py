@@ -45,6 +45,11 @@ from pydantic import Field
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel, VersionToken
 from evaluation.phase56_stage7.typed_support_frames import (
+    draft_states_horizontal_support,
+    # Re-exported, not called: the planner reaches the reading through
+    # `draft_states_horizontal_support`, and naming the underlying rule here
+    # keeps the planner's declared authority the same object the closure, the
+    # compiler contract and the law recognizer read.  A test pins the identity.
     stated_support_orientation,
 )
 
@@ -2600,53 +2605,31 @@ def _horizontal_support_orientation(draft: Any) -> bool:
     information that was never stated is not evidence of a zero, and an
     entity label that reads "table" or "floor" is not physics authority.
 
-    Two readings are admitted, and both are the source's own statement.
+    One reading is admitted, and it is the source's own statement: a **typed
+    support frame**, anchored on the support entity and parented to a world
+    frame, with its tangent bound to that world frame's x axis and its normal
+    to its y.  This is the complete statement — it names the reference the
+    orientation is measured against — and it needs no number at all.
 
-    *A typed support frame.*  The source authored a support frame anchored on
-    the support entity and parented to a world frame, with its tangent bound to
-    that world frame's x axis and its normal to its y.  This is the complete
-    statement — it names the reference the orientation is relative to — and it
-    needs no number at all.  The closure has always read exactly this shape;
-    until now the planner did not, so a source that stated its orientation as a
-    frame was reported incomplete before the closure could build it.  One
-    function answers the question for both, and there is no planner variant to
-    drift.
+    A support-owned angle of exactly zero used to be admitted here as a second
+    reading, and that was the drift this function now cannot carry.  The
+    closure, the compiler contract and the law recognizer have only ever read
+    the frame: an angle-only Draft that the planner called complete reached a
+    closure that refused it, so the plan and the build disagreed about the same
+    Draft.  Worse, a bare zero is exactly what the B15 revocation established
+    is *not* an orientation — it fixes no reference, being equally consistent
+    with a plane level to the world, one measured from the vertical, and one
+    measured from a second surface.  Admitting it in the plan re-opened, one
+    stage earlier, the hole the revocation closed.
 
-    *A support-owned angle of exactly zero.*  Kept unchanged from the B15
-    hardening: stated, owned by the support entity, evidenced, and numerically
-    zero.
-
-    Anything else leaves the support's orientation unstated and the profile
-    fails closed, exactly as the B15 revocation left it.
+    A numeric zero has not become meaningless: where the source states one
+    beside a frame, the closure still reads it as a consistency datum on the
+    orientation the frame already fixed.  What it can no longer do is *be* the
+    orientation.  A support whose orientation the source never stated as a
+    frame is refused, exactly as the B15 revocation left it.
     """
 
-    surface_ids = {
-        item.entity_id
-        for item in draft.entities
-        if item.primitive.value == "surface"
-    }
-    if not surface_ids:
-        return False
-    if any(
-        item.role.value == "angle"
-        and item.subject_id in surface_ids
-        and item.evidence_refs
-        and _exact_source_zero(item.raw_value)
-        for item in draft.quantities
-    ):
-        return True
-    # The frame reading needs the Draft as a payload, and serialising a whole
-    # Draft is not free — this runs once per planned profile, for every Draft.
-    # The typed reading admits exactly two frames, so a Draft that has any other
-    # number cannot satisfy it and is answered without serialising anything.
-    # Every v1 public case has none at all, which is the common path.
-    if len(draft.reference_frames) != 2:
-        return False
-    payload = draft.model_dump(mode="json", warnings="none")
-    return any(
-        stated_support_orientation(payload, support_id=support_id) is not None
-        for support_id in sorted(surface_ids)
-    )
+    return draft_states_horizontal_support(draft)
 
 
 def _needs_horizontal_support(facts: "_DraftFacts") -> "PrerequisiteDisposition":

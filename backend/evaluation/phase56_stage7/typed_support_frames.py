@@ -25,7 +25,13 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 
-TYPED_SUPPORT_FRAME_VERSION = "phase56-stage7-typed-support-frame-v1"
+TYPED_SUPPORT_FRAME_VERSION = "phase56-stage7-typed-support-frame-v2"
+
+# A stated support orientation is exactly two frames: the world frame the
+# orientation is relative to, and the support frame that states it.  Named here
+# because both the reading below and the Draft-level shortcut depend on it, and
+# a shortcut that disagreed with the rule would admit what the rule refuses.
+FRAME_ARITY = 2
 
 
 def world_axis_direction(binding: Any, frame_id: str, axis: str) -> bool:
@@ -81,7 +87,7 @@ def stated_support_orientation(
     """
 
     frames = payload.get("reference_frames")
-    if not isinstance(frames, list) or len(frames) != 2:
+    if not isinstance(frames, list) or len(frames) != FRAME_ARITY:
         return None
     world_frames = [
         item
@@ -145,9 +151,37 @@ def payload_states_horizontal_support(payload: Mapping[str, Any]) -> bool:
     return False
 
 
+def draft_states_horizontal_support(draft: Any) -> bool:
+    """The same question, asked of a typed Draft instead of its payload.
+
+    The planner holds a Draft and the closure holds a payload, and that is the
+    only difference between them.  Both answers come from here so neither can
+    hold a policy the other does not: the admission rule is
+    ``stated_support_orientation`` and nothing else, and there is no second
+    reading — no numeric angle, no entity kind, no label — anywhere on either
+    path.
+
+    ``FRAME_ARITY`` is a necessary condition of that one rule and not a second
+    one: ``stated_support_orientation`` admits exactly one world frame and one
+    support frame, so a Draft carrying any other number cannot satisfy it.
+    Checking it here answers the common case — every v1 public case states no
+    frame at all — without serialising a whole Draft, and keeps the shortcut in
+    the same module as the rule it is a shortcut for, where the two cannot
+    drift apart.
+    """
+
+    if len(draft.reference_frames) != FRAME_ARITY:
+        return False
+    return payload_states_horizontal_support(
+        draft.model_dump(mode="json", warnings="none")
+    )
+
+
 __all__ = [
+    "FRAME_ARITY",
     "TYPED_SUPPORT_FRAME_VERSION",
     "axis_bindings",
+    "draft_states_horizontal_support",
     "frame_is_plain",
     "payload_states_horizontal_support",
     "stated_support_orientation",

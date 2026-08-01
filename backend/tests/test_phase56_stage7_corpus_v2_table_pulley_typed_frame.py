@@ -203,6 +203,23 @@ def test_a_semantic_direction_is_not_an_axis_binding() -> None:
     )
 
 
+def test_a_frame_cycle_states_no_orientation() -> None:
+    """Two frames each parented to the other fix nothing between them.
+
+    The orientation is a statement *relative to the world*, and the world frame
+    is the end of that chain — it is unparented and its axes are its own.  A
+    world frame that instead points back at the support makes the pair mutually
+    defined: each axis is named in terms of the other, and no reading of the
+    cycle reaches a direction anything is anchored on.
+    """
+
+    assert not _reads(_world(parent_frame_id=SUPPORT), _support())
+
+
+def test_a_support_frame_that_is_its_own_parent_states_nothing() -> None:
+    assert not _reads(_world(), _support(parent_frame_id=SUPPORT))
+
+
 # --------------------------------------------------------------------------
 # The planner and the closure ask one question with one function
 # --------------------------------------------------------------------------

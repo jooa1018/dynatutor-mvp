@@ -485,11 +485,54 @@ def test_projection_scopes_rope_authority_to_the_table_topology() -> None:
         ("fixed_pulley", "pulley"),
         ("ideal_massless_frictionless_pulley", "pulley"),
     }
-    plan = plan_complete_profile(
+
+
+def _plan(projection):
+    return plan_complete_profile(
         ProfileId.table_pulley_two_body,
         projection.draft,
         approved_assumption_ids=projection.approvable_assumption_ids,
     )
+
+
+def test_a_support_angle_of_zero_does_not_plan_the_profile() -> None:
+    """The planner's angle-only admission, removed.
+
+    This assertion used to live at the end of
+    ``test_projection_scopes_rope_authority_to_the_table_topology`` and read
+    ``complete``: ``_case()`` states a support angle of exactly zero and no
+    frame, and the planner accepted the bare zero as an orientation.  Nothing
+    else did.  The closure, the compiler contract and the law recognizer have
+    only ever read the typed frame, so this Draft planned complete and then
+    reached a closure that refused it — the plan and the build disagreeing
+    about one Draft.
+
+    The zero is also, on its own, exactly what the B15 revocation established
+    is not an orientation: it names no reference line, so it is equally
+    consistent with a plane level to the world, one measured from the vertical,
+    and one measured from a second surface.  The rope-authority scoping above
+    is unchanged and still passes; only this claim moved, and it moved because
+    the contract did.
+    """
+
+    plan = _plan(_projection(_case()))
+
+    assert plan.disposition is not PlanDisposition.complete
+    assert not plan.structurally_complete
+
+
+def test_a_stated_support_frame_plans_the_profile() -> None:
+    """The reading that replaced it, and the one the closure always had.
+
+    Same case, same masses, same rope topology — the only difference is that
+    the source states its orientation as a typed frame instead of as a bare
+    zero.  The planner now reaches ``complete`` through the frame, so the
+    admission did not merely get stricter: it moved onto the statement the rest
+    of the pipeline was already reading.
+    """
+
+    plan = _plan(_projection(_case(), stated=True))
+
     assert plan.disposition is PlanDisposition.complete
     assert plan.structurally_complete
 
