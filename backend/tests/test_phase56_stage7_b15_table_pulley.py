@@ -765,7 +765,10 @@ def test_typed_horizontal_relation_carries_the_stated_zero_angle() -> None:
 @pytest.mark.parametrize(
     ("overrides", "why"),
     (
-        ({"support_angle": None}, "a generic surface states no orientation"),
+        # `support_angle: None` is no longer here: with the frames stated, the
+        # binding *is* the orientation and needs no numeric restatement.  Its
+        # two halves are pinned separately below — frames without an angle
+        # close, and no frames at all still refuse.
         ({"support_angle": "30"}, "a stated slope is not a horizontal support"),
         ({"support_angle": "90"}, "a vertical support is not a horizontal one"),
         ({"support_angle": "0.0001"}, "nearly zero is not a stated zero"),
@@ -1087,16 +1090,25 @@ def test_a_second_surface_frame_leaves_the_reference_ambiguous() -> None:
     assert application.outcome is not ApplicationOutcome.applied
 
 
-def test_a_stated_reference_never_substitutes_for_the_stated_zero() -> None:
-    """Both halves are required, and neither implies the other.
+def test_a_stated_angle_must_agree_with_the_stated_reference() -> None:
+    """A second statement of one orientation has to say the same thing.
 
-    A frame binding says which line the angle is measured from; the angle says
-    the support is level with it.  A binding beside a missing angle, or beside
-    a non-zero one, is not a horizontal support.
+    The frame binding identifies this support's tangent with the world's x axis
+    and its normal with the world's y — that is what "level" means here, and it
+    is complete on its own.  A source may also state the angle, and when it does
+    it must be an evidenced, support-owned, exactly-zero one: a slope, a
+    vertical, or a nearly-zero angle beside a horizontal binding is a
+    contradiction, not a shape this closure may resolve either way.
+
+    This used to include `support_angle: None` under the heading "both halves
+    are required".  It was wrong about the binding: a frame that says the
+    tangent *is* world x leaves no angle to state, which is exactly why the
+    binding is mandatory everywhere and why demanding the number as well made a
+    complete statement unsayable in the public v1 record.  The angle-less case
+    is now pinned in both directions by the test below.
     """
 
     for overrides, why in (
-        ({"support_angle": None}, "a reference with no angle states no value"),
         ({"support_angle": "30"}, "a slope beside a horizontal reference conflicts"),
         ({"support_angle": "90"}, "a vertical support is not a level one"),
         ({"support_angle": "0.0001"}, "nearly zero is not a stated zero"),
@@ -1106,6 +1118,28 @@ def test_a_stated_reference_never_substitutes_for_the_stated_zero() -> None:
         )
         assert result.terminal is not LaneBTerminal.solved, why
         assert result.answer_value_si is None
+
+
+def test_the_frame_binding_alone_states_the_orientation_and_nothing_else_does() -> None:
+    """The B30 contract, in both directions, in one place.
+
+    *With* the source's own frames and no angle at all, the support's
+    orientation is stated and the cohort closes.  *Without* them, the same case
+    refuses exactly as the B15 revocation left it — which is the public v1
+    shape, and the reason the revocation stands.
+    """
+
+    stated = _run(
+        _case(support_angle=None), "b15-frames-only-stated", stated=True
+    )
+    assert stated.terminal is LaneBTerminal.solved
+    assert stated.answer_value_si is not None
+    assert stated.verified_candidate_count == 1
+
+    frameless = _run(_case(support_angle=None), "b15-frames-only-absent")
+    assert frameless.terminal is not LaneBTerminal.solved
+    assert frameless.answer_value_si is None
+    assert frameless.verified_candidate_count == 0
 
 
 def test_the_closure_never_creates_the_orientation_it_reads() -> None:
