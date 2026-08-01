@@ -2635,6 +2635,13 @@ def _horizontal_support_orientation(draft: Any) -> bool:
         for item in draft.quantities
     ):
         return True
+    # The frame reading needs the Draft as a payload, and serialising a whole
+    # Draft is not free — this runs once per planned profile, for every Draft.
+    # The typed reading admits exactly two frames, so a Draft that has any other
+    # number cannot satisfy it and is answered without serialising anything.
+    # Every v1 public case has none at all, which is the common path.
+    if len(draft.reference_frames) != 2:
+        return False
     payload = draft.model_dump(mode="json", warnings="none")
     return any(
         stated_support_orientation(payload, support_id=support_id) is not None
