@@ -2075,11 +2075,28 @@ def _fixed_pulley_horizontal_contact_profile(
     orientations = tuple(
         item for item in context.geometry if item.kind is GeometryRelationKind.angle
     )
+    # The orientation *relation* is optional; the support frame above is not.
+    #
+    # A source may state its support's orientation twice — once as the frame
+    # binding, once as an angle of zero owned by the support — and when it does,
+    # both are checked and must agree.  But the binding is already the complete
+    # statement: it says this surface's tangent *is* the world's x axis and its
+    # normal *is* the world's y, which is what "level" means here and is why the
+    # frame is mandatory above.  Demanding a numeric zero on top of it required
+    # the source to say the same thing a second time, in a form the public v1
+    # contract has no field for — so a source that stated the orientation
+    # completely, as a frame, was refused for not restating it as a number.
+    #
+    # This widens no judgement.  A support whose orientation is stated *only* as
+    # an angle still fails, because the frame check above is unchanged; two
+    # orientation relations still fail; and an angle that is present and not
+    # exactly zero still fails below.  What is removed is the requirement to
+    # duplicate a complete statement.
     if (
-        len(context.geometry) != 4
+        len(context.geometry) != 3 + len(orientations)
         or len(wraps) != 1
         or len(attached) != 2
-        or len(orientations) != 1
+        or len(orientations) > 1
         or any(
             item.interval_id != interval.interval_id
             or item.expression is not None
@@ -2092,15 +2109,18 @@ def _fixed_pulley_horizontal_contact_profile(
         or len(wraps[0].participant_ids) != 2
         or {frozenset(item.participant_ids) for item in attached}
         != {frozenset((rope_id, item)) for item in particle_ids}
-        or orientations[0].interval_id != interval.interval_id
-        or orientations[0].expression is not None
-        or not orientations[0].evidence_refs
-        or set(orientations[0].participant_ids) != {surface_id, environment_id}
-        or len(orientations[0].participant_ids) != 2
-        or len(orientations[0].quantity_ids) != 1
+        or any(
+            item.interval_id != interval.interval_id
+            or item.expression is not None
+            or not item.evidence_refs
+            or set(item.participant_ids) != {surface_id, environment_id}
+            or len(item.participant_ids) != 2
+            or len(item.quantity_ids) != 1
+            for item in orientations
+        )
     ):
         return None
-    orientation = orientations[0]
+    orientation = orientations[0] if orientations else None
 
     states = context.state_conditions
     if any(
@@ -2214,23 +2234,36 @@ def _fixed_pulley_horizontal_contact_profile(
     quantities = {item.quantity_id: item for item in context.quantities}
     if None in quantities:
         return None
-    # The orientation relation's own quantity: the source's stated support
-    # angle.  It has to be there, it has to belong to the support, and it has
-    # to be exactly zero.  Zero reads the same in every angular unit, so this
-    # check needs no unit policy — and a missing angle can never satisfy it.
-    support_angle = quantities.get(orientation.quantity_ids[0])
-    if (
-        support_angle is None
-        or support_angle.role is not QuantityRole.angle
-        or support_angle.subject_id != surface_id
-        or support_angle.shape is not QuantityShape.scalar
-        or support_angle.point_id is not None
-        or support_angle.frame_id is not None
-        or support_angle.event_id is not None
-        or support_angle.generated
-        or not support_angle.evidence_ids
-        or type(support_angle.known_si_value) is not float
-        or support_angle.known_si_value != 0.0
+    # The orientation relation's own quantity, when the source stated one: its
+    # support angle.  It has to belong to the support and it has to be exactly
+    # zero.  Zero reads the same in every angular unit, so this check needs no
+    # unit policy.  A *missing relation* is now the frame-only statement handled
+    # above; a relation that is present and does not carry an evidenced,
+    # source-owned, exactly-zero support angle is still a refusal, because a
+    # source that states an orientation twice must state it consistently.
+    support_angle = None
+    if orientation is not None:
+        support_angle = quantities.get(orientation.quantity_ids[0])
+        if (
+            support_angle is None
+            or support_angle.role is not QuantityRole.angle
+            or support_angle.subject_id != surface_id
+            or support_angle.shape is not QuantityShape.scalar
+            or support_angle.point_id is not None
+            or support_angle.frame_id is not None
+            or support_angle.event_id is not None
+            or support_angle.generated
+            or not support_angle.evidence_ids
+            or type(support_angle.known_si_value) is not float
+            or support_angle.known_si_value != 0.0
+        ):
+            return None
+    # An angle the source owns to the support but never bound into an
+    # orientation relation is an unread statement about the very thing this law
+    # resolves, so it refuses rather than ignoring it.
+    elif any(
+        item.role is QuantityRole.angle and item.subject_id == surface_id
+        for item in context.quantities
     ):
         return None
     masses: dict[str, BoundQuantity] = {}
@@ -2577,7 +2610,7 @@ def _fixed_pulley_horizontal_contact_profile(
             normal_acceleration,
             hanging_acceleration,
             normal,
-            support_angle,
+            *(() if support_angle is None else (support_angle,)),
             *(() if friction is None else (friction,)),
             *(() if coefficient is None else (coefficient,)),
             *(() if carrier is None else (carrier,)),

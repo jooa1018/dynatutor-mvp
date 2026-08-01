@@ -2164,10 +2164,10 @@ def _fixed_pulley_horizontal_contact_contract(
     attached = tuple(item for item in geometry if item.kind.value == "attached")
     orientations = tuple(item for item in geometry if item.kind.value == "angle")
     if (
-        len(geometry) != 4
+        len(geometry) != 3 + len(orientations)
         or len(wraps) != 1
         or len(attached) != 2
-        or len(orientations) != 1
+        or len(orientations) > 1
         or any(
             item.expression is not None
             or item.quantity_ids
@@ -2184,37 +2184,57 @@ def _fixed_pulley_horizontal_contact_contract(
         return None, failure(
             "requires one wrap and two exact evidenced rope attachments", rope_id
         )
-    # The orientation relation must carry the source's own support angle, and
-    # that angle must be an explicit, evidenced, exactly-zero statement.  An
-    # absent, derived, non-zero, or merely small angle leaves the support's
-    # orientation unstated and the whole template fails closed: no reading of
-    # "surface" alone ever means "horizontal".
-    orientation = orientations[0]
-    orientation_angle = next(
-        (
-            item
-            for item in ir.quantities
-            if item.quantity_id in orientation.quantity_ids
-            and item.role is QuantityRole.angle
-        ),
-        None,
-    )
-    if (
-        orientation.expression is not None
-        or orientation.interval_id != interval.interval_id
-        or not orientation.evidence_refs
-        or len(orientation.participant_ids) != 2
-        or set(orientation.participant_ids) != {surface_id, environment_id}
-        or len(orientation.quantity_ids) != 1
-        or orientation_angle is None
-        or orientation_angle.subject_id != surface_id
-        or orientation_angle.provenance is not Provenance.explicit_source
-        or not orientation_angle.evidence_refs
-        or not isinstance(orientation_angle.si_value, float)
-        or orientation_angle.si_value != 0.0
+    # The support's orientation is stated by the frame binding checked above —
+    # tangent to world +x, normal to world +y — and that check is mandatory and
+    # unchanged.  Requiring an exactly-zero support angle *as well* made the
+    # source say the same thing twice: the binding already fixes what
+    # "horizontal" means here, which is precisely why it is not optional.  No
+    # reading of "surface" alone ever means "horizontal", and none is admitted;
+    # what is admitted is a complete statement that took the frame form.
+    #
+    # When the source does state the angle too, every part of the old check
+    # still applies: exactly one relation, owned by the support, explicitly
+    # sourced, evidenced, and exactly zero.  Two statements of one orientation
+    # must agree.
+    orientation = orientations[0] if orientations else None
+    orientation_angle = None
+    if orientation is not None:
+        orientation_angle = next(
+            (
+                item
+                for item in ir.quantities
+                if item.quantity_id in orientation.quantity_ids
+                and item.role is QuantityRole.angle
+            ),
+            None,
+        )
+        if (
+            orientation.expression is not None
+            or orientation.interval_id != interval.interval_id
+            or not orientation.evidence_refs
+            or len(orientation.participant_ids) != 2
+            or set(orientation.participant_ids) != {surface_id, environment_id}
+            or len(orientation.quantity_ids) != 1
+            or orientation_angle is None
+            or orientation_angle.subject_id != surface_id
+            or orientation_angle.provenance is not Provenance.explicit_source
+            or not orientation_angle.evidence_refs
+            or not isinstance(orientation_angle.si_value, float)
+            or orientation_angle.si_value != 0.0
+        ):
+            return None, failure(
+                "requires the source's own exactly-zero support angle",
+                orientation.relation_id,
+            )
+    elif any(
+        item.role is QuantityRole.angle and item.subject_id == surface_id
+        for item in ir.quantities
     ):
+        # A support angle the source stated but nothing bound is an unread
+        # statement about the orientation this template resolves.
         return None, failure(
-            "requires the source's own exactly-zero support angle", orientation.relation_id
+            "requires a stated support angle to be bound to its orientation relation",
+            surface_id,
         )
 
     states = tuple(
@@ -2727,7 +2747,7 @@ def _fixed_pulley_horizontal_contact_contract(
             normal_acceleration,
             hanging_acceleration,
             normal,
-            orientation_angle,
+            *(() if orientation_angle is None else (orientation_angle,)),
             *(() if friction is None else (friction,)),
             *(() if coefficient is None else (coefficient,)),
             *(() if carrier is None else (carrier,)),

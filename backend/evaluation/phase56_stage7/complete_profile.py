@@ -44,6 +44,9 @@ from typing import Any, Callable, Iterable, Literal, Mapping, Sequence
 from pydantic import Field
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel, VersionToken
+from evaluation.phase56_stage7.typed_support_frames import (
+    stated_support_orientation,
+)
 
 COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v3"
 COMPLETE_PROFILE_CENSUS_VERSION = "phase56-stage7-complete-profile-census-v1"
@@ -2597,10 +2600,24 @@ def _horizontal_support_orientation(draft: Any) -> bool:
     information that was never stated is not evidence of a zero, and an
     entity label that reads "table" or "floor" is not physics authority.
 
-    The one reading admitted here is the source's *own* support-angle
-    statement whose value is exactly zero — stated, owned by the support
-    entity, evidenced, and numerically zero.  Anything else leaves the
-    support's orientation unstated and the profile fails closed.
+    Two readings are admitted, and both are the source's own statement.
+
+    *A typed support frame.*  The source authored a support frame anchored on
+    the support entity and parented to a world frame, with its tangent bound to
+    that world frame's x axis and its normal to its y.  This is the complete
+    statement — it names the reference the orientation is relative to — and it
+    needs no number at all.  The closure has always read exactly this shape;
+    until now the planner did not, so a source that stated its orientation as a
+    frame was reported incomplete before the closure could build it.  One
+    function answers the question for both, and there is no planner variant to
+    drift.
+
+    *A support-owned angle of exactly zero.*  Kept unchanged from the B15
+    hardening: stated, owned by the support entity, evidenced, and numerically
+    zero.
+
+    Anything else leaves the support's orientation unstated and the profile
+    fails closed, exactly as the B15 revocation left it.
     """
 
     surface_ids = {
@@ -2610,12 +2627,18 @@ def _horizontal_support_orientation(draft: Any) -> bool:
     }
     if not surface_ids:
         return False
-    return any(
+    if any(
         item.role.value == "angle"
         and item.subject_id in surface_ids
         and item.evidence_refs
         and _exact_source_zero(item.raw_value)
         for item in draft.quantities
+    ):
+        return True
+    payload = draft.model_dump(mode="json", warnings="none")
+    return any(
+        stated_support_orientation(payload, support_id=support_id) is not None
+        for support_id in sorted(surface_ids)
     )
 
 
