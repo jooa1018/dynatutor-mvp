@@ -100,6 +100,32 @@ tests, lint, typecheck, and production build.
 - hard-safety negatives for every authority/leakage/fallback/correction/root/
   figure/private boundary.
 
+## B28A — attested preparation and the sealed campaign population
+
+The v2 shadow measurement's own attack matrix, added after independent
+verification found that a *complete* ledger is not the same as an *honest* one.
+A context could no longer be omitted, but it could still be relabelled from
+`runtime_completed` to an anticipated `projection_refused` — leaving every
+completeness rule satisfied by a measurement of nothing.
+
+| area | focused evidence |
+|---|---|
+| cross-field validation | state / refusal code / draft payload must describe one context; `migration_refused` pinned unreachable |
+| raw no-gold scan | on the raw document, before validation, on both sides of the trust boundary; normalized key matching |
+| prepare attestation | canonical digest over shared JSON, never a `repr`; file SHA-256 carried separately under its own name |
+| refusal identity | handle-set digest over `(index, handle, code)` triples, so a swap at equal counts is visible |
+| Phase V replay | rebuild from corpus + manifest, compared against the artifacts; no solver, no runtime, no scorer |
+| Phase R binding | full failure set reported, so each control names its own gate; zero runtime calls on refusal |
+| snapshot binding | required field, inside the digest material; redacted view carries digests but no handle-set material |
+| campaign seal | exact 97 / 3 population, refusal identities, corpus SHA and both manifest hashes, as a versioned contract |
+| laundering controls | one context, all 97, identity swap at equal counts, joint input+attestation forgery |
+| import isolation | Phase R, Phase G and Phase V import graphs, by AST rather than substring |
+
+Each control asserts the exact gate name it hits. A control that failed for a
+different reason than intended is treated as no control at all: a state-map
+attack surfacing only as "the file hash changed" would be no evidence that the
+state map is checked.
+
 ## Exact-head workflow gate
 
 The permanent offline workflow must:
@@ -118,3 +144,10 @@ or full corpus material, or call an external model endpoint.
 Final acceptance additionally requires Stage 6 regression, release, Phase 55,
 full backend collection/markers, frontend, performance gates, and a fresh
 read-only Checker with zero blocking findings.  Stage 8 remains not started.
+
+The B28A checker is a separate read-only adversary
+(`run_phase56_stage7_b28a_readonly_checker.py`) that executes the laundering,
+forgery, substitution and isolation attacks against the real types rather than
+reading the source and being satisfied.  It reads only: it never writes to the
+repository, dispatches a workflow, pushes, mutates a pull request, or touches a
+secret.

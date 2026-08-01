@@ -6,7 +6,76 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
-## The gold-scoring and pilot-campaign session (2026-08-01, latest) — read this first
+## The attested-preparation session (2026-08-01, latest) — read this first
+
+Independent verification of the previous checkpoint found one further
+structural fail-open path in the B28 acceptance seal, and this session closed
+only that. No cohort was added or removed, no threshold moved, no physics
+changed, and B29, B32 and Stage 8 were not touched.
+
+**The defect.** The ledger closed *silent omission* — every context gets a row,
+so nothing can leave the run by vanishing. But every completeness rule read the
+runtime input, and the runtime input was an unsigned JSON document. So instead
+of removing a context you relabel one as an anticipated refusal with a null
+draft. Do it to all 97 measurable contexts and the run reports a hundred-row
+ledger, a hundred permitted refusals, zero records, zero wrong, zero unscored,
+zero regressed — and acceptance PASS. The shape changed from **silent
+omission** to **allowed-refusal laundering**; the consequence did not.
+
+**What closes it.** Cross-field validation, so the laundered row cannot be
+spelled while it keeps anything the projection produced. A prepare attestation,
+so Phase M states and hashes what it produced — including *which* contexts were
+refused, not merely how many. A new Phase V that rebuilds the preparation from
+the corpus and the manifest, because every other check is a comparison between
+two documents Phase M wrote and a forger who rewrites both consistently
+satisfies all of them. And a frozen campaign seal pinning this campaign's exact
+97/3 population, so a run coherent about some other population is still not
+this measurement.
+
+Forward-only from `3afed91`; no reset, rebase, amend, squash, force-push, or
+history rewrite.
+
+```
+3afed91  (session start = prior documentation head)
+61a940b  fix(stage7): bind runtime inputs to attested prepare state          [B28A]
+3e0f75f  test(stage7): pin refusal laundering and prepare replay attacks     [B28A]
+```
+
+| Package | Commit | Disposition |
+|---|---|---|
+| B28A prepare attestation + refusal population seal | `3e0f75f` | **`B28A_V2_PREPARE_ATTESTATION_AND_REFUSAL_POPULATION_SEAL_INCOMPLETE`** — blocker `EXACT_MANIFEST_UNAVAILABLE` |
+
+**The blocker.** The exact augmentation manifest (canonical digest
+`c7222978…`, file SHA-256 `95aca084…`) is a restricted out-of-tree artifact and
+is not present in this environment. Every structural gate B28A adds is
+implemented, tested and independently checked; the *augmented* half of the
+public campaign — 15 augmented records, 9 newly solved, the three closed
+cohorts — could not be re-measured, because every one of those numbers is a
+function of the manifest. No augmented v2 number is restated here as
+re-measured, and none is withdrawn.
+
+Running Phase M against the approved corpus with the seal enforced fails on
+exactly two gates and no others:
+
+```
+STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:campaign_seal_manifest_digest_mismatch,
+                                  campaign_seal_manifest_file_sha_mismatch
+```
+
+which is itself the evidence for the other nine sealed values: the corpus hash,
+the context count, the context order, the handle sequence, the prepared-state
+map, the refusal handle set and both count vectors all matched the seal against
+the real archive.
+
+**Unchanged at this head.** `OFFICIAL_V1` strict: 41/81 supported correct, 0
+wrong, 0 solved-but-unscored, 12/12 deferred, 0 blocked-numeric, 0
+blocked-silent, 0 deferred-silent, 0 of 23 hard-safety signals non-zero, lanes
+C/D/E PASS. Strict still exits 2 on the Stage-7-incomplete gates, as it has
+throughout. The v1 terminal map is byte-identical to the previous checkpoint's.
+
+`STAGE_7_IN_PROGRESS / NOT_ACCEPTED` and `STAGE_8_NOT_STARTED` stand.
+
+## The gold-scoring and pilot-campaign session (2026-08-01, earlier) — read this first
 
 The previous session reported a v2 shadow result of **3 newly solved, 0 wrong**.
 The first number was a real runtime measurement. The second was not a

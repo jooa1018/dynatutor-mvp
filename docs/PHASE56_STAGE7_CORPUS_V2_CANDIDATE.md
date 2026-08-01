@@ -1,6 +1,6 @@
 # Phase 56 Stage 7 — public corpus v2 candidate contract
 
-Disposition: **`V2_CANDIDATE_GOLD_SCORED_AND_INDEPENDENTLY_RE_SCORABLE — three cohorts closed, two walls measured, the measurement itself fail-closed`**
+Disposition: **`V2_CANDIDATE_GOLD_SCORED_AND_INDEPENDENTLY_RE_SCORABLE — three cohorts closed, two walls measured, the measurement itself fail-closed; the preparation is now attested and independently replayed, and the campaign population is sealed`**
 
 This document records a *candidate* contract and an *experimental* measurement.
 The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
@@ -8,7 +8,314 @@ The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
 
 ---
 
-## -2. The independently re-scorable checkpoint (2026-08-01, latest) — supersedes §-1 below where they differ
+## -3. The attested-preparation checkpoint (2026-08-01, latest) — supersedes §-2 below where they differ
+
+Independent verification of the §-2 checkpoint found one further structural
+fail-open path in the B28 acceptance seal. It is in the *measurement*, not in
+the physics; no cohort was added, none was removed, and no threshold moved.
+
+### -3.1 A context could be excused instead of omitted
+
+§-2 closed *silent omission*. Every context in the corpus now gets exactly one
+ledger row, so a context that failed can no longer leave the run by vanishing
+from the snapshot, the handle set, the gold index and every count at once.
+
+What it did not close is that all of those rules read the runtime input, and the
+runtime input is an ordinary JSON document nobody had signed. So the attack
+moves from *removing* a context to *relabelling* one:
+
+```json
+{"scoring_handle": "<the real handle>", "context_index": 42,
+ "prepared_state": "projection_refused",
+ "refusal_code": "projection_refused_no_draft",
+ "draft_payload": null}
+```
+
+Nothing is missing. The handle is expected, present and unique; the row is a
+refusal the contract *anticipates* rather than a blocking one; the record set
+and the completed-row set still agree. Applied to all 97 measurable contexts,
+the run reports:
+
+| accounting | value |
+|---|---:|
+| ledger total | 100 |
+| runtime_completed | 0 |
+| projection_refused | 100 |
+| runtime records | 0 |
+| missing handles | 0 |
+| unknown handles | 0 |
+| duplicate handles | 0 |
+| blocking refusals | 0 |
+| wrong / unscored / regressed | 0 / 0 / 0 |
+| acceptance | **PASS** |
+
+`snapshot.expected_handles` was derived from the snapshot's own ledger rather
+than from an independent statement of what was prepared, and Phase G scores
+`snapshot.records` — so an empty measurement passed. The defect's shape changed
+from **silent omission** to **allowed-refusal laundering**; its consequence did
+not.
+
+### -3.2 Four structures, and what each one is for
+
+Each closes a different reach of the attack, and none of them is sufficient
+alone.
+
+**Cross-field validation** (`RuntimeContextInputV2`). `prepared_state`,
+`refusal_code` and `draft_payload` now have to describe one context. A
+completed context without a draft, a refusal with one, a refusal under the
+wrong code, and a refusal still carrying the projection's own outputs —
+`problem_text`, `projection_terminal`, the symbol and authority sets — are all
+unrepresentable, each under its own named conflict. `migration_refused` is
+refused as unreachable rather than merely unused: `build_candidate_archive`
+either resolves an entry, leaves the record unresolved with an empty
+augmentation (still a preparable context), or raises and aborts the whole
+preparation, so no path turns a migration refusal into a runtime input row.
+`runtime_failed` and `snapshot_rejected` are decided by phases that have not
+run when the file is written.
+
+**The prepare attestation** (`PrepareAttestationV1`). Phase M now states what it
+produced and hashes the statement: context order, handle sequence, prepared
+state per context, which contexts were refused and under which code, both count
+vectors, and the corpus, manifest, candidate and runtime-input hashes — each
+carried twice, as a canonical digest over content *and* as a SHA-256 over the
+file's bytes, under names that say which is which. `refusal_handle_set_digest`
+covers sorted `(context_index, scoring_handle, refusal_code)` triples rather
+than a count, because a swap that refuses a solvable context and admits an
+unsolvable one preserves every count. Every digest goes through one shared
+canonical JSON spelling; the scorecard previously hashed a `repr`, which
+encodes insertion order and the interpreter rather than the content.
+
+**Phase V, the independent prepare replay verifier.** Every check above is a
+comparison between two documents Phase M wrote, and a forger who edits the
+runtime input and re-derives the attestation from it produces a pair that agrees
+with itself perfectly — Phase R has nothing to object to. That is not a defect
+in Phase R; it is the boundary of what any artifact-to-artifact check can do.
+Phase V goes back to the two inputs that cannot be quietly forged — the public
+corpus archive, whose SHA-256 is frozen and published, and the augmentation
+manifest, whose digest is published — reruns the deterministic preparation, and
+compares its own result against the bytes on disk. It runs *between* Phase M
+and Phase R, so a preparation that fails verification reaches the pipeline zero
+times. It executes no solver, runs no pipeline, scores nothing, compares no
+answer, and writes nothing but its own report.
+
+**The frozen campaign population seal.** Generic completeness asks whether the
+run is internally consistent; the seal asks whether it is *this campaign*. It
+pins the exact 97/3 split, the identity of the three refusals, the context
+order, the handle sequence, the corpus SHA-256 and both manifest hashes, as a
+separate versioned acceptance contract rather than counts hard-coded into the
+ledger's enums.
+
+### -3.3 The pipeline is now four processes
+
+```
+Phase M prepare  →  Phase V verify prepare  →  Phase R runtime  →  Phase G score
+```
+
+Phase R gains `--prepare-attestation` and re-scans the **raw** bundle for gold
+members at the trust boundary, before any model validates it — `draft_payload`
+is an open mapping, so a nested expectation satisfies its type. The scan also
+runs before the write in Phase M, so a bundle naming a gold member never exists
+on disk as a complete file; previously it was written first and scanned after.
+Both scans match normalized keys, so `expectedAnswer` is the same forbidden name
+as `expected_answer`.
+
+The full restricted snapshot carries a required `prepare_binding` — required
+rather than optional, because an omitted binding would be a fail-open path — and
+it is inside the snapshot's digest material. The publishable redacted view
+carries the whole-document digests and the aggregate counts but **not** the
+handle-set digests: a scoring handle is `sha256(archive_sha256 ‖ context_index)`,
+the archive SHA-256 is published and the corpus has a hundred contexts, so a
+digest over the refused handles is brute-forceable back to which corpus
+positions were refused.
+
+### -3.4 Negative controls
+
+The eight §-2 controls are preserved. Each control below asserts the *name* of
+the gate it hits, not merely that something failed; a state-map attack that only
+surfaced as "the file hash changed" would be no evidence that the state map is
+checked at all.
+
+| # | Attack | Gate | Exit | Pipeline entered |
+|---|---|---|---:|---|
+| A1 | one runtime-completed context relabelled `projection_refused` | `prepare_prepared_state_map_mismatch` | 2 | no |
+| A2 | all 97 relabelled | `prepare_prepared_state_map_mismatch`, `…state_counts_mismatch`, `…refusal_handle_set_mismatch` | 2 | no |
+| A3 | one byte of the runtime input edited | `prepare_runtime_input_file_sha_mismatch`, `…digest_mismatch` (and *not* the state map) | 2 | no |
+| A4 | gold key nested deep inside `draft_payload` | raw no-gold scan | 2 | no |
+| A5 | `runtime_completed` with `draft_payload=null` | `runtime_completed_without_draft` | 2 | no |
+| A6 | `projection_refused` carrying a draft | `projection_refused_with_draft` | 2 | no |
+| A7 | refusal count held at 3, refused handles swapped | `prepare_refusal_handle_set_mismatch` (and *not* a count gate) | 2 | no |
+| A8 | attestation edited | attestation integrity | 2 | no |
+| A9 | runtime input **and** attestation forged together | `replay_prepared_state_map_mismatch` at Phase V | 2 | no |
+| A10 | snapshot `prepare_attestation_digest` altered | snapshot digest / Phase G binding | 2 | no |
+| A11 | different exact code head | `prepare_exact_code_head_mismatch` | 2 | no |
+| A12 | frame-less angle=0 admission restored | B30 `stated_support_orientation` | 2 | n/a |
+
+A9 is the one that decides whether any of the rest holds, and it is run twice:
+once at the function level, which shows the forged pair satisfies Phase R's
+binding check completely, and once end to end over a rebuild of an
+independently authored corpus, where Phase V refuses it.
+
+Every runtime-side control asserts three separate things, because two of them
+have been true while the third was not: process exit 2, the named gate, and the
+pipeline never entered — the last checked both by the absence of any artifact
+and by the absence of the unexpected-exception marker the synthetic drafts would
+have produced had the run loop been reached. A control group runs an untampered
+pair and asserts that marker *is* present, so a broken harness cannot make the
+negatives pass silently.
+
+### -3.5 What was measured, and what could not be
+
+The population half of the seal was regenerated from the approved public corpus
+`cc8d8b27…` by two independent rebuilds that agreed, and it is *manifest-
+independent* by construction: a context's prepared state is decided by
+`project_case_to_draft`, which reads the v1 record and nothing else. That was
+confirmed empirically by rebuilding against two manifests with different digests
+and getting the same four population digests.
+
+| sealed value | source |
+|---|---|
+| corpus SHA-256 `cc8d8b27…` | the approved archive, hashed here |
+| expected context count `100` | rebuilt twice |
+| `context_index_set_digest` `9dd50adb…` | rebuilt twice |
+| `expected_handle_set_digest` `571e7c40…` | rebuilt twice |
+| `prepared_state_map_digest` `d66a27bc…` | rebuilt twice |
+| `refusal_handle_set_digest` `84efd880…` | rebuilt twice |
+| 97 runtime-completed / 3 projection-refused | rebuilt twice |
+| manifest canonical digest `c7222978…` | **the §-2 checkpoint's own record, not a rebuild** |
+| manifest file SHA-256 `95aca084…` | **the §-2 checkpoint's own record, not a rebuild** |
+
+**The exact augmentation manifest is not available in this environment.** It is
+a restricted out-of-tree artifact and was never committed, by design. Running
+Phase M against the approved corpus with the seal enforced therefore fails, and
+it fails on exactly two gates and no others:
+
+```
+STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:campaign_seal_manifest_digest_mismatch,
+                                  campaign_seal_manifest_file_sha_mismatch
+```
+
+That result is itself the strongest available evidence about the other nine
+sealed values: the corpus hash, the context count, the context order, the handle
+sequence, the prepared-state map, the refusal handle set and both count vectors
+all matched the seal against the real archive. What could not be re-measured is
+the augmented half of the campaign — 15 augmented records, 9 newly solved, the
+three closed cohorts — because every one of those numbers is a function of the
+manifest.
+
+So this checkpoint is recorded as **`B28A_… INCOMPLETE`** under the blocker
+`EXACT_MANIFEST_UNAVAILABLE`, and no augmented v2 number is restated as
+re-measured here. The §-2 figures stand as previously recorded; they are not
+re-derived, and they are not withdrawn.
+
+### -3.6 Verification at this exact head
+
+Everything below was produced at the final code head, on a quiet host, with the
+solver's isolation workers running serially.
+
+| check | command | result |
+|---|---|---|
+| focused suite | `pytest -q tests/test_phase56_stage7_corpus_v2_prepare_attestation_seal.py` | 93 passed, 0 failed |
+| fast Stage 7 | `pytest -q -k stage7 -m "not slow"` | 1380 passed, 0 failed, 183 s |
+| slow-inclusive Stage 7 | `pytest -q -k stage7 -m "slow or not slow"` | 1848 passed, 0 failed, 1017 s |
+| backend collection | `pytest --collect-only -q` | 4536 collected, **0 errors** |
+| read-only checker | `run_phase56_stage7_b28a_readonly_checker.py` | 24 checks, **0 blocking findings** |
+
+`OFFICIAL_V1` strict, under the dependency lock at this head, is unchanged:
+
+| metric | value |
+|---|---:|
+| supported correct | 41 |
+| supported wrong | 0 |
+| solved-but-unscored | 0 |
+| deferred matched | 12 / 12 |
+| blocked numeric answers | 0 |
+| blocked silent solves | 0 |
+| deferred silent solves | 0 |
+| hard-safety signals non-zero | 0 of 23 |
+| lanes C / D / E | PASS / PASS / PASS |
+
+The strict process exits 2, as it has throughout Stage 7: the failing gates are
+`strict_supported_81_solved`, `strict_unsupported_other_2`,
+`strict_terminal_mapping_100_percent`, `strict_unscored_zero` and the six
+100 %-metric gates — every one of them a Stage-7-incomplete gate, not a
+regression introduced here. **Strict exit 2 ≠ this package failed.**
+
+The v1 terminal map did not move. Run over all 100 public contexts with no
+augmentation, at the §-2 checkpoint `3afed91` and at this head, the two maps are
+**byte-identical**, with the distribution unchanged:
+
+| Terminal | Count |
+|---|---:|
+| solved | 41 |
+| compiler_failure | 34 |
+| verified_unsupported | 12 |
+| compiler_unsupported | 8 |
+| projection_refused | 3 |
+| needs_confirmation | 2 |
+
+The generator that produced the §-2 map's recorded SHA-256
+`28965972…` was an out-of-tree script that was not preserved, so that exact
+number could not be reproduced from a different serializer. What is recorded
+here is the comparison that could be made: the same probe run at both commits,
+byte-identical, with the distribution matching §-2's exactly.
+
+### -3.7 Deterministic rebuild, and the artifact digests
+
+The whole `M → V → R → G` pipeline was run twice, independently, at the same
+code head, corpus and manifest. All eight artifacts are **byte-identical**:
+
+| artifact | bytes | file SHA-256 |
+|---|---:|---|
+| candidate archive | 73 982 | `56213da9a3550fa1fe9a93ad73c3d7e220bb6f3b56c3afc0bdaa67790ed3d9c0` |
+| runtime input | 1 351 792 | `8251bb3aabfae27d36c141acd290edf36a36aecf5b91e56ef5c560d5fe69deda` |
+| prepare attestation | 2 054 | `f3d6f528380707a9c95a50798778d9e4bc2aee2557f72b83783f265a721cc458` |
+| prepare verification report | 2 386 | `07a51b845d94126a19e939e91282067b61e658ead99452cd0484614ee5d4b157` |
+| full runtime snapshot | 109 728 | `bc91d938cfaa2e62f7395264ecd1d4bf278b0f98af4cc0d7c5aab20c65d5b18e` |
+| redacted runtime view | 70 850 | `e2bece9146ce9d65f64d0b1219d27848dc6946f1f7123e8b612a2831c0bac13a` |
+| scored shadow report | 2 631 | `2c4176b7be3ab7e97aae11fa3fd48a9507383a706aef73f1cc38441e72b62e12` |
+| scorecard | 1 606 | `69ca9ae6ab131a09acc82cda2271fbc33557bd92d648fd845fbf2bdc64858dd8` |
+
+Canonical digests are separate numbers about content, and are never quoted as
+file hashes:
+
+| canonical digest | value |
+|---|---|
+| candidate archive | `9404249bc2be4e4840abc906c5ec6c04c2976d2bdb1507d6bab981b2c93ad110` |
+| runtime input | `70c50ed2ad64a00837246ba8eb1cc001c5a6030ed69dcf631e8106add80b3bf8` |
+| prepare attestation | `a26dea29a9ce399afe24f828521712be44ca771d019eb1745ebfa91f7de06d3e` |
+| `context_index_set_digest` | `9dd50adbd73bc58bb391efca85d1436fcc4c19cb0bc2495ec0eeb4c1e42f6952` |
+| `expected_handle_set_digest` | `571e7c40a8999bc04b820ac8d26f5278a76039a06f254da1cef72398711205fd` |
+| `prepared_state_map_digest` | `d66a27bc98baed7d8c1f8c3210e9b3319b6d00fdd06143b8d515649d93df5c84` |
+| `refusal_handle_set_digest` | `84efd8804e234c4f280b8e8dda665e70011732b53af6c5443d95f2a1d4966cc5` |
+| runtime snapshot | `f32a20b8da4fa300f5820e75984b8e82086152add247245003aaafab5873cce4` |
+| scorecard | `e1fffdef27f37aca80927679ff33d76b73b912c077602bda55062174a11dcb38` |
+
+Two things about this run, stated plainly so it is not misread. It is the
+**unaugmented baseline**: the manifest is empty, so `augmented = 0`,
+`newly_solved = 0`, `cohort_yield = 0`, and the 41 all-shadow-correct is the v1
+result, not a v2 yield. And the four population digests above are exactly the
+values the campaign seal pins — the same numbers the seal check matched against
+the real archive — which is why the manifest is the only thing missing.
+
+No artifact carries a wall-clock timestamp or a path; that is what makes the two
+runs byte-identical rather than merely equivalent.
+
+### -3.8 What this checkpoint still is not
+
+`STAGE_7_ACCEPTED`, `STAGE_8_READY_TO_START`, `PUBLIC_CORPUS_V2_OFFICIAL` and
+`V1_TARGET_REPLACED` are **not** declared. B29 and B32 remain `INCOMPLETE`, and
+this package did not touch either. The official v1 public score is **41/81**
+and is unchanged; the experimental v2 shadow's 9 newly-solved-correct is a
+separate number about a candidate archive, and the two are never added.
+
+B28A itself is recorded as **`INCOMPLETE`** under the blocker
+`EXACT_MANIFEST_UNAVAILABLE`. Every structural gate it adds is implemented,
+tested and verified; the augmented half of the public campaign could not be
+re-measured, and nothing about it is restated here as though it had been.
+
+---
+
+## -2. The independently re-scorable checkpoint (2026-08-01, earlier) — supersedes §-1 below where they differ
 
 Independent verification of the §-1 checkpoint found two defects in the
 *measurement*, not in the physics, and one in the B30 admission policy. All
@@ -586,18 +893,38 @@ backend/tools/run_phase56_stage7_semantic_preservation.py --corpus-archive … -
 # the v2 candidate archive and its shadow evaluation, end to end
 backend/tools/run_phase56_stage7_v2_shadow.py \
   --corpus-archive … --manifest … --candidate-archive … --runtime-input … \
+  --prepare-attestation … --verification-report … \
   --runtime-snapshot … --redacted-view … --shadow-report … --scorecard … \
-  --exact-code-head <exact head>
+  --exact-code-head <exact head> \
+  --campaign-seal phase56-stage7-v2-public-campaign-v1
 
-# or as the three separate processes it invokes, which is what makes the
-# gold-isolation claim checkable rather than merely stated
+# or as the four separate processes it invokes, which is what makes the
+# gold-isolation claim checkable rather than merely stated.  The order is
+# load-bearing: a preparation that fails Phase V never reaches the pipeline.
 backend/tools/run_phase56_stage7_v2_shadow_prepare.py \
-  --corpus-archive … --manifest … --candidate-archive … --runtime-input …
+  --corpus-archive … --manifest … --candidate-archive … --runtime-input … \
+  --prepare-attestation … --exact-code-head <exact head> \
+  --campaign-seal phase56-stage7-v2-public-campaign-v1
+backend/tools/run_phase56_stage7_v2_shadow_verify_prepare.py \
+  --corpus-archive … --manifest … --candidate-archive … --runtime-input … \
+  --prepare-attestation … --verification-report … --exact-code-head <exact head> \
+  --campaign-seal phase56-stage7-v2-public-campaign-v1
 backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
-  --runtime-input … --runtime-snapshot … --redacted-view …
+  --runtime-input … --prepare-attestation … \
+  --runtime-snapshot … --redacted-view … --exact-code-head <exact head>
 backend/tools/run_phase56_stage7_v2_shadow_score.py \
-  --corpus-archive … --runtime-snapshot … --shadow-report … --scorecard …
+  --corpus-archive … --runtime-snapshot … --prepare-attestation … \
+  --shadow-report … --scorecard … --expected-code-head <exact head> \
+  --campaign-seal phase56-stage7-v2-public-campaign-v1
+
+# the read-only adversary, which executes the attacks rather than reading the
+# code and being satisfied
+backend/tools/run_phase56_stage7_b28a_readonly_checker.py --report …
 ```
+
+`--campaign-seal` is not optional in practice: an attestation that names no
+campaign fails the seal under `campaign_seal_absent_from_attestation`, so
+declining to name one is itself a refusal rather than a way around it.
 
 Every command exits 0 only when its own acceptance passes, and 2 otherwise.
 
