@@ -4020,17 +4020,28 @@ def plan_complete_profile(
     draft: Any,
     *,
     approved_assumption_ids: Iterable[str] = (),
+    _facts: "tuple[str, _DraftFacts] | None" = None,
 ) -> CompleteProfilePlanV1:
     """Decide one profile against one Draft without touching either.
 
     The Draft is read, never written.  The returned plan is frozen and records
     the fingerprint of the Draft it saw, so a caller can prove no mutation
     occurred by re-fingerprinting afterwards.
+
+    `_facts` is an internal fast path for `plan_every_profile`, which asks the
+    same Draft twenty-four questions in a row.  Reading the Draft's facts is
+    read-only and deterministic, so computing them once per Draft rather than
+    once per profile changes no answer — it removes twenty-three redundant
+    passes over the same immutable structure.  A caller that omits it gets
+    exactly today's behaviour.
     """
 
     signature = _PROFILES_BY_ID[profile_id]
-    fingerprint = draft_structure_fingerprint(draft)
-    facts = _DraftFacts(draft, approved_assumption_ids)
+    if _facts is None:
+        fingerprint = draft_structure_fingerprint(draft)
+        facts = _DraftFacts(draft, approved_assumption_ids)
+    else:
+        fingerprint, facts = _facts
 
     # A query that states an extremal objective is a different question from
     # the exact-value one, and only a profile that explicitly understands the
@@ -4083,15 +4094,31 @@ def plan_complete_profile(
     )
 
 
+def shared_draft_facts(
+    draft: Any, approved_assumption_ids: Iterable[str] = ()
+) -> "tuple[str, _DraftFacts]":
+    """Read one Draft's facts once, for a caller about to ask many profiles.
+
+    Reading is total and read-only, so sharing the result across profiles
+    changes no answer.  Callers that plan a single profile do not need this.
+    """
+
+    return (
+        draft_structure_fingerprint(draft),
+        _DraftFacts(draft, tuple(approved_assumption_ids)),
+    )
+
+
 def plan_every_profile(
     draft: Any, *, approved_assumption_ids: Iterable[str] = ()
 ) -> tuple[CompleteProfilePlanV1, ...]:
     """Plan every profile against one Draft, in a stable order."""
 
     approved = tuple(approved_assumption_ids)
+    shared = (draft_structure_fingerprint(draft), _DraftFacts(draft, approved))
     return tuple(
         plan_complete_profile(
-            item.profile_id, draft, approved_assumption_ids=approved
+            item.profile_id, draft, approved_assumption_ids=approved, _facts=shared
         )
         for item in _PROFILES
     )
@@ -4235,5 +4262,6 @@ __all__ = [
     "build_complete_profile_census",
     "draft_structure_fingerprint",
     "plan_complete_profile",
+    "shared_draft_facts",
     "plan_every_profile",
 ]

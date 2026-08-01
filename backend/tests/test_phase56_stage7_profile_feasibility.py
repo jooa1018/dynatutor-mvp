@@ -77,6 +77,18 @@ from evaluation.phase56_stage7.profile_feasibility import (
 )
 from support.phase56_stage7_corpus_fixtures import build_case
 
+# This suite runs the whole Lane B pipeline once per (context, applicable
+# profile) — the isolation instrument's point is that each profile is measured
+# on its own pristine Draft, so the work cannot be shared.  It costs ~115
+# seconds, which is a quarter of the *entire* budget of a fast shard, and the
+# fast/slow split exists to keep the fast lane inside that budget.  It belongs
+# in the slow lane: 16 node-sharded workers rather than 4 file-sharded ones.
+#
+# Nothing is skipped by this.  Both lanes run in the same workflow, both assert
+# selected == collected in their own partition audit, and the release gate
+# requires both.
+pytestmark = pytest.mark.slow
+
 
 # --------------------------------------------------------------------------
 # Independently authored fixtures

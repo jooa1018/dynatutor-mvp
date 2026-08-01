@@ -40,6 +40,7 @@ from evaluation.phase56_stage7.complete_profile import (
     PlanDisposition,
     ProfileId,
     plan_complete_profile,
+    shared_draft_facts,
 )
 from evaluation.phase56_stage7.complete_profile_application import (
     ApplicationOutcome,
@@ -255,11 +256,19 @@ def measure_profile_feasibility(
         if not projection.projected:
             continue
         context_count += 1
+        # One Draft, twenty-four questions.  Its facts are read-only and
+        # deterministic, so they are read once here rather than once per
+        # profile; the answers are identical and twenty-three redundant passes
+        # over the same immutable structure are not made.
+        shared_facts = shared_draft_facts(
+            projection.draft, projection.approvable_assumption_ids
+        )
         for profile_id in profile_order:
             plan = plan_complete_profile(
                 profile_id,
                 projection.draft,
                 approved_assumption_ids=projection.approvable_assumption_ids,
+                _facts=shared_facts,
             )
             if plan.disposition is PlanDisposition.not_applicable:
                 continue
