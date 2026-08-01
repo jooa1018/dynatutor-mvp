@@ -1,6 +1,6 @@
 # Phase 56 Stage 7 — public corpus v2 candidate contract
 
-Disposition: **`V2_CANDIDATE_GOLD_SCORED — three cohorts closed, two walls measured`**
+Disposition: **`V2_CANDIDATE_GOLD_SCORED_AND_INDEPENDENTLY_RE_SCORABLE — three cohorts closed, two walls measured, the measurement itself fail-closed`**
 
 This document records a *candidate* contract and an *experimental* measurement.
 The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
@@ -8,7 +8,177 @@ The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
 
 ---
 
-## -1. The gold-scored checkpoint (2026-08-01, latest) — supersedes §0 below where they differ
+## -2. The independently re-scorable checkpoint (2026-08-01, latest) — supersedes §-1 below where they differ
+
+Independent verification of the §-1 checkpoint found two defects in the
+*measurement*, not in the physics, and one in the B30 admission policy. All
+three are corrected forward-only; no cohort was added and none was removed.
+
+### -2.1 A context could leave the measurement silently
+
+The shadow runner walked the corpus with two `continue` statements — one for a
+refused projection, one for a bare `except Exception` — and each removed the
+context from the run entirely. It left no runtime record, so it was absent from
+the snapshot; absent from the snapshot, absent from the scored handle set;
+absent from the handle set, absent from the gold index built off that set. A
+context that failed was therefore indistinguishable from one that never existed,
+and the surviving contexts could carry an acceptance PASS on their own. The
+report's zeroes were zeroes about a subset nobody had chosen.
+
+Every context now gets exactly one **ledger** row in a closed vocabulary
+(`runtime_completed`, `projection_refused`, `migration_refused`,
+`runtime_failed`, `snapshot_rejected`), and the snapshot cannot be frozen unless
+those rows account for every expected handle, match the records exactly, and
+carry no blocking refusal. The reason catalogue is an enum rather than
+`type(exc).__name__`, so an unanticipated exception is a blocking failure by
+construction instead of a new key in a counter that acceptance never read. The
+gold index is built over the whole corpus rather than over the positions the
+snapshot happens to carry — which is what lets the two sets disagree and be
+caught disagreeing.
+
+### -2.2 A failed acceptance still exited zero
+
+The runner printed `ACCEPTANCE=FAIL:...` and then `return 0`. Every shell and
+CI step reading the exit status was told the measurement had succeeded. Both
+phase commands now return 2 on any acceptance failure, from the same
+`acceptance_failures` value the scorecard carries — one source of truth for the
+printed disposition and the process status.
+
+### -2.3 The stored snapshot could not be re-scored by anyone
+
+What reached disk was the *redacted view*, with the pairing handles stripped,
+while the scorer read the in-memory object. The stored artifact could not be
+re-loaded as a snapshot, could not recompute its own digest, and was not the
+thing that had been measured.
+
+Two artifacts now, with separate models and separate versions. The **full
+restricted runtime snapshot** carries handles and answers, re-reads and
+re-validates from its own bytes, and is the only input the scorer accepts. The
+**public redacted view** carries no handle *in its type*, states
+`is_scoring_input: false`, and references the full snapshot's digest rather than
+presenting one of its own under that name.
+
+### -2.4 Gold isolation is now process-level
+
+One process held `PublicCorpusCaseV1` objects — which contain `gold` — across
+the whole pipeline, so no test could show the runtime phase *could not* have
+read an expectation. The run is three commands invoked as separate processes:
+
+```
+run_phase56_stage7_v2_shadow_prepare.py   # corpus + manifest -> candidate archive, gold-free bundle
+run_phase56_stage7_v2_shadow_runtime.py   # bundle only       -> full snapshot + redacted view
+run_phase56_stage7_v2_shadow_score.py     # snapshot from disk + corpus -> scored report, scorecard
+```
+
+Phase R's input is a `ShadowRuntimeInputV2`, a type with no field an expected
+answer, expected terminal, expected failure code, family, case id or split could
+be written into; it never opens the corpus archive. Phase G imports no compiler,
+solver or projection, so it cannot re-run the pipeline having seen the gold.
+
+### -2.5 B30: one orientation policy, not two
+
+The planner admitted a horizontal support on two readings — a source-authored
+typed frame, *or* a support-owned angle of exactly zero — while the closure, the
+compiler contract and the law recognizer read only the frame. An angle-only
+Draft planned complete and then reached a closure that refused it. The bare zero
+is also exactly what the B15 revocation established is not an orientation: it
+names no reference line, so admitting it in the plan re-opened the hole one
+stage earlier.
+
+`draft_states_horizontal_support` is now the one reading for every stage, and it
+reaches `stated_support_orientation` — the same object the closure binds. A
+numeric zero beside a frame is still read as a consistency datum; it can no
+longer *be* the orientation, and a frame-less v1 table-pulley record stays
+revoked.
+
+### -2.6 The measured result at this exact head
+
+| Figure | Value |
+|---|---:|
+| Corpus archive SHA-256 | `cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef` |
+| Augmentation manifest digest | `c72229789cd417c70eb2533212508b259a9f8df903415f1f6aac710464929328` |
+| Candidate archive digest | `c8c33d22c99df9802868ebd36c324f4e77151fd6c2ac01957dee9b695f1500ce` |
+| Runtime input digest | `306a4a23933b40e46b61a631040a19d1dca003284e5e83d0b5bf8a3ce7655d7b` |
+| Full runtime snapshot digest | `9ad2b05719b3a8ccae4004a3000709e7b40100c3ab571e43aea6f1cebbf2a0dd` |
+| Full snapshot file SHA-256 | `076eecdcc1036535b435447e1f6926c779ea43180a03a41ef0e07aeb2fb4fac8` |
+| Redacted view file SHA-256 | `5b1ee75104c2efd42b9b37f9eafe68c9b13a3e8844648a110c1edebf04555c5c` |
+| Scored report file SHA-256 | `b7b7916f1267e22a3a06e7729e834525c4252560dfbd7fbaea54dc8e7f04d7c1` |
+| Scorecard file SHA-256 | `a783fab18d88302ab10c59d6b088e8740b88949ef137cba0b5e2515f14f9a20b` |
+| Scorecard digest | `ba12ccf47f7174db5201874e06d0acfb33a3bfc6885a459416a47e2f64c434ca` |
+| Public ledger total / scoreable / refused / failed | 100 / 97 / 3 / **0** |
+| Missing / unknown / duplicate handles | 0 / 0 / 0 |
+| Augmented contexts | 15 |
+| Newly solved / correct / wrong / unscored | 9 / **9** / 0 / 0 |
+| All shadow correct / wrong / unscored | 50 / 0 / 0 |
+| Forbidden-class solves / regressions / query mismatch | 0 / 0 / 0 |
+| Cohort yield | 3 |
+| Deterministic rebuild | byte-identical across all six artifacts |
+| Official status | **not an official score** |
+
+Per cohort, over the 15 augmented contexts:
+
+| Cohort | population | augmented | newly solved | correct | wrong | unscored |
+|---|---:|---:|---:|---:|---:|---:|
+| Pilot vertical-circle limiting contact | 3 | 3 | 3 | 3 | 0 | 0 |
+| B30 table pulley typed frame | 3 | 3 | 3 | 3 | 0 | 0 |
+| B31 incline kinetic motion sense | 3 | 3 | 3 | 3 | 0 | 0 |
+| B29 horizontal contact free body | 3 | 3 | 0 | 0 | 0 | 0 |
+| B32 spring natural-length endpoint | 3 | 3 | 0 | 0 | 0 | 0 |
+
+The B31 correction from §-1.5 is preserved and re-scored: the corrected
+3.0790 m/s² is among the nine correct answers, and the 5.2128 m/s² the
+up-slope-positive reading produced is not.
+
+### -2.7 The v1 terminal map did not move
+
+The B30 admission got *stricter*, so the question a reader should ask is whether
+it took a v1 solve away. It did not, and that is measured rather than argued:
+the unaugmented v1 Draft for all 100 public contexts was run at the baseline
+commit `70c743b` and at this head, and the two terminal maps are **byte-identical**
+(SHA-256 `2896597233738b084ebc2933cdc7c3fc87773ada236d75e328448d206d775f73`).
+
+| Terminal | Count |
+|---|---:|
+| solved | 41 |
+| compiler_failure | 34 |
+| verified_unsupported | 12 |
+| compiler_unsupported | 8 |
+| projection_refused | 3 |
+| needs_confirmation | 2 |
+
+The frame-less v1 table-pulley records are among the 34 `compiler_failure`
+contexts before and after — still revoked, exactly as the B15 revocation
+requires.
+
+### -2.8 Negative controls
+
+Eight deliberate defects, each of which must fail acceptance **and exit 2**:
+a wrong answer injected; a newly solved context with no comparable number; a
+runtime record deleted; an unknown handle added; the snapshot digest corrupted;
+a runtime exception induced in Phase R; a blocked class solved anyway; and a
+frame-less support stated only by a zero angle. All eight exited 2. The B30
+control is run with the removed angle-only branch restored, so it is shown to
+*fire* rather than merely to pass.
+
+### -2.9 What this checkpoint still is not
+
+`STAGE_7_ACCEPTED`, `STAGE_8_READY_TO_START`, `PUBLIC_CORPUS_V2_OFFICIAL` and
+`V1_TARGET_REPLACED` are **not** declared. B29 and B32 remain `INCOMPLETE` —
+both are capability gaps in the closure catalogue, measured rather than assumed,
+and neither is a corpus gap. The official v1 score is unchanged and is never
+added to the shadow result:
+
+```
+OFFICIAL_V1_SUPPORTED_CORRECT = 41/81
+EXPERIMENTAL_V2_SHADOW_NEWLY_SOLVED_CORRECT = 9
+```
+
+These are two numbers about two different archives. `50/81` is not a figure this
+project has ever measured.
+
+---
+
+## -1. The gold-scored checkpoint (2026-08-01, earlier) — supersedes §0 below where they differ
 
 ### -1.1 The shadow measures answers now
 
@@ -413,10 +583,24 @@ backend/tools/run_phase56_stage7_locked_strict.py \
 backend/tools/run_phase56_stage7_authority_census.py --corpus-archive … --output …
 backend/tools/run_phase56_stage7_semantic_preservation.py --corpus-archive … --output …
 
-# the v2 candidate archive and its shadow evaluation
+# the v2 candidate archive and its shadow evaluation, end to end
 backend/tools/run_phase56_stage7_v2_shadow.py \
-  --corpus-archive … --manifest … --candidate-archive … --shadow-report …
+  --corpus-archive … --manifest … --candidate-archive … --runtime-input … \
+  --runtime-snapshot … --redacted-view … --shadow-report … --scorecard … \
+  --exact-code-head <exact head>
+
+# or as the three separate processes it invokes, which is what makes the
+# gold-isolation claim checkable rather than merely stated
+backend/tools/run_phase56_stage7_v2_shadow_prepare.py \
+  --corpus-archive … --manifest … --candidate-archive … --runtime-input …
+backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
+  --runtime-input … --runtime-snapshot … --redacted-view …
+backend/tools/run_phase56_stage7_v2_shadow_score.py \
+  --corpus-archive … --runtime-snapshot … --shadow-report … --scorecard …
 ```
 
+Every command exits 0 only when its own acceptance passes, and 2 otherwise.
+
 All artifacts stay out of the repository. The corpus, the manifest, the candidate
-archive and both reports are never committed.
+archive, the runtime input bundle, the full restricted snapshot, the redacted
+view, both reports and the scorecard are never committed.
