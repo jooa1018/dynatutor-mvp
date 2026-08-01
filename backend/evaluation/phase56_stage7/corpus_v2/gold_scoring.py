@@ -103,24 +103,31 @@ class ScoredContextV1:
 
 def build_gold_index(
     cases: Sequence[Any],
-    context_indices: Sequence[int],
+    context_indices: Sequence[int] | None = None,
     *,
     original_v1_archive_sha256: str,
 ) -> dict[str, ShadowGoldCaseV1]:
     """Pair the gold to the frozen runtime records, by opaque handle.
 
-    Called only after the snapshot is frozen.  `context_indices` are the
-    positions the runtime actually recorded, so a context the runtime skipped
-    gets no gold entry and a solved record with no entry scores `unscored`
-    rather than silently matching the wrong case.
+    Called only after the snapshot is frozen.  `context_indices` defaults to
+    *every* position in the corpus, and that default is the safe one: an index
+    built over only the positions the runtime happened to record is an index
+    that agrees with the snapshot about which contexts exist, so a context
+    dropped from the snapshot is dropped from the pairing too and scores
+    nothing rather than failing.  Building over the whole corpus makes the two
+    sets independent, which is what lets `gold_pairing_failures` below compare
+    them and find a disagreement.
 
     The expected class comes from `scope_adjusted_expected_terminal`, the same
     derivation the official strict scorer uses — a shadow run must not be able
     to disagree with the official gate about which class a case is in.
     """
 
+    positions = (
+        range(len(cases)) if context_indices is None else tuple(context_indices)
+    )
     index: dict[str, ShadowGoldCaseV1] = {}
-    for position in context_indices:
+    for position in positions:
         case = cases[position]
         expected = scope_adjusted_expected_terminal(case, case_index=position)
         answers = case.gold.answers
@@ -191,6 +198,31 @@ def _score_one(
     return built(ContextVerdict.unscored, defect)
 
 
+def gold_pairing_failures(
+    snapshot: ShadowRuntimeSnapshotV2,
+    gold_by_handle: Mapping[str, ShadowGoldCaseV1],
+) -> tuple[str, ...]:
+    """Where the corpus and the snapshot disagree about which contexts exist.
+
+    Two independently built sets: the gold index is derived from the corpus the
+    scorer holds, and the ledger from the run the snapshot recorded.  They must
+    be the same set.  When they are not, one of them lost a context, and which
+    one is exactly the question a run that silently skipped something could not
+    previously be asked.
+    """
+
+    failures: list[str] = []
+    expected = set(snapshot.expected_handles)
+    paired = set(gold_by_handle)
+    if expected - paired:
+        failures.append("shadow_expected_handle_missing")
+    if paired - expected:
+        failures.append("shadow_unknown_handle_present")
+    if len(gold_by_handle) != snapshot.expected_context_count:
+        failures.append("shadow_context_count_mismatch")
+    return tuple(sorted(set(failures)))
+
+
 def score_shadow_snapshot(
     snapshot: ShadowRuntimeSnapshotV2,
     gold_by_handle: Mapping[str, ShadowGoldCaseV1],
@@ -200,12 +232,24 @@ def score_shadow_snapshot(
     The digest check is the sequencing proof: a snapshot that was edited after
     it was frozen — by a scorer feeding a result back, or by anything else —
     cannot present the hash it was sealed with.
+
+    The completeness check is the other half, and it is newer.  A snapshot can
+    be perfectly self-consistent and still be a measurement of a subset nobody
+    chose, because the contexts it dropped are missing from its own accounting
+    as well.  So the ledger is re-checked here, against the scorer's own idea
+    of what the corpus contains, before a single answer is compared.
     """
 
     if not snapshot.digest_is_intact():
         raise GoldScoringRefused(
             "runtime snapshot digest does not match its contents; "
             "the snapshot was not frozen before scoring"
+        )
+    incomplete = snapshot.completeness_failures()
+    if incomplete:
+        raise GoldScoringRefused(
+            "the runtime snapshot does not account for every context: "
+            + ",".join(incomplete)
         )
     registry = gold_scoring_registry()
     return tuple(
@@ -272,6 +316,7 @@ __all__ = [
     "ShadowGoldCaseV1",
     "ShadowScoreTotals",
     "build_gold_index",
+    "gold_pairing_failures",
     "score_shadow_snapshot",
     "totals",
 ]

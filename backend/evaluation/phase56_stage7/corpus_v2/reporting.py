@@ -163,7 +163,16 @@ class ShadowScorecardV2(FrozenStrictModel):
     original_v1_archive_sha256: Sha256
     runtime_snapshot_sha256: Sha256
     exact_code_head: Annotated[str, StringConstraints(max_length=64)] | None = None
+    expected_context_count: int = 0
     context_count: int = 0
+    # Every way the run failed to account for every context, carried on the
+    # scorecard rather than printed beside it.  This is the field that makes
+    # the exit status and the artifact say the same thing: both read
+    # `acceptance_failures`, and there is no path where one is a FAIL and the
+    # other is a zero.
+    completeness_failures: tuple[_Token, ...] = ()
+    ledger_state_counts: tuple[tuple[str, int], ...] = ()
+    ledger_refusal_counts: tuple[tuple[str, int], ...] = ()
     augmented_context_count: int = 0
     unresolved_augmentation_count: int = 0
     baseline_solved: int = 0
@@ -214,6 +223,11 @@ class ShadowScorecardV2(FrozenStrictModel):
             failures.append("regressed")
         if self.query_binding_mismatch:
             failures.append("query_binding_mismatch")
+        # A run that lost a context fails here rather than reporting the
+        # counts of the contexts it kept.  Listed last only because the others
+        # are older; a completeness failure is the most serious of them, since
+        # the remaining numbers are about an unknown subset.
+        failures.extend(self.completeness_failures)
         return tuple(failures)
 
 
@@ -223,11 +237,15 @@ def build_scored_shadow_scorecard(
     *,
     snapshot: Any,
     carrier_coverage: tuple[tuple[str, int], ...] = (),
+    completeness_failures: Iterable[str] = (),
 ) -> ShadowScorecardV2:
     """Aggregate a scored shadow run against the snapshot it was scored from.
 
     Every identifying hash is taken from the snapshot rather than passed in
     again, so a report cannot claim to describe a run it was not built from.
+    The completeness failures are the union of the snapshot's own and the
+    scorer's pairing check, so the artifact records not only what the counts
+    were but whether they were counts of the whole corpus.
     """
 
     rows = tuple(scored)
@@ -238,6 +256,12 @@ def build_scored_shadow_scorecard(
         original_v1_archive_sha256=snapshot.original_v1_archive_sha256,
         runtime_snapshot_sha256=snapshot.runtime_snapshot_digest,
         exact_code_head=snapshot.exact_code_head,
+        expected_context_count=snapshot.expected_context_count,
+        completeness_failures=tuple(
+            sorted(set(completeness_failures) | set(snapshot.completeness_failures()))
+        ),
+        ledger_state_counts=snapshot.ledger_state_counts,
+        ledger_refusal_counts=snapshot.ledger_refusal_counts,
         context_count=snapshot.context_count,
         augmented_context_count=snapshot.augmented_context_count,
         unresolved_augmentation_count=snapshot.unresolved_augmentation_count,

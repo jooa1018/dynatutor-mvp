@@ -45,6 +45,10 @@ from evaluation.phase56_stage7.corpus_v2.reporting import (
     build_scored_shadow_scorecard,
     scored_scorecard_as_dict,
 )
+from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (
+    LedgerState,
+    ShadowLedgerEntryV2,
+)
 from evaluation.phase56_stage7.corpus_v2.runtime_snapshot import (
     RuntimeSnapshotRefused,
     ShadowRuntimeRecordV2,
@@ -117,9 +121,30 @@ def _record(
     )
 
 
-def _snapshot(*records: ShadowRuntimeRecordV2):
+def _ledger(*records: ShadowRuntimeRecordV2, extra=()):
+    """The completeness rows these records are accounted for by.
+
+    Every snapshot now carries one, so the default here is the honest one: a
+    `runtime_completed` row per record, and nothing else.  `extra` lets a test
+    state a corpus that also contained contexts which did not produce records.
+    """
+
+    return (
+        *(
+            ShadowLedgerEntryV2(
+                scoring_handle=record.scoring_handle,
+                state=LedgerState.runtime_completed,
+            )
+            for record in records
+        ),
+        *extra,
+    )
+
+
+def _snapshot(*records: ShadowRuntimeRecordV2, ledger=None):
     return freeze_runtime_snapshot(
         records,
+        ledger=_ledger(*records) if ledger is None else ledger,
         original_v1_archive_sha256=ARCHIVE,
         augmentation_manifest_sha256=MANIFEST,
         candidate_archive_sha256=CANDIDATE,
@@ -425,7 +450,30 @@ def test_a_scored_report_carries_no_case_identity_and_no_handle() -> None:
     assert "case_id" not in body
     assert "problem_text" not in body
     assert "family" not in body
-    assert "expected" not in body.replace("unexpected", "")
+    # Every gold expectation, by name.  The blunt "no substring `expected`"
+    # check this replaces already had to exempt `unexpected_runtime_failure`,
+    # and the completeness accounting adds `expected_context_count` — a count
+    # of contexts in the corpus, which identifies nothing and has to be
+    # published for the "no context went missing" claim to be checkable at all.
+    # Naming the forbidden fields instead of guessing at them by substring is
+    # both stricter and stable against further honest uses of the word.
+    for forbidden in (
+        "expected_answer",
+        "expected_terminal",
+        "expected_failure",
+        "expected_system_type",
+        "future_expected_terminal",
+        "phase55_expected_terminal",
+        "gold_answer",
+        "reference_expression",
+        "tolerance",
+    ):
+        assert forbidden not in body
+    # And nothing else may use the word: the only survivors are the two
+    # completeness names above, so stripping exactly those must leave none.
+    assert "expected" not in body.replace("unexpected", "").replace(
+        "expected_context_count", ""
+    )
 
 
 def test_acceptance_fails_on_an_unscored_new_solve() -> None:
