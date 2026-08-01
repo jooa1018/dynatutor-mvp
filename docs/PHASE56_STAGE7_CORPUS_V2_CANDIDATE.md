@@ -1,6 +1,6 @@
 # Phase 56 Stage 7 — public corpus v2 candidate contract
 
-Disposition: **`V2_CANDIDATE_CORRECTED — first pilot cohort closed in shadow`**
+Disposition: **`V2_CANDIDATE_GOLD_SCORED — three cohorts closed, two walls measured`**
 
 This document records a *candidate* contract and an *experimental* measurement.
 The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
@@ -8,7 +8,119 @@ The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
 
 ---
 
-## 0. The corrected checkpoint (2026-08-01) — supersedes §2, §6 and §7 below
+## -1. The gold-scored checkpoint (2026-08-01, latest) — supersedes §0 below where they differ
+
+### -1.1 The shadow measures answers now
+
+Until this session the shadow runner measured whether an augmented context
+reached `solved_and_verified` and never compared the number it produced.
+`run_shadow_context` took an optional `compare_answer` callback; the public
+runner passed none; every solve came back neither correct nor wrong; the
+aggregate published `wrong: 0`. That zero meant "nothing was compared" and read
+as "nothing was wrong".
+
+Two phases now, and the order is the contract.
+
+*Phase R* projects, compiles, solves and verifies. It reaches no expected
+answer, expected terminal, expected failure code, family or case id, and it ends
+by sealing every context into a frozen `ShadowRuntimeSnapshotV2` and hashing it.
+The record type has no field an expectation could be written into.
+
+*Phase G* opens the gold for the first time, pairs each case to a frozen record
+by an opaque handle derived from the archive digest and the context position,
+and compares. It holds a snapshot rather than a Draft, so it cannot re-run the
+pipeline; a snapshot whose contents no longer match its digest is refused rather
+than scored; and the handles are stripped before any artifact is written.
+
+The comparison is `compare_answer_to_gold`, factored out of the official strict
+scorer and shared by both callers. There is no v2 comparator, no v2 tolerance
+and no v2 unit policy to soften — the shadow scorer carries no float literal, no
+`abs`, no `isclose` and no numeric comparison at all, and a test reads that off
+its AST.
+
+`ShadowScorecardV2` reports `correct`, `wrong` and `unscored` as three separate
+counts, plus `forbidden_class_solve` for a blocked class that solved anyway. A
+newly solved context nobody could score fails acceptance; it is not a pass.
+
+### -1.2 Two bypasses closed
+
+**The empty evidence universe.** The unknown-reference check was guarded on the
+universe being non-empty, so a context with no source evidence and an
+augmentation authoring no quote had an empty universe and every `evidence_refs`
+entry passed unexamined. A carrier cites evidence or it is an assertion, and an
+unknown reference is unknown whether or not anything else is known.
+
+**`AxisSense` as physics authority.** It is descriptive vocabulary; the typed
+`axis(frame, name, sign)` binding is the projection authority. Changing only a
+sense leaves the projection identical, a sense never completes a missing
+binding, and its one power is refusing a cross-frame binding whose two axes
+carry directly opposed senses and a sign that agrees with neither reading.
+Senses from different oppositions — world up against a surface normal — are not
+compared at all: deciding between them would need geometry this contract does
+not carry.
+
+### -1.3 What the contract gained
+
+| Carrier | Change |
+|---|---|
+| `MotionSenseV2` with no `quantity_id` | projects a **value-free directed motion state**: `raw_value: None`, provenance `unknown`, carrying axis, sign, subject, interval and evidence, and asserting no magnitude |
+| slope-tangent motion sense | must use `along_axis_positive`/`along_axis_negative`; `up_slope`/`down_slope` on a self-referentially bound tangent is refused as `slope_sense_requires_axis_relative_statement` |
+| axis binding | refused as `axis_sense_contradicts_binding` when two comparable senses disagree with the sign |
+| derived authority | a slope-bound tangent sense derives `typed_incline_slide_motion`; **no manifest field can name it**, and the authority bundle still checks the Draft's approved set against what the caller declared |
+
+### -1.4 The measured result
+
+| Figure | Value |
+|---|---:|
+| Corpus archive SHA-256 | `cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef` |
+| Augmentation manifest digest | `4c82ccf1dbfc60679865df952649e7cd1dacaa1a25df49ca1bc6eec73a71725f` |
+| Candidate archive SHA-256 | `6cf656a8b2504233802fc4af32a5dffeb7a46afbeb04e76b8d244ec795e32b10` |
+| Runtime snapshot digest | `d3b93e9636d55dc6c1f2e08da94d531f096f840e6ef43fbf834238ff8dbbefdd` |
+| Scored report file SHA-256 | `604f4c67d5ed8ecbb7cd7405bd59f49344fe8a4b742dcf8314e30464e0e3872b` |
+| Scorecard digest | `cf0b2022bc8a06512b2102bc752f49a265f770b9e954dd779d2786c0c72b2087` |
+| Augmented contexts | 15 of 97 |
+| Newly solved / correct / wrong / unscored | 9 / **9** / 0 / 0 |
+| All shadow correct / wrong / unscored | 50 / 0 / 0 |
+| Forbidden-class solves / regressions | 0 / 0 |
+| Cohort yield | 3 |
+| Deterministic rebuild | byte-identical |
+| Official status | **not an official score** |
+
+### -1.5 The defect the scorer caught
+
+On B31's first run the shadow reported **three solved, verified, wrong**
+answers. `SENSE_SIGN` maps `down_slope` to −1, assuming an up-slope-positive
+tangent, while the engine's kinetic-slide law resolves the same axis
+down-slope-positive. The slide reached the up-slope formula: 5.2128 m/s² where
+the physics gives 3.0790. The pre-B28 runner would have reported "newly solved
+3, wrong 0".
+
+The resolution refuses the ambiguity rather than picking a convention, and the
+disagreement itself is pinned as a test so it cannot rot silently.
+
+### -1.6 The two walls
+
+`B29_V2_HORIZONTAL_CONTACT_FREE_BODY_INCOMPLETE` and
+`B32_V2_SPRING_NATURAL_LENGTH_ENDPOINT_INCOMPLETE`. Both cohorts' carriers were
+authored, projected and measured — augmented +6, newly solved +0, regressed 0 —
+so neither is a corpus gap.
+
+B29 stops at `_horizontal_surface_contact_profile`, which admits `sticking` (at
+rest, applied force, a = 0) and `sliding` (moving, no applied force, no
+tangential-acceleration unknown). The B29 shape is moving *with* an applied
+force *and* an unknown acceleration, and no law emits `Σ F_t = m a_t` for a
+horizontal contact.
+
+B32 stops at the closure catalogue: `ProfileId` has no spring-energy member, and
+`_TRANSACTIONS` no spring transaction, though `spring_potential` and
+`kinetic_energy` both exist.
+
+Both are capability gaps, not authority gaps.
+
+---
+
+## 0. The corrected checkpoint (2026-08-01, earlier) — supersedes §2, §6 and §7 below
+
 
 An independent audit found three blocking defects in the first candidate, and
 this session corrected them forward-only.  The sections below are kept as

@@ -6,7 +6,199 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
-## The v2 correction session (2026-08-01, later) — read this first
+## The gold-scoring and pilot-campaign session (2026-08-01, latest) — read this first
+
+The previous session reported a v2 shadow result of **3 newly solved, 0 wrong**.
+The first number was a real runtime measurement. The second was not a
+measurement at all.
+
+`run_shadow_context` took an optional `compare_answer` callback and the public
+runner never passed one, so a solved context came back neither correct nor
+wrong and the aggregate published `wrong: 0` — which meant "nothing was
+compared" and read as "nothing was wrong". This session closed that, and the
+scorer immediately earned its keep by catching three confidently wrong answers
+in a cohort that would otherwise have been booked as yield.
+
+Forward-only from `e8cc866`; no reset, rebase, amend, squash, force-push, or
+history rewrite.
+
+```
+e8cc866  (session start = prior documentation head)
+d19370b  fix(stage7): score frozen v2 shadow outcomes in the gold domain        [B28]
+0a50ccd  engine(stage7): close v2 table-pulley profiles from typed frames        [B30]
+afe95c5  engine(stage7): consume typed incline motion states                     [B31]
+7aba65f  test(stage7): pin the B29 and B32 closure-catalogue walls               [B29/B32]
+3e71494  perf(stage7): answer the frame orientation without serialising a Draft
+8352079  test(stage7): state the B30 support-orientation contract in the B15 suite
+```
+
+| Package | Commit | Disposition |
+|---|---|---|
+| B28 gold-scored shadow + evidence/axis hardening | `d19370b` | **`B28_V2_GOLD_SCORED_SHADOW_AND_EVIDENCE_HARDENING_ACCEPTED`** |
+| B29 V2 horizontal-contact free body | `7aba65f` (evidence) | **`B29_V2_HORIZONTAL_CONTACT_FREE_BODY_INCOMPLETE`** — engine wall |
+| B30 V2 table-pulley typed frame | `0a50ccd` | **`B30_V2_TABLE_PULLEY_TYPED_FRAME_ACCEPTED`** — 3 of 3 |
+| B31 V2 incline kinetic motion sense | `afe95c5` | **`B31_V2_INCLINE_KINETIC_MOTION_SENSE_ACCEPTED`** — 3 of 3 |
+| B32 V2 spring natural-length endpoint | `7aba65f` (evidence) | **`B32_V2_SPRING_NATURAL_LENGTH_ENDPOINT_INCOMPLETE`** — catalogue wall |
+
+### The two scores, which are different objects
+
+**`OFFICIAL_V1` did not change and that is the result.** 41/81 supported, wrong
+0, solved-but-unscored 0. Verified after every engine change by diffing the
+runtime terminal map over all 100 public contexts against the pre-change
+baseline: **byte-identical**, three times.
+
+**`EXPERIMENTAL_V2_SHADOW_SCORED`** — a measurement against an out-of-tree
+candidate archive that is not the frozen public corpus, and never an official
+score:
+
+| Figure | Value |
+|---|---:|
+| Augmented contexts | 15 of 97 |
+| Newly solved | 9 |
+| Newly solved **correct** | **9** |
+| Newly solved wrong | 0 |
+| Newly solved unscored | 0 |
+| All shadow correct / wrong / unscored | 50 / 0 / 0 |
+| Forbidden-class solves | 0 |
+| Regressions | 0 |
+| Cohort yield | 3 |
+| Deterministic rebuild | byte-identical |
+
+The 50 all-shadow correct is 41 pre-existing solves plus the 9 new ones, and
+the 41 scoring correct under this comparator is the same comparator agreeing
+with the official gate — a useful cross-check, not a second score.
+
+### B28 — runtime before gold, and three counts instead of two
+
+Scoring is now sequenced rather than interleaved. *Phase R* projects, compiles,
+solves and verifies without reaching an expected answer, terminal, failure code,
+family or case id, then seals every context into a frozen
+`ShadowRuntimeSnapshotV2` and hashes it. *Phase G* opens the gold for the first
+time, pairs each case to a frozen record by an opaque handle derived from the
+archive digest and the context position, and compares. The scorer holds a
+snapshot rather than a Draft, so it cannot re-run the pipeline having seen the
+answer, and it refuses a snapshot whose contents no longer match the digest it
+was sealed with.
+
+The comparison is not new code. `compare_answer_to_gold` was factored out of the
+official strict scorer and both callers go through it, so a shadow "correct"
+means exactly what an official one means. The shadow scorer contains no float
+literal, no `abs`, no `isclose` and no numeric comparison of its own, and a test
+reads that off its AST rather than trusting the prose.
+
+`ShadowScorecardV2` counts correct, wrong and unscored separately. A newly
+solved context nobody could score fails acceptance instead of vanishing into the
+wrong count; a context whose expected class has no answer and which solved
+anyway is a `forbidden_class_solve`.
+
+Gold isolation is measured, not asserted: changing an expected answer, an answer
+unit, a tolerance or an expected terminal leaves the runtime snapshot's digest
+material byte-identical while the score moves.
+
+**Two bypasses closed with it.** The validator's unknown-evidence check was
+guarded on the universe being non-empty (`if evidence and any(...)`), so a
+context with no source evidence and no authored quote had an empty universe and
+every reference passed unexamined — the check failed *open* in exactly the case
+it exists for. And `AxisSense` is now explicitly not runtime authority: changing
+only a sense leaves the projection identical, a sense never completes a missing
+binding, and its one power is refusing a cross-frame binding whose two axes
+carry directly opposed senses and a sign agreeing with neither. Senses from
+different oppositions — world up against a surface normal — are not compared at
+all, because deciding between them would need geometry this contract does not
+carry.
+
+### B30 — one reading of a stated support orientation, in four places
+
+B15 was revoked because a generic `surface` primitive proves nothing about
+orientation and a support-owned angle of zero fixes no reference. Both hold. The
+contract that replaced them required the source to state the orientation
+*twice*: once as the frame binding that says this support's tangent **is** the
+world's x axis and its normal **is** the world's y, and again as a numeric zero.
+
+The binding is the complete statement — which is why the planner, the closure,
+the compiler contract and the law recognizer all make it mandatory. Demanding
+the zero on top asked the source to repeat itself in a form the public v1 record
+has no field for. Four places asked that question and three had their own
+answer; the reading moved to `typed_support_frames.stated_support_orientation`
+and a test pins that all four are the same object. The numeric zero became an
+optional second statement that must agree when present.
+
+Nothing widened: the frame binding stays mandatory everywhere, a tangent bound
+to world y still states a vertical support, a reversed normal is still a
+different statement, and the frame-less v1 shape the public corpus carries still
+fails closed exactly as B15 left it.
+
+**3 of 3 closed.** A representative context solves at 2.8029 m/s² —
+`m_B g / (m_A + m_B)` for 5 kg and 2 kg.
+
+### B31 — a direction is not a speed, and the scorer proved why that matters
+
+The kinetic-slide law reads `motion_sign` and nothing else, yet both it and the
+closure demanded a positive numeric speed. A corpus could therefore only express
+"it is sliding down the slope" by also inventing a magnitude, and an invented
+magnitude is indistinguishable downstream from a stated one. A value-free
+directed motion record is now admitted — `raw_value: None`, provenance
+`unknown`, carrying axis, sign, subject, interval and the source's own evidence
+— and a stated speed is still checked exactly as before.
+
+It also derives the typed slide-motion authority the law requires, from the
+typed structure alone. A manifest cannot name that authority: there is no
+carrier field for it. The derived ids are declared approvable by the caller and
+the authority bundle still checks that the Draft's approved dispositions equal
+that set, so a carrier cannot approve itself.
+
+**The gold scorer caught a real defect on the first run.** `SENSE_SIGN` maps
+`down_slope` to −1, which assumes an up-slope-positive tangent; the engine's
+kinetic-slide law resolves the same axis down-slope-positive and drives
+`+g sin θ` along it. A slide authored with the slope-relative spelling reached
+the *up-slope* formula and produced three solved, verified, confidently wrong
+answers — **5.2128 m/s² where the physics gives 3.0790**. The three counts
+reported `newly_solved_wrong: 3`. The pre-B28 runner would have reported "newly
+solved 3, wrong 0" and the yield would have been booked.
+
+The fix adds no second convention. A self-referential tangent binding — the only
+kind an incline frame carries — states an identity and no orientation, so
+`up_slope`/`down_slope` on that axis is refused rather than resolved, and the
+axis-relative spelling, whose meaning the binding alone fixes, is required.
+
+**3 of 3 closed**, at 3.0790 m/s² for 25° and μ = 0.12.
+
+### B29 and B32 — the source can say it; the closure catalogue cannot build it
+
+Both were opened and both were carried as far as the v2 contract reaches. Their
+carriers were authored, projected and measured: augmented +6, newly solved +0,
+regressed 0. What stops them is not the corpus.
+
+**B29** — `_horizontal_surface_contact_profile` admits exactly two regimes:
+`sticking` (a body at rest under an applied force, a = 0) and `sliding` (a
+moving body with **no** applied force and **no** tangential-acceleration
+unknown). B29 is a moving body *with* an applied force *and* an unknown
+tangential acceleration, which the sliding branch rejects by construction, and
+nothing emits `Σ F_t = m a_t` for a horizontal contact. There is no
+`ProfileId.horizontal_contact` transaction either.
+
+**B32** — `ProfileId` has no spring-energy member at all. Its only spring entry
+matches period/frequency queries and declares no capability, and `_TRANSACTIONS`
+has no spring transaction. Both `spring_potential` and `kinetic_energy` laws
+exist, so the gap is the free body nobody builds, not the physics.
+
+Closing either needs a new engine law or a new closure transaction — capability
+work, not authority work. That distinction is the whole point of the census, so
+it is pinned as tests reading the catalogue and the engine source directly,
+including the sliding-regime guard read off its own AST.
+
+### What this does not claim
+
+The 9 newly-solved-correct is **not** an official score and must not be added to
+41. It is a measurement against a candidate archive built from a
+human-authored manifest, over 15 of 97 public contexts, on cohorts chosen
+because their sources state what v1 has no field for. Nothing here is a claim
+about private held-out generalization, and nothing here changes the frozen v1
+corpus, the v1 acceptance target, or Stage 7's disposition.
+
+---
+
+## The v2 correction session (2026-08-01, earlier) — superseded in part by the section above
 
 An independent audit found three blocking defects in the v2 candidate below,
 and this session corrected them forward-only from `99789b0` — no reset,

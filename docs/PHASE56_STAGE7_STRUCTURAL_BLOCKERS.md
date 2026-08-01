@@ -1,6 +1,53 @@
 # Phase 56 Stage 7 — measured structural blockers on the Lane B distribution
 
-## Corrected by the v2 correction session (2026-08-01, later) — read first
+## Corrected by the gold-scoring and pilot session (2026-08-01, latest) — read first
+
+Three of the blockers recorded below have now been measured through to a
+gold-scored outcome, and two more have had their walls located precisely. The
+distinction that matters throughout is **authority** — the source cannot say it
+— versus **capability** — the source says it and the closure catalogue cannot
+build it. Four of the five cohorts here are the second kind.
+
+| Cohort | Blocker class | Outcome |
+|---|---|---|
+| vertical-circle limiting contact | authority (v1), closed in v2 | **3 correct** |
+| table pulley | capability — a redundant numeric zero demanded beside a complete frame binding | **3 correct** |
+| incline kinetic sliding | capability — a numeric speed demanded for a direction-only law | **3 correct** |
+| horizontal contact free body | capability — no law admits driven sliding; no closure transaction | **INCOMPLETE** |
+| spring natural-length endpoint | capability — no spring-energy profile or transaction exists | **INCOMPLETE** |
+
+*The table-pulley blocker was a duplicated requirement, not a missing one.* B15
+was revoked because a generic `surface` proves nothing about orientation and a
+support-owned zero fixes no reference — both still true. But the contract that
+replaced them required the orientation stated *twice*: as the frame binding that
+identifies the support's tangent with the world's x axis and its normal with its
+y, and again as a numeric zero. The binding is the complete statement, which is
+why four separate places make it mandatory. The zero is now an optional second
+statement that must agree when present, and the frame-less v1 shape still fails
+closed.
+
+*The incline blocker was a value demanded for a direction.* The kinetic-slide
+law reads `motion_sign` and never the magnitude, yet demanded a positive numeric
+speed — so a corpus could only state "sliding down the slope" by inventing a
+speed. A value-free directed motion record is now admitted.
+
+*The horizontal-contact blocker is not `underdetermined` as previously recorded
+— that was the symptom.* The cause is
+`_horizontal_surface_contact_profile`, which admits only `sticking` (at rest,
+applied force, a = 0) and `sliding` (moving, **no** applied force, **no**
+tangential-acceleration unknown). A moving body being pushed, whose acceleration
+is the unknown, is not a shape that recognizer has, and nothing emits
+`Σ F_t = m a_t` for a horizontal contact. There is also no
+`ProfileId.horizontal_contact` transaction. Pinned in
+`test_phase56_stage7_corpus_v2_closure_catalogue_walls.py`.
+
+*The spring blocker is an absent profile.* `ProfileId` has no spring-energy
+member; the only spring entry matches period/frequency queries and declares no
+capability. `spring_potential` and `kinetic_energy` both exist, so the gap is
+the free body nobody builds.
+
+## Corrected by the v2 correction session (2026-08-01, earlier) — read second
+
 
 Three figures below are superseded by the C1–C3 correction packages and the
 first pilot closure; everything else stands.
