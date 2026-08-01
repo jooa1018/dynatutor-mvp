@@ -94,7 +94,10 @@ def _projected_frame_type(frame: ReferenceFrameV2) -> str:
 
 
 def project_augmentation(
-    draft_payload: Mapping[str, Any], augmentation: CorpusV2AugmentationV1
+    draft_payload: Mapping[str, Any],
+    augmentation: CorpusV2AugmentationV1,
+    *,
+    problem_text: str | None = None,
 ) -> dict[str, Any]:
     """A new Draft payload with the augmentation's carriers attached.
 
@@ -102,6 +105,11 @@ def project_augmentation(
     equal payload, so "did the carrier change anything" is answerable by
     comparison rather than by belief.  Raises `V2MergeConflict` — before any
     merging — when a carrier would restate a source field differently.
+
+    `problem_text` is required exactly when the augmentation states source
+    quotes: each quote must occur verbatim in the text at its stated
+    occurrence, its span is computed here, and a quote that is not the
+    source's own words refuses the whole projection.
     """
 
     payload: dict[str, Any] = {
@@ -115,6 +123,35 @@ def project_augmentation(
     # Everything below may assume each merged field is either absent or holds
     # exactly the value the carrier states.
     assert_fill_only_merge(draft_payload, augmentation)
+
+    # --- authored source quotes become alignable evidence records -----------
+    if augmentation.source_quotes:
+        evidence = list(payload.get("source_evidence") or [])
+        for quote in augmentation.source_quotes:
+            if problem_text is None:
+                raise V2ValidationError(
+                    V2ValidationReason.evidence_quote_not_in_source
+                )
+            start = -1
+            for _ in range(quote.occurrence_index + 1):
+                start = problem_text.find(quote.quote, start + 1)
+                if start < 0:
+                    raise V2ValidationError(
+                        V2ValidationReason.evidence_quote_not_in_source
+                    )
+            evidence.append(
+                {
+                    "kind": "text",
+                    "evidence_id": quote.evidence_id,
+                    "quote": quote.quote,
+                    "source_span": {
+                        "start": start,
+                        "end": start + len(quote.quote),
+                    },
+                    "occurrence_index": quote.occurrence_index,
+                }
+            )
+        payload["source_evidence"] = evidence
 
     # --- frames -------------------------------------------------------------
     frames = list(payload.get("reference_frames") or [])
@@ -215,7 +252,10 @@ def project_augmentation(
             if engine_side is not None:
                 if updated.get("contact_side") is None:
                     updated["contact_side"] = engine_side
-                if updated.get("frame_id") is None:
+                if (
+                    contact.normal_frame_id is not None
+                    and updated.get("frame_id") is None
+                ):
                     updated["frame_id"] = contact.normal_frame_id
         interactions.append(updated if updated != interaction else interaction)
     payload["interactions"] = interactions

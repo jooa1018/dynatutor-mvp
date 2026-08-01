@@ -62,6 +62,7 @@ class V2ValidationReason(str, Enum):
     contact_side_frame_unknown = "contact_side_frame_unknown"
     contact_side_axis_unknown = "contact_side_axis_unknown"
     conflicting_contact_sides = "conflicting_contact_sides"
+    duplicate_source_quote = "duplicate_source_quote"
     endpoint_without_event = "endpoint_without_event"
     duplicate_endpoint = "duplicate_endpoint"
     constraint_without_participants = "constraint_without_participants"
@@ -74,6 +75,7 @@ class V2ValidationReason(str, Enum):
     scope_is_both_interval_and_event = "scope_is_both_interval_and_event"
     generated_id_collides_with_authored_id = "generated_id_collides_with_authored_id"
     generated_id_missing_prefix = "generated_id_missing_prefix"
+    evidence_quote_not_in_source = "evidence_quote_not_in_source"
     duplicate_carrier_id = "duplicate_carrier_id"
     subject_unknown = "subject_unknown"
     evidence_ref_unknown = "evidence_ref_unknown"
@@ -118,10 +120,18 @@ def validate_augmentation(
     entities = frozenset(known_entity_ids)
     intervals = frozenset(known_interval_ids)
     events = frozenset(known_event_ids)
-    evidence = frozenset(known_evidence_ids)
     interactions = frozenset(known_interaction_ids)
     queries = frozenset(known_query_ids)
     authored = frozenset(authored_ids)
+    # A carrier may cite the source's own evidence records or an authored
+    # verbatim quote of the source's own text — the quote is re-verified
+    # against the problem text at projection, so it cannot be minted.
+    quote_ids = frozenset(item.evidence_id for item in augmentation.source_quotes)
+    evidence = frozenset(known_evidence_ids) | quote_ids
+    if _duplicates(
+        (item.quote, item.occurrence_index) for item in augmentation.source_quotes
+    ):
+        raise _fail(V2ValidationReason.duplicate_source_quote)
 
     frames = augmentation.reference_frames
     frame_ids = [frame.frame_id for frame in frames]
@@ -132,6 +142,7 @@ def validate_augmentation(
     # --- every authored identifier is namespaced and collision-free ---------
     carrier_ids: list[str] = [
         *frame_ids,
+        *(item.evidence_id for item in augmentation.source_quotes),
         *(item.datum_id for item in augmentation.angle_datums),
         *(item.sense_id for item in augmentation.motion_senses),
         *(item.contact_id for item in augmentation.contact_sides),
@@ -290,10 +301,15 @@ def validate_augmentation(
 
     # --- contact sides ------------------------------------------------------
     for contact in augmentation.contact_sides:
-        if contact.normal_frame_id not in frame_by_id:
-            raise _fail(V2ValidationReason.contact_side_frame_unknown)
-        if not _axis_exists(contact.normal_frame_id, contact.normal_axis):
-            raise _fail(V2ValidationReason.contact_side_axis_unknown)
+        # An axis-relative side carries its normal binding (enforced at the
+        # record); a centre- or track-relative side names its reference in its
+        # own meaning and may omit the binding.  A binding, once stated, must
+        # resolve.
+        if contact.normal_frame_id is not None:
+            if contact.normal_frame_id not in frame_by_id:
+                raise _fail(V2ValidationReason.contact_side_frame_unknown)
+            if not _axis_exists(contact.normal_frame_id, contact.normal_axis):
+                raise _fail(V2ValidationReason.contact_side_axis_unknown)
         if interactions and contact.interaction_id not in interactions:
             raise _fail(V2ValidationReason.interaction_target_without_interaction)
         if contact.contact_loss_event_id is not None and events and (

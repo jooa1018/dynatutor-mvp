@@ -215,6 +215,7 @@ def main() -> int:
                     draft_payload=payload,
                     augmentation=entry.augmentation,
                     run=_run_index(index),
+                    problem_text=projection.problem_text,
                 )
             )
         except Exception as exc:  # only the type reaches the artifact

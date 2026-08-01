@@ -40,6 +40,7 @@ def run_shadow_context(
     augmentation: CorpusV2AugmentationV1,
     run: Callable[[Mapping[str, Any]], Any],
     compare_answer: Callable[[Any], bool | None] | None = None,
+    problem_text: str | None = None,
 ) -> ShadowContextResultV1:
     """One context, run twice, reported as the move between two rungs.
 
@@ -47,11 +48,14 @@ def run_shadow_context(
     payload and returns a lane result.  `compare_answer` is the caller's gold
     comparison and returns `True` for correct, `False` for wrong, and `None`
     when nothing could be compared — the third case is a first-class outcome,
-    not a pass.
+    not a pass.  `problem_text` reaches the projection so an authored source
+    quote can be aligned — or refused — against the source's own words.
     """
 
     baseline_result = run(draft_payload)
-    augmented_payload = project_augmentation(draft_payload, augmentation)
+    augmented_payload = project_augmentation(
+        draft_payload, augmentation, problem_text=problem_text
+    )
     shadow_result = run(augmented_payload)
 
     baseline_rung = progress_rung(baseline_result)

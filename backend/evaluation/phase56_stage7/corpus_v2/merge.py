@@ -80,6 +80,10 @@ ENGINE_STATE_VALUE: dict[str, str] = {
     "contact_loss": "separated",
     "reaches_natural_length": "inactive",
     "zero_spring_deformation": "inactive",
+    # The unilateral contact-maintenance boundary is active at this instant:
+    # the typed statement behind "the least speed that just keeps contact".
+    # Distinct from `contact_loss` — the contact holds, exactly at N = 0.
+    "contact_limit": "active",
 }
 
 # Constraint authorities that the engine's `StateValue` vocabulary can hold.
@@ -199,6 +203,15 @@ def detect_merge_conflicts(
         if frame.frame_id in existing_frame_ids:
             found.add(V2MergeConflictReason.augmentation_would_overwrite_source)
 
+    # --- source quotes: authored evidence may never shadow a source record --
+    existing_evidence_ids = {
+        item.get("evidence_id")
+        for item in draft_payload.get("source_evidence") or []
+    }
+    for quote in augmentation.source_quotes:
+        if quote.evidence_id in existing_evidence_ids:
+            found.add(V2MergeConflictReason.augmentation_would_overwrite_source)
+
     # --- angle datums: one reading per angle, across the v1/v2 boundary -----
     existing_relation_ids = {item.get("relation_id") for item in geometry}
     for datum in augmentation.angle_datums:
@@ -284,7 +297,11 @@ def detect_merge_conflicts(
         if existing_side is not None and existing_side != engine_side:
             found.add(V2MergeConflictReason.contact_side_conflicts_with_source)
         existing_frame = interaction.get("frame_id")
-        if existing_frame is not None and existing_frame != contact.normal_frame_id:
+        if (
+            contact.normal_frame_id is not None
+            and existing_frame is not None
+            and existing_frame != contact.normal_frame_id
+        ):
             found.add(V2MergeConflictReason.frame_binding_conflicts_with_source)
         if contact.interval_id is not None and interaction.get("event_id") is not None:
             # The source scoped this contact to an instant; an interval-wide

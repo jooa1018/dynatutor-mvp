@@ -154,6 +154,11 @@ class EndpointCondition(str, Enum):
     collision_end = "collision_end"
     specified_time = "specified_time"
     specified_displacement = "specified_displacement"
+    # Appended: the unilateral contact-maintenance boundary is *active* at
+    # this instant — "the least speed that just keeps contact" sits exactly on
+    # N = 0.  Distinct from `contact_loss`, which states contact is gone;
+    # collapsing the two was how the boundary statement used to vanish.
+    contact_limit = "contact_limit"
 
 
 class ConstraintAuthority(str, Enum):
@@ -351,15 +356,38 @@ class MotionSenseV2(_Scoped):
     quantity_id: Identifier | None = None
 
 
+# Contact sides whose reference is a stated axis and nothing else.  A
+# "positive-normal" side is meaningless without the normal it signs, so these
+# two require a frame binding; the centre- and track-relative members carry
+# their reference in their own meaning (the path's curvature centre, the
+# track's inside) exactly as the engine's own `ContactSide` does.
+AXIS_RELATIVE_CONTACT_SIDES: frozenset[ContactSide] = frozenset(
+    {
+        ContactSide.unilateral_positive_normal,
+        ContactSide.unilateral_negative_normal,
+    }
+)
+
+
 class ContactSideV2(_Scoped):
     """Which side of a contact a body is on, and over what span."""
 
     contact_id: Identifier
     interaction_id: Identifier
     side: ContactSide
-    normal_frame_id: Identifier
-    normal_axis: Annotated[str, StringConstraints(min_length=1, max_length=16)]
+    normal_frame_id: Identifier | None = None
+    normal_axis: Annotated[
+        str, StringConstraints(min_length=1, max_length=16)
+    ] | None = None
     contact_loss_event_id: Identifier | None = None
+
+    @model_validator(mode="after")
+    def validate_side_reference(self) -> "ContactSideV2":
+        if (self.normal_frame_id is None) != (self.normal_axis is None):
+            raise ValueError("a contact-normal binding names its frame and axis together")
+        if self.side in AXIS_RELATIVE_CONTACT_SIDES and self.normal_frame_id is None:
+            raise ValueError("an axis-relative contact side requires its normal binding")
+        return self
 
 
 class EndpointConditionV2(_Scoped):
@@ -394,6 +422,29 @@ class InteractionTargetV2(_Scoped):
     frame_id: Identifier | None = None
 
 
+class SourceQuoteEvidenceV2(FrozenStrictModel):
+    """A verbatim quote of the source's own problem text, as citable evidence.
+
+    The v1 projection materialises evidence records only for the quotes the
+    corpus attached to facts, events and assumptions.  A carrier whose
+    statement lives elsewhere in the problem text — "moves along the *inside*
+    of the track", "the least speed that *just maintains contact*" — has
+    nothing to cite, and citing an unrelated record would be false
+    attribution.  This record states the quote itself.
+
+    It is not free-form authority: the quote must occur **verbatim** in the
+    problem text at its stated occurrence, the projection computes the exact
+    span or refuses, and the engine's own draft validation then re-checks the
+    alignment.  A quote that is not the source's own words cannot survive.
+    This is the opposite of the B15 defect — the evidence here is the source
+    text, never a minted record read back as its own justification.
+    """
+
+    evidence_id: Identifier
+    quote: Annotated[str, StringConstraints(min_length=2, max_length=240)]
+    occurrence_index: int = Field(default=0, ge=0, le=32)
+
+
 class QueryObjectiveV2(_Evidenced):
     """An extremum the source asks for, rather than an output name that sounds like one."""
 
@@ -424,6 +475,7 @@ class CorpusV2AugmentationV1(FrozenStrictModel):
     binding_version: Literal[CORPUS_V2_RECORD_BINDING_VERSION] = (
         CORPUS_V2_RECORD_BINDING_VERSION
     )
+    source_quotes: tuple[SourceQuoteEvidenceV2, ...] = Field(default=(), max_length=16)
     reference_frames: tuple[ReferenceFrameV2, ...] = Field(default=(), max_length=16)
     angle_datums: tuple[AngleDatumV2, ...] = Field(default=(), max_length=16)
     motion_senses: tuple[MotionSenseV2, ...] = Field(default=(), max_length=16)
@@ -451,6 +503,7 @@ class CorpusV2AugmentationV1(FrozenStrictModel):
 
         return not any(
             (
+                self.source_quotes,
                 self.reference_frames,
                 self.angle_datums,
                 self.motion_senses,
@@ -474,10 +527,12 @@ class CorpusV2AugmentationV1(FrozenStrictModel):
             ("query_objective", len(self.query_objectives)),
             ("reference_frame", len(self.reference_frames)),
             ("scalar_encoding", len(self.scalar_encodings)),
+            ("source_quote", len(self.source_quotes)),
         )
 
 
 __all__ = [
+    "AXIS_RELATIVE_CONTACT_SIDES",
     "CORPUS_V2_RECORD_BINDING_VERSION",
     "CORPUS_V2_SCHEMA_VERSION",
     "V2_IDENTIFIER_PREFIX",
@@ -504,4 +559,5 @@ __all__ = [
     "ReferenceFrameV2",
     "ScalarEncoding",
     "ScalarEncodingV2",
+    "SourceQuoteEvidenceV2",
 ]
