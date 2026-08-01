@@ -1170,3 +1170,166 @@ def test_the_census_section_reports_not_run_without_an_archive() -> None:
 
     # A run without the archive must never report a measured census.
     assert section == {"executed": False, "disposition": "NOT_RUN"}
+
+
+# ---------------------------------------------------------------------------
+# What the reading gets right, and what it admits it does not
+# ---------------------------------------------------------------------------
+
+
+def test_a_condition_at_the_start_does_not_satisfy_a_question_at_the_end() -> None:
+    # A stated "starts from rest" is not a statement about what holds at the
+    # finish.  Accepting any event-bound condition as an endpoint carrier let
+    # the spring cohort read as short of nothing.
+    context = _context(
+        state_conditions=[
+            {
+                "state_condition_id": "s1",
+                "kind": "initial",
+                "state": "at_rest",
+                "subject_id": "e1",
+                "event_id": "v1",
+            }
+        ],
+        queries=[
+            {
+                "query_id": "y1",
+                "shape": "scalar",
+                "target": {
+                    "role": "velocity",
+                    "subject_id": "e1",
+                    "component": "magnitude",
+                    "event_id": "v2",
+                },
+            }
+        ],
+    )
+
+    assert SourceCarrierCategory.endpoint_condition not in available_carriers(context)
+    assert SourceCarrierCategory.endpoint_condition in missing_carriers(context)
+
+
+def test_a_stored_energy_interval_needs_its_endpoint_even_without_an_event_query() -> None:
+    # How much of a spring's energy has been released depends entirely on the
+    # deformation at the end, so an interval that merely `finish`es states none.
+    context = _context(
+        interactions=[
+            {
+                "interaction_id": "x1",
+                "kind": "spring",
+                "participant_ids": ["e1", "e2"],
+            }
+        ],
+        quantities=[
+            {
+                "quantity_id": "q1",
+                "role": "stiffness",
+                "subject_id": "e2",
+                "component": "magnitude",
+                "raw_value": 200.0,
+            }
+        ],
+    )
+
+    assert SourceCarrierCategory.endpoint_condition in missing_carriers(context)
+
+
+def test_a_curved_track_contact_needs_a_side_even_with_no_topology_relation() -> None:
+    context = _context(
+        geometry=[],
+        events=[
+            {"event_id": "v1", "kind": "start"},
+            {"event_id": "v2", "kind": "highest_point"},
+        ],
+        interactions=[
+            {
+                "interaction_id": "x1",
+                "kind": "contact",
+                "participant_ids": ["e1", "e2"],
+            }
+        ],
+    )
+
+    assert SourceCarrierCategory.contact_side in missing_carriers(context)
+
+
+def test_a_point_on_a_rigid_body_needs_a_rotation_authority() -> None:
+    context = _context(
+        entities=[
+            {"entity_id": "e1", "primitive": "point"},
+            {"entity_id": "e2", "primitive": "rigid_body"},
+        ],
+        geometry=[
+            {"relation_id": "g1", "kind": "lies_on", "participant_ids": ["e1", "e2"]}
+        ],
+    )
+
+    assert SourceCarrierCategory.constraint_authority in missing_carriers(context)
+
+
+def test_a_stated_angular_rate_supplies_the_rotation_authority() -> None:
+    context = _context(
+        entities=[
+            {"entity_id": "e1", "primitive": "point"},
+            {"entity_id": "e2", "primitive": "rigid_body"},
+        ],
+        geometry=[
+            {"relation_id": "g1", "kind": "lies_on", "participant_ids": ["e1", "e2"]}
+        ],
+        quantities=[
+            {
+                "quantity_id": "q1",
+                "role": "angular_velocity",
+                "subject_id": "e2",
+                "component": "magnitude",
+                "raw_value": 4.0,
+            }
+        ],
+    )
+
+    assert SourceCarrierCategory.constraint_authority not in required_carriers(context)
+
+
+def test_an_out_of_scope_context_is_capability_blocked_not_a_candidate() -> None:
+    row = _row(
+        result=_Result(terminal="compiler_unsupported"),
+        expected_class=ExpectedClass.supported,
+    )
+
+    assert row.capability_blocked is True
+    assert row.closure_candidate is False
+
+
+def test_the_census_publishes_how_well_each_carrier_discriminates() -> None:
+    solved_but_short = _row(
+        context=_context(
+            interactions=[
+                {
+                    "interaction_id": "x1",
+                    "kind": "contact",
+                    "participant_ids": ["e1", "e2"],
+                }
+            ]
+        ),
+        result=_Result(terminal="solved", verified_candidate_count=1),
+        expected_class=ExpectedClass.supported,
+    )
+    unsolved_and_short = _row(
+        context=_context(
+            interactions=[
+                {
+                    "interaction_id": "x1",
+                    "kind": "contact",
+                    "participant_ids": ["e1", "e2"],
+                }
+            ]
+        ),
+        expected_class=ExpectedClass.supported,
+    )
+
+    census = build_authority_census([solved_but_short, unsolved_and_short])
+    by_carrier = {name: (on_solved, on_unsolved) for name, on_solved, on_unsolved in census.carrier_discrimination}
+
+    # A carrier that fires as often on a solve as on a non-solve has explained
+    # nothing, and the report says so rather than reporting only the total.
+    assert by_carrier["contact_side"] == (1, 1)

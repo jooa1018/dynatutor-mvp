@@ -189,6 +189,12 @@ _NON_FREE_BODY_QUERY_OWNERS: frozenset[str] = frozenset({"system", "joint", "pul
 
 _FORCE_LIKE_QUERY_ROLES: frozenset[str] = frozenset({"force", "moment", "torque"})
 
+# Events that only occur on a curved path, where the contact is one-sided even
+# when the source states no topology relation at all.
+_CURVED_TRACK_EVENT_KINDS: frozenset[str] = frozenset(
+    {"highest_point", "lowest_point"}
+)
+
 
 def _payload(value: Any) -> dict[str, Any]:
     # A rejected projection carries no Draft at all.  That is a real structural
@@ -468,6 +474,11 @@ def required_carriers(draft: Any) -> tuple[SourceCarrierCategory, ...]:
         event["event_id"]: _text(event.get("kind"))
         for event in payload.get("events") or []
     }
+    interval_end_by_id = {
+        interval["interval_id"]: interval.get("end_event_id")
+        for interval in payload.get("motion_intervals") or []
+    }
+    event_kinds = set(event_kinds_by_id.values())
     # Events something is actually stated *at*: a condition, or any quantity
     # scoped to that instant.  An endpoint with one of these is defined.
     described_events: set[str] = {
@@ -511,6 +522,45 @@ def required_carriers(draft: Any) -> tuple[SourceCarrierCategory, ...]:
             # The answer is asked *at* a moment the source names but does not
             # define, and nothing states what holds there.
             required.add(SourceCarrierCategory.endpoint_condition)
+        elif (
+            not query_event
+            and target.get("interval_id")
+            and any(
+                _text(item.get("kind")) == "spring"
+                for item in payload.get("interactions") or []
+            )
+            and any(
+                _text(quantity.get("role")) == "stiffness" for quantity in quantities
+            )
+        ):
+            # A stored-energy interval is the one shape where the endpoint is
+            # load-bearing and nothing else pins it: how much of the spring's
+            # energy has been released depends entirely on the deformation at
+            # the end, and an interval that merely `finish`es states none.
+            # Kept narrow deliberately — the general "interval ends on an
+            # undefined event" rule fires on as many solves as non-solves.
+            end_event = interval_end_by_id.get(target["interval_id"])
+            if (
+                end_event
+                and event_kinds_by_id.get(end_event)
+                in _UNDERSPECIFIED_ENDPOINT_EVENT_KINDS
+                and end_event not in described_events
+            ):
+                required.add(SourceCarrierCategory.endpoint_condition)
+
+        # A point on a rigid body has no motion of its own: relating it to the
+        # body needs a rotation centre or an angular rate, and the source can
+        # state neither as a constraint.  This is the B10 shape.
+        if (
+            subject_primitive == "point"
+            and "rigid_body" in set(primitive_by_entity.values())
+            and not {"rotates_about", "wraps"} & topology_kinds
+            and not any(
+                _text(quantity.get("role")).startswith("angular")
+                for quantity in quantities
+            )
+        ):
+            required.add(SourceCarrierCategory.constraint_authority)
 
     for quantity in quantities:
         role = _text(quantity.get("role"))
@@ -548,9 +598,16 @@ def required_carriers(draft: Any) -> tuple[SourceCarrierCategory, ...]:
     for interaction in payload.get("interactions") or []:
         if _text(interaction.get("kind")) != "contact":
             continue
-        if interaction.get("contact_side") is None and (
-            topology_kinds & _UNILATERAL_CONTACT_TOPOLOGIES
-        ):
+        if interaction.get("contact_side") is not None:
+            continue
+        if topology_kinds & _UNILATERAL_CONTACT_TOPOLOGIES:
+            required.add(SourceCarrierCategory.contact_side)
+        elif event_kinds & _CURVED_TRACK_EVENT_KINDS:
+            # A contact with no topology relation but a highest- or lowest-point
+            # event is a body on a curved track, and which side of the track it
+            # is on decides the sign of the normal.  Requiring a topology
+            # relation as well left the whole vertical-circle cohort reading as
+            # short of nothing.
             required.add(SourceCarrierCategory.contact_side)
 
     if topology_kinds & {"rolls_on", "wraps", "meshed"}:
@@ -613,12 +670,19 @@ def available_carriers(draft: Any) -> tuple[SourceCarrierCategory, ...]:
         if len(interaction.get("participant_ids") or []) >= 2:
             available.add(SourceCarrierCategory.interaction_target)
 
-    condition_events = {
-        condition.get("event_id")
-        for condition in payload.get("state_conditions") or []
-        if condition.get("event_id")
+    # An endpoint condition is only supplied by a condition stated at an
+    # *endpoint*.  Accepting a condition at any event at all let a stated
+    # "starts from rest" satisfy a requirement about what holds at the finish,
+    # which is how the spring cohort read as short of nothing.
+    endpoint_event_ids = {
+        interval["end_event_id"]
+        for interval in payload.get("motion_intervals") or []
+        if interval.get("end_event_id")
     }
-    if condition_events:
+    if any(
+        condition.get("event_id") in endpoint_event_ids
+        for condition in payload.get("state_conditions") or []
+    ):
         available.add(SourceCarrierCategory.endpoint_condition)
 
     if payload.get("constraints"):
@@ -780,9 +844,26 @@ class AuthorityContextV1(FrozenStrictModel):
             and bool(self.missing_carriers)
         )
 
+
+    @property
+    def capability_blocked(self) -> bool:
+        """The engine itself declared the problem outside its catalogue.
+
+        A third class, and it has to be its own: a context the compiler
+        answered `requires_specialized_model` is short of a *model*, not of a
+        source carrier, so counting it as a closure candidate would offer a
+        package that no amount of corpus authority could deliver.
+        """
+
+        return (
+            self.expected_class is ExpectedClass.supported
+            and not self.solved
+            and self.rung is ProgressRung.blocked_neutral_terminal
+        )
+
     @property
     def closure_candidate(self) -> bool:
-        """Expected to be supported, does not solve, and nothing is missing.
+        """Supported, unsolved, short of no carrier, and not out of scope.
 
         A **candidate**, not a closure.  It says the structural reading found
         no missing carrier, which makes this context worth investigating under
@@ -795,6 +876,7 @@ class AuthorityContextV1(FrozenStrictModel):
             self.expected_class is ExpectedClass.supported
             and not self.solved
             and not self.missing_carriers
+            and not self.capability_blocked
         )
 
     @property
@@ -820,6 +902,7 @@ class CohortSummaryV1(FrozenStrictModel):
     supported_unsolved: int
     closure_candidates: int
     authority_blocked: int
+    capability_blocked: int
     reference_frame_dependent: int
     rung_counts: tuple[tuple[str, int], ...] = ()
     missing_carrier_counts: tuple[tuple[str, int], ...] = ()
@@ -840,10 +923,17 @@ class AuthorityCensusV1(FrozenStrictModel):
     supported_unsolved_cohort_count: int = 0
     closure_candidate_count: int = 0
     authority_blocked_count: int = 0
+    capability_blocked_count: int = 0
     # The census's negative control: solved contexts the structural reading
     # nevertheless calls carrier-short.  A non-zero value bounds how much the
     # reading over-fires and is published rather than tuned away.
     carrier_hypothesis_false_positive_count: int = 0
+    # Per carrier, `(fired on a solved context, fired on an unsolved supported
+    # one)`.  This is the number a reader needs in order to weigh a "blocked on
+    # X" claim: a carrier that fires as often on solves as on non-solves has not
+    # discriminated anything, however large its count.  Published for every
+    # carrier, including the two that currently sit at even odds.
+    carrier_discrimination: tuple[tuple[str, int, int], ...] = ()
     reference_frame_dependent_count: int = 0
     reference_frame_dependent_cohort_count: int = 0
     rung_counts: tuple[tuple[str, int], ...] = ()
@@ -866,6 +956,32 @@ class AuthorityCensusV1(FrozenStrictModel):
 
 def _sorted_counts(counter: Counter[str]) -> tuple[tuple[str, int], ...]:
     return tuple(sorted(counter.items()))
+
+
+def _discrimination(
+    rows: Sequence[AuthorityContextV1],
+) -> tuple[tuple[str, int, int], ...]:
+    """How often each carrier's absence coincides with a solve, and with a non-solve.
+
+    A carrier that is missing just as often from the contexts that answer
+    correctly as from the ones that do not has explained nothing.  Reporting
+    both halves is the difference between "37 contexts are short of a carrier"
+    and "37 contexts are short of a carrier, and here is how much that is worth
+    knowing".
+    """
+
+    on_solved: Counter[str] = Counter()
+    on_unsolved: Counter[str] = Counter()
+    for row in rows:
+        if row.expected_class is not ExpectedClass.supported:
+            continue
+        target = on_solved if row.solved else on_unsolved
+        for carrier in row.missing_carriers:
+            target[carrier.value] += 1
+    return tuple(
+        (name, on_solved.get(name, 0), on_unsolved.get(name, 0))
+        for name in sorted(set(on_solved) | set(on_unsolved))
+    )
 
 
 def build_authority_context(
@@ -945,6 +1061,9 @@ def build_authority_census(
                 ),
                 closure_candidates=sum(1 for row in members if row.closure_candidate),
                 authority_blocked=sum(1 for row in members if row.authority_blocked),
+                capability_blocked=sum(
+                    1 for row in members if row.capability_blocked
+                ),
                 reference_frame_dependent=sum(
                     1 for row in members if row.reference_frame_dependent
                 ),
@@ -980,9 +1099,11 @@ def build_authority_census(
         ),
         closure_candidate_count=sum(1 for row in rows if row.closure_candidate),
         authority_blocked_count=sum(1 for row in rows if row.authority_blocked),
+        capability_blocked_count=sum(1 for row in rows if row.capability_blocked),
         carrier_hypothesis_false_positive_count=sum(
             1 for row in rows if row.carrier_hypothesis_false_positive
         ),
+        carrier_discrimination=_discrimination(rows),
         reference_frame_dependent_count=sum(
             1 for row in supported_unsolved_rows if row.reference_frame_dependent
         ),
