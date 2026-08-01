@@ -55,6 +55,12 @@ from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (
     refusal_counts,
     state_counts,
 )
+from tests.support.phase56_stage7_prepare_fixtures import (
+    SYNTHETIC_CODE_HEAD,
+    attestation_for_ledger,
+    binding_for_ledger,
+)
+
 from evaluation.phase56_stage7.corpus_v2.runtime_snapshot import (
     PublicRedactedRuntimeViewV2,
     RuntimeSnapshotRefused,
@@ -115,13 +121,17 @@ def _refused(index: int) -> ShadowLedgerEntryV2:
 
 
 def _freeze(records, ledger):
+    # The binding is required rather than optional, so a snapshot that omitted
+    # it could not load, score and be quoted.  It is built from a real
+    # attestation over the same population the ledger accounts for.
     return freeze_runtime_snapshot(
         records,
         ledger=ledger,
         original_v1_archive_sha256=ARCHIVE,
         augmentation_manifest_sha256=MANIFEST,
         candidate_archive_sha256=CANDIDATE,
-        exact_code_head="deadbeef",
+        prepare_binding=binding_for_ledger(ledger, archive=ARCHIVE),
+        exact_code_head=SYNTHETIC_CODE_HEAD,
     )
 
 
@@ -571,9 +581,20 @@ def test_a_runtime_input_bundle_reloads_and_refuses_duplicates() -> None:
 # --------------------------------------------------------------------------
 # 16-20. Exit behavior: a printed FAIL and a zero exit cannot coexist
 # --------------------------------------------------------------------------
-def _score_process(tmp_path: Path, snapshot_body: str, corpus: Path):
+def _score_process(tmp_path: Path, snapshot_body: str, corpus: Path, ledger=()):
     snapshot = tmp_path / "snapshot.json"
     snapshot.write_text(snapshot_body, encoding="utf-8")
+    # A real attestation, and the same one the snapshot's binding was projected
+    # from, so a refusal here is the snapshot's own and not a binding mismatch
+    # standing in for it.
+    attestation = tmp_path / "attestation.json"
+    attestation.write_text(
+        json.dumps(
+            attestation_for_ledger(ledger, archive=ARCHIVE).model_dump(mode="json"),
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     return subprocess.run(
         [
             sys.executable,
@@ -582,6 +603,8 @@ def _score_process(tmp_path: Path, snapshot_body: str, corpus: Path):
             str(corpus),
             "--runtime-snapshot",
             str(snapshot),
+            "--prepare-attestation",
+            str(attestation),
             "--shadow-report",
             str(tmp_path / "report.json"),
             "--scorecard",
@@ -619,7 +642,10 @@ def test_a_broken_snapshot_exits_two_before_any_corpus_is_read(
     mutate(payload)
 
     completed = _score_process(
-        tmp_path, json.dumps(payload), tmp_path / "no-such-corpus.zip"
+        tmp_path,
+        json.dumps(payload),
+        tmp_path / "no-such-corpus.zip",
+        ledger=[_completed(0)],
     )
 
     assert completed.returncode == 2, completed.stdout + completed.stderr

@@ -49,6 +49,11 @@ from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (
     LedgerState,
     ShadowLedgerEntryV2,
 )
+from tests.support.phase56_stage7_prepare_fixtures import (
+    SYNTHETIC_CODE_HEAD,
+    binding_for_ledger,
+)
+
 from evaluation.phase56_stage7.corpus_v2.runtime_snapshot import (
     RuntimeSnapshotRefused,
     ShadowRuntimeRecordV2,
@@ -142,13 +147,15 @@ def _ledger(*records: ShadowRuntimeRecordV2, extra=()):
 
 
 def _snapshot(*records: ShadowRuntimeRecordV2, ledger=None):
+    entries = _ledger(*records) if ledger is None else ledger
     return freeze_runtime_snapshot(
         records,
-        ledger=_ledger(*records) if ledger is None else ledger,
+        ledger=entries,
         original_v1_archive_sha256=ARCHIVE,
         augmentation_manifest_sha256=MANIFEST,
         candidate_archive_sha256=CANDIDATE,
-        exact_code_head="deadbeef",
+        prepare_binding=binding_for_ledger(entries, archive=ARCHIVE),
+        exact_code_head=SYNTHETIC_CODE_HEAD,
     )
 
 
@@ -457,6 +464,10 @@ def test_a_scored_report_carries_no_case_identity_and_no_handle() -> None:
     # published for the "no context went missing" claim to be checkable at all.
     # Naming the forbidden fields instead of guessing at them by substring is
     # both stricter and stable against further honest uses of the word.
+    # `expected_handle_set_digest` is the third such honest use: a digest over
+    # the sequence of opaque pairing handles the preparation was attested to
+    # cover.  It carries no handle and no expectation — it is what lets a
+    # reader pair this report with the attestation it was scored under.
     for forbidden in (
         "expected_answer",
         "expected_terminal",
@@ -472,6 +483,8 @@ def test_a_scored_report_carries_no_case_identity_and_no_handle() -> None:
     # And nothing else may use the word: the only survivors are the two
     # completeness names above, so stripping exactly those must leave none.
     assert "expected" not in body.replace("unexpected", "").replace(
+        "expected_handle_set_digest", ""
+    ).replace(
         "expected_context_count", ""
     )
 
