@@ -1,9 +1,13 @@
 """Typed carriers the v1 public corpus contract has no field for.
 
-B22 measured seven of them: a reference frame, an axis direction, an angle
-datum, a motion sense, a contact side, a query objective, and a frame binding
-for a quantity.  Every revoked closure in this evaluator's history needed one
-and, finding none, made one up.  This module is the place to state them.
+B22's corrected measurement counts six of them: a reference frame, an axis
+direction, an angle datum, a motion sense, a contact side, and a frame binding
+for a quantity.  (The first published count said seven; the query objective
+was misclassified — v1's controlled `query.output_key = minimum_speed` already
+states `minimum`, so v2 *refines* that carrier rather than introducing it.)
+Every revoked closure in this evaluator's history needed one of the missing
+carriers and, finding none, made one up.  This module is the place to state
+them.
 
 Three rules shape every record here, and each exists because a revoked package
 broke it.

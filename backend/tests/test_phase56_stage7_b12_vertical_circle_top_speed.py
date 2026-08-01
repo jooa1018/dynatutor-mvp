@@ -29,6 +29,7 @@ import hashlib
 import pytest
 
 from engine.mechanics.contracts import MechanicsProblemDraftV1
+from engine.mechanics.normalization import normalize_draft
 from evaluation.phase56_stage7.complete_profile import (
     PlanDisposition,
     ProfileId,
@@ -346,6 +347,50 @@ def test_the_minimum_objective_survives_projection() -> None:
 def test_a_plain_speed_query_carries_no_objective() -> None:
     draft = _projection(_case(query_output="tangential_velocity")).draft
     assert draft.queries[0].objective is None
+
+
+def test_an_unsupported_maximum_objective_fails_closed() -> None:
+    # The controlled source vocabulary states `minimum` and nothing else, but
+    # the engine enum also has `maximum`.  A draft carrying one — however it
+    # got there — must refuse everywhere: the only objective-aware profile
+    # understands `minimum` exactly, and every other profile refuses any
+    # objective-bearing query outright.
+    projection = _authorised(_case())
+    payload = projection.draft.model_dump(mode="python")
+    for query in payload["queries"]:
+        query["objective"] = "maximum"
+    draft = MechanicsProblemDraftV1.model_validate(payload)
+    for profile_id in ProfileId:
+        plan = plan_complete_profile(profile_id, draft)
+        assert plan.disposition is not PlanDisposition.complete
+    result = run_lane_b_case(
+        replace(projection, draft=draft), execution_token="b12-test-token"
+    )
+    assert result.terminal is not LaneBTerminal.solved
+    assert result.answer_value_si is None
+
+
+def test_the_minimum_objective_survives_normalization_into_the_ir() -> None:
+    # Draft-level preservation is proven above; this pins the next stage so a
+    # normalization change that drops the objective is caught here rather than
+    # as an unexplained downstream refusal.
+    projection = _authorised(_case())
+    bundle = build_lane_b_authority_bundle(projection)
+    application = close_projected_draft(
+        projection.draft,
+        approved_assumption_ids=tuple(bundle.approved_assumption_ids),
+        authorized_assumptions=dict(bundle.authorization_map()),
+    )
+    assert application.applied
+    normalization = normalize_draft(
+        projection.problem_text,
+        application.draft,
+        approved_assumption_ids=tuple(bundle.approved_assumption_ids),
+        authorized_assumptions=dict(bundle.authorization_map()),
+    )
+    ir = normalization.ir
+    assert ir.queries[0].objective is not None
+    assert ir.queries[0].objective.value == "minimum"
 
 
 # --- positive controls (full typed authority, Draft level) ------------------

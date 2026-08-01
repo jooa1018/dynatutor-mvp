@@ -65,6 +65,9 @@ from engine.textbook_parser.evidence_alignment import (
 )
 
 from evaluation.phase56_stage7.corpus_records import PublicCorpusCaseV1
+from evaluation.phase56_stage7.query_objective_sources import (
+    QUERY_OBJECTIVE_OUTPUT_KEYS,
+)
 
 
 DRAFT_PROJECTION_VERSION = "phase56-stage7-lane-b-draft-projection-v9"
@@ -248,10 +251,10 @@ _QUERY_ROLES: dict[str, tuple[str, str, dict[str, int]]] = {
 # which is how a boundary equality once fired for a question that never proved
 # the boundary.  The typed objective travels on the Draft query so every
 # downstream reader either honours it or declines.  No problem text, family,
-# case identity, or expected answer participates.
-_QUERY_OBJECTIVES: dict[str, str] = {
-    "minimum_speed": "minimum",
-}
+# case identity, or expected answer participates.  The table itself lives in
+# `query_objective_sources` so the semantic-preservation audit classifies the
+# exact vocabulary this projection consumes rather than a copy of it.
+_QUERY_OBJECTIVES: Mapping[str, str] = QUERY_OBJECTIVE_OUTPUT_KEYS
 
 _ENTITY_PRIMITIVES: dict[str, str] = {
     "particle": "particle",

@@ -343,14 +343,30 @@ def test_the_v1_source_contract_cannot_state_a_reference_frame() -> None:
         EngineCarrier.angle_reference_datum,
         EngineCarrier.motion_sense,
         EngineCarrier.contact_side,
-        EngineCarrier.query_objective,
         EngineCarrier.quantity_frame_binding,
     ],
 )
 def test_each_missing_carrier_is_pinned(carrier: EngineCarrier) -> None:
     # Adding a source field for any of these is a corpus-contract change and
     # must be a deliberate one, so each is asserted rather than assumed.
+    # `query_objective` left this list when the audit was corrected: the B12
+    # repair's controlled `minimum_speed -> minimum` mapping is a real v1
+    # source carrier, so pinning it as absent pinned a measurement error.
     assert CARRIER_SOURCE_FIELDS[carrier] == ()
+
+
+def test_the_missing_carrier_count_is_machine_measured() -> None:
+    # "Seven missing carriers" was a hand-written number and it was wrong.
+    # The count is derived from the table, so the documentation figure has a
+    # single executable source of truth.
+    missing = [
+        carrier for carrier, fields in CARRIER_SOURCE_FIELDS.items() if not fields
+    ]
+    assert len(missing) == 6
+    assert EngineCarrier.query_objective not in missing
+
+    report = build_semantic_preservation_report([])
+    assert report.source_contract_omission_count == 6
 
 
 def test_the_carriers_the_contract_does_state_are_recorded_as_such() -> None:
@@ -360,6 +376,7 @@ def test_the_carriers_the_contract_does_state_are_recorded_as_such() -> None:
         EngineCarrier.quantity_point_binding,
         EngineCarrier.state_condition,
         EngineCarrier.endpoint_condition,
+        EngineCarrier.query_objective,
     ):
         assert CARRIER_SOURCE_FIELDS[carrier], carrier
         (record,) = [
@@ -444,19 +461,70 @@ def test_b12_a_contact_side_still_cannot_be_stated() -> None:
     assert CARRIER_SOURCE_FIELDS[EngineCarrier.contact_side] == ()
 
 
-def test_b12_a_minimum_speed_objective_still_cannot_be_stated() -> None:
-    # The corpus names an output `minimum_speed`; a name is not an objective.
-    # `Query.objective` exists in the engine and has no source field, so
-    # reading the output name as an objective is reading a label as physics.
-    assert CARRIER_SOURCE_FIELDS[EngineCarrier.query_objective] == ()
-    assert SourceFieldCategory.query_output_key in set(SourceFieldCategory)
+def test_b12_a_minimum_speed_objective_is_a_controlled_source_carrier() -> None:
+    # Corrected from the first published classification, which pinned this
+    # carrier as unsayable.  The B12 repair maps the controlled v1 output key
+    # `minimum_speed` onto the Draft's typed `Query.objective = minimum` and
+    # the official projection has consumed that mapping all along, so
+    # `query.output_key` *is* the source carrier of `query_objective` —
+    # partially, through a closed vocabulary, exactly like the endpoint
+    # carrier is partially carried by the event-kind vocabulary.
+    assert CARRIER_SOURCE_FIELDS[EngineCarrier.query_objective] == (
+        SourceFieldCategory.query_output_key,
+    )
+    (record,) = [
+        item
+        for item in build_carrier_omissions()
+        if item.carrier is EngineCarrier.query_objective
+    ]
+    assert record.has_source_carrier is True
+    assert record.status is not PreservationStatus.omitted_because_v1_has_no_carrier
     output_key_spec = [
         spec
         for spec in FIELD_SPECS
         if spec.category is SourceFieldCategory.query_output_key
     ][0]
-    # It is traced as a query *role*, never as an objective.
+    # The key itself is still traced as a carried query field.
     assert output_key_spec.shape is CarrierShape.carried
+
+
+def test_the_query_objective_vocabulary_is_closed_and_exact() -> None:
+    # The mapping is exact membership in a closed table: `minimum_speed`
+    # states a minimum, nothing else states anything, and no spelling that
+    # merely *contains* "minimum" or "maximum" may acquire an objective.
+    from evaluation.phase56_stage7.query_objective_sources import (
+        QUERY_OBJECTIVE_OUTPUT_KEYS,
+        QUERY_OBJECTIVE_SOURCE_FIELD,
+    )
+
+    assert QUERY_OBJECTIVE_SOURCE_FIELD == SourceFieldCategory.query_output_key.value
+    assert dict(QUERY_OBJECTIVE_OUTPUT_KEYS) == {"minimum_speed": "minimum"}
+    # The public v1 vocabulary has no admissible-set-maximum key: `max_height`
+    # is an exact apex readout, and an unknown or merely suggestive key must
+    # never be read as an objective.
+    for lookalike in (
+        "max_height",
+        "maximum_speed",
+        "minimum_speed_2",
+        "speed_minimum",
+        "MINIMUM_SPEED",
+        "minimum",
+        "speed",
+        "final_velocity",
+    ):
+        assert QUERY_OBJECTIVE_OUTPUT_KEYS.get(lookalike) is None
+
+    with pytest.raises(TypeError):
+        QUERY_OBJECTIVE_OUTPUT_KEYS["maximum_speed"] = "maximum"  # type: ignore[index]
+
+
+def test_b12_contact_side_and_boundary_blockers_are_separate_from_the_objective() -> None:
+    # The B12 revocation bundled several missing authorities.  The objective
+    # is source-carried now, so what keeps the B12 public shape fail-closed
+    # is the contact side and the boundary states — and the audit must say
+    # exactly that rather than re-listing the objective among them.
+    assert CARRIER_SOURCE_FIELDS[EngineCarrier.contact_side] == ()
+    assert CARRIER_SOURCE_FIELDS[EngineCarrier.query_objective] != ()
 
 
 def test_b17_a_natural_length_endpoint_still_cannot_be_stated() -> None:
@@ -580,5 +648,8 @@ def test_an_empty_audit_is_a_report_rather_than_an_error() -> None:
 
     assert report.context_count == 0
     assert report.fields == ()
-    # The contract omissions do not depend on having traced anything.
-    assert report.source_contract_omission_count == 7
+    # The contract omissions do not depend on having traced anything.  Six,
+    # not the seven first published: the query objective left the omission
+    # list when the controlled `minimum_speed -> minimum` source mapping was
+    # registered as the carrier it always was.
+    assert report.source_contract_omission_count == 6

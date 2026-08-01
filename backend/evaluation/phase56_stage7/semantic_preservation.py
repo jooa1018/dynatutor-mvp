@@ -50,9 +50,12 @@ from typing import Annotated, Any, Callable, Iterable, Mapping, Sequence
 from pydantic import Field, StringConstraints
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel
+from evaluation.phase56_stage7.query_objective_sources import (
+    QUERY_OBJECTIVE_OUTPUT_KEYS,
+)
 
 
-SEMANTIC_PRESERVATION_VERSION = "phase56-stage7-semantic-preservation-v1"
+SEMANTIC_PRESERVATION_VERSION = "phase56-stage7-semantic-preservation-v2"
 
 _Token = Annotated[str, StringConstraints(min_length=1, max_length=120)]
 
@@ -161,7 +164,15 @@ CARRIER_SOURCE_FIELDS: dict[EngineCarrier, tuple[SourceFieldCategory, ...]] = {
     # endpoints are sayable — while a spring at natural length, a specified
     # displacement, or a contact loss have no member and cannot be stated.
     EngineCarrier.endpoint_condition: (SourceFieldCategory.event_kind,),
-    EngineCarrier.query_objective: (),
+    # Partial, like the endpoint carrier, and previously misclassified as
+    # absent: the B12 repair maps the controlled output key `minimum_speed`
+    # onto the Draft's typed `Query.objective = minimum`, so the source *can*
+    # state a minimum objective — through `query.output_key`'s closed
+    # vocabulary — while an admissible-set maximum still has no key at all.
+    # The exact table both the projection and this audit consume is
+    # `QUERY_OBJECTIVE_OUTPUT_KEYS`, asserted non-empty below so this row can
+    # never again claim a carrier the projection actually reads is unsayable.
+    EngineCarrier.query_objective: (SourceFieldCategory.query_output_key,),
     EngineCarrier.quantity_frame_binding: (),
     # These four do have source fields, and are listed so the table is a
     # measurement rather than a list of complaints.
@@ -175,6 +186,15 @@ CARRIER_SOURCE_FIELDS: dict[EngineCarrier, tuple[SourceFieldCategory, ...]] = {
         SourceFieldCategory.event_kind,
     ),
 }
+
+# The audit's query-objective row exists because the projection's controlled
+# mapping does.  If the mapping table were ever emptied, the row above would be
+# claiming a source carrier nothing consumes — so the binding is checked at
+# import rather than remembered.
+assert QUERY_OBJECTIVE_OUTPUT_KEYS, (
+    "query_objective is classified as source-carried because "
+    "QUERY_OBJECTIVE_OUTPUT_KEYS maps controlled output keys onto it"
+)
 
 
 class PipelineStage(str, Enum):
