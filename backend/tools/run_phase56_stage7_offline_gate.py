@@ -53,6 +53,12 @@ from evaluation.phase56_stage7.corpus_preflight import (  # noqa: E402
     load_public_cases,
     run_corpus_integrity_preflight,
 )
+from evaluation.phase56_stage7.authority_census import (  # noqa: E402
+    ExpectedClass as AuthorityExpectedClass,
+    build_authority_census,
+    build_authority_context,
+    census_as_dict as authority_census_as_dict,
+)
 from evaluation.phase56_stage7.blocked_law_diagnosis import (  # noqa: E402
     diagnose_blocked_laws,
 )
@@ -66,8 +72,15 @@ from evaluation.phase56_stage7.hard_safety_registry import (  # noqa: E402
     measure_signals,
     summarize,
 )
+from evaluation.phase56_stage7.corpus_semantics import (  # noqa: E402
+    scope_adjusted_expected_terminal,
+)
 from evaluation.phase56_stage7.lane_b_draft_projection import (  # noqa: E402
     project_case_to_draft,
+)
+from evaluation.phase56_stage7.lane_b_runner import (  # noqa: E402
+    deterministic_token,
+    run_lane_b_case,
 )
 from evaluation.phase56_stage7.lane_b_structural_blockers import (  # noqa: E402
     build_structural_blocker_census,
@@ -467,6 +480,68 @@ def _structural_blocker_section(archive_path: Path | None) -> dict[str, Any]:
         return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
     section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
     section.update(census_as_dict(census))
+    return section
+
+
+# The corpus states an expected terminal per case; the census only needs its
+# class.  Mapped here rather than inside the census so the census module stays
+# free of any gold vocabulary.
+_AUTHORITY_EXPECTED_CLASS: dict[str, AuthorityExpectedClass] = {
+    "accepted": AuthorityExpectedClass.supported,
+    "deferred_unsupported": AuthorityExpectedClass.deferred,
+    "unsupported_other": AuthorityExpectedClass.unsupported_other,
+    "needs_figure": AuthorityExpectedClass.needs_figure,
+    "needs_confirmation": AuthorityExpectedClass.needs_confirmation,
+    "insufficient_information": AuthorityExpectedClass.insufficient_information,
+}
+
+
+def _authority_census_section(archive_path: Path | None) -> dict[str, Any]:
+    """Partition every context by structure and report what each is short of.
+
+    Diagnostic, never a gate.  The structural-blocker census above counts what
+    is absent across all contexts at once; this one partitions the contexts
+    first, so "seventeen cohorts, of which N are short of a frame" is a
+    measurement in the artifact rather than a claim in a document.
+
+    It publishes its own negative control — solved contexts the carrier reading
+    nevertheless calls short — so a reader can see how much the reading
+    over-fires instead of having to trust that it does not.
+
+    Runtime first, gold second, exactly as Lane B does it: every lane result is
+    produced before any expected terminal is read.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        cases = (*public_dev, *public_adversarial)
+        projections = [project_case_to_draft(case) for case in cases]
+        results = [
+            run_lane_b_case(projection, execution_token=deterministic_token(index))
+            for index, projection in enumerate(projections)
+        ]
+        # --- runtime record complete; expected classes may now be read ------
+        rows = [
+            build_authority_context(
+                projection.draft,
+                result,
+                expected_class=_AUTHORITY_EXPECTED_CLASS.get(
+                    scope_adjusted_expected_terminal(case, case_index=index).value,
+                    AuthorityExpectedClass.unknown,
+                ),
+            )
+            for index, (case, projection, result) in enumerate(
+                zip(cases, projections, results)
+            )
+        ]
+        census = build_authority_census(rows)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(authority_census_as_dict(census))
     return section
 
 
@@ -1047,6 +1122,9 @@ def build_report(*, run_full_suites: bool = False) -> tuple[dict[str, Any], bool
         blocker_section = _structural_blocker_section(
             archive_path if corpus_gate.passed else None
         )
+        authority_census_section = _authority_census_section(
+            archive_path if corpus_gate.passed else None
+        )
         ownership_section = _query_readout_ownership_section(
             archive_path if corpus_gate.passed else None
         )
@@ -1080,6 +1158,7 @@ def build_report(*, run_full_suites: bool = False) -> tuple[dict[str, Any], bool
         "blocked_law_diagnosis": diagnosis_section,
         "complete_profile_census": census_section,
         "structural_blockers": blocker_section,
+        "authority_census": authority_census_section,
         "query_readout_ownership": ownership_section,
         "profile_feasibility": feasibility_section,
         "lane_c": lane_c_section,
