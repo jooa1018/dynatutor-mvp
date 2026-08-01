@@ -6,7 +6,73 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
-## Reproducible evidence and the v2 candidate (2026-08-01) — read this first
+## The v2 correction session (2026-08-01, later) — read this first
+
+An independent audit found three blocking defects in the v2 candidate below,
+and this session corrected them forward-only from `99789b0` — no reset,
+rebase, amend, squash, force-push, or history rewrite — and closed the first
+real pilot cohort in shadow.  The section below this one is kept as written
+and superseded only where stated here and in
+`docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md` §0.
+
+```
+99789b0  (session start = prior documentation head)
+4022e91  fix(stage7): trace source-stated query objectives correctly            [C1]
+c7de7be  fix(stage7): make v2 augmentation fill-only and conflict-safe          [C2]
+742105b  fix(stage7): project v2 frames as typed axis bindings                  [C3]
+7458a2c  engine(stage7): close the vertical-circle limiting-contact cohort ...  [pilot]
+1777c91  test(stage7): pin the static-frame admission determination             [C4 determination]
+```
+
+| Package | Commit | Disposition |
+|---|---|---|
+| C1 query-objective source mapping | `4022e91` | **`C1_QUERY_OBJECTIVE_PRESERVATION_ACCEPTED`** |
+| C2 v2 fill-only conflict contract | `c7de7be` | **`C2_V2_FILL_ONLY_CONFLICT_CONTRACT_ACCEPTED`** |
+| C3 v2 reference-frame projection | `742105b` | **`C3_V2_REFERENCE_FRAME_PROJECTION_ACCEPTED`** |
+| C4 static-frame compiler compatibility | `1777c91` (tests only) | **NOT NEEDED** — measured: typed static frames are already admitted; the old regressions were the malformed projection |
+| Vertical-circle limiting-contact pilot | `7458a2c` | **CLOSED** — 3 newly solved, 0 wrong, 0 regressed, cohort yield 1 |
+
+**The corrected shadow checkpoint** (all artifacts regenerated at the exact
+code head; no prior out-of-tree hash reused): shadow regressions **3 → 0**,
+shadow wrong **0**, newly solved **0 → 3**, cohort yield **0 → 1**, augmented
+contexts 3 of 97, deterministic rebuild byte-identical, regression guard in
+its fail-closed default.  Manifest digest `0e5a8d11…8534`, candidate archive
+SHA-256 `06bf23a2…355e`, shadow report file SHA-256 `c314b189…58d7`, scorecard
+digest `9618779c…fd1b`.
+
+**Official v1 is unchanged**, re-measured under the dependency lock at the
+exact final code head `1777c91`: supported **41/81**, wrong **0**,
+solved-but-unscored 0, deferred 12/12, terminal mapping 58/100, hard safety
+23/23 with every counter zero, Lanes C/D/E PASS, strict gates 29 PASS / 10
+FAIL with exit 2 — byte-for-byte the Stage-7-incomplete profile.  Strict
+report (out-of-repo) SHA-256
+`e5e1ff3f0288721e175a70382c14bbffa117bd123f3c29957cb31b3b159dc704`.  The
+corpus SHA is the frozen `cc8d8b27…1bef` and no v2 number is added to any
+official figure.
+
+**The B22 correction.**  The semantic audit's "seven missing carriers" was a
+measurement error the audit itself now refuses to repeat: `query_objective`
+has a controlled v1 source carrier (`query.output_key = minimum_speed →
+minimum`, the B12 repair), the canonical table is consumed by both the
+projection and the audit, and the machine-measured omission count is **6**
+(`STAGE7_SEMANTIC_AUDIT_SOURCE_OMISSIONS=6`).
+
+**B24–B27 dispositions after the checkpoint:**
+
+| Package | Disposition |
+|---|---|
+| B24 typed reference frame and angle datum | **`B24_TYPED_REFERENCE_FRAME_AND_ANGLE_DATUM_INCOMPLETE`** — the projection is corrected and parity-pinned, regressions are 0, but no frame-*dependent* pilot context has solved: the frame-needing cohorts are blocked on `underdetermined` free-body completion, an engine package this session did not open |
+| B25 typed contact side | **ACCEPTED** — a contact pilot with full boundary authority solved (3 contexts), the side can no longer overwrite a source statement, wrong 0 |
+| B26 typed motion sense and endpoint condition | **ACCEPTED** — the endpoint cohort solved via `contact_limit`, event/interval widening is structurally refused, wrong 0 |
+| B27 v2 migration, shadow evaluation and pilot closures | **`B27_V2_MIGRATION_SHADOW_EVALUATION_AND_PILOT_CLOSURES_ACCEPTED`** — deterministic migration/archive/report, regression 0, pilot closures 3, shadow wrong 0 |
+
+What did **not** change: no file under `backend/engine/` or `backend/app/`
+was touched; no threshold, tolerance or budget moved; no test was deleted (one
+wrong audit pin was replaced by the corrected, stricter pin the independent
+audit demanded); the corpus stays out of the repository; and
+`STAGE_7_IN_PROGRESS / NOT_ACCEPTED`, `STAGE_8_NOT_STARTED` stand.
+
+## Reproducible evidence and the v2 candidate (2026-08-01) — superseded in part above
 
 This session produced no change to the official v1 score and two things that
 were previously only claims: a strict report that reproduces, and a census that

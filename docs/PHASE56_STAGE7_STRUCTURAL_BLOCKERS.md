@@ -1,5 +1,33 @@
 # Phase 56 Stage 7 — measured structural blockers on the Lane B distribution
 
+## Corrected by the v2 correction session (2026-08-01, later) — read first
+
+Three figures below are superseded by the C1–C3 correction packages and the
+first pilot closure; everything else stands.
+
+*"Seven carriers the contract cannot state" is six.*  The B22 audit
+misclassified `query_objective`: v1's controlled `query.output_key =
+minimum_speed` already states `minimum` and the official projection has
+consumed that mapping (the B12 repair) all along.  The machine-measured
+source-contract omission count is **6** — `reference_frame`,
+`frame_axis_direction`, `angle_reference_datum`, `motion_sense`,
+`contact_side`, `quantity_frame_binding` — and the audit's
+`CARRIER_SOURCE_FIELDS` table is the executable source of truth.
+
+*The B12 blocker bundle is split.*  What keeps the vertical-circle public
+shape fail-closed in v1 is the contact side and the boundary states — not the
+objective, which v1 states.  With the v2 candidate's source-quote evidence and
+the corrected carriers, that cohort **closed in shadow**: 3 newly solved, 0
+wrong, 0 regressed (`docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md` §0).
+
+*The compiler frame hypothesis is measured false.*  "A stated frame makes the
+compiler refuse" was the malformed first frame projection, not a compiler
+gate: a correctly projected static frame passes without
+`requires_specialized_model`, and the frame-needing horizontal-contact
+cohort's exact blocker is `compiler_failure :: underdetermined` — missing
+normal/friction free-body records that only a future complete-profile engine
+package may build (`test_phase56_stage7_corpus_v2_static_frame_admission.py`).
+
 ## Superseded in part by the executable census (2026-08-01)
 
 The cohort table below was written by hand.  It is now computed, and the two
