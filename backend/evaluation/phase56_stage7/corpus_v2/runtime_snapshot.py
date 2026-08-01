@@ -107,6 +107,58 @@ class ShadowRuntimeRecordV2(FrozenStrictModel):
         return self.baseline_solved and not self.shadow_solved
 
 
+class PrepareBindingV1(FrozenStrictModel):
+    """What the runtime phase was admitted on, carried into what it produced.
+
+    Without this the snapshot was an orphan.  It recorded the corpus, manifest
+    and candidate hashes — all three of which a laundered preparation preserves
+    untouched — and said nothing about *which preparation* produced the runtime
+    input it ran over.  So a snapshot of a hundred anticipated refusals and a
+    snapshot of ninety-seven measured contexts were, to a reader of the file,
+    the same kind of document about the same archive.
+
+    Every field here comes from a typed attestation Phase R has already
+    verified, never from a string argument.  That distinction is the point: a
+    binding assembled from command-line values would attest to whatever the
+    caller typed, which is the property the whole chain is trying not to have.
+    """
+
+    prepare_attestation_digest: Sha256
+    campaign_seal_name: _Token | None = None
+    exact_code_head: Annotated[str, StringConstraints(min_length=7, max_length=64)]
+    runtime_input_digest: Sha256
+    runtime_input_file_sha256: Sha256
+    context_index_set_digest: Sha256
+    expected_handle_set_digest: Sha256
+    prepared_state_map_digest: Sha256
+    refusal_handle_set_digest: Sha256
+    prepared_state_counts: tuple[tuple[str, int], ...] = ()
+    prepared_refusal_counts: tuple[tuple[str, int], ...] = ()
+
+
+def prepare_binding_from_attestation(attestation: Any) -> PrepareBindingV1:
+    """Project a verified attestation into the binding a snapshot carries.
+
+    A function rather than a constructor call at each site, so there is exactly
+    one place where an attestation becomes a binding and no caller can assemble
+    a binding out of anything else.
+    """
+
+    return PrepareBindingV1(
+        prepare_attestation_digest=attestation.attestation_digest,
+        campaign_seal_name=attestation.campaign_seal_name,
+        exact_code_head=attestation.exact_code_head,
+        runtime_input_digest=attestation.runtime_input_digest,
+        runtime_input_file_sha256=attestation.runtime_input_file_sha256,
+        context_index_set_digest=attestation.context_index_set_digest,
+        expected_handle_set_digest=attestation.expected_handle_set_digest,
+        prepared_state_map_digest=attestation.prepared_state_map_digest,
+        refusal_handle_set_digest=attestation.refusal_handle_set_digest,
+        prepared_state_counts=tuple(attestation.prepared_state_counts),
+        prepared_refusal_counts=tuple(attestation.prepared_refusal_counts),
+    )
+
+
 class ShadowRuntimeSnapshotV2(FrozenStrictModel):
     """Every runtime record for one shadow run, frozen and self-verifying.
 
@@ -137,6 +189,11 @@ class ShadowRuntimeSnapshotV2(FrozenStrictModel):
     # whose ledger does not account for every expected handle cannot be frozen.
     ledger: tuple[ShadowLedgerEntryV2, ...] = Field(default=(), max_length=512)
     records: tuple[ShadowRuntimeRecordV2, ...] = Field(default=(), max_length=512)
+    # Required, with no default.  An optional binding would be a fail-open
+    # path: a snapshot that simply omitted it would load, score and be quoted,
+    # and "this run was admitted on an attested preparation" would once again
+    # be a claim about which command somebody happened to use.
+    prepare_binding: PrepareBindingV1
     runtime_snapshot_digest: Sha256
 
     def digest_material(self) -> bytes:
@@ -211,6 +268,7 @@ def freeze_runtime_snapshot(
     original_v1_archive_sha256: str,
     augmentation_manifest_sha256: str,
     candidate_archive_sha256: str,
+    prepare_binding: PrepareBindingV1,
     exact_code_head: str | None = None,
     unresolved_augmentation_count: int = 0,
 ) -> ShadowRuntimeSnapshotV2:
@@ -233,11 +291,23 @@ def freeze_runtime_snapshot(
     handles = [row.scoring_handle for row in rows]
     if len(handles) != len(set(handles)):
         raise RuntimeSnapshotRefused("two runtime records share one scoring handle")
+    # The snapshot names one code head and the binding names another only if
+    # somebody supplied a head the preparation was not made at.  Refused at
+    # construction rather than recorded, because the disagreement makes the
+    # artifact evidence about two different commits at once.
+    if exact_code_head is not None and exact_code_head != (
+        prepare_binding.exact_code_head
+    ):
+        raise RuntimeSnapshotRefused(
+            "prepare_exact_code_head_mismatch: the snapshot's code head is not "
+            "the one the preparation was attested at"
+        )
     draft = {
         "original_v1_archive_sha256": original_v1_archive_sha256,
         "augmentation_manifest_sha256": augmentation_manifest_sha256,
         "candidate_archive_sha256": candidate_archive_sha256,
-        "exact_code_head": exact_code_head,
+        "exact_code_head": prepare_binding.exact_code_head,
+        "prepare_binding": prepare_binding,
         "expected_context_count": len(entries),
         "context_count": len(rows),
         "augmented_context_count": sum(1 for row in rows if row.augmented),
@@ -369,6 +439,23 @@ class PublicRedactedRuntimeViewV2(FrozenStrictModel):
     unresolved_augmentation_count: int = Field(default=0, ge=0)
     ledger_state_counts: tuple[tuple[str, int], ...] = ()
     ledger_refusal_counts: tuple[tuple[str, int], ...] = ()
+    # Which preparation this run was admitted on, to the extent a public reader
+    # may be told.  The attestation and runtime-input digests are over whole
+    # documents and invert to nothing; the prepared state and refusal counts
+    # are the same aggregates the ledger counts already publish.
+    #
+    # The handle-set digests are deliberately **not** here, and that is a
+    # privacy decision rather than an oversight.  A scoring handle is
+    # `sha256(archive_sha256 || context_index)`, the archive SHA-256 is
+    # published, and there are a hundred contexts — so a digest over the
+    # refused handles is brute-forceable back to *which corpus positions* were
+    # refused in well under a second.  It belongs in the restricted snapshot,
+    # where Phase G checks it, and not in a file meant to be publishable.
+    prepare_attestation_digest: Sha256 | None = None
+    prepare_runtime_input_digest: Sha256 | None = None
+    prepare_campaign_seal_name: _Token | None = None
+    prepared_state_counts: tuple[tuple[str, int], ...] = ()
+    prepared_refusal_counts: tuple[tuple[str, int], ...] = ()
     records: tuple[RedactedRuntimeRecordV2, ...] = Field(default=(), max_length=512)
 
 
@@ -396,6 +483,13 @@ def redact_runtime_snapshot(
         unresolved_augmentation_count=snapshot.unresolved_augmentation_count,
         ledger_state_counts=snapshot.ledger_state_counts,
         ledger_refusal_counts=snapshot.ledger_refusal_counts,
+        prepare_attestation_digest=(
+            snapshot.prepare_binding.prepare_attestation_digest
+        ),
+        prepare_runtime_input_digest=snapshot.prepare_binding.runtime_input_digest,
+        prepare_campaign_seal_name=snapshot.prepare_binding.campaign_seal_name,
+        prepared_state_counts=snapshot.prepare_binding.prepared_state_counts,
+        prepared_refusal_counts=snapshot.prepare_binding.prepared_refusal_counts,
         records=tuple(
             RedactedRuntimeRecordV2(
                 cohort_digest=row.cohort_digest,
@@ -438,6 +532,7 @@ __all__ = [
     "REDACTED_VIEW_CLASS",
     "RUNTIME_SCORE_CLASS",
     "LedgerState",
+    "PrepareBindingV1",
     "PublicRedactedRuntimeViewV2",
     "RedactedRuntimeRecordV2",
     "RuntimeSnapshotRefused",
@@ -447,6 +542,7 @@ __all__ = [
     "digest_of",
     "freeze_runtime_snapshot",
     "load_full_runtime_snapshot",
+    "prepare_binding_from_attestation",
     "redact_runtime_snapshot",
     "scoring_handle",
 ]

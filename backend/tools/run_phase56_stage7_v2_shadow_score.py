@@ -45,6 +45,16 @@ from evaluation.phase56_stage7.corpus_v2.gold_scoring import (  # noqa: E402
     score_shadow_snapshot,
     totals,
 )
+from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
+    CampaignSealFailure,
+    campaign_seal_failures,
+    resolve_campaign_seal,
+)
+from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E402
+    PrepareAttestationRefused,
+    PrepareBindingFailure,
+    load_prepare_attestation,
+)
 from evaluation.phase56_stage7.corpus_v2.reporting import (  # noqa: E402
     assert_scores_are_separated,
     build_scored_shadow_scorecard,
@@ -73,12 +83,101 @@ def _write_atomic(path: Path, body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
+def _binding_failures(snapshot, attestation, expected_code_head: str | None):
+    """Every way this snapshot is not a measurement of that preparation.
+
+    Phase G does not replay the projection — that is Phase V's job, done once,
+    against the corpus, before anything ran.  What Phase G checks is the other
+    half: that the snapshot it is about to score was produced from the
+    preparation the attestation describes, rather than from some other one.
+
+    Compared field by field rather than by hashing the binding as a unit, so a
+    control that alters exactly one of them can name the field it altered.
+    """
+
+    binding = snapshot.prepare_binding
+    failures: list[str] = []
+    if not attestation.digest_is_intact():
+        failures.append(PrepareBindingFailure.attestation_digest_mismatch.value)
+    if binding.prepare_attestation_digest != attestation.attestation_digest:
+        failures.append(PrepareBindingFailure.attestation_digest_mismatch.value)
+    if binding.runtime_input_digest != attestation.runtime_input_digest:
+        failures.append(PrepareBindingFailure.runtime_input_digest_mismatch.value)
+    if binding.runtime_input_file_sha256 != attestation.runtime_input_file_sha256:
+        failures.append(PrepareBindingFailure.runtime_input_file_sha_mismatch.value)
+    if binding.context_index_set_digest != attestation.context_index_set_digest:
+        failures.append(PrepareBindingFailure.context_index_set_mismatch.value)
+    if binding.expected_handle_set_digest != attestation.expected_handle_set_digest:
+        failures.append(PrepareBindingFailure.expected_handle_set_mismatch.value)
+    if binding.prepared_state_map_digest != attestation.prepared_state_map_digest:
+        failures.append(PrepareBindingFailure.prepared_state_map_mismatch.value)
+    if binding.refusal_handle_set_digest != attestation.refusal_handle_set_digest:
+        failures.append(PrepareBindingFailure.refusal_handle_set_mismatch.value)
+    if tuple(binding.prepared_state_counts) != tuple(
+        attestation.prepared_state_counts
+    ):
+        failures.append(PrepareBindingFailure.state_counts_mismatch.value)
+    if tuple(binding.prepared_refusal_counts) != tuple(
+        attestation.prepared_refusal_counts
+    ):
+        failures.append(PrepareBindingFailure.refusal_counts_mismatch.value)
+    if binding.campaign_seal_name != attestation.campaign_seal_name:
+        failures.append(PrepareBindingFailure.campaign_seal_name_mismatch.value)
+    if snapshot.original_v1_archive_sha256 != (
+        attestation.original_v1_archive_sha256
+    ):
+        failures.append(PrepareBindingFailure.corpus_archive_mismatch.value)
+    if snapshot.augmentation_manifest_sha256 != (
+        attestation.augmentation_manifest_digest
+    ):
+        failures.append(PrepareBindingFailure.manifest_digest_mismatch.value)
+    if snapshot.candidate_archive_sha256 != attestation.candidate_archive_digest:
+        failures.append(
+            PrepareBindingFailure.candidate_archive_digest_mismatch.value
+        )
+    heads = {binding.exact_code_head, attestation.exact_code_head}
+    if expected_code_head is not None:
+        heads.add(expected_code_head)
+    if snapshot.exact_code_head is not None:
+        heads.add(snapshot.exact_code_head)
+    if len(heads) != 1:
+        failures.append(PrepareBindingFailure.exact_code_head_mismatch.value)
+
+    # The population seal, read off the attestation the snapshot is bound to.
+    if attestation.campaign_seal_name is not None:
+        seal = resolve_campaign_seal(attestation.campaign_seal_name)
+        if seal is None:
+            failures.append(CampaignSealFailure.unknown_seal.value)
+        else:
+            failures.extend(campaign_seal_failures(attestation, seal))
+    return tuple(sorted(set(failures)))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
     parser.add_argument("--runtime-snapshot", type=Path, required=True)
+    parser.add_argument("--prepare-attestation", type=Path, required=True)
     parser.add_argument("--shadow-report", type=Path, required=True)
     parser.add_argument("--scorecard", type=Path, required=True)
+    parser.add_argument(
+        "--expected-code-head",
+        type=str,
+        default=None,
+        help=(
+            "the commit this scoring run is evidence about. When given, the "
+            "snapshot, the attestation and this value must name one head."
+        ),
+    )
+    parser.add_argument(
+        "--campaign-seal",
+        type=str,
+        default=None,
+        help=(
+            "the named population contract the attestation must claim. Refused "
+            "when the attestation names a different one, or none at all."
+        ),
+    )
     args = parser.parse_args()
 
     try:
@@ -87,6 +186,36 @@ def main() -> int:
         )
     except RuntimeSnapshotRefused as exc:
         print(f"STAGE7_V2_SHADOW_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
+        return SCORE_FAILURE_EXIT
+
+    try:
+        attestation = load_prepare_attestation(
+            args.prepare_attestation.read_text(encoding="utf-8")
+        )
+    except (PrepareAttestationRefused, OSError) as exc:
+        print(f"STAGE7_V2_SHADOW_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
+        return SCORE_FAILURE_EXIT
+
+    binding_failures = list(
+        _binding_failures(snapshot, attestation, args.expected_code_head)
+    )
+    if args.campaign_seal is not None and (
+        attestation.campaign_seal_name != args.campaign_seal
+    ):
+        binding_failures.append(
+            CampaignSealFailure.name_mismatch.value
+            if attestation.campaign_seal_name is not None
+            else CampaignSealFailure.not_sealed.value
+        )
+    if binding_failures:
+        # Refused before the gold is opened.  A snapshot that is not bound to
+        # an attested preparation is not scored at all, so no report exists to
+        # be quoted from a run nobody can attribute.
+        print(
+            "STAGE7_V2_SHADOW_ACCEPTANCE=FAIL:"
+            + ",".join(sorted(set(binding_failures))),
+            file=sys.stderr,
+        )
         return SCORE_FAILURE_EXIT
 
     # --- The gold opens here, and the pipeline is already closed and hashed --
@@ -149,6 +278,22 @@ def main() -> int:
                 "runtime_snapshot_sha256": scorecard.runtime_snapshot_sha256,
                 "acceptance": "PASS" if not scorecard.acceptance_failures else "FAIL",
                 "acceptance_failures": list(scorecard.acceptance_failures),
+                "prepare_attestation_digest": (
+                    snapshot.prepare_binding.prepare_attestation_digest
+                ),
+                "runtime_input_digest": (
+                    snapshot.prepare_binding.runtime_input_digest
+                ),
+                "prepared_state_map_digest": (
+                    snapshot.prepare_binding.prepared_state_map_digest
+                ),
+                "refusal_handle_set_digest": (
+                    snapshot.prepare_binding.refusal_handle_set_digest
+                ),
+                "expected_handle_set_digest": (
+                    snapshot.prepare_binding.expected_handle_set_digest
+                ),
+                "campaign_seal_name": snapshot.prepare_binding.campaign_seal_name,
                 "expected_context_count": scorecard.expected_context_count,
                 "context_count": scorecard.context_count,
                 "ledger_state_counts": [

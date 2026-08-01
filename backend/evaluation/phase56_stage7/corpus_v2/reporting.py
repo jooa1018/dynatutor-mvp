@@ -15,13 +15,13 @@ official field to add it to.
 
 from __future__ import annotations
 
-import hashlib
 from collections import Counter
 from typing import Annotated, Any, Iterable
 
 from pydantic import Field, StringConstraints
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel, Sha256
+from evaluation.phase56_stage7.corpus_v2.canonical import canonical_digest
 
 
 CORPUS_V2_REPORTING_VERSION = "phase56-stage7-corpus-v2-reporting-v1"
@@ -91,8 +91,15 @@ class ShadowScorecardV1(FrozenStrictModel):
 
     @property
     def digest(self) -> str:
-        material = repr(self.model_dump(mode="json")).encode("utf-8")
-        return hashlib.sha256(material).hexdigest()
+        """Over the shared canonical JSON, never over a `repr`.
+
+        `repr` of a dict is a Python-implementation-dependent string that also
+        encodes insertion order, so a verifier reproducing this number had to
+        reproduce the interpreter rather than the content.  Every digest in
+        this evaluation now goes through one canonicalization.
+        """
+
+        return canonical_digest(self.model_dump(mode="json"))
 
     @property
     def cohort_yield_count(self) -> int:
@@ -163,6 +170,18 @@ class ShadowScorecardV2(FrozenStrictModel):
     original_v1_archive_sha256: Sha256
     runtime_snapshot_sha256: Sha256
     exact_code_head: Annotated[str, StringConstraints(max_length=64)] | None = None
+    # Which preparation this score is a score *of*.  Carried on the scorecard
+    # rather than only on the snapshot, so the artifact a reader quotes and the
+    # artifact a verifier checks name the same preparation.  Without them a
+    # scorecard was attributable to a corpus and a commit but not to a
+    # population, and a laundered population has the same corpus and commit as
+    # an honest one.
+    prepare_attestation_digest: Sha256 | None = None
+    runtime_input_digest: Sha256 | None = None
+    prepared_state_map_digest: Sha256 | None = None
+    refusal_handle_set_digest: Sha256 | None = None
+    expected_handle_set_digest: Sha256 | None = None
+    campaign_seal_name: _Token | None = None
     expected_context_count: int = 0
     context_count: int = 0
     # Every way the run failed to account for every context, carried on the
@@ -194,8 +213,15 @@ class ShadowScorecardV2(FrozenStrictModel):
 
     @property
     def digest(self) -> str:
-        material = repr(self.model_dump(mode="json")).encode("utf-8")
-        return hashlib.sha256(material).hexdigest()
+        """Over the shared canonical JSON, never over a `repr`.
+
+        `repr` of a dict is a Python-implementation-dependent string that also
+        encodes insertion order, so a verifier reproducing this number had to
+        reproduce the interpreter rather than the content.  Every digest in
+        this evaluation now goes through one canonicalization.
+        """
+
+        return canonical_digest(self.model_dump(mode="json"))
 
     @property
     def cohort_yield_count(self) -> int:
@@ -249,6 +275,7 @@ def build_scored_shadow_scorecard(
     """
 
     rows = tuple(scored)
+    binding = snapshot.prepare_binding
     return ShadowScorecardV2(
         runtime_contract_version=snapshot.runtime_contract_version,
         candidate_archive_sha256=snapshot.candidate_archive_sha256,
@@ -256,6 +283,12 @@ def build_scored_shadow_scorecard(
         original_v1_archive_sha256=snapshot.original_v1_archive_sha256,
         runtime_snapshot_sha256=snapshot.runtime_snapshot_digest,
         exact_code_head=snapshot.exact_code_head,
+        prepare_attestation_digest=binding.prepare_attestation_digest,
+        runtime_input_digest=binding.runtime_input_digest,
+        prepared_state_map_digest=binding.prepared_state_map_digest,
+        refusal_handle_set_digest=binding.refusal_handle_set_digest,
+        expected_handle_set_digest=binding.expected_handle_set_digest,
+        campaign_seal_name=binding.campaign_seal_name,
         expected_context_count=snapshot.expected_context_count,
         completeness_failures=tuple(
             sorted(set(completeness_failures) | set(snapshot.completeness_failures()))

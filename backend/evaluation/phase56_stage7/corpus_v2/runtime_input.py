@@ -26,11 +26,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from enum import Enum
 from typing import Annotated, Any, Mapping
 
-from pydantic import Field, StringConstraints
+from pydantic import Field, StringConstraints, model_validator
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel, Sha256
+from evaluation.phase56_stage7.corpus_v2.canonical import canonical_json_bytes
 from evaluation.phase56_stage7.corpus_v2.records import CorpusV2AugmentationV1
 from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (
     LedgerState,
@@ -44,6 +47,55 @@ _Handle = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 _Token = Annotated[str, StringConstraints(min_length=1, max_length=120)]
 
 
+class PreparedStateConflict(str, Enum):
+    """Why a context's declared state and its contents do not agree.
+
+    Named values rather than free text, because these are the gate a negative
+    control names.  "the bundle failed to validate" is not evidence that the
+    laundering path is closed; ``runtime_completed_without_draft`` is.
+    """
+
+    runtime_completed_without_draft = "runtime_completed_without_draft"
+    runtime_completed_with_refusal_code = "runtime_completed_with_refusal_code"
+    projection_refused_with_draft = "projection_refused_with_draft"
+    projection_refused_wrong_code = "projection_refused_wrong_code"
+    projection_refused_with_runtime_authority = (
+        "projection_refused_with_runtime_authority"
+    )
+    state_not_preparable = "prepared_state_not_reachable_from_prepare"
+
+
+# The states Phase M can actually put a context into.  `migration_refused` is
+# not one of them and this is a fact about the migration contract rather than an
+# omission: `build_candidate_archive` either resolves an entry, leaves the
+# record unresolved with an empty augmentation — which is still a preparable
+# context — or raises `MigrationError` and aborts the whole preparation.  There
+# is no path on which a migration refusal becomes a runtime input row, so
+# admitting one here would be admitting a state no honest Phase M can produce.
+# `runtime_failed` and `snapshot_rejected` are decided *after* preparation, by
+# phases that have not run yet when this file is written.
+PREPARABLE_STATES: frozenset[LedgerState] = frozenset(
+    {LedgerState.runtime_completed, LedgerState.projection_refused}
+)
+
+# What a refused context may not carry.  Phase M leaves every one of these at
+# its default for a context it could not project, so a refused row that has one
+# is a row somebody assembled rather than one Phase M produced — which is the
+# signature of a runtime-completed context relabelled as an allowed refusal.
+_RUNTIME_ONLY_FIELDS: tuple[str, ...] = (
+    "problem_text",
+    "derived_authority_ids",
+    "projection_terminal",
+    "sanitized_reason",
+    "environment_scoped_quantity_ids",
+    "segment_internal_event_ids",
+    "approvable_assumption_ids",
+    "known_symbol_ids",
+    "unknown_symbol_ids",
+    "event_authority_gaps",
+)
+
+
 class RuntimeContextInputV2(FrozenStrictModel):
     """One context, as the runtime phase is permitted to see it.
 
@@ -52,6 +104,21 @@ class RuntimeContextInputV2(FrozenStrictModel):
     and its reason.  That is the whole point: the refused context is *in* the
     bundle, so the runtime phase inherits a complete list of what it is
     accounting for rather than a list of what happened to survive.
+
+    "Exactly when" is now enforced rather than described.  These three fields
+    arrive from an external JSON document, and until this validator existed
+    each was only checked against its own type: `prepared_state` had to be a
+    member of the enum, `refusal_code` a member of its own, and `draft_payload`
+    a mapping or null.  Nothing checked that they were talking about the same
+    context.  So a solvable context could be handed back as
+
+        prepared_state=projection_refused,
+        refusal_code=projection_refused_no_draft,
+        draft_payload=null
+
+    and every downstream completeness rule agreed it was a legitimately refused
+    context — one the contract *anticipates* — rather than a solvable one that
+    had been excused out of the measurement.
     """
 
     scoring_handle: _Handle
@@ -80,6 +147,57 @@ class RuntimeContextInputV2(FrozenStrictModel):
     unknown_symbol_ids: tuple[_Token, ...] = ()
     event_authority_gaps: tuple[tuple[_Token, _Token], ...] = ()
 
+    @model_validator(mode="after")
+    def validate_prepared_state(self) -> "RuntimeContextInputV2":
+        """The state, the reason and the payload must describe one context.
+
+        Fails closed on every disagreement, and raises the conflict's own name
+        so the refusal is attributable.  A pydantic enum check alone would
+        admit all of these: each field is individually well-typed, and the
+        defect was never in any one of them.
+        """
+
+        if self.prepared_state not in PREPARABLE_STATES:
+            raise ValueError(
+                f"{PreparedStateConflict.state_not_preparable.value}: "
+                f"{self.prepared_state.value}"
+            )
+        if self.prepared_state is LedgerState.runtime_completed:
+            if self.draft_payload is None:
+                raise ValueError(
+                    PreparedStateConflict.runtime_completed_without_draft.value
+                )
+            if self.refusal_code is not None:
+                raise ValueError(
+                    PreparedStateConflict.runtime_completed_with_refusal_code.value
+                )
+            return self
+
+        # projection_refused, the only other preparable state.
+        if self.draft_payload is not None:
+            raise ValueError(PreparedStateConflict.projection_refused_with_draft.value)
+        if self.refusal_code is not RefusalCode.projection_refused_no_draft:
+            raise ValueError(PreparedStateConflict.projection_refused_wrong_code.value)
+        # A refusal that still carries the projection's runtime outputs is not a
+        # refusal Phase M wrote.  Checked against the field defaults rather than
+        # against a hand-kept list of values, so a new field is covered the day
+        # it is added.
+        for name in _RUNTIME_ONLY_FIELDS:
+            default = type(self).model_fields[name].get_default(
+                call_default_factory=True
+            )
+            if getattr(self, name) != default:
+                raise ValueError(
+                    f"{PreparedStateConflict.projection_refused_with_runtime_authority.value}"
+                    f": {name}"
+                )
+        if not self.augmentation.is_empty:
+            raise ValueError(
+                f"{PreparedStateConflict.projection_refused_with_runtime_authority.value}"
+                ": augmentation"
+            )
+        return self
+
 
 class ShadowRuntimeInputV2(FrozenStrictModel):
     """Every context the runtime phase must account for, and nothing else."""
@@ -96,13 +214,7 @@ class ShadowRuntimeInputV2(FrozenStrictModel):
         return tuple(item.scoring_handle for item in self.contexts)
 
     def canonical_bytes(self) -> bytes:
-        return json.dumps(
-            self.model_dump(mode="json"),
-            ensure_ascii=False,
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
+        return canonical_json_bytes(self.model_dump(mode="json"))
 
     @property
     def digest(self) -> str:
@@ -140,6 +252,19 @@ _FORBIDDEN_BUNDLE_KEYS: frozenset[str] = frozenset(
     }
 )
 
+# Matched on a normalized key rather than a casefolded one, so `expectedAnswer`,
+# `expected-answer` and `Expected Answer` are the same forbidden name as
+# `expected_answer`.  The manifest scan has always normalized this way; the
+# bundle scan compared raw casefolded strings, so a spelling variant of a gold
+# member would have passed it.
+_FORBIDDEN_NORMALIZED: frozenset[str] = frozenset(
+    re.sub(r"[^a-z0-9]", "", name.casefold()) for name in _FORBIDDEN_BUNDLE_KEYS
+)
+
+
+def _normalized_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.casefold())
+
 
 def assert_bundle_has_no_gold(value: Any) -> None:
     """Refuse a bundle naming any gold member or case identity, at any depth.
@@ -154,7 +279,9 @@ def assert_bundle_has_no_gold(value: Any) -> None:
     def walk(node: Any) -> None:
         if isinstance(node, Mapping):
             for key, child in node.items():
-                if isinstance(key, str) and key.casefold() in _FORBIDDEN_BUNDLE_KEYS:
+                if isinstance(key, str) and _normalized_key(key) in (
+                    _FORBIDDEN_NORMALIZED
+                ):
                     raise RuntimeInputRefused(
                         f"the runtime input names a gold member: {key}"
                     )
@@ -167,13 +294,30 @@ def assert_bundle_has_no_gold(value: Any) -> None:
 
 
 def load_runtime_input(body: str) -> ShadowRuntimeInputV2:
-    """Re-read a bundle from its own bytes, or refuse it."""
+    """Re-read a bundle from its own bytes, or refuse it.
 
+    The gold scan runs on the **raw** parsed document, before the model sees
+    it, and that ordering is the point rather than an implementation detail.
+    `draft_payload` is an open mapping: pydantic will happily accept a
+    ``{"gold": ...}`` nested six levels inside one, because the field's type is
+    satisfied.  Scanning the validated model would also work, but scanning the
+    raw document additionally covers anything the schema would have dropped or
+    coerced on the way in, and it means the check has already run at the moment
+    the trust boundary is crossed rather than after it.
+    """
+
+    try:
+        raw = json.loads(body)
+    except Exception as exc:  # noqa: BLE001 — re-raised as the typed refusal
+        raise RuntimeInputRefused(
+            f"the runtime input is not JSON: {type(exc).__name__}"
+        ) from None
+    assert_bundle_has_no_gold(raw)
     try:
         bundle = ShadowRuntimeInputV2.model_validate_json(body)
     except Exception as exc:  # noqa: BLE001 — re-raised as the typed refusal
         raise RuntimeInputRefused(
-            f"the runtime input could not be read as one: {type(exc).__name__}"
+            f"the runtime input could not be read as one: {type(exc).__name__}: {exc}"
         ) from None
     if bundle.version != CORPUS_V2_RUNTIME_INPUT_VERSION:
         raise RuntimeInputRefused(
@@ -188,6 +332,8 @@ def load_runtime_input(body: str) -> ShadowRuntimeInputV2:
 
 __all__ = [
     "CORPUS_V2_RUNTIME_INPUT_VERSION",
+    "PREPARABLE_STATES",
+    "PreparedStateConflict",
     "RuntimeContextInputV2",
     "RuntimeInputRefused",
     "ShadowRuntimeInputV2",

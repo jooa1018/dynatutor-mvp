@@ -1,8 +1,9 @@
-"""Phase M — build the v2 candidate archive and the runtime input bundle.
+"""Phase M — build the v2 candidate archive, the runtime input, and attest them.
 
 This command reads the corpus and the manifest, migrates one against the other,
-and writes two files: the candidate archive, and the gold-free bundle the
-runtime phase will be given.  It runs no pipeline and compares no answer.
+and writes three files: the candidate archive, the gold-free bundle the runtime
+phase will be given, and a restricted attestation of what it prepared.  It runs
+no pipeline and compares no answer.
 
 Splitting it out is what lets Phase R be provably gold-free.  When one process
 did all three jobs it held `PublicCorpusCaseV1` objects — which contain `gold` —
@@ -17,7 +18,23 @@ whose v1 record cannot be projected.  A refused context that stayed in the file
 is a context the next phase still has to account for; a refused context that was
 dropped here would be one nobody could notice was missing.
 
-Exit 0 when the bundle was written, 2 when it could not be built honestly.
+**The attestation is the new half, and it exists because a complete list is not
+the same as an honest one.**  Every completeness rule downstream was computed
+from the bundle's own contents, so an edited bundle simply moved the rules'
+answers with it: relabel a solvable context as `projection_refused` with a null
+draft and the ledger still has its row, the refusal is still one the contract
+anticipates, and the record set still agrees with the completed set — because
+both are now empty.  The attestation states what this command actually produced
+— the order, the handles, the prepared state of each context, which ones were
+refused and under which code — and hashes it, so a later phase can re-derive the
+same statement from the file it was handed and see the disagreement.
+
+The forbidden-key scan runs on the raw payload *before* validation and before
+any write, so a bundle naming a gold member never reaches disk at all.  It used
+to run after the file had been written.
+
+Exit 0 when all three artifacts were written, 2 when they could not be built
+honestly.
 """
 
 from __future__ import annotations
@@ -27,40 +44,27 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPOSITORY_ROOT / "backend"))
 
-from evaluation.phase56_stage7.corpus_integrity import (  # noqa: E402
-    read_public_corpus_archive,
+from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
+    campaign_seal_failures,
+    resolve_campaign_seal,
 )
-from evaluation.phase56_stage7.corpus_preflight import load_public_cases  # noqa: E402
-from evaluation.phase56_stage7.corpus_v2.migration import (  # noqa: E402
-    AugmentationManifestV1,
-    ReviewStatus,
-    archive_digest,
-    assert_manifest_has_no_answer_authority,
-    build_candidate_archive,
-    record_fingerprint,
+from evaluation.phase56_stage7.corpus_v2.canonical import file_sha256  # noqa: E402
+from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E402
+    build_prepare_attestation,
 )
-from evaluation.phase56_stage7.corpus_v2.projection import (  # noqa: E402
-    derived_authority_ids,
+from evaluation.phase56_stage7.corpus_v2.prepare_builder import (  # noqa: E402
+    PrepareBuildRefused,
+    build_prepared_campaign,
 )
 from evaluation.phase56_stage7.corpus_v2.runtime_input import (  # noqa: E402
-    RuntimeContextInputV2,
-    ShadowRuntimeInputV2,
-    assert_bundle_has_no_gold,
+    RuntimeInputRefused,
 )
 from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (  # noqa: E402
     LedgerState,
-    RefusalCode,
-)
-from evaluation.phase56_stage7.corpus_v2.runtime_snapshot import (  # noqa: E402
-    scoring_handle,
-)
-from evaluation.phase56_stage7.lane_b_draft_projection import (  # noqa: E402
-    project_case_to_draft,
 )
 
 PREPARE_FAILURE_EXIT = 2
@@ -80,176 +84,170 @@ def _write_atomic(path: Path, body: str) -> str:
     return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
-def _context_identifier_sets(payload: dict[str, Any]) -> dict[str, list[str]]:
-    authored = [
-        *(item["entity_id"] for item in payload.get("entities") or []),
-        *(item["event_id"] for item in payload.get("events") or []),
-        *(item["interval_id"] for item in payload.get("motion_intervals") or []),
-        *(item["quantity_id"] for item in payload.get("quantities") or []),
-        *(item["query_id"] for item in payload.get("queries") or []),
-    ]
-    return {
-        "entities": [item["entity_id"] for item in payload.get("entities") or []],
-        "intervals": [
-            item["interval_id"] for item in payload.get("motion_intervals") or []
-        ],
-        "events": [item["event_id"] for item in payload.get("events") or []],
-        "evidence": [
-            item["evidence_id"] for item in payload.get("source_evidence") or []
-        ],
-        "interactions": [
-            item["interaction_id"] for item in payload.get("interactions") or []
-        ],
-        "queries": [item["query_id"] for item in payload.get("queries") or []],
-        "authored": authored,
-    }
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--candidate-archive", type=Path, required=True)
     parser.add_argument("--runtime-input", type=Path, required=True)
+    parser.add_argument("--prepare-attestation", type=Path, required=True)
+    parser.add_argument(
+        "--exact-code-head",
+        type=str,
+        required=True,
+        help=(
+            "the commit every artifact in this preparation is evidence about. "
+            "Required: an attestation that did not name one could be presented "
+            "beside any code head at all."
+        ),
+    )
+    parser.add_argument(
+        "--campaign-seal",
+        type=str,
+        default=None,
+        help=(
+            "the named population contract this preparation must satisfy, e.g. "
+            "phase56-stage7-v2-public-campaign-v1. Recorded in the attestation "
+            "so a later phase enforces the seal the preparation claimed rather "
+            "than whichever one it was asked to."
+        ),
+    )
     args = parser.parse_args()
 
-    inventory = read_public_corpus_archive(args.corpus_archive)
-    public_dev, public_adversarial = load_public_cases(inventory)
-    cases = (*public_dev, *public_adversarial)
-
-    manifest_text = args.manifest.read_text(encoding="utf-8")
-    manifest = AugmentationManifestV1.model_validate_json(manifest_text)
-    assert_manifest_has_no_answer_authority(json.loads(manifest_text))
-
-    records = [case.model_dump(mode="json", warnings="none") for case in cases]
-    projections = [project_case_to_draft(case) for case in cases]
-
-    context_ids: dict[str, dict[str, list[str]]] = {}
-    draft_payloads: dict[str, dict[str, Any]] = {}
-    payloads: list[dict[str, Any] | None] = []
-    for record, projection in zip(records, projections):
-        draft = projection.draft
-        payload = (
-            None if draft is None else draft.model_dump(mode="json", warnings="none")
+    try:
+        prepared = build_prepared_campaign(
+            corpus_archive=args.corpus_archive, manifest=args.manifest
         )
-        payloads.append(payload)
-        fingerprint = record_fingerprint(record)
-        if payload is not None:
-            draft_payloads[fingerprint] = payload
-        context_ids[fingerprint] = _context_identifier_sets(payload or {})
-
-    migrated = build_candidate_archive(
-        records, manifest, context_ids=context_ids, draft_payloads=draft_payloads
-    )
-    candidate_sha = archive_digest(migrated)
-    candidate_body = (
-        json.dumps(
-            {
-                "schema_version": manifest.schema_version,
-                "original_v1_archive_sha256": inventory.archive_sha256,
-                "augmentation_manifest_sha256": manifest.digest,
-                "records": [item.model_dump(mode="json") for item in migrated],
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-            indent=2,
-        )
-        + "\n"
-    )
-    candidate_file_sha = _write_atomic(args.candidate_archive, candidate_body)
-
-    contexts: list[RuntimeContextInputV2] = []
-    for index, (projection, entry, payload) in enumerate(
-        zip(projections, migrated, payloads)
-    ):
-        handle = scoring_handle(
-            original_v1_archive_sha256=inventory.archive_sha256,
-            context_index=index,
-        )
-        if payload is None:
-            # Anticipated: the v1 record does not carry what a Draft needs.
-            # The context stays in the bundle so the next phase inherits it.
-            contexts.append(
-                RuntimeContextInputV2(
-                    scoring_handle=handle,
-                    context_index=index,
-                    prepared_state=LedgerState.projection_refused,
-                    refusal_code=RefusalCode.projection_refused_no_draft,
-                )
-            )
-            continue
-        contexts.append(
-            RuntimeContextInputV2(
-                scoring_handle=handle,
-                context_index=index,
-                prepared_state=LedgerState.runtime_completed,
-                draft_payload=payload,
-                problem_text=projection.problem_text,
-                augmentation=entry.augmentation,
-                derived_authority_ids=derived_authority_ids(entry.augmentation),
-                projection_terminal=getattr(projection.terminal, "value", None),
-                sanitized_reason=projection.sanitized_reason,
-                environment_scoped_quantity_ids=(
-                    projection.environment_scoped_quantity_ids
-                ),
-                segment_internal_event_ids=projection.segment_internal_event_ids,
-                approvable_assumption_ids=projection.approvable_assumption_ids,
-                known_symbol_ids=projection.known_symbol_ids,
-                unknown_symbol_ids=projection.unknown_symbol_ids,
-                event_authority_gaps=projection.event_authority_gaps,
-            )
-        )
-
-    bundle = ShadowRuntimeInputV2(
-        original_v1_archive_sha256=inventory.archive_sha256,
-        augmentation_manifest_sha256=manifest.digest,
-        candidate_archive_sha256=candidate_sha,
-        unresolved_augmentation_count=sum(
-            1 for item in migrated if item.review_status is ReviewStatus.unresolved
-        ),
-        contexts=tuple(contexts),
-    )
-    if len(bundle.contexts) != len(cases):
-        print(
-            "STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:shadow_context_count_mismatch",
-            file=sys.stderr,
-        )
+    except (PrepareBuildRefused, RuntimeInputRefused) as exc:
+        print(f"STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
         return PREPARE_FAILURE_EXIT
 
-    bundle_body = (
+    contexts = prepared.runtime_input.contexts
+
+    # Everything is derived and scanned before anything is written, so a
+    # preparation that fails leaves no partial evidence behind.
+    candidate_file_sha = _write_atomic(
+        args.candidate_archive, prepared.candidate_body
+    )
+    bundle_file_sha = _write_atomic(
+        args.runtime_input, prepared.runtime_input_body
+    )
+
+    attestation = build_prepare_attestation(
+        campaign_seal_name=args.campaign_seal,
+        exact_code_head=args.exact_code_head,
+        original_v1_archive_sha256=prepared.original_v1_archive_sha256,
+        augmentation_manifest_digest=prepared.augmentation_manifest_digest,
+        augmentation_manifest_file_sha256=(
+            prepared.augmentation_manifest_file_sha256
+        ),
+        candidate_archive_digest=prepared.candidate_archive_digest,
+        candidate_archive_file_sha256=candidate_file_sha,
+        runtime_input_digest=prepared.runtime_input.digest,
+        runtime_input_file_sha256=bundle_file_sha,
+        contexts=contexts,
+        unresolved_augmentation_count=prepared.unresolved_augmentation_count,
+    )
+
+    # A named seal is checked here as well as downstream.  Phase M is the phase
+    # that can still refuse to produce the artifacts at all, and a preparation
+    # whose population does not match the campaign it claims to be is not a
+    # preparation anyone should be handed.
+    if args.campaign_seal is not None:
+        seal = resolve_campaign_seal(args.campaign_seal)
+        if seal is None:
+            print(
+                "STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:campaign_seal_unknown",
+                file=sys.stderr,
+            )
+            return PREPARE_FAILURE_EXIT
+        seal_failures = campaign_seal_failures(attestation, seal)
+        if seal_failures:
+            print(
+                "STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:" + ",".join(seal_failures),
+                file=sys.stderr,
+            )
+            return PREPARE_FAILURE_EXIT
+
+    attestation_body = (
         json.dumps(
-            bundle.model_dump(mode="json"),
+            attestation.model_dump(mode="json"),
             ensure_ascii=False,
             sort_keys=True,
             indent=2,
         )
         + "\n"
     )
-    bundle_file_sha = _write_atomic(args.runtime_input, bundle_body)
+    attestation_file_sha = _write_atomic(args.prepare_attestation, attestation_body)
 
-    # The bundle is restricted rather than published, so the publication scan
-    # is the wrong one — it rejects `problem_text`, which is legitimate runtime
-    # input.  What the bundle may never carry is an expectation, and that is
-    # what this checks, before the runtime phase can be handed one.
-    assert_bundle_has_no_gold(json.loads(bundle_body))
-
-    print(f"STAGE7_V2_PREPARE_ORIGINAL_V1_ARCHIVE_SHA256={inventory.archive_sha256}")
-    print(f"STAGE7_V2_PREPARE_MANIFEST_SHA256={manifest.digest}")
-    print(f"STAGE7_V2_PREPARE_CANDIDATE_ARCHIVE_SHA256={candidate_sha}")
+    print(
+        "STAGE7_V2_PREPARE_ORIGINAL_V1_ARCHIVE_SHA256="
+        f"{prepared.original_v1_archive_sha256}"
+    )
+    print(
+        "STAGE7_V2_PREPARE_MANIFEST_DIGEST="
+        f"{prepared.augmentation_manifest_digest}"
+    )
+    print(
+        "STAGE7_V2_PREPARE_MANIFEST_FILE_SHA256="
+        f"{prepared.augmentation_manifest_file_sha256}"
+    )
+    print(
+        "STAGE7_V2_PREPARE_CANDIDATE_ARCHIVE_SHA256="
+        f"{prepared.candidate_archive_digest}"
+    )
     print(f"STAGE7_V2_PREPARE_CANDIDATE_FILE_SHA256={candidate_file_sha}")
-    print(f"STAGE7_V2_PREPARE_RUNTIME_INPUT_DIGEST={bundle.digest}")
+    print(
+        f"STAGE7_V2_PREPARE_RUNTIME_INPUT_DIGEST={prepared.runtime_input.digest}"
+    )
     print(f"STAGE7_V2_PREPARE_RUNTIME_INPUT_FILE_SHA256={bundle_file_sha}")
-    print(f"STAGE7_V2_PREPARE_EXPECTED_CONTEXTS={len(bundle.contexts)}")
+    print(
+        "STAGE7_V2_PREPARE_ATTESTATION_DIGEST="
+        f"{attestation.attestation_digest}"
+    )
+    print(f"STAGE7_V2_PREPARE_ATTESTATION_FILE_SHA256={attestation_file_sha}")
+    print(f"STAGE7_V2_PREPARE_EXPECTED_CONTEXTS={len(contexts)}")
+    print(
+        "STAGE7_V2_PREPARE_CONTEXT_INDEX_SET_DIGEST="
+        f"{attestation.context_index_set_digest}"
+    )
+    print(
+        "STAGE7_V2_PREPARE_EXPECTED_HANDLE_SET_DIGEST="
+        f"{attestation.expected_handle_set_digest}"
+    )
+    print(
+        "STAGE7_V2_PREPARE_PREPARED_STATE_MAP_DIGEST="
+        f"{attestation.prepared_state_map_digest}"
+    )
+    print(
+        "STAGE7_V2_PREPARE_REFUSAL_HANDLE_SET_DIGEST="
+        f"{attestation.refusal_handle_set_digest}"
+    )
+    for name, count in attestation.prepared_state_counts:
+        print(f"STAGE7_V2_PREPARE_STATE_{name}={count}")
+    for name, count in attestation.prepared_refusal_counts:
+        print(f"STAGE7_V2_PREPARE_REFUSAL_{name}={count}")
     print(
         "STAGE7_V2_PREPARE_PROJECTION_REFUSED="
         + str(
             sum(
                 1
-                for item in bundle.contexts
+                for item in contexts
                 if item.prepared_state is LedgerState.projection_refused
             )
         )
     )
+    print(f"STAGE7_V2_PREPARE_CAMPAIGN_SEAL={args.campaign_seal or 'none'}")
+    print(f"STAGE7_V2_PREPARE_EXACT_CODE_HEAD={args.exact_code_head}")
+    # Recomputed from the bytes that were written rather than from the bytes
+    # that were meant to be: an atomic write that lost its tail would otherwise
+    # be attested as intact.
+    if file_sha256(args.runtime_input.read_text(encoding="utf-8")) != bundle_file_sha:
+        print(
+            "STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:prepare_runtime_input_write_mismatch",
+            file=sys.stderr,
+        )
+        return PREPARE_FAILURE_EXIT
     print("STAGE7_V2_PREPARE_ACCEPTANCE=PASS")
     return 0
 

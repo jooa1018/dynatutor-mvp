@@ -14,15 +14,27 @@ did not reach for one.  Nothing could show that it could not have.
 Split into processes, the claim becomes a property of what each one opens:
 
 * ``run_phase56_stage7_v2_shadow_prepare`` reads the corpus and the manifest,
-  migrates them, and writes the candidate archive and a gold-free runtime input
-  bundle.  It runs no pipeline and compares no answer.
+  migrates them, and writes the candidate archive, a gold-free runtime input
+  bundle, and an attestation of what it prepared.  It runs no pipeline and
+  compares no answer.
+* ``run_phase56_stage7_v2_shadow_verify_prepare`` rebuilds the preparation from
+  the corpus and the manifest and compares its own result against those files.
+  It exists because the other checks in this chain are all comparisons *between
+  artifacts Phase M wrote* — and a runtime input and an attestation forged
+  together agree with each other perfectly.  Going back to the frozen corpus is
+  the only comparison a forger cannot satisfy.  It solves nothing, runs no
+  pipeline, scores nothing, and writes only its own report.
 * ``run_phase56_stage7_v2_shadow_runtime`` reads *only* that bundle — a type
-  with no field an expectation could be written into — runs the pipeline, and
-  freezes the full restricted snapshot and the public redacted view.  It never
-  opens the corpus.
+  with no field an expectation could be written into — checks it against the
+  attestation, runs the pipeline, and freezes the full restricted snapshot and
+  the public redacted view.  It never opens the corpus.
 * ``run_phase56_stage7_v2_shadow_score`` reads the frozen snapshot back **from
-  disk** and the corpus, and compares.  It holds no compiler, solver or
-  projection, so it cannot re-run anything having seen the gold.
+  disk** and the corpus, checks the snapshot is bound to the attested
+  preparation, and compares.  It holds no compiler, solver or projection, so it
+  cannot re-run anything having seen the gold.
+
+The order is load-bearing: Phase V runs **between** preparation and runtime, so
+a preparation that fails verification reaches the pipeline zero times.
 
 Each step's exit status is the step's own disposition, and this orchestrator
 returns the first non-zero one it sees.  A failed acceptance exits 2; it does
@@ -41,6 +53,7 @@ from pathlib import Path
 TOOLS = Path(__file__).resolve().parent
 
 PREPARE = TOOLS / "run_phase56_stage7_v2_shadow_prepare.py"
+VERIFY_PREPARE = TOOLS / "run_phase56_stage7_v2_shadow_verify_prepare.py"
 RUNTIME = TOOLS / "run_phase56_stage7_v2_shadow_runtime.py"
 SCORE = TOOLS / "run_phase56_stage7_v2_shadow_score.py"
 
@@ -58,29 +71,60 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--candidate-archive", type=Path, required=True)
     parser.add_argument("--runtime-input", type=Path, required=True)
+    parser.add_argument("--prepare-attestation", type=Path, required=True)
+    parser.add_argument("--verification-report", type=Path, required=True)
     parser.add_argument("--runtime-snapshot", type=Path, required=True)
     parser.add_argument("--redacted-view", type=Path, required=True)
     parser.add_argument("--shadow-report", type=Path, required=True)
     parser.add_argument("--scorecard", type=Path, required=True)
-    parser.add_argument("--exact-code-head", type=str, default=None)
+    parser.add_argument("--exact-code-head", type=str, required=True)
+    parser.add_argument("--campaign-seal", type=str, default=None)
     parser.add_argument("--record-regressions", action="store_true")
     args = parser.parse_args()
 
-    status = _run(
-        "PHASE_M_PREPARE",
-        [
-            sys.executable,
-            str(PREPARE),
-            "--corpus-archive",
-            str(args.corpus_archive),
-            "--manifest",
-            str(args.manifest),
-            "--candidate-archive",
-            str(args.candidate_archive),
-            "--runtime-input",
-            str(args.runtime_input),
-        ],
-    )
+    prepare_command = [
+        sys.executable,
+        str(PREPARE),
+        "--corpus-archive",
+        str(args.corpus_archive),
+        "--manifest",
+        str(args.manifest),
+        "--candidate-archive",
+        str(args.candidate_archive),
+        "--runtime-input",
+        str(args.runtime_input),
+        "--prepare-attestation",
+        str(args.prepare_attestation),
+        "--exact-code-head",
+        args.exact_code_head,
+    ]
+    if args.campaign_seal:
+        prepare_command += ["--campaign-seal", args.campaign_seal]
+    status = _run("PHASE_M_PREPARE", prepare_command)
+    if status:
+        return status
+
+    verify_command = [
+        sys.executable,
+        str(VERIFY_PREPARE),
+        "--corpus-archive",
+        str(args.corpus_archive),
+        "--manifest",
+        str(args.manifest),
+        "--candidate-archive",
+        str(args.candidate_archive),
+        "--runtime-input",
+        str(args.runtime_input),
+        "--prepare-attestation",
+        str(args.prepare_attestation),
+        "--verification-report",
+        str(args.verification_report),
+        "--exact-code-head",
+        args.exact_code_head,
+    ]
+    if args.campaign_seal:
+        verify_command += ["--campaign-seal", args.campaign_seal]
+    status = _run("PHASE_V_VERIFY_PREPARE", verify_command)
     if status:
         return status
 
@@ -89,34 +133,40 @@ def main() -> int:
         str(RUNTIME),
         "--runtime-input",
         str(args.runtime_input),
+        "--prepare-attestation",
+        str(args.prepare_attestation),
         "--runtime-snapshot",
         str(args.runtime_snapshot),
         "--redacted-view",
         str(args.redacted_view),
+        "--exact-code-head",
+        args.exact_code_head,
     ]
-    if args.exact_code_head:
-        runtime_command += ["--exact-code-head", args.exact_code_head]
     if args.record_regressions:
         runtime_command.append("--record-regressions")
     status = _run("PHASE_R_RUNTIME", runtime_command)
     if status:
         return status
 
-    return _run(
-        "PHASE_G_SCORE",
-        [
-            sys.executable,
-            str(SCORE),
-            "--corpus-archive",
-            str(args.corpus_archive),
-            "--runtime-snapshot",
-            str(args.runtime_snapshot),
-            "--shadow-report",
-            str(args.shadow_report),
-            "--scorecard",
-            str(args.scorecard),
-        ],
-    )
+    score_command = [
+        sys.executable,
+        str(SCORE),
+        "--corpus-archive",
+        str(args.corpus_archive),
+        "--runtime-snapshot",
+        str(args.runtime_snapshot),
+        "--prepare-attestation",
+        str(args.prepare_attestation),
+        "--shadow-report",
+        str(args.shadow_report),
+        "--scorecard",
+        str(args.scorecard),
+        "--expected-code-head",
+        args.exact_code_head,
+    ]
+    if args.campaign_seal:
+        score_command += ["--campaign-seal", args.campaign_seal]
+    return _run("PHASE_G_SCORE", score_command)
 
 
 if __name__ == "__main__":

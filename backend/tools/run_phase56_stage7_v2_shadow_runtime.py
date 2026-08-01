@@ -28,6 +28,33 @@ under a closed refusal code and fails acceptance; it is not swallowed by a
 `continue` that would remove it from the snapshot, from the handle set, from
 the gold pairing and from every count at once.
 
+**And no context is excused into one either.**  Accounting for every context is
+not the same as measuring it.  The bundle used to be an ordinary JSON document
+whose word this command took: it read `prepared_state` and `refusal_code` off
+each context and wrote them straight into the ledger, so relabelling a solvable
+context as an anticipated `projection_refused` with a null draft produced a
+perfectly complete ledger of a measurement that had not happened.  Do it to all
+ninety-seven and the run reports a hundred rows, a hundred permitted refusals,
+zero records, and acceptance PASS.
+
+Three things close that here, in this order, all of them before a single
+context is run:
+
+1. the **raw** bundle is scanned for gold members at the trust boundary — on
+   the bytes, before any model validates them, because `draft_payload` is an
+   open mapping and a nested expectation satisfies its type;
+2. the bundle is loaded through a schema whose cross-field contract makes
+   "refused, with a draft" and "completed, without one" unrepresentable; and
+3. the bundle is checked against Phase M's attestation — file hash, canonical
+   digest, handle set, context order, prepared-state map, refusal handle set
+   and both count vectors — with the projections re-derived from the bundle
+   rather than read off it.
+
+A failure at any of them exits 2 with the runtime callback never invoked and
+neither artifact written.  What this command cannot detect is a runtime input
+and an attestation forged *together*; that is Phase V's job, and Phase V runs
+before this one.
+
 Exit 0 when every context is accounted for, 2 otherwise.
 """
 
@@ -45,7 +72,20 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "backend"))
 
 from engine.mechanics.contracts import MechanicsProblemDraftV1  # noqa: E402
 
+from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
+    CampaignSealFailure,
+    campaign_seal_failures,
+    resolve_campaign_seal,
+)
+from evaluation.phase56_stage7.corpus_v2.canonical import file_sha256  # noqa: E402
+from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E402
+    PrepareAttestationRefused,
+    load_prepare_attestation,
+    runtime_input_binding_failures,
+)
 from evaluation.phase56_stage7.corpus_v2.runtime_input import (  # noqa: E402
+    RuntimeInputRefused,
+    assert_bundle_has_no_gold,
     load_runtime_input,
 )
 from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (  # noqa: E402
@@ -56,6 +96,7 @@ from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (  # noqa: E402
 from evaluation.phase56_stage7.corpus_v2.runtime_snapshot import (  # noqa: E402
     RuntimeSnapshotRefused,
     freeze_runtime_snapshot,
+    prepare_binding_from_attestation,
     redact_runtime_snapshot,
 )
 from evaluation.phase56_stage7.corpus_v2.shadow_runner import (  # noqa: E402
@@ -135,6 +176,7 @@ def _write_atomic(path: Path, body: str) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime-input", type=Path, required=True)
+    parser.add_argument("--prepare-attestation", type=Path, required=True)
     parser.add_argument("--runtime-snapshot", type=Path, required=True)
     parser.add_argument("--redacted-view", type=Path, required=True)
     parser.add_argument("--exact-code-head", type=str, default=None)
@@ -149,8 +191,61 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    bundle = load_runtime_input(args.runtime_input.read_text(encoding="utf-8"))
+    # --- the trust boundary -------------------------------------------------
+    # Everything from here to the binding check runs before the pipeline is
+    # touched.  A failure in this block means zero runtime calls and zero
+    # artifacts, which is what the negative controls assert.
+    try:
+        runtime_input_body = args.runtime_input.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"STAGE7_V2_RUNTIME_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
+        return RUNTIME_FAILURE_EXIT
 
+    try:
+        # On the raw document, before any model has seen it.  A gold member
+        # nested inside `draft_payload` satisfies that field's type, so a scan
+        # that ran after validation would be scanning something the schema had
+        # already accepted.
+        assert_bundle_has_no_gold(json.loads(runtime_input_body))
+        bundle = load_runtime_input(runtime_input_body)
+    except (RuntimeInputRefused, ValueError) as exc:
+        print(f"STAGE7_V2_RUNTIME_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
+        return RUNTIME_FAILURE_EXIT
+
+    try:
+        attestation = load_prepare_attestation(
+            args.prepare_attestation.read_text(encoding="utf-8")
+        )
+    except (PrepareAttestationRefused, OSError) as exc:
+        print(f"STAGE7_V2_RUNTIME_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
+        return RUNTIME_FAILURE_EXIT
+
+    binding_failures = list(
+        runtime_input_binding_failures(
+            attestation,
+            bundle,
+            runtime_input_file_sha256=file_sha256(runtime_input_body),
+            exact_code_head=args.exact_code_head,
+        )
+    )
+    # The seal is read off the attestation rather than off a flag, so a
+    # preparation cannot escape its own population contract by having the
+    # runtime invoked without one.
+    if attestation.campaign_seal_name is not None:
+        seal = resolve_campaign_seal(attestation.campaign_seal_name)
+        if seal is None:
+            binding_failures.append(CampaignSealFailure.unknown_seal.value)
+        else:
+            binding_failures.extend(campaign_seal_failures(attestation, seal))
+    if binding_failures:
+        print(
+            "STAGE7_V2_RUNTIME_ACCEPTANCE=FAIL:"
+            + ",".join(sorted(set(binding_failures))),
+            file=sys.stderr,
+        )
+        return RUNTIME_FAILURE_EXIT
+
+    # --- admitted.  Only now does anything run ------------------------------
     results = []
     ledger: list[ShadowLedgerEntryV2] = []
     failed_handles: list[str] = []
@@ -221,6 +316,10 @@ def main() -> int:
             original_v1_archive_sha256=bundle.original_v1_archive_sha256,
             augmentation_manifest_sha256=bundle.augmentation_manifest_sha256,
             candidate_archive_sha256=bundle.candidate_archive_sha256,
+            # From the verified attestation, not from an argument: a binding
+            # assembled out of command-line strings would attest to whatever
+            # the caller typed.
+            prepare_binding=prepare_binding_from_attestation(attestation),
             exact_code_head=args.exact_code_head,
             unresolved_augmentation_count=bundle.unresolved_augmentation_count,
         )
@@ -250,6 +349,27 @@ def main() -> int:
     print(f"STAGE7_V2_RUNTIME_SNAPSHOT_DIGEST={snapshot.runtime_snapshot_digest}")
     print(f"STAGE7_V2_RUNTIME_SNAPSHOT_FILE_SHA256={snapshot_file_sha}")
     print(f"STAGE7_V2_RUNTIME_REDACTED_VIEW_FILE_SHA256={view_file_sha}")
+    print(
+        "STAGE7_V2_RUNTIME_PREPARE_ATTESTATION_DIGEST="
+        f"{snapshot.prepare_binding.prepare_attestation_digest}"
+    )
+    print(
+        "STAGE7_V2_RUNTIME_PREPARE_RUNTIME_INPUT_DIGEST="
+        f"{snapshot.prepare_binding.runtime_input_digest}"
+    )
+    print(
+        "STAGE7_V2_RUNTIME_PREPARE_STATE_MAP_DIGEST="
+        f"{snapshot.prepare_binding.prepared_state_map_digest}"
+    )
+    print(
+        "STAGE7_V2_RUNTIME_PREPARE_REFUSAL_HANDLE_SET_DIGEST="
+        f"{snapshot.prepare_binding.refusal_handle_set_digest}"
+    )
+    print(
+        "STAGE7_V2_RUNTIME_PREPARE_CAMPAIGN_SEAL="
+        f"{snapshot.prepare_binding.campaign_seal_name or 'none'}"
+    )
+    print(f"STAGE7_V2_RUNTIME_EXACT_CODE_HEAD={snapshot.exact_code_head}")
     print(f"STAGE7_V2_RUNTIME_EXPECTED_CONTEXTS={snapshot.expected_context_count}")
     print(f"STAGE7_V2_RUNTIME_RECORDED_CONTEXTS={snapshot.context_count}")
     for name, count in snapshot.ledger_state_counts:
