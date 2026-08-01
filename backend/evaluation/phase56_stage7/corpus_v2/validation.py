@@ -28,6 +28,7 @@ from evaluation.phase56_stage7.corpus_v2.records import (
     V2_IDENTIFIER_PREFIX,
     AxisSense,
     CorpusV2AugmentationV1,
+    MotionSense,
     FrameOriginKind,
     FrameType,
     ScalarEncoding,
@@ -68,6 +69,15 @@ _SENSE_FAMILY: dict[AxisSense, int] = {
 }
 
 
+# The one axis of an incline frame whose direction a slide sense can name.
+_INCLINE_TANGENT_AXIS = "tangent"
+
+# The motion senses whose meaning is fixed by the axis binding alone.
+_AXIS_RELATIVE_MOTION_SENSES: frozenset[MotionSense] = frozenset(
+    {MotionSense.along_axis_positive, MotionSense.along_axis_negative}
+)
+
+
 def _senses_are_comparable(left: AxisSense, right: AxisSense) -> bool:
     family = _SENSE_FAMILY.get(left)
     return family is not None and family == _SENSE_FAMILY.get(right)
@@ -105,6 +115,11 @@ class V2ValidationReason(str, Enum):
     ambiguous_angle_datum = "ambiguous_angle_datum"
     motion_sense_frame_unknown = "motion_sense_frame_unknown"
     motion_sense_axis_unknown = "motion_sense_axis_unknown"
+    # A slope-relative sense on a slope tangent assumes which way that tangent
+    # points, and a self-referential binding states no such thing.
+    slope_sense_requires_axis_relative_statement = (
+        "slope_sense_requires_axis_relative_statement"
+    )
     event_scoped_sense_used_interval_wide = "event_scoped_sense_used_interval_wide"
     contact_side_frame_unknown = "contact_side_frame_unknown"
     contact_side_axis_unknown = "contact_side_axis_unknown"
@@ -365,6 +380,34 @@ def validate_augmentation(
     for sense in augmentation.motion_senses:
         if sense.interval_id is not None and sense.subject_id in event_scoped:
             raise _fail(V2ValidationReason.event_scoped_sense_used_interval_wide)
+
+    for sense in augmentation.motion_senses:
+        # `up_slope` and `down_slope` name a direction relative to the hill, and
+        # turning that into a sign on a tangent axis requires knowing which way
+        # the tangent points.  A self-referential tangent binding — the only
+        # kind an incline frame carries — states an identity and no orientation,
+        # so the sign would come from a convention rather than from the source.
+        #
+        # This is not hypothetical.  `SENSE_SIGN` maps `down_slope` to -1, which
+        # assumes an up-slope-positive tangent; the engine's own kinetic-slide
+        # law resolves the same axis down-slope-positive and drives `+g sin θ`
+        # along it.  A slide authored with the slope-relative member therefore
+        # reached the *up-slope* formula and produced a confidently wrong
+        # number — the gold-scored shadow caught it as three wrong answers.
+        #
+        # The axis-relative members carry no such assumption: `along_axis_positive`
+        # means the +tangent direction the frame declares, whatever that is.  So a
+        # sense on a slope tangent must be stated that way, and the ambiguous
+        # spelling is refused rather than silently resolved.
+        frame = frame_by_id[sense.frame_id]
+        if (
+            frame.frame_type is FrameType.incline_tangent_normal
+            and sense.axis == _INCLINE_TANGENT_AXIS
+            and sense.sense not in _AXIS_RELATIVE_MOTION_SENSES
+        ):
+            raise _fail(
+                V2ValidationReason.slope_sense_requires_axis_relative_statement
+            )
 
     # --- contact sides ------------------------------------------------------
     for contact in augmentation.contact_sides:

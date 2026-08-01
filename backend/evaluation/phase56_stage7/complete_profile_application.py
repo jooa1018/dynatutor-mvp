@@ -4192,17 +4192,32 @@ def _incline_kinetic_sliding_transaction(
     )
     if motion_sign is None:
         return None
-    try:
-        motion_speed = normalize_quantity(
-            motion_quantity["raw_value"],
-            motion_quantity["raw_unit"],
-            "scalar",
-            DimensionVector(length=1, time=-1),
-        ).value
-    except Exception:
-        return None
-    if type(motion_speed) is not float or motion_speed <= 0.0:
-        return None
+    # The direction is the authority; the speed is not.  Kinetic friction
+    # opposes the motion that exists, and the closure — like the law it feeds —
+    # reads only `motion_sign`. So a source that states which way the slide goes
+    # and gives no speed states everything this shape needs, and a value-free
+    # directed motion record is admitted alongside a valued one.
+    #
+    # Requiring a number here meant a corpus could only express the direction by
+    # inventing a speed, which is a value nobody stated sitting in the graph
+    # where a later reader cannot tell it from a real one.  A stated speed is
+    # still checked exactly as before: finite, and strictly positive, because a
+    # body at rest has no kinetic slide to oppose.
+    if motion_quantity["raw_value"] is None:
+        if motion_quantity["raw_unit"] is not None:
+            return None
+    else:
+        try:
+            motion_speed = normalize_quantity(
+                motion_quantity["raw_value"],
+                motion_quantity["raw_unit"],
+                "scalar",
+                DimensionVector(length=1, time=-1),
+            ).value
+        except Exception:
+            return None
+        if type(motion_speed) is not float or motion_speed <= 0.0:
+            return None
     try:
         angle_value = normalize_quantity(
             angle_quantity["raw_value"],

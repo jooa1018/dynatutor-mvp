@@ -62,6 +62,9 @@ from evaluation.phase56_stage7.corpus_v2.migration import (  # noqa: E402
     build_candidate_archive,
     record_fingerprint,
 )
+from evaluation.phase56_stage7.corpus_v2.projection import (  # noqa: E402
+    derived_authority_ids,
+)
 from evaluation.phase56_stage7.corpus_v2.gold_scoring import (  # noqa: E402
     build_gold_index,
     score_shadow_snapshot,
@@ -108,10 +111,17 @@ class _Projected:
         "event_authority_gaps",
     )
 
-    def __init__(self, template: Any, draft: Any) -> None:
+    def __init__(
+        self, template: Any, draft: Any, derived_authorities: tuple[str, ...] = ()
+    ) -> None:
         for name in self.__slots__:
             setattr(self, name, getattr(template, name, None))
         self.draft = draft
+        if derived_authorities:
+            self.approvable_assumption_ids = (
+                *(self.approvable_assumption_ids or ()),
+                *derived_authorities,
+            )
 
     @property
     def projected(self) -> bool:
@@ -216,13 +226,18 @@ def main() -> int:
     args.candidate_archive.write_text(candidate_body, encoding="utf-8")
 
     # --- PHASE R: runtime only.  No gold member is read below this line -----
-    def _run_index(index: int):
+    def _run_index(index: int, derived_authorities: tuple[str, ...] = ()):
         template = projections[index]
 
         def run(payload: dict[str, Any]):
             draft = MechanicsProblemDraftV1.model_validate(payload)
+            # The approvable set is extended by exactly the ids the carriers
+            # *derive* — never by an id a manifest named, because no manifest
+            # can name one.  The authority bundle then re-checks that the
+            # Draft's approved dispositions equal this set, so a carrier that
+            # wrote an authority nobody declared still fails closed.
             return run_lane_b_case(
-                _Projected(template, draft),
+                _Projected(template, draft, derived_authorities),
                 execution_token=deterministic_token(index),
             )
 
@@ -245,7 +260,9 @@ def main() -> int:
                 run_shadow_context(
                     draft_payload=payload,
                     augmentation=entry.augmentation,
-                    run=_run_index(index),
+                    run=_run_index(
+                        index, derived_authority_ids(entry.augmentation)
+                    ),
                     problem_text=projection.problem_text,
                     original_v1_archive_sha256=inventory.archive_sha256,
                     context_index=index,

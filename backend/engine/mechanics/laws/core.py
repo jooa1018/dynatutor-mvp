@@ -4752,9 +4752,21 @@ def _incline_kinetic_sliding_profile(
             QuantityComponent.tangential,
             motion.direction_sign,
         )
-        or type(motion.known_si_value) is not float
-        or not math.isfinite(motion.known_si_value)
-        or motion.known_si_value <= 0.0
+        # The direction is what this law reads — `motion_sign`, and nothing
+        # else — so a value-free directed motion record states everything the
+        # physics needs.  Demanding a number meant a source could only express
+        # "it is sliding down the slope" by also inventing a speed, and an
+        # invented speed is indistinguishable from a stated one downstream.  A
+        # speed that *is* stated is still checked exactly as before: finite, and
+        # strictly positive, because a body at rest has no kinetic slide.
+        or (
+            motion.known_si_value is not None
+            and (
+                type(motion.known_si_value) is not float
+                or not math.isfinite(motion.known_si_value)
+                or motion.known_si_value <= 0.0
+            )
+        )
     ):
         return None
 
