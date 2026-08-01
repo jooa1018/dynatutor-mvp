@@ -126,13 +126,18 @@ def main() -> int:
     projections = [project_case_to_draft(case) for case in cases]
 
     # The validator needs each record's own identifier sets so a carrier that
-    # references something the source does not contain is refused.
+    # references something the source does not contain is refused, and the
+    # merge contract needs each record's projected Draft so a carrier that
+    # would restate a source field differently fails the migration itself.
     context_ids: dict[str, dict[str, list[str]]] = {}
+    draft_payloads: dict[str, dict[str, Any]] = {}
     for record, projection in zip(records, projections):
         draft = projection.draft
         payload = (
             {} if draft is None else draft.model_dump(mode="json", warnings="none")
         )
+        if draft is not None:
+            draft_payloads[record_fingerprint(record)] = payload
         authored = [
             *(item["entity_id"] for item in payload.get("entities") or []),
             *(item["event_id"] for item in payload.get("events") or []),
@@ -159,7 +164,9 @@ def main() -> int:
             "authored": authored,
         }
 
-    migrated = build_candidate_archive(records, manifest, context_ids=context_ids)
+    migrated = build_candidate_archive(
+        records, manifest, context_ids=context_ids, draft_payloads=draft_payloads
+    )
     candidate_sha = archive_digest(migrated)
 
     args.candidate_archive.parent.mkdir(parents=True, exist_ok=True)

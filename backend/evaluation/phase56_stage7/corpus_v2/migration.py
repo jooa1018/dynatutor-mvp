@@ -33,6 +33,11 @@ from typing import Annotated, Any, Iterable, Mapping, Sequence
 from pydantic import Field, StringConstraints, model_validator
 
 from evaluation.phase56_stage7.contracts import FrozenStrictModel, Sha256
+from evaluation.phase56_stage7.corpus_v2.merge import (
+    V2MergeConflict,
+    V2MergeConflictReason,
+    assert_fill_only_merge,
+)
 from evaluation.phase56_stage7.corpus_v2.records import (
     CORPUS_V2_SCHEMA_VERSION,
     CorpusV2AugmentationV1,
@@ -78,6 +83,9 @@ class MigrationReason(str, Enum):
     manifest_duplicate_fingerprint = "manifest_duplicate_fingerprint"
     manifest_entry_invalid = "manifest_entry_invalid"
     augmentation_rejected = "augmentation_rejected"
+    # The augmentation validates on its own and still restates a field the v1
+    # source already states, differently.  Additive migration cannot carry it.
+    augmentation_conflicts_with_source = "augmentation_conflicts_with_source"
     original_record_mutated = "original_record_mutated"
 
 
@@ -86,7 +94,7 @@ class MigrationError(ValueError):
         self,
         reason: MigrationReason,
         *,
-        detail: V2ValidationReason | None = None,
+        detail: V2ValidationReason | tuple[V2MergeConflictReason, ...] | None = None,
     ) -> None:
         super().__init__(reason.value)
         self.reason = reason
@@ -249,12 +257,18 @@ def migrate_record(
     known_interaction_ids: Sequence[str] = (),
     known_query_ids: Sequence[str] = (),
     authored_ids: Sequence[str] = (),
+    draft_payload: Mapping[str, Any] | None = None,
 ) -> MigratedRecordV1:
     """Bind one v1 record to its manifest entry, or leave it unresolved.
 
     A record with no entry is not an error and is not upgraded: it comes back
     with an empty augmentation and `unresolved` status, which is what "the
     author could not state this from the source" looks like in the archive.
+
+    `draft_payload`, when supplied, is the record's own projected v1 Draft, and
+    the fill-only merge contract is checked against it here — at migration
+    time, before any archive is built — so a conflicting entry never becomes a
+    candidate record at all.
     """
 
     fingerprint = record_fingerprint(record)
@@ -282,6 +296,14 @@ def migrate_record(
         raise MigrationError(
             MigrationReason.augmentation_rejected, detail=exc.reason
         ) from None
+    if draft_payload is not None:
+        try:
+            assert_fill_only_merge(draft_payload, entry.augmentation)
+        except V2MergeConflict as exc:
+            raise MigrationError(
+                MigrationReason.augmentation_conflicts_with_source,
+                detail=exc.reasons,
+            ) from None
     return MigratedRecordV1(
         original_fingerprint=fingerprint,
         augmentation_fingerprint=entry.fingerprint,
@@ -312,19 +334,25 @@ def build_candidate_archive(
     manifest: AugmentationManifestV1,
     *,
     context_ids: Mapping[str, Mapping[str, Sequence[str]]] | None = None,
+    draft_payloads: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[MigratedRecordV1, ...]:
     """Migrate a whole archive, in the order the records arrive.
 
     `context_ids` supplies each record's own identifier sets, keyed by
     fingerprint, so the validator can refuse a carrier that references
-    something the source does not contain.
+    something the source does not contain.  `draft_payloads` supplies each
+    record's projected v1 Draft, keyed the same way, so the fill-only merge
+    contract is enforced during migration and a conflicting entry fails the
+    build rather than surviving into a candidate archive.
     """
 
     assert_manifest_has_no_answer_authority(manifest.model_dump(mode="json"))
     context_ids = context_ids or {}
+    draft_payloads = draft_payloads or {}
     migrated: list[MigratedRecordV1] = []
     for record in records:
-        known = context_ids.get(record_fingerprint(record), {})
+        fingerprint = record_fingerprint(record)
+        known = context_ids.get(fingerprint, {})
         migrated.append(
             migrate_record(
                 record,
@@ -336,6 +364,7 @@ def build_candidate_archive(
                 known_interaction_ids=known.get("interactions", ()),
                 known_query_ids=known.get("queries", ()),
                 authored_ids=known.get("authored", ()),
+                draft_payload=draft_payloads.get(fingerprint),
             )
         )
     return tuple(migrated)

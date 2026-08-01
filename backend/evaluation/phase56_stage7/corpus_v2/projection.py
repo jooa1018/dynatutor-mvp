@@ -8,40 +8,40 @@ engine already reads.
 
 That is all this module does.  It takes a Draft projected from a v1 record by
 the existing v1 projection, and attaches the v2 carriers the migration supplied.
-It adds nothing that the augmentation does not state, and it never edits a
-record the v1 projection produced — a v2 Draft with an empty augmentation is
-byte-identical to its v1 Draft, which is what makes the shadow comparison mean
-anything.
+Two properties are enforced rather than promised:
+
+*Fill-only.*  The merge contract (`corpus_v2.merge`) is checked against the
+original payload before anything is attached.  A carrier that would restate a
+field the source already states either matches it exactly — and merges as a
+deterministic no-op that keeps the original record — or conflicts, in which
+case `V2MergeConflict` is raised, no projection happens, and no shadow result
+exists for the context.  An augmentation can therefore add meaning and can
+never change it.
+
+*Empty is identity.*  A v2 Draft with an empty augmentation is byte-identical
+to its v1 Draft, which is what makes the shadow comparison mean anything.
 """
 
 from __future__ import annotations
 
 from typing import Any, Mapping
 
+from evaluation.phase56_stage7.corpus_v2.merge import (
+    ENGINE_AXIS_NAMES,
+    ENGINE_CONSTRAINT_STATE,
+    ENGINE_CONTACT_SIDE,
+    ENGINE_FRAME_TYPE,
+    ENGINE_STATE_VALUE,
+    assert_fill_only_merge,
+    projected_sense_direction,
+)
 from evaluation.phase56_stage7.corpus_v2.records import (
     AxisSense,
-    ContactSide,
     CorpusV2AugmentationV1,
-    FrameType,
-    MotionSense,
 )
 
 
-CORPUS_V2_PROJECTION_VERSION = "phase56-stage7-corpus-v2-projection-v1"
-
-# v2 frame types onto the engine's own `ReferenceFrameType` vocabulary.  A v2
-# type with no engine counterpart is not projected at all rather than mapped to
-# the nearest thing: an approximate frame is a wrong frame.
-_ENGINE_FRAME_TYPE: dict[FrameType, str] = {
-    FrameType.world_cartesian: "cartesian_2d",
-    FrameType.surface_tangent_normal: "tangential_normal",
-    FrameType.incline_tangent_normal: "tangential_normal",
-    FrameType.polar_radial_transverse: "radial_transverse",
-    FrameType.body_fixed: "body_fixed",
-    FrameType.translating: "translating",
-    FrameType.rotating: "rotating",
-    FrameType.line_of_impact: "cartesian_1d",
-}
+CORPUS_V2_PROJECTION_VERSION = "phase56-stage7-corpus-v2-projection-v2"
 
 # An axis sense onto the engine's semantic direction vocabulary.  The engine's
 # `SemanticDirection` carries a name and no sign, and that is the right shape:
@@ -64,61 +64,6 @@ _ENGINE_AXIS_DIRECTION: dict[AxisSense, str] = {
     AxisSense.along_line_of_impact: "positive",
 }
 
-# v2 endpoint conditions onto the engine's closed `StateValue` vocabulary.  A
-# condition with no engine counterpart is deliberately absent and projects only
-# through its condition quantity: mapping it onto the nearest available state
-# would state something the engine would then read as a different fact.
-_ENGINE_STATE_VALUE: dict[str, str] = {
-    "comes_to_rest": "at_rest",
-    "contact_loss": "separated",
-    "reaches_natural_length": "inactive",
-    "zero_spring_deformation": "inactive",
-}
-
-# Constraint authorities that the engine's `StateValue` vocabulary can hold.
-# The rest are not projected: the engine's `Constraint.expression` is a maths
-# AST, and synthesising one from a constraint's *name* would be inventing an
-# equation the source never wrote.
-_ENGINE_CONSTRAINT_STATE: dict[str, tuple[str, str]] = {
-    "no_slip": ("rolling", "no_slip"),
-    "rolling_without_slipping": ("rolling", "no_slip"),
-    "contact_maintained": ("contact", "touching"),
-    "contact_limit": ("contact", "touching"),
-}
-
-# v2 contact sides onto the engine's own two-member `ContactSide`.  The four v2
-# members that have no engine counterpart are deliberately absent: a side the
-# engine cannot express must not be flattened onto one it can.
-_ENGINE_CONTACT_SIDE: dict[ContactSide, str] = {
-    ContactSide.inward: "inward",
-    ContactSide.outward: "outward",
-    ContactSide.inside_track: "inward",
-    ContactSide.outside_track: "outward",
-    ContactSide.unilateral_positive_normal: "outward",
-    ContactSide.unilateral_negative_normal: "inward",
-}
-
-# The engine's `AxisName` is a closed enum.  A v2 axis whose name is outside it
-# names an axis the engine has no identity for, and projecting it would produce
-# a frame that validates nowhere.  Unmapped names are refused with the frame,
-# not silently renamed onto a neighbour.
-_ENGINE_AXIS_NAMES: frozenset[str] = frozenset(
-    {"x", "y", "z", "tangent", "normal", "radial", "transverse", "generalized"}
-)
-
-_SENSE_SIGN: dict[MotionSense, int] = {
-    MotionSense.along_axis_positive: 1,
-    MotionSense.along_axis_negative: -1,
-    MotionSense.up_slope: 1,
-    MotionSense.down_slope: -1,
-    MotionSense.outward: 1,
-    MotionSense.inward: -1,
-    MotionSense.separating: 1,
-    MotionSense.approaching: -1,
-    MotionSense.counterclockwise: 1,
-    MotionSense.clockwise: -1,
-}
-
 
 def project_augmentation(
     draft_payload: Mapping[str, Any], augmentation: CorpusV2AugmentationV1
@@ -127,7 +72,8 @@ def project_augmentation(
 
     Pure: the input payload is not mutated, and an empty augmentation returns an
     equal payload, so "did the carrier change anything" is answerable by
-    comparison rather than by belief.
+    comparison rather than by belief.  Raises `V2MergeConflict` — before any
+    merging — when a carrier would restate a source field differently.
     """
 
     payload: dict[str, Any] = {
@@ -137,10 +83,15 @@ def project_augmentation(
     if augmentation.is_empty:
         return payload
 
+    # The whole conflict decision happens here, against the original payload.
+    # Everything below may assume each merged field is either absent or holds
+    # exactly the value the carrier states.
+    assert_fill_only_merge(draft_payload, augmentation)
+
     # --- frames -------------------------------------------------------------
     frames = list(payload.get("reference_frames") or [])
     for frame in augmentation.reference_frames:
-        engine_type = _ENGINE_FRAME_TYPE.get(frame.frame_type)
+        engine_type = ENGINE_FRAME_TYPE.get(frame.frame_type)
         if engine_type is None:
             continue
         axes = [
@@ -153,7 +104,7 @@ def project_augmentation(
             }
             for axis in frame.axes
             if axis.sense in _ENGINE_AXIS_DIRECTION
-            and axis.axis in _ENGINE_AXIS_NAMES
+            and axis.axis in ENGINE_AXIS_NAMES
         ]
         if len(axes) != len(frame.axes):
             # One axis of this frame did not project, so the frame the engine
@@ -179,7 +130,8 @@ def project_augmentation(
         )
     payload["reference_frames"] = frames
 
-    # --- quantities gain their frame, axis and sign -------------------------
+    # --- quantities gain their frame, axis and sign — where the source is
+    # --- silent; a source-stated identical value keeps the original record ---
     sense_by_quantity = {
         sense.quantity_id: sense
         for sense in augmentation.motion_senses
@@ -193,17 +145,15 @@ def project_augmentation(
         updated = dict(quantity)
         sense = sense_by_quantity.get(updated.get("quantity_id"))
         if sense is not None:
-            updated["frame_id"] = sense.frame_id
-            updated["direction"] = {
-                "kind": "axis",
-                "frame_id": sense.frame_id,
-                "axis": sense.axis,
-                "sign": sense.sign * _SENSE_SIGN.get(sense.sense, 1),
-            }
+            if updated.get("frame_id") is None:
+                updated["frame_id"] = sense.frame_id
+            if updated.get("direction") is None:
+                updated["direction"] = projected_sense_direction(sense)
         encoding = encoding_by_quantity.get(updated.get("quantity_id"))
         if encoding is not None and encoding.frame_id is not None:
-            updated["frame_id"] = encoding.frame_id
-        quantities.append(updated)
+            if updated.get("frame_id") is None:
+                updated["frame_id"] = encoding.frame_id
+        quantities.append(updated if updated != quantity else quantity)
     payload["quantities"] = quantities
 
     # --- angle datums bind an angle to what it is measured from -------------
@@ -237,21 +187,38 @@ def project_augmentation(
         updated = dict(interaction)
         contact = sides_by_interaction.get(updated.get("interaction_id"))
         if contact is not None:
-            engine_side = _ENGINE_CONTACT_SIDE.get(contact.side)
+            engine_side = ENGINE_CONTACT_SIDE.get(contact.side)
             if engine_side is not None:
-                updated["contact_side"] = engine_side
-                updated["frame_id"] = contact.normal_frame_id
-        interactions.append(updated)
+                if updated.get("contact_side") is None:
+                    updated["contact_side"] = engine_side
+                if updated.get("frame_id") is None:
+                    updated["frame_id"] = contact.normal_frame_id
+        interactions.append(updated if updated != interaction else interaction)
     payload["interactions"] = interactions
 
     # --- endpoints become stated boundary conditions ------------------------
     conditions = list(payload.get("state_conditions") or [])
+
+    def _endpoint_already_stated(endpoint: Any, state: str) -> bool:
+        return any(
+            condition.get("subject_id") == endpoint.subject_id
+            and condition.get("event_id") == endpoint.boundary_event_id
+            and condition.get("kind") == "boundary"
+            and condition.get("state") == state
+            and condition.get("interval_id") == endpoint.interval_id
+            for condition in conditions
+        )
+
     for endpoint in augmentation.endpoint_conditions:
-        state = _ENGINE_STATE_VALUE.get(endpoint.condition.value)
+        state = ENGINE_STATE_VALUE.get(endpoint.condition.value)
         if state is None:
             # No engine state means this endpoint, so it is carried only by its
             # condition quantity if the augmentation supplied one.  Nothing is
             # approximated onto a state that means something else.
+            continue
+        if _endpoint_already_stated(endpoint, state):
+            # The source already states exactly this; the confirmation merges
+            # as a no-op and the original record is the one that survives.
             continue
         conditions.append(
             {
@@ -270,14 +237,23 @@ def project_augmentation(
                 "evidence_refs": list(endpoint.evidence_refs),
             }
         )
-    payload["state_conditions"] = conditions
 
     # --- constraints --------------------------------------------------------
     for constraint in augmentation.constraint_authorities:
-        mapped = _ENGINE_CONSTRAINT_STATE.get(constraint.authority.value)
+        mapped = ENGINE_CONSTRAINT_STATE.get(constraint.authority.value)
         if mapped is None:
             continue
         kind, state = mapped
+        if any(
+            condition.get("subject_id") == constraint.subject_id
+            and condition.get("kind") == kind
+            and condition.get("state") == state
+            and condition.get("interval_id") == constraint.interval_id
+            and condition.get("event_id") == constraint.event_id
+            for condition in conditions
+        ):
+            # Redundant confirmation of a stated constraint: no-op.
+            continue
         conditions.append(
             {
                 "state_condition_id": constraint.constraint_id,
@@ -302,9 +278,9 @@ def project_augmentation(
     for query in payload.get("queries") or []:
         updated = dict(query)
         objective = objective_by_query.get(updated.get("query_id"))
-        if objective is not None:
+        if objective is not None and updated.get("objective") is None:
             updated["objective"] = objective
-        queries.append(updated)
+        queries.append(updated if updated != query else query)
     payload["queries"] = queries
 
     return payload
