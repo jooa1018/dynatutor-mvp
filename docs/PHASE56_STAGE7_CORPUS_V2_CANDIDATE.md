@@ -1299,3 +1299,202 @@ Every command exits 0 only when its own acceptance passes, and 2 otherwise.
 All artifacts stay out of the repository. The corpus, the manifest, the candidate
 archive, the runtime input bundle, the full restricted snapshot, the redacted
 view, both reports and the scorecard are never committed.
+
+---
+
+# Supplemental yield campaign — census and candidate cohorts
+
+**Campaign identity.** This is a *new* campaign, not a reconstruction of the
+historical one:
+
+```
+SUPPLEMENTAL_CAMPAIGN_ID = STAGE7_V2_SUPPLEMENTAL_YIELD_CAMPAIGN_V1
+HISTORICAL_EXACT_MANIFEST  !=  SUPPLEMENTAL_YIELD_MANIFEST
+```
+
+It exists to answer exactly one question — *which supported public cases that
+this checkpoint cannot solve does the final engine solve correctly?* — and it
+may never be used to declare the historical seal `PASS`, the historical
+campaign `ACCEPTED`, the exact manifest recovered, or Stage 7 accepted.
+
+## Yield baseline
+
+```
+YIELD_BASELINE_HEAD = 35f58bf75bf5ad8301e26bb237400afa9218c342
+```
+
+`35f58bf` is a documentation-only descendant of the pause checkpoint
+`1b7dfe4`; it changes two files under `docs/` and no profile, law, compiler or
+projection behaviour, so the baseline runtime disposition at `35f58bf` is the
+disposition measured at `1b7dfe4`. No data-contract commit was needed, because
+no new schema was added at this head.
+
+## The census
+
+Discovery ran on the source-only view and the runtime's own disposition. No
+expected answer, expected terminal, expected failure code, tolerance, split
+label or case identifier participates in any signature, cluster key or
+selection rule. Handles are opaque and derived from position.
+
+| | Count |
+|---|---:|
+| public cases | 100 |
+| supported (expected `accepted`) | 81 |
+| supported and correct at baseline | **41** |
+| **census pool** — supported, *not* correct at baseline | **40** |
+| excluded as one of the five known cohorts | **15** |
+| **candidate pool after exclusion** | **25** |
+
+```
+CANDIDATE_HANDLE_SET_DIGEST = 514711fe5113d4c0ebe35ee1a68ba54b8d5e6db88ed98b4f19e460bc96d80b2c
+KNOWN_COHORT_EXCLUSION_COUNT = 15
+KNOWN_COHORT_HANDLE_OVERLAP  = 0
+```
+
+### The five known cohorts are excluded by typed predicate, not by name
+
+Each exclusion predicate names typed source structure only. None reads a
+family string, a case id, a split or an expected terminal:
+
+| Known cohort | Source-only predicate | n |
+|---|---|---:|
+| vertical-circle limiting contact | a `minimum_speed` readout together with a typed `highest_point` event | 3 |
+| B30 table-pulley typed frame | `connected_by_rope` **and** `passes_over_pulley` **and** `slides_on` | 3 |
+| B31 incline kinetic motion sense | `sliding_on_incline` motion model **and** a stated friction coefficient **and** no rope | 3 |
+| B29 horizontal contact | `slides_on` **and** a stated force **and** a stated friction coefficient **and** no rope **and** not on an incline | 3 |
+| B32 spring natural-length endpoint | `attached_to_spring` **and** a stated spring constant | 3 |
+
+Each predicate selects exactly 3 contexts and the five together select exactly
+15 — the expected population — with zero overlap against the candidate handle
+set. That the five predicates each land on exactly one coherent structural
+group is the check that they name the intended cohorts rather than an
+arbitrary slice.
+
+## Candidate clusters, by canonical structural signature
+
+Clustered on typed structure — entity kinds, relation kinds, assumption kinds,
+fact semantic keys, query output key and component, motion models, event kinds,
+figure dependency. Not on family, not on case id, not on problem-text keywords,
+not on answer magnitude, not on expected terminal.
+
+| Signature | n | Baseline terminal | Baseline compiler code |
+|---|---:|---|---|
+| `50dd2670ee7eb849` | 3 | `compiler_unsupported` | `requires_specialized_model` |
+| `74eafa74714f1b69` | 3 | `compiler_failure` | `underdetermined` |
+| `8d9b4c83f3c12c91` | 3 | `compiler_failure` | `underdetermined` |
+| `d97deaad19b75e86` | 3 | `compiler_failure` | `underdetermined` |
+| `e122536ae385373c` | 3 | `compiler_failure` | `underdetermined` |
+| `ec7cf89193096ff5` | 3 | `compiler_failure` | `underdetermined` |
+| `49b6772e4e3e55a3` | 2 | `compiler_failure` | `underdetermined` |
+| `947e48add70370a9` | 1 | `compiler_failure` | `underdetermined` |
+| `744574b901525425` | 1 | `compiler_failure` | `underdetermined` |
+| `bba5380217b6e33a` | 1 | `compiler_failure` | `underdetermined` |
+| `0a3680ea1d75a889` | 1 | `compiler_unsupported` | `requires_specialized_model` |
+| `0b18eb7172b026ec` | 1 | `compiler_unsupported` | `requires_specialized_model` |
+
+Six clusters have population 3. The full per-handle census is a restricted
+out-of-tree artifact; only aggregates and signature digests are recorded here.
+
+## Ranked cohorts, with measured reachability
+
+The ranking below is by *measured* reachability, not by plausibility. The
+decisive question for each is whether an **existing deterministic law** already
+closes the shape, so the evaluation side only has to build typed structure.
+
+### 1. `74eafa74714f1b69` — banked frictionless curve design speed (n = 3) — REACHABLE, MEASURED
+
+Typed source states: two entities (a `vehicle` and a `surface`), a
+`contact_with` relation, a `frictionless` assumption, a `constant_gravity`
+assumption, a radius, a bank angle, and one `final_velocity` **magnitude**
+query. Figure dependency `none`. No ambiguity in the endpoint or the root.
+
+The engine law path already exists and is green at this head:
+`banked_curve_vertical_balance`, `banked_curve_inward_balance`,
+`contact_normal_bound`, `particle_normal_acceleration`, and
+`translational_speed_nonnegative` — the last supplying the root selection from
+the **typed non-negativity of a speed magnitude**, not from a preference for
+positive roots.
+
+**The mass problem, measured rather than assumed.** The corpus states no mass
+for this cohort, and minting a numeric one would be invention. Measured at this
+head: the same law path closes with a **valueless symbolic mass** and returns
+the identical value —
+
+```
+banked, mass stated     -> solved  14.501259470126898
+banked, mass valueless  -> solved  14.501259470126898   (closed form sqrt(g r tan θ) = 14.5012594701269)
+```
+
+so the cohort is reachable without inventing a mass. What is missing is
+entirely evaluation-side: a `ProfileId`, a complete-profile predicate over the
+source shape, and a transaction that builds the frame pair, the contact point,
+the geometry relations, the value-free symbolic mass/normal-force/normal-
+acceleration quantities, and the two source-evidenced authorities.
+
+### 2. `d97deaad19b75e86` — flat curve limiting-friction maximum speed (n = 3) — REACHABLE, MEASURED
+
+Typed source states: a `vehicle` and a `surface`, a `contact_with` relation, a
+`constant_gravity` assumption, a friction coefficient, a radius, and one
+`final_velocity` **magnitude** query. Figure dependency `none`.
+
+Existing green law path: `contact_limiting_static_friction`,
+`contact_normal_bound`, `horizontal_gravity_normal_projection`,
+`particle_newton_second`, `particle_normal_acceleration`,
+`translational_speed_nonnegative`. Measured the same way:
+
+```
+flat, mass stated     -> solved  12.130539971493437
+flat, mass valueless  -> solved  12.130539971493437   (closed form sqrt(mu g r))
+```
+
+One authority in this cohort is **not** expressible in the v1 schema and must
+come from a v2 carrier: the source asks for the *maximum* speed, and
+`QueryObjectiveV2` with `QueryObjective.maximum` is exactly that carrier, cited
+to the source's own words. Without it the limiting condition would be assumed
+rather than stated, and the cohort must stay fail-closed.
+
+### 3. `e122536ae385373c` — instantaneous-centre point-speed transfer (n = 3) — ENGINE WALL, MEASURED
+
+Typed source states: a `rigid_body`, three `point` entities including a named
+instantaneous centre, two `point_on_body` relations, **two** radii scoped to
+two different points, one point speed, and a `tangential_velocity` magnitude
+query at the other point. `ConstraintAuthority.instantaneous_center` already
+exists in the v2 vocabulary and `rigid_instant_center_speed` already exists in
+the law catalogue.
+
+**Measured blocker.** `_instant_center_profile` admits exactly one radius
+geometry relation and exactly four quantities, with `(omega known) XOR
+(target speed known)`. It expresses one omega-to-v relation at one radius. This
+cohort needs the two-step chain `(r_A, v_A) -> omega -> (r_B, v_B)`, which the
+profile as written refuses. Closing it is an **engine** law-profile change —
+admitting two typed radii at two typed points and emitting two
+`rigid_instant_center_speed` equations — not an evaluation-side transaction,
+and it carries its own attack matrix. Recorded as the reason this cohort was
+not taken ahead of the two above, rather than skipped silently.
+
+### Not ranked ahead of the above
+
+- `ec7cf89193096ff5` / `744574b901525425` / `bba5380217b6e33a` (projectile,
+  n = 3 + 1 + 1) — §5a of the structural blockers report records
+  `CORPUS_CONTRACT_MISMATCH` for the magnitude-with-angle launch: the angle
+  carries no typed reference axis. An `AngleDatumV2` carrier is the candidate
+  answer and is **not** assumed to work; it needs its own measurement first.
+- `50dd2670ee7eb849` (massive pulley Atwood, n = 3) — `requires_specialized_model`,
+  and `_massive_pulley_atwood_profile` exists in the engine. Promising, unmeasured.
+- `8d9b4c83f3c12c91` / `49b6772e4e3e55a3` / `947e48add70370a9` (planar rigid
+  velocity and acceleration) — `planar_rigid_velocity_x/y` and
+  `planar_rigid_acceleration_x/y` exist. Unmeasured.
+- `0a3680ea1d75a889`, `0b18eb7172b026ec` — population 1 each; below the
+  population-3 priority rule.
+
+## Status of this campaign
+
+```
+SUPPLEMENTAL_CAMPAIGN_MANIFEST_LOCKED       = false
+ADDITIONAL_NEWLY_SOLVED_CORRECT             = 0
+```
+
+No cohort transaction has been built yet, so no supplemental manifest has been
+locked and no baseline/final comparison has been run. The census, the
+exclusion proof and the two measured reachability results above are what this
+session establishes; the yield itself is not claimed.
