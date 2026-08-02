@@ -120,14 +120,27 @@ completeness rule satisfied by a measurement of nothing.
 | campaign seal | exact 97 / 3 population, refusal identities, corpus SHA and both manifest hashes, as a versioned contract |
 | laundering controls | one context, all 97, identity swap at equal counts, joint input+attestation forgery |
 | import isolation | Phase R, Phase G and Phase V import graphs, by AST rather than substring |
-| Phase M atomic publication | a refused seal publishes none of the three artifacts, leaves no `.partial`, and does not disturb an earlier honest one; a sealed preparation publishes all three with hashes recomputed from the published bytes |
+| Phase M single-commit generation publication | a refused seal publishes nothing — no pointer, no generation, no staging residue — and leaves an earlier publication byte-unchanged; a sealed preparation publishes one immutable generation whose id, file hashes and canonical digests all recompute from the published bytes, and prints the publication id the pipeline pins to |
+| publication transaction matrix | the legacy sequential-replace protocol reproduced *failing* (mixed generation under an interrupt); the same interrupts against the new protocol at every boundary; per-artifact read-back mismatch cleanup; exception after the writes; generation-committed-pointer-not (complete unreferenced orphan); pointer replace failure; success completeness, idempotence and immutability; reader pinning against a moved pointer; deterministic interleaved concurrent writers; identical-content convergence; different-bytes collision refusal; pointer validation gate by gate with re-signed forgeries |
 
-The Phase M publication controls are a matched pair over one synthetic campaign,
+The Phase M seal controls are a matched pair over one synthetic campaign,
 differing only in the two manifest hashes — the same two fields the live blocker
-turns on. Both negative controls were confirmed to **fail** against the previous
-write-then-seal ordering, so they are shown to fire rather than merely to pass.
-A fourth control reads the orchestrator's AST and pins that a Phase M exit 2
-returns before Phase V, so "no artifacts" is also "no later phase ran".
+turns on. The earlier flat-path publication controls were restated against the
+generation protocol rather than deleted: their threat — half a preparation at
+the authoritative location — is now unspellable at final paths, so the
+assertions moved to the pointer and the generation set. The sequential-replace
+defect itself is demonstrated twice: by the committed legacy-model control, and
+by driving the actual pre-fix tool (restored from `2073ebaf`) under a rename
+fault, which left a mixed generation at the final paths. The orchestrator
+control reads the AST and pins that Phase M's status guard returns before Phase
+V, that the publication id is captured exactly once, and that every later phase
+receives the same pinned id — so "nothing published" is also "no later phase
+ran", and "published" is also "never re-resolved mid-pipeline". The checker's
+attestation-required probe is behavioral (both readers refuse, by name, a run
+with no attestation and an unresolvable publication root, writing nothing);
+the old `required=True` AST probe became a spelling check once the attestation
+could arrive from inside a resolved generation, and was replaced, not
+weakened.
 
 Each control asserts the exact gate name it hits. A control that failed for a
 different reason than intended is treated as no control at all: a state-map

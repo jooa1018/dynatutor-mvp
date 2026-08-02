@@ -28,7 +28,103 @@ stands as history. They were not re-measured under the sealed B28A pipeline —
 the manifest that half of the campaign depends on is unavailable — so they are
 not carried forward as accepted here.
 
-## The attested-preparation session (2026-08-01, latest) — read this first
+## The single-commit publication session (2026-08-02, latest) — read this first
+
+Independent review of the previous cleanup found its central declaration
+overstated, and this session closed only that. No cohort was added or removed,
+no threshold moved, no physics changed, and B29, B32 and Stage 8 were not
+touched.
+
+**The defect.** `PHASE_M_ATOMIC_PUBLICATION_CONFIRMED` was declared over a
+publication that renamed three artifacts to three final paths in sequence.
+Each rename was atomic; the set was not. An exception or a process kill
+between the renames left the authoritative paths holding a new candidate
+archive beside an old runtime input and an old attestation — confirmed by
+driving the actual pre-fix tool (restored from `2073ebaf`, file SHA-256
+`975ccd98…`) under a fault at its second rename: the mixture appeared and the
+old cleanup path, which ran exactly as written, could not undo the rename that
+had already happened. The fixed `<name>.partial` staging names were shared by
+every run, so concurrent writers could overwrite each other's staging, and a
+read-back mismatch could return before its staged path was registered for
+cleanup.
+
+**What closes it.** A publication layer
+(`evaluation/phase56_stage7/corpus_v2/publication.py`): each run stages into a
+private `generations/.tmp-<uuid4>` directory; the complete, validated
+generation — read-back hashes, attestation, campaign seal, cross-artifact
+binding, all judged from the staged bytes — is promoted by one directory
+rename to `generations/<attestation-digest>` (format-pinned to 64 hex before
+any path use) and never modified again; and authority changes exactly once, at
+`os.replace` of a validated fsynced `CURRENT.<token>.partial` onto
+`CURRENT.json`. A failure before the promote removes only the run's own
+staging; a failure after it leaves the previous authority byte-unchanged and
+the new generation as a complete, unreferenced orphan — deliberately, since
+deleting it could delete a directory another writer just committed to.
+Durability is claimed at process level (fsync ordering, best-effort directory
+fsync), not as power-loss proof.
+
+**The pipeline is pinned.** Phase M prints
+`STAGE7_V2_PREPARE_PUBLICATION_ID=<generation-id>`; the orchestrator captures
+it once — AST-pinned, with a guard that refuses to continue unpinned — and
+Phase V, R and G resolve that exact generation via
+`--publication-root`/`--publication-id` without ever re-reading
+`CURRENT.json`, so a pointer moved by a second writer mid-pipeline cannot make
+two phases observe two preparations. The readers' explicit path flags remain
+as the non-authoritative probe harness the laundering matrix needs; Phase M's
+flat-path output flags are gone entirely, and an AST control pins that the
+prepare tool performs no `replace`, `rename` or `write_text` of its own. The
+checker's attestation-required probe was replaced — not weakened — by a
+behavioral check, because with a publication-pinned mode the attestation can
+arrive from inside a resolved generation and `required=True` would have
+checked the spelling rather than the property.
+
+**Evidence.** 31 new controls in
+`test_phase56_stage7_corpus_v2_publication_transaction.py` — the legacy
+protocol reproduced failing first, then interruption at every new-protocol
+boundary, per-artifact read-back mismatch cleanup, orphan semantics, pointer
+replace failure, success completeness/idempotence/immutability, reader
+pinning, deterministic interleaved concurrent writers, collision refusal, and
+gate-by-gate pointer validation with re-signed forgeries — plus the four
+earlier publication controls restated against the new protocol. At the exact
+code head `df27bc7dafd3a33abe7f8c49995296d17e22dfda`
+(venv rebuilt from `backend/requirements-lock.txt`;
+`/home/user/.venv-stage7/bin/python`, Python 3.11.15, pytest resolving to
+`/home/user/.venv-stage7/bin/pytest`):
+
+| run | exit | result | wall |
+|---|---:|---|---:|
+| full backend suite | 0 | **4570 passed**, 1 skipped, 0 failed, 903 deselected | 1093.68 s |
+| Stage 7 focused glob | 0 | 1408 passed, 474 deselected | 208.83 s |
+| publication + seal + fail-closed + gold-scored | 0 | 190 passed | 51.07 s |
+| B28A read-only checker | 0 | 24 checks, 0 blocking, 0 non-blocking, PASS | — |
+| Stage 7 offline gate | 0 | `CORPUS_INDEPENDENT_REGRESSION`, public lanes `NOT_RUN` | — |
+
+4570 is the previously recorded 4539 plus exactly the 31 new controls.
+Exact-head CI run IDs are recorded in PR #17 §5.1; the mirror work branch
+creates no push runs because every workflow filters its push trigger to the
+authoritative branch, which is the filter working, not a gap. One run's
+re-runs are disclosed in full there: the pull_request Stage 6 run's attempt 1
+was cancelled when one shard's test step stalled into the job's 20-minute
+timeout (the same shard had already passed at the same SHA in the push-event
+run); attempt 2 re-ran only the failed jobs, the shard passed in 2m43s, and
+the partition audit failed by construction — it requires all eight
+attempt-scoped manifests and a partial re-run uploads only one; attempt 3 was
+a full re-run so the audit could see the whole partition. Nothing else was
+re-run and no empty commit was made to provoke a run.
+
+`PHASE_M_SINGLE_COMMIT_GENERATION_PUBLICATION_CONFIRMED`. The earlier
+`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED` is **superseded** and retained below as
+history. Phase V's replay remains defense in depth, not a substitute for
+publication atomicity. B28A stays
+`B28A_V2_PREPARE_ATTESTATION_AND_REFUSAL_POPULATION_SEAL_INCOMPLETE` on
+`EXACT_MANIFEST_UNAVAILABLE` — the exact manifest (canonical digest
+`c7222978…`, file SHA-256 `95aca084…`) is still absent from this environment,
+and no manifest was reconstructed, guessed or approximated. B28, B29 and B32
+stay `INCOMPLETE`; B30/B31 are not re-declared; `STAGE_7_IN_PROGRESS /
+NOT_ACCEPTED` and `STAGE_8_NOT_STARTED` stand. PR #16 untouched; PR #17 open,
+Draft, unmerged; `main` unchanged.
+
+## The attested-preparation session (2026-08-01) — read this first
 
 Independent verification of the previous checkpoint found one further
 structural fail-open path in the B28 acceptance seal, and this session closed
@@ -134,8 +230,13 @@ rather than merely to pass; the seal they are judged against is derived from the
 synthetic campaign's own honest attestation, so the negative pair differs from
 the positive one by the two manifest hashes alone.
 
-`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED`. No threshold, tolerance, budget or
-population changed, and B28A's disposition is unmoved.
+`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED` was declared here and is **superseded**
+by the 2026-08-02 session above: the refusal-path guarantee stands, but the
+success path this pass declared atomic still published through three
+sequential renames, and the current declaration is
+`PHASE_M_SINGLE_COMMIT_GENERATION_PUBLICATION_CONFIRMED`. No threshold,
+tolerance, budget or population changed in this pass, and B28A's disposition
+was unmoved.
 
 ### Exact-head CI, closed
 

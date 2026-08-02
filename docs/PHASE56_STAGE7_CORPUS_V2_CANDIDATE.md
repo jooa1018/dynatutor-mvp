@@ -8,7 +8,260 @@ The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
 
 ---
 
-## -3. The attested-preparation checkpoint (2026-08-01, latest) — supersedes §-2 below where they differ
+## -4. The single-commit publication checkpoint (2026-08-02, latest) — supersedes §-3.8 below
+
+Independent review of the §-3.8 cleanup found that its declaration claimed more
+than its mechanism delivered. The pass was real — a *refused* preparation
+publishes nothing, and that stands — but the *successful* publication still
+moved three artifacts to three final paths with three consecutive renames, and
+`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED` was declared over it. This checkpoint
+closes only that residual defect. No cohort moved, no threshold moved, no
+physics changed, and B29, B32 and Stage 8 were not touched.
+
+### -4.1 Three renames are three chances to crash
+
+Each `os.replace` in the old `_publish` loop was atomic; the set was not. With
+an earlier honest preparation at the final paths, an exception or a process
+kill between the first rename and the last left the authoritative paths
+holding artifacts from **two different generations** — a new candidate archive
+beside an old runtime input and an old attestation — and unlinking the
+remaining `.partial` files could not undo a rename that had already happened.
+
+This was confirmed against the actual pre-fix implementation, not a paraphrase
+of it: `run_phase56_stage7_v2_shadow_prepare.py` as of `2073ebaf` (restored
+file SHA-256 `975ccd989e9190ced2f1b86b5bc928c0525b19fbd3b1819c5860f81ea931fe8f`)
+was driven over a synthetic campaign, an honest generation was published, and
+a second preparation was interrupted by a fault injected at its second publish
+rename:
+
+```
+OLD_TOOL_FAULTED_RUN=raised OSError: injected: interrupted between sequential renames
+OLD_TOOL_FINAL_PATH_MOVED={'candidate': True, 'runtime_input': False, 'attestation': False}
+OLD_TOOL_PARTIAL_RESIDUE=[]
+OLD_IMPLEMENTATION_MIXED_GENERATION_CONFIRMED
+```
+
+The staged `.partial` files were cleaned — the old `except BaseException`
+path ran exactly as written — and the mixture stayed. Phase V would refuse it
+later, but that is defense in depth, not publication atomicity: between the
+partial publish and that refusal the authoritative paths themselves disagreed
+about which preparation they were. Two further defects rode along: every run
+staged into the same fixed `<name>.partial` files, so concurrent writers could
+overwrite or rename each other's staging; and a read-back mismatch could
+return before the staged path was registered for cleanup, leaving a `.partial`
+behind.
+
+### -4.2 One immutable generation, one pointer replace
+
+Publication now goes through
+`evaluation/phase56_stage7/corpus_v2/publication.py`:
+
+```
+<publication-root>/
+    generations/
+        .tmp-<token>/            one writer's private staging (exist_ok=False)
+        <generation-id>/         an immutable, complete generation
+            candidate-archive.json
+            runtime-input.json
+            prepare-attestation.json
+    CURRENT.json                 the single authority pointer
+    CURRENT.<token>.partial      the pointer's staged replacement, briefly
+```
+
+* **Staging is per-run and private.** Each run stages into
+  `generations/.tmp-<uuid4>` — no fixed names anywhere, so two writers cannot
+  share a staging path, and a refusal removes the one directory the run owns.
+  Staging lives inside `generations/` so the promote is a rename on one
+  filesystem.
+* **Everything is judged before authority moves.** Both payload artifacts are
+  written, fsynced, re-read, and hashed from the bytes that came back; the
+  attestation is built over those hashes; the campaign seal is judged; the
+  attestation is staged and re-read; the staged runtime input is re-loaded and
+  every binding between it and the attestation re-checked. A failure at any of
+  these leaves the previous pointer and every existing generation
+  byte-unchanged.
+* **The generation id is the attestation's canonical digest** — content-
+  addressed, format-pinned to `^[0-9a-f]{64}$` before it is ever used as a
+  path component, so a pointer cannot name `../`, an absolute path, or a
+  separator. The complete staging directory is promoted by one directory
+  rename. A collision with an existing generation is either a byte-identical
+  deterministic rebuild — adopted, idempotently — or refused without touching
+  the existing directory.
+* **Authority changes exactly once**: `os.replace` of a validated, fsynced
+  `CURRENT.<token>.partial` onto `CURRENT.json`. A reader that resolves the
+  pointer sees the old complete generation or the new complete generation.
+  There is no observable instant in which the authority holds artifacts from
+  two preparations, because the artifacts never move separately.
+* **A failure between the promote and the pointer replace** leaves the
+  previous authority standing and the new generation on disk as a complete but
+  **unreferenced orphan**. That is deliberate: deleting it could delete a
+  directory another writer legitimately just committed a pointer to. The
+  narrow claim — no mixed authoritative generation, previous authority
+  preserved, a failed publication may leave an unreferenced complete
+  generation — is the claim the controls prove; "no byte left behind" is not
+  claimed, because it is not true of any protocol that survives concurrent
+  writers.
+* **Durability is claimed at the process level.** Artifacts and the staged
+  pointer are `fsync`ed before any rename and the enclosing directories are
+  fsynced best-effort afterwards — the POSIX ordering discipline — but no test
+  pulls a power cable, so hardware power-loss durability is *not* asserted.
+  What is asserted is that no reader of a live filesystem can observe a mixed
+  or half-published authority.
+
+### -4.3 The pipeline is pinned to one publication
+
+Phase M prints `STAGE7_V2_PREPARE_PUBLICATION_ID=<generation-id>` on success.
+The orchestrator captures it **once** — the AST control pins the single
+capture, the guard that refuses to continue without it, and the one `pinned`
+argument list every later phase receives — and Phase V, Phase R and Phase G
+resolve that exact generation via `--publication-root`/`--publication-id`
+without ever opening `CURRENT.json`. A second writer that publishes and
+re-points the authority mid-pipeline cannot make two phases of the first
+pipeline observe two different preparations; the pinned Phase V run in the
+attack matrix passes against the first generation while the pointer names the
+second, and the mixed direction fails under the named replay gates.
+
+The readers' explicit artifact-path flags remain as the **non-authoritative
+direct-input probe harness** the laundering matrix drives forged files
+through; every gate applies to them unchanged, and the two input modes are
+mutually exclusive by contract. Phase M's own flat-path output flags are gone
+entirely — an AST control asserts the prepare tool performs no `replace`,
+`rename` or `write_text` of its own — so an unsafe sequential publication
+cannot exist in the file, silently or otherwise. The checker's
+attestation-required check became behavioral for the same reason: with the
+publication-pinned mode the attestation can arrive from inside a resolved
+generation, so an argparse `required=True` probe would check the spelling
+rather than the property. The replacement invokes both readers with no
+attestation and with an unresolvable publication root and requires the named
+refusal with nothing written.
+
+### -4.4 The attack matrix
+
+`test_phase56_stage7_corpus_v2_publication_transaction.py`, 31 controls, and
+the four §-3.8 controls restated against the new protocol in the seal suite.
+The matrix opens with the legacy protocol reproduced failing — the committed
+control drives the old sequential-replace shape and asserts the *mixture*, so
+the defect is demonstrated rather than remembered — and §-4.1's run of the
+actual pre-fix tool is the process-level confirmation.
+
+| control | fault injected | authority afterwards |
+|---|---|---|
+| legacy sequential replace | interrupt after first rename | **mixed** — the defect fires (negative control on the old protocol) |
+| same interruption, new protocol | interrupt at promote; interrupt at pointer replace | byte-identical previous authority; complete unreferenced orphan; never a mixture |
+| read-back mismatch × 3 artifacts | corrupted read-back per artifact | exit 2 under the artifact's own gate; own staging removed whole; foreign staging and authority untouched; no `.partial` |
+| exception after the writes | raise after both payloads staged | own staging removed; nothing else touched |
+| generation committed, pointer not | pointer staging fails after promote | previous pointer byte-unchanged; orphan complete and pinned-resolvable |
+| pointer replace failure | `os.replace` fails on CURRENT | exit 2 `publication_pointer_commit_failed`; previous pointer byte-unchanged and still resolving; no pointer partial |
+| success | none | pointer → generation; every hash recomputed from published bytes matches; idempotent republication converges; a second publication leaves the first byte-identical |
+| reader pinning | second writer re-points CURRENT | pinned resolve and pinned Phase V stay on the first generation; cross-generation pairings fail by name |
+| concurrent writers | deterministic lockstep interleave | distinct stagings; complete generations; valid pointer at every step; loser still pinned-resolvable |
+| identical-content writers | directory collision at promote | adopted; one generation; no corruption |
+| different-bytes collision | tampered existing generation | `publication_generation_collision`; existing directory untouched; reader also refuses |
+| pointer validation | 13 pointer forgeries + tampered generations + malformed pins | each refused under its exact `publication_*` gate; the resolver repairs nothing |
+
+Re-signed forgeries are used where a gate sits behind the pointer digest, so
+each control exercises the gate it names rather than the digest in front of
+it.
+
+### -4.5 Local evidence at the exact code head
+
+The code head is `df27bc7dafd3a33abe7f8c49995296d17e22dfda`; this document is
+its documentation-only descendant. The environment was rebuilt for this
+session from `backend/requirements-lock.txt`:
+
+```
+PATH=/home/user/.venv-stage7/bin:$PATH  /home/user/.venv-stage7/bin/python -m pytest tests -q
+  pytest resolution : /home/user/.venv-stage7/bin/pytest
+  shebang           : #!/home/user/.venv-stage7/bin/python3
+  interpreter       : /home/user/.venv-stage7/bin/python  (Python 3.11.15)
+```
+
+| run at `df27bc7` | exit | result | wall |
+|---|---:|---|---:|
+| full backend suite | 0 | **4570 passed**, 1 skipped, 0 failed, 903 deselected | 1093.68 s (18m14s) |
+| Stage 7 focused glob (`tests/test_phase56_stage7_*.py`) | 0 | **1408 passed**, 474 deselected | 208.83 s |
+| publication transaction matrix + seal/laundering matrix + fail-closed + gold-scored shadow | 0 | **190 passed** (31 + 97 + 62) | 51.07 s |
+| B28A read-only checker | 0 | 24 checks, **0 blocking**, **0 non-blocking**, `ACCEPTANCE=PASS` | — |
+| Stage 7 offline gate | 0 | `STAGE7_RUN_SCOPE=CORPUS_INDEPENDENT_REGRESSION`, public lanes `NOT_RUN` | — |
+| `python -m compileall app engine evaluation tools tests` | 0 | clean | — |
+
+**4570 = the previously recorded 4539 plus exactly the 31 new publication
+controls**, which is the corroboration that nothing else moved. The deselected
+count is unchanged at 903. These are fresh runs at this head, not quoted
+figures; the frontend was not touched, so no frontend gate was re-run.
+
+### -4.6 Exact-head CI
+
+Run IDs, conclusions and durations for `df27bc7` and this documentation head
+are recorded in PR #17 §5.1, since a commit cannot carry its own SHA. The push
+to the mirror work branch `claude/phase-m-atomic-generation-publication-yyccnx`
+creates no runs by construction: all four workflows filter their push trigger
+to `codex/phase56-generic-mechanics-engine` (plus `main` for the release
+suite), so the absence of runs there is the branch filter working, and the
+authoritative-branch push and pull_request runs are the evidence for this
+head.
+
+One run's re-runs are on record, in full — every attempt, with its reason.
+The pull_request `Phase 56 Stage 6 multimodal` run `30729850298` at `df27bc7`
+took three attempts:
+
+1. **Attempt 1 — cancelled, infrastructure.** The `backend regression shard 2`
+   job set up, installed and compiled in seconds, then its test step stalled
+   from 03:03:53Z until the job's `timeout-minutes: 20` budget killed it at
+   03:28:28Z — while the seven sibling shards finished in two to five minutes
+   and the push-event run of the *same workflow at the same SHA*
+   (`30729848670`) had already passed the same shard. A stalled runner, not a
+   test failure.
+2. **Attempt 2 — shard green, audit red by construction.** Only the failed
+   jobs were re-run; shard 2 passed in 2m43s, which is the confirmation that
+   attempt 1 was a stall. But the partition audit downloads
+   `stage6-backend-manifest-<run_id>-<run_attempt>-*` and asserts exactly
+   eight manifests, and a partial re-run uploads only the re-run shard under
+   the new attempt number — so the audit found one manifest where it required
+   eight and failed in seconds. A structural incompatibility between
+   `rerun-failed-jobs` and attempt-scoped artifact names, not a test failure:
+   all eight shards were green across the two attempts.
+3. **Attempt 3 — full re-run**, so every shard uploads under one attempt
+   number and the audit can see the whole partition; its conclusion is
+   recorded in PR #17 §5.1 beside the two attempts above.
+
+No other run was re-run, and no empty commit was made to provoke one.
+
+### -4.7 The declaration, corrected
+
+What §-3.8 proved and what stands: the forbidden-key scan runs before any
+write; a **refused** preparation publishes nothing and disturbs nothing; file
+hashes are recomputed from read-back bytes.
+
+What this checkpoint newly proves: the three artifacts exist together in an
+immutable generation or not at all; authority changes only at the single
+`CURRENT.json` replace; no reader can observe a mixed authoritative
+generation; a failed publication preserves the previous authority
+byte-for-byte and at worst leaves a complete unreferenced orphan; one
+orchestrated `M → V → R → G` run is pinned to one publication id end-to-end;
+concurrent writers cannot corrupt each other; and the old sequential protocol
+demonstrably fails the same faults.
+
+`PHASE_M_SINGLE_COMMIT_GENERATION_PUBLICATION_CONFIRMED` accordingly, and the
+§-3.8 declaration `PHASE_M_ATOMIC_PUBLICATION_CONFIRMED` is **superseded** —
+retained below as history, not as the current disposition. Phase V's replay
+remains defense in depth, not a substitute for publication atomicity. No
+threshold, tolerance, budget or population changed; no test was deleted or
+weakened — the one checker probe that became meaningless under the new
+contract was replaced by a strictly stronger behavioral check, and the reason
+is recorded in §-4.3.
+
+This checkpoint does **not** move B28A: the exact augmentation manifest
+(canonical digest `c7222978…`, file SHA-256 `95aca084…`) remains a restricted
+out-of-tree artifact absent from this environment, so
+`B28A_V2_PREPARE_ATTESTATION_AND_REFUSAL_POPULATION_SEAL_INCOMPLETE` stands on
+`EXACT_MANIFEST_UNAVAILABLE`. B28, B29 and B32 remain `INCOMPLETE`; B30 and
+B31 are not re-declared accepted; `STAGE_7_IN_PROGRESS / NOT_ACCEPTED` and
+`STAGE_8_NOT_STARTED` stand.
+
+---
+
+## -3. The attested-preparation checkpoint (2026-08-01) — supersedes §-2 below where they differ
 
 Independent verification of the §-2 checkpoint found one further structural
 fail-open path in the B28 acceptance seal. It is in the *measurement*, not in
@@ -351,8 +604,14 @@ blocker, not an incidental choice. A fourth control reads the orchestrator's AST
 and pins that the statement after Phase M returns its status, so an exit 2 means
 Phase V, Phase R and Phase G are unreachable.
 
-`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED`. This changes no threshold, no tolerance
-and no population, and it does not move B28A's disposition.
+`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED` was declared here and is **superseded
+by §-4**. What this pass proved — and what stands — is that a *refused*
+preparation publishes nothing. What it called atomic, the success path's three
+sequential renames, is exactly the crash window §-4 closes with an immutable
+generation and a single pointer replace; the current declaration is
+`PHASE_M_SINGLE_COMMIT_GENERATION_PUBLICATION_CONFIRMED`. This pass changed no
+threshold, no tolerance and no population, and did not move B28A's
+disposition.
 
 ### -3.9 Exact-head CI, closed
 
