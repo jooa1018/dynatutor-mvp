@@ -563,6 +563,7 @@ def test_the_profile_table_and_enum_cannot_drift():
         ProfileId.slot_pin_relative_frame,
         ProfileId.rotating_relative_frame,
         ProfileId.relative_translating_frame,
+        ProfileId.horizontal_contact,
     }
 
 
