@@ -230,7 +230,11 @@ def _assert_entry_name_is_safe(index: int, name: str) -> None:
         raise _fail(CorpusIntegrityReason.entry_name_not_portable, entry_index=index)
     if any(ord(char) < 0x20 or ord(char) == 0x7F for char in name):
         raise _fail(CorpusIntegrityReason.entry_name_not_portable, entry_index=index)
-    if "\\" in name:
+    # ``zipfile`` may normalize a UNC spelling from ``\\server\\share`` to
+    # ``//server/share`` on Windows.  Classify both lexical forms before the
+    # generic POSIX-absolute check so the frozen failure taxonomy is identical
+    # on every host while still rejecting the entry.
+    if "\\" in name or name.startswith("//"):
         raise _fail(CorpusIntegrityReason.drive_or_unc_entry_path, entry_index=index)
     if len(name) >= 2 and name[1] == ":" and name[0].isalpha():
         raise _fail(CorpusIntegrityReason.drive_or_unc_entry_path, entry_index=index)
