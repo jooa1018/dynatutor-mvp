@@ -85,6 +85,20 @@ jobs:
       - name: Record pre-evaluation worktree state
         run: git status --porcelain > "${RUNNER_TEMP}/worktree-before.txt"
 
+      # The report this job uploads is evidence about one source head in one
+      # run, so it is written to a path that names both and that nothing else
+      # can be holding.  A fixed shared filename under RUNNER_TEMP would be a
+      # place a later command in the same job could land on.
+      - name: Bind this run's report path to the exact head
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+          path="${RUNNER_TEMP}/stage7-offline-${EXACT_HEAD_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          test ! -e "$path"
+          echo "STAGE7_REPORT_PATH=${path}" >> "$GITHUB_ENV"
+
       - name: Compile backend
         working-directory: backend
         run: python -m compileall -q app engine evaluation tools tests
@@ -97,8 +111,19 @@ jobs:
       # NOT_RUN and the step prints its own scope on its last line.
       - name: Stage 7 offline gate (corpus-independent scope)
         run: |
+          set -euo pipefail
+          status=0
           python backend/tools/run_phase56_stage7_offline_gate.py \
-            --output "${RUNNER_TEMP}/stage7_offline_gate_report.json"
+            --output "$STAGE7_REPORT_PATH" \
+            --expect-head-sha "$EXACT_HEAD_SHA" \
+            | tee "${RUNNER_TEMP}/stage7-offline-gate.log" || status=$?
+          # Carry the digest the gate sealed from the bytes it had just
+          # written, so the pre-upload check compares against a value produced
+          # at generation time rather than re-deriving one from the same file.
+          digest="$(sed -n 's/^STAGE7_OFFLINE_GATE_REPORT_SHA256=//p' \
+            "${RUNNER_TEMP}/stage7-offline-gate.log" | tail -n 1)"
+          echo "STAGE7_REPORT_RAW_SHA256=${digest}" >> "$GITHUB_ENV"
+          exit "$status"
 
       - name: Stage 7 focused contracts
         working-directory: backend
@@ -130,13 +155,41 @@ jobs:
           git status --porcelain > "${RUNNER_TEMP}/worktree-after.txt"
           diff "${RUNNER_TEMP}/worktree-before.txt" "${RUNNER_TEMP}/worktree-after.txt"
 
-      - name: Upload redacted aggregate artifact
+      # Nothing between this check and the upload writes a report.  The check
+      # re-opens the file, parses it structurally, and requires
+      # configured head == git rev-parse HEAD == report exact_head_sha, plus
+      # the raw bytes still hashing to what the gate sealed.  The upload is
+      # conditioned on it, so a mismatched or tampered report is refused rather
+      # than published.
+      - name: Verify artifact identity before upload
+        id: stage7_artifact_identity
         if: always()
+        run: |
+          python backend/tools/check_stage7_ci_artifact_identity.py \
+            --report "$STAGE7_REPORT_PATH" \
+            --expect-head-sha "$EXACT_HEAD_SHA" \
+            --expect-raw-sha256 "$STAGE7_REPORT_RAW_SHA256"
+
+      - name: Upload redacted aggregate artifact
+        id: stage7_artifact_upload
+        if: always() && steps.stage7_artifact_identity.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: phase56-stage7-offline-gate-report
-          path: ${{ runner.temp }}/stage7_offline_gate_report.json
+          path: ${{ env.STAGE7_REPORT_PATH }}
           if-no-files-found: error
+
+      # Printed so an auditor who cannot re-download the blob can still bind
+      # the stored artifact to this job: the uploader's digest is reported by
+      # the Artifacts API for the same artifact id.
+      - name: Record uploaded artifact identity
+        if: always() && steps.stage7_artifact_upload.outcome == 'success'
+        run: |
+          printf 'STAGE7_ARTIFACT_RUN_HEAD_SHA=%s\n' "$EXACT_HEAD_SHA"
+          printf 'STAGE7_ARTIFACT_CHECKOUT_SHA=%s\n' "$(git rev-parse HEAD)"
+          printf 'STAGE7_ARTIFACT_REPORT_RAW_SHA256=%s\n' "$STAGE7_REPORT_RAW_SHA256"
+          printf 'STAGE7_ARTIFACT_ID=%s\n' '${{ steps.stage7_artifact_upload.outputs.artifact-id }}'
+          printf 'STAGE7_ARTIFACT_UPLOAD_DIGEST=%s\n' '${{ steps.stage7_artifact_upload.outputs.artifact-digest }}'
 
   b7-slow-contracts:
     name: B7 polar slow contracts

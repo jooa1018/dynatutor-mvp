@@ -27,6 +27,7 @@ generation instead of leaking.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -148,10 +149,30 @@ def _run_gate(name: str, action) -> GateOutcome:
     return GateOutcome(name=name, result="PASS")
 
 
-def _exact_head_sha() -> str:
-    env_sha = os.environ.get("GITHUB_SHA", "")
-    if len(env_sha) == 40 and all(c in "0123456789abcdef" for c in env_sha.casefold()):
-        return env_sha.casefold()
+CHECKOUT_HEAD_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
+
+
+class HeadShaUnavailable(RuntimeError):
+    """The checked-out source head could not be resolved."""
+
+
+def _checkout_head_sha() -> str:
+    """The SHA of the source this process actually has on disk.
+
+    ``git rev-parse HEAD`` is the only source of truth, deliberately.  This
+    function used to prefer ``GITHUB_SHA`` and must never do so again: on a
+    ``pull_request`` event GitHub sets ``GITHUB_SHA`` to the ephemeral
+    ``refs/pull/<n>/merge`` commit, which is *not* the commit
+    ``actions/checkout`` put in the worktree.  Reading it made the uploaded
+    artifact name a head that no run ever compiled, tested or gated — a merge
+    commit that is not reachable from any branch and that no auditor can
+    resolve.  The environment describes the event; only the worktree describes
+    the source, and the artifact is evidence about the source.
+
+    Fail closed: an unresolvable head raises rather than degrading to a
+    placeholder, so a report can never carry a head nobody checked.
+    """
+
     try:
         completed = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -160,9 +181,12 @@ def _exact_head_sha() -> str:
             text=True,
             check=True,
         )
-    except (OSError, subprocess.CalledProcessError):
-        return "0" * 40
-    return completed.stdout.strip().casefold()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise HeadShaUnavailable("git rev-parse HEAD failed") from exc
+    head = completed.stdout.strip().casefold()
+    if not CHECKOUT_HEAD_SHA_PATTERN.fullmatch(head):
+        raise HeadShaUnavailable(f"git rev-parse HEAD returned {head!r}")
+    return head
 
 
 def _structural_gates() -> list[GateOutcome]:
@@ -1097,7 +1121,13 @@ def _hard_safety_section(
     }
 
 
-def build_report(*, run_full_suites: bool = False) -> tuple[dict[str, Any], bool]:
+def build_report(
+    *, run_full_suites: bool = False, head_sha: str | None = None
+) -> tuple[dict[str, Any], bool]:
+    # ``head_sha`` lets the caller hand in the head it already resolved and
+    # validated, so the value the report carries is the same one the caller
+    # checked rather than a second, independently re-read value.
+    resolved_head = _checkout_head_sha() if head_sha is None else head_sha
     contract = stage7_evaluation_contract()
     offline_evidence = assert_offline_environment()
 
@@ -1146,7 +1176,7 @@ def build_report(*, run_full_suites: bool = False) -> tuple[dict[str, Any], bool
         "version": OFFLINE_GATE_VERSION,
         "evaluator_version": STAGE7_EVALUATOR_VERSION,
         "contract_version": STAGE7_CONTRACT_VERSION,
-        "exact_head_sha": _exact_head_sha(),
+        "exact_head_sha": resolved_head,
         "expected_corpus_zip_sha256": contract.corpus.expected_zip_sha256,
         "offline_environment": {
             "openai_key_empty": offline_evidence.openai_key_empty,
@@ -1389,11 +1419,24 @@ def _strict_requirements(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    # Deliberately required, with no default.  A shared default output path is
+    # a place two commands in one job can collide on, and the value of this
+    # file is that it is evidence about one run; the caller has to name where
+    # its own run's evidence goes.
     parser.add_argument(
         "--output",
         type=Path,
-        default=REPOSITORY_ROOT / "stage7_offline_gate_report.json",
-        help="destination for the redacted aggregate artifact",
+        required=True,
+        help="destination for this run's redacted aggregate artifact",
+    )
+    parser.add_argument(
+        "--expect-head-sha",
+        default=None,
+        help=(
+            "refuse to run unless the checked-out source head is exactly this "
+            "40-hex commit; the caller's configured head and the worktree must "
+            "agree before any evidence is written"
+        ),
     )
     parser.add_argument(
         "--require-public-corpus",
@@ -1407,7 +1450,31 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    report, passed = build_report(run_full_suites=args.require_full_stage7)
+    # Bind the run to its source before anything is measured, so a head
+    # disagreement costs a second rather than a full evaluation and can never
+    # reach the point where a report is written.
+    try:
+        head_sha = _checkout_head_sha()
+    except HeadShaUnavailable as exc:
+        print(f"STAGE7_OFFLINE_GATE=FAIL:checkout_head_sha_unavailable ({exc})")
+        return 2
+    if args.expect_head_sha is not None:
+        expected = args.expect_head_sha.strip().casefold()
+        if not CHECKOUT_HEAD_SHA_PATTERN.fullmatch(expected):
+            print(
+                "STAGE7_OFFLINE_GATE=FAIL:expected_head_sha_malformed "
+                f"({args.expect_head_sha!r})"
+            )
+            return 2
+        if expected != head_sha:
+            print(f"EXPECTED_HEAD_SHA={expected}")
+            print(f"CHECKOUT_HEAD_SHA={head_sha}")
+            print("STAGE7_OFFLINE_GATE=FAIL:checkout_head_sha_mismatch")
+            return 2
+
+    report, passed = build_report(
+        run_full_suites=args.require_full_stage7, head_sha=head_sha
+    )
     strict = _strict_requirements(
         report,
         require_corpus=args.require_public_corpus,
@@ -1430,6 +1497,13 @@ def main() -> int:
         json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
+    # Seal the bytes that are now on disk, not the bytes this process meant to
+    # write, and hash them raw: a text-mode read would normalise newlines and
+    # two different files could then seal to one digest.
+    report_digest = hashlib.sha256(args.output.read_bytes()).hexdigest()
+    print(f"STAGE7_OFFLINE_GATE_REPORT_PATH={args.output}")
+    print(f"STAGE7_OFFLINE_GATE_EXACT_HEAD_SHA={report['exact_head_sha']}")
+    print(f"STAGE7_OFFLINE_GATE_REPORT_SHA256={report_digest}")
     print(json.dumps({"gates": report["gates"]}, ensure_ascii=False, indent=2))
     if strict:
         print(json.dumps({"strict_gates": report["strict_gates"]}, ensure_ascii=False, indent=2))

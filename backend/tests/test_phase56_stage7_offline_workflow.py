@@ -103,7 +103,11 @@ def test_workflow_asserts_no_source_mutation_and_uploads_only_the_report(
     assert "worktree-before.txt" in workflow_text
     assert "worktree-after.txt" in workflow_text
     upload = workflow_text[workflow_text.index("Upload redacted aggregate artifact") :]
-    assert "stage7_offline_gate_report.json" in upload
+    # The upload publishes the one path the identity check validated, by
+    # reference.  Naming a literal filename here would let the validated path
+    # and the published path drift apart silently.
+    assert "path: ${{ env.STAGE7_REPORT_PATH }}" in upload
+    assert "stage7_offline_gate_report.json" not in workflow_text
     for leaky in (
         "public_dev.jsonl",
         "public_adversarial.jsonl",
