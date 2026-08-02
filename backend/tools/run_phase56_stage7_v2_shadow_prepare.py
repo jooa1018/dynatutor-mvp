@@ -33,14 +33,22 @@ The forbidden-key scan runs on the raw payload *before* validation and before
 any write, so a bundle naming a gold member never reaches disk at all.  It used
 to run after the file had been written.
 
-Exit 0 when all three artifacts were written, 2 when they could not be built
-honestly.
+Publication is all-or-nothing for the same reason.  The campaign seal is judged
+over the attestation, the attestation carries each artifact's file hash, and a
+file hash needs bytes on a filesystem — so the three artifacts are staged beside
+their destinations, hashed from what was actually written, put to every gate,
+and only then renamed into place.  Before, the candidate archive and the runtime
+input went straight to their final paths and the seal was checked afterwards, so
+a preparation refused for being some other campaign still left two of its three
+artifacts sitting where the next phase looks for them.
+
+Exit 0 when all three artifacts were published, 2 when they could not be built
+honestly — and in that case the final paths hold whatever they held before.
 """
 
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -70,18 +78,46 @@ from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (  # noqa: E402
 PREPARE_FAILURE_EXIT = 2
 
 
-def _write_atomic(path: Path, body: str) -> str:
-    """Write a file that is either wholly there or not there at all.
+def _stage(path: Path, body: str) -> tuple[Path, str] | None:
+    """Write an artifact beside its final name without publishing it.
 
-    A half-written artifact is worse than a missing one: it has a name, a size
-    and a hash, and nothing about it says it is a fragment.
+    Returns the staged path and the SHA-256 of the bytes that came back off the
+    filesystem, or `None` when those are not the bytes we meant to write.  The
+    hash is recomputed from the file rather than from `body` deliberately: a
+    write that lost its tail would otherwise be attested as intact, and the
+    attestation is the thing a later phase trusts.
     """
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".partial")
-    temporary.write_text(body, encoding="utf-8")
-    temporary.replace(path)
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+    staged = path.with_name(path.name + ".partial")
+    staged.write_text(body, encoding="utf-8")
+    written = file_sha256(staged.read_text(encoding="utf-8"))
+    if written != file_sha256(body):
+        return None
+    return staged, written
+
+
+def _publish(staged: list[tuple[Path, Path]]) -> None:
+    """Move every staged artifact to its final path, after all gates passed.
+
+    A rename is the last thing this command does, so the window in which the
+    final paths could disagree with each other is one `replace` call wide and
+    contains no decision that could still refuse the preparation.
+    """
+
+    for source, destination in staged:
+        source.replace(destination)
+
+
+def _discard(staged: list[tuple[Path, Path]]) -> None:
+    """Remove the staged artifacts, leaving the final paths as they were found.
+
+    Only the files this run created are touched.  A refused preparation must
+    not take an earlier honest one down with it.
+    """
+
+    for source, _ in staged:
+        source.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -124,61 +160,79 @@ def main() -> int:
 
     contexts = prepared.runtime_input.contexts
 
-    # Everything is derived and scanned before anything is written, so a
-    # preparation that fails leaves no partial evidence behind.
-    candidate_file_sha = _write_atomic(
-        args.candidate_archive, prepared.candidate_body
-    )
-    bundle_file_sha = _write_atomic(
-        args.runtime_input, prepared.runtime_input_body
-    )
+    # Nothing reaches a final artifact path until every gate below has passed.
+    # The gates need file hashes and file hashes need bytes on disk, so each
+    # artifact is staged beside its destination and the three are published
+    # together at the end.  A refused preparation leaves the final paths holding
+    # exactly what they held before it ran.
+    staged: list[tuple[Path, Path]] = []
 
-    attestation = build_prepare_attestation(
-        campaign_seal_name=args.campaign_seal,
-        exact_code_head=args.exact_code_head,
-        original_v1_archive_sha256=prepared.original_v1_archive_sha256,
-        augmentation_manifest_digest=prepared.augmentation_manifest_digest,
-        augmentation_manifest_file_sha256=(
-            prepared.augmentation_manifest_file_sha256
-        ),
-        candidate_archive_digest=prepared.candidate_archive_digest,
-        candidate_archive_file_sha256=candidate_file_sha,
-        runtime_input_digest=prepared.runtime_input.digest,
-        runtime_input_file_sha256=bundle_file_sha,
-        contexts=contexts,
-        unresolved_augmentation_count=prepared.unresolved_augmentation_count,
-    )
+    def _refuse(reason: str) -> int:
+        _discard(staged)
+        print(f"STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:{reason}", file=sys.stderr)
+        return PREPARE_FAILURE_EXIT
 
-    # A named seal is checked here as well as downstream.  Phase M is the phase
-    # that can still refuse to produce the artifacts at all, and a preparation
-    # whose population does not match the campaign it claims to be is not a
-    # preparation anyone should be handed.
-    if args.campaign_seal is not None:
-        seal = resolve_campaign_seal(args.campaign_seal)
-        if seal is None:
-            print(
-                "STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:campaign_seal_unknown",
-                file=sys.stderr,
-            )
-            return PREPARE_FAILURE_EXIT
-        seal_failures = campaign_seal_failures(attestation, seal)
-        if seal_failures:
-            print(
-                "STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:" + ",".join(seal_failures),
-                file=sys.stderr,
-            )
-            return PREPARE_FAILURE_EXIT
+    try:
+        candidate = _stage(args.candidate_archive, prepared.candidate_body)
+        if candidate is None:
+            return _refuse("prepare_candidate_archive_write_mismatch")
+        staged.append((candidate[0], args.candidate_archive))
+        candidate_file_sha = candidate[1]
 
-    attestation_body = (
-        json.dumps(
-            attestation.model_dump(mode="json"),
-            ensure_ascii=False,
-            sort_keys=True,
-            indent=2,
+        bundle = _stage(args.runtime_input, prepared.runtime_input_body)
+        if bundle is None:
+            return _refuse("prepare_runtime_input_write_mismatch")
+        staged.append((bundle[0], args.runtime_input))
+        bundle_file_sha = bundle[1]
+
+        attestation = build_prepare_attestation(
+            campaign_seal_name=args.campaign_seal,
+            exact_code_head=args.exact_code_head,
+            original_v1_archive_sha256=prepared.original_v1_archive_sha256,
+            augmentation_manifest_digest=prepared.augmentation_manifest_digest,
+            augmentation_manifest_file_sha256=(
+                prepared.augmentation_manifest_file_sha256
+            ),
+            candidate_archive_digest=prepared.candidate_archive_digest,
+            candidate_archive_file_sha256=candidate_file_sha,
+            runtime_input_digest=prepared.runtime_input.digest,
+            runtime_input_file_sha256=bundle_file_sha,
+            contexts=contexts,
+            unresolved_augmentation_count=prepared.unresolved_augmentation_count,
         )
-        + "\n"
-    )
-    attestation_file_sha = _write_atomic(args.prepare_attestation, attestation_body)
+
+        # A named seal is checked here as well as downstream.  Phase M is the
+        # phase that can still refuse to produce the artifacts at all, and a
+        # preparation whose population does not match the campaign it claims to
+        # be is not a preparation anyone should be handed.
+        if args.campaign_seal is not None:
+            seal = resolve_campaign_seal(args.campaign_seal)
+            if seal is None:
+                return _refuse("campaign_seal_unknown")
+            seal_failures = campaign_seal_failures(attestation, seal)
+            if seal_failures:
+                return _refuse(",".join(seal_failures))
+
+        attestation_body = (
+            json.dumps(
+                attestation.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n"
+        )
+        attested = _stage(args.prepare_attestation, attestation_body)
+        if attested is None:
+            return _refuse("prepare_attestation_write_mismatch")
+        staged.append((attested[0], args.prepare_attestation))
+        attestation_file_sha = attested[1]
+
+        _publish(staged)
+    except BaseException:
+        # An unanticipated failure must not publish half a preparation either.
+        _discard(staged)
+        raise
 
     print(
         "STAGE7_V2_PREPARE_ORIGINAL_V1_ARCHIVE_SHA256="
@@ -239,15 +293,6 @@ def main() -> int:
     )
     print(f"STAGE7_V2_PREPARE_CAMPAIGN_SEAL={args.campaign_seal or 'none'}")
     print(f"STAGE7_V2_PREPARE_EXACT_CODE_HEAD={args.exact_code_head}")
-    # Recomputed from the bytes that were written rather than from the bytes
-    # that were meant to be: an atomic write that lost its tail would otherwise
-    # be attested as intact.
-    if file_sha256(args.runtime_input.read_text(encoding="utf-8")) != bundle_file_sha:
-        print(
-            "STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:prepare_runtime_input_write_mismatch",
-            file=sys.stderr,
-        )
-        return PREPARE_FAILURE_EXIT
     print("STAGE7_V2_PREPARE_ACCEPTANCE=PASS")
     return 0
 

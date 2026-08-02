@@ -60,6 +60,7 @@ import pytest
 from evaluation.phase56_stage7.corpus_v2.campaign_seal import (
     STAGE7_PUBLIC_CAMPAIGN_SEAL_NAME,
     STAGE7_PUBLIC_CAMPAIGN_SEAL_V1,
+    CampaignPopulationSealV1,
     CampaignSealFailure,
     campaign_seal_failures,
     resolve_campaign_seal,
@@ -1856,6 +1857,297 @@ def test_the_attestation_carries_no_wall_clock_field() -> None:
         "unresolved_augmentation_count",
         "attestation_digest",
     }
+
+
+# ==========================================================================
+# Phase M atomic publication
+# ==========================================================================
+#
+# The seal is judged over the attestation, the attestation carries each
+# artifact's file hash, and a file hash needs bytes on a filesystem.  Phase M
+# used to resolve that by writing the candidate archive and the runtime input to
+# their final paths first and checking the seal afterwards — so a preparation
+# refused for being some other campaign still left two of its three artifacts
+# exactly where Phase V, and a hand-run Phase R, look for them.
+#
+# The two controls below are a matched pair over one synthetic campaign.  The
+# seal they are judged against is built from that campaign's own honest
+# attestation, so the *only* thing that differs between them is the manifest
+# pair — which is the shape of this project's live blocker: the population is
+# reproducible from the corpus, and the exact manifest hashes are not.
+SYNTHETIC_SEAL_NAME = "phase56-stage7-v2-synthetic-campaign-test"
+
+
+def _prepared_campaign(tmp_path, monkeypatch):
+    from evaluation.phase56_stage7.corpus_v2 import prepare_builder
+
+    archive, manifest = _synthetic_campaign(tmp_path, monkeypatch)
+    prepared = prepare_builder.build_prepared_campaign(
+        corpus_archive=archive, manifest=manifest
+    )
+    return archive, manifest, prepared
+
+
+def _honest_attestation(prepared, *, name: str | None):
+    return build_prepare_attestation(
+        campaign_seal_name=name,
+        exact_code_head=SYNTHETIC_CODE_HEAD,
+        original_v1_archive_sha256=prepared.original_v1_archive_sha256,
+        augmentation_manifest_digest=prepared.augmentation_manifest_digest,
+        augmentation_manifest_file_sha256=prepared.augmentation_manifest_file_sha256,
+        candidate_archive_digest=prepared.candidate_archive_digest,
+        candidate_archive_file_sha256=prepared.candidate_file_sha256,
+        runtime_input_digest=prepared.runtime_input.digest,
+        runtime_input_file_sha256=prepared.runtime_input_file_sha256,
+        contexts=prepared.runtime_input.contexts,
+        unresolved_augmentation_count=prepared.unresolved_augmentation_count,
+    )
+
+
+def _seal_from(attestation, **overrides) -> CampaignPopulationSealV1:
+    """A seal this preparation satisfies, except where a test says otherwise.
+
+    Derived from the preparation rather than hand-written, so the negative
+    control fails on the one field it edited and not on nine others it never
+    meant to touch.
+    """
+
+    values: dict = {
+        "name": SYNTHETIC_SEAL_NAME,
+        "original_v1_archive_sha256": attestation.original_v1_archive_sha256,
+        "augmentation_manifest_digest": attestation.augmentation_manifest_digest,
+        "augmentation_manifest_file_sha256": (
+            attestation.augmentation_manifest_file_sha256
+        ),
+        "expected_context_count": attestation.expected_context_count,
+        "context_index_set_digest": attestation.context_index_set_digest,
+        "expected_handle_set_digest": attestation.expected_handle_set_digest,
+        "prepared_state_map_digest": attestation.prepared_state_map_digest,
+        "refusal_handle_set_digest": attestation.refusal_handle_set_digest,
+        "prepared_state_counts": tuple(attestation.prepared_state_counts),
+        "prepared_refusal_counts": tuple(attestation.prepared_refusal_counts),
+    }
+    values.update(overrides)
+    return CampaignPopulationSealV1(**values)
+
+
+def _prepare_paths(tmp_path) -> tuple[Path, Path, Path]:
+    return (
+        tmp_path / "out" / "candidate.json",
+        tmp_path / "out" / "runtime_input.json",
+        tmp_path / "out" / "attestation.json",
+    )
+
+
+def _run_prepare(tmp_path, monkeypatch, archive, manifest, *, seal=None) -> int:
+    import runpy
+
+    candidate, runtime_input, attestation = _prepare_paths(tmp_path)
+    argv = [
+        str(PREPARE_TOOL),
+        "--corpus-archive",
+        str(archive),
+        "--manifest",
+        str(manifest),
+        "--candidate-archive",
+        str(candidate),
+        "--runtime-input",
+        str(runtime_input),
+        "--prepare-attestation",
+        str(attestation),
+        "--exact-code-head",
+        SYNTHETIC_CODE_HEAD,
+    ]
+    if seal is not None:
+        argv += ["--campaign-seal", seal]
+    monkeypatch.setattr(sys, "argv", argv)
+    module = runpy.run_path(str(PREPARE_TOOL), run_name="not_main")
+    return module["main"]()
+
+
+def _assert_nothing_published(tmp_path) -> None:
+    for path in _prepare_paths(tmp_path):
+        assert not path.exists(), f"{path.name} was published by a refused prepare"
+        staged = path.with_name(path.name + ".partial")
+        assert not staged.exists(), f"{staged.name} was left behind"
+
+
+def test_a_failed_campaign_seal_publishes_no_prepare_artifact(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """The negative control: refused for the manifest, and nothing on disk.
+
+    The candidate archive and the runtime input are derived, staged and hashed
+    before the seal can be judged at all — that ordering is forced, not chosen.
+    What the fix changes is where those bytes are while the judging happens.
+    """
+
+    from evaluation.phase56_stage7.corpus_v2 import campaign_seal
+
+    archive, manifest, prepared = _prepared_campaign(tmp_path, monkeypatch)
+    seal = _seal_from(
+        _honest_attestation(prepared, name=SYNTHETIC_SEAL_NAME),
+        augmentation_manifest_digest="9" * 64,
+        augmentation_manifest_file_sha256="8" * 64,
+    )
+    monkeypatch.setitem(campaign_seal.CAMPAIGN_SEALS, SYNTHETIC_SEAL_NAME, seal)
+
+    status = _run_prepare(
+        tmp_path, monkeypatch, archive, manifest, seal=SYNTHETIC_SEAL_NAME
+    )
+    captured = capsys.readouterr()
+
+    assert status == 2, captured.out
+    # The two gates the test edited, and only those.
+    assert CampaignSealFailure.manifest_digest_mismatch.value in captured.err
+    assert CampaignSealFailure.manifest_file_sha_mismatch.value in captured.err
+    assert CampaignSealFailure.context_count_mismatch.value not in captured.err
+    assert CampaignSealFailure.prepared_state_map_mismatch.value not in captured.err
+    assert "STAGE7_V2_PREPARE_ACCEPTANCE=PASS" not in captured.out
+
+    _assert_nothing_published(tmp_path)
+
+
+def test_a_failed_campaign_seal_leaves_an_earlier_preparation_intact(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """A refused run must not delete what an honest one published.
+
+    The staged path is a sibling of the final one, so "clean up after yourself"
+    and "unlink the artifact somebody is about to score" are one keystroke
+    apart.  This pins which of the two happens.
+    """
+
+    from evaluation.phase56_stage7.corpus_v2 import campaign_seal
+
+    archive, manifest, prepared = _prepared_campaign(tmp_path, monkeypatch)
+    existing = {}
+    for path in _prepare_paths(tmp_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"an earlier honest {path.name}\n", encoding="utf-8")
+        existing[path] = path.read_text(encoding="utf-8")
+
+    seal = _seal_from(
+        _honest_attestation(prepared, name=SYNTHETIC_SEAL_NAME),
+        augmentation_manifest_digest="9" * 64,
+    )
+    monkeypatch.setitem(campaign_seal.CAMPAIGN_SEALS, SYNTHETIC_SEAL_NAME, seal)
+
+    status = _run_prepare(
+        tmp_path, monkeypatch, archive, manifest, seal=SYNTHETIC_SEAL_NAME
+    )
+    capsys.readouterr()
+
+    assert status == 2
+    for path, body in existing.items():
+        assert path.read_text(encoding="utf-8") == body
+        assert not path.with_name(path.name + ".partial").exists()
+
+
+def test_a_sealed_preparation_publishes_all_three_artifacts(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """The positive control, differing from the negative one by the manifest.
+
+    Same corpus, same seal, same command — only the two manifest hashes agree.
+    All three artifacts appear, and each one's hash is the hash the attestation
+    states, recomputed from the published bytes rather than from the body the
+    command intended to write.
+    """
+
+    from evaluation.phase56_stage7.corpus_v2 import campaign_seal
+
+    archive, manifest, prepared = _prepared_campaign(tmp_path, monkeypatch)
+    seal = _seal_from(_honest_attestation(prepared, name=SYNTHETIC_SEAL_NAME))
+    monkeypatch.setitem(campaign_seal.CAMPAIGN_SEALS, SYNTHETIC_SEAL_NAME, seal)
+
+    status = _run_prepare(
+        tmp_path, monkeypatch, archive, manifest, seal=SYNTHETIC_SEAL_NAME
+    )
+    captured = capsys.readouterr()
+    candidate, runtime_input, attestation_path = _prepare_paths(tmp_path)
+
+    assert status == 0, captured.err
+    assert "STAGE7_V2_PREPARE_ACCEPTANCE=PASS" in captured.out
+    for path in (candidate, runtime_input, attestation_path):
+        assert path.exists()
+        assert not path.with_name(path.name + ".partial").exists()
+
+    # Every check below re-reads the published bytes.  An artifact that is on
+    # disk but is not the one the attestation describes is exactly the failure
+    # a rename-after-validation is supposed to make impossible.
+    bundle_body = runtime_input.read_text(encoding="utf-8")
+    attestation = load_prepare_attestation(
+        attestation_path.read_text(encoding="utf-8")
+    )
+    assert attestation.campaign_seal_name == SYNTHETIC_SEAL_NAME
+    assert campaign_seal_failures(attestation, seal) == ()
+
+    assert attestation.candidate_archive_file_sha256 == file_sha256(
+        candidate.read_text(encoding="utf-8")
+    )
+    assert attestation.runtime_input_file_sha256 == file_sha256(bundle_body)
+    assert attestation.candidate_archive_digest == prepared.candidate_archive_digest
+    assert attestation.runtime_input_digest == load_runtime_input(bundle_body).digest
+    assert (
+        runtime_input_binding_failures(
+            attestation,
+            load_runtime_input(bundle_body),
+            runtime_input_file_sha256=file_sha256(bundle_body),
+            exact_code_head=SYNTHETIC_CODE_HEAD,
+        )
+        == ()
+    )
+
+
+def test_a_refused_preparation_stops_the_pipeline_before_phase_v(tmp_path) -> None:
+    """Why "no artifacts" is also "no later phase ran".
+
+    The orchestrator's guard is read off the AST rather than asserted in prose:
+    the statement after Phase M is the one that returns its status, so nothing
+    downstream is reachable on an exit 2 — including the phases that would have
+    consumed the artifacts a refused preparation used to leave behind.
+    """
+
+    tree = ast.parse((TOOLS / "run_phase56_stage7_v2_shadow.py").read_text("utf-8"))
+    main = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+
+    phases = [
+        (index, statement)
+        for index, statement in enumerate(main.body)
+        for node in ast.walk(statement)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_run"
+    ]
+    assert phases, "no phase invocation found in the orchestrator"
+
+    prepare_index, _ = phases[0]
+    assert isinstance(
+        ast.literal_eval(
+            next(
+                node
+                for node in ast.walk(main.body[prepare_index])
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "_run"
+            ).args[0]
+        ),
+        str,
+    )
+
+    guard = main.body[prepare_index + 1]
+    assert isinstance(guard, ast.If)
+    assert isinstance(guard.test, ast.Name) and guard.test.id == "status"
+    assert len(guard.body) == 1 and isinstance(guard.body[0], ast.Return)
+    assert isinstance(guard.body[0].value, ast.Name)
+    assert guard.body[0].value.id == "status"
+    # Every later phase sits after that guard.
+    assert all(index > prepare_index for index, _ in phases[1:])
 
 
 # ==========================================================================
