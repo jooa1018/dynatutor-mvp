@@ -307,7 +307,7 @@ def test_a_profile_without_an_enabled_transaction_creates_nothing():
     """A profile whose partial-attachment hazards have no controls yet."""
 
     draft = _draft()
-    plan = _complete_plan(draft, ProfileId.horizontal_contact)
+    plan = _complete_plan(draft, ProfileId.spring_vibration_deferred)
     result = apply_complete_profile(plan, draft)
     assert result.outcome is ApplicationOutcome.not_applied
     assert result.sanitized_reason == "profile_not_enabled"

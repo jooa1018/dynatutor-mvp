@@ -86,6 +86,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("particle_newton_second", "newton_second_law", (QuantityRole.mass, QuantityRole.force, QuantityRole.acceleration), generated=(QuantityRole.acceleration,), cost=5, hooks=("force_balance",)),
     _rule("particle_weight", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.force), interactions=(InteractionKind.gravity.value,), cost=3, hooks=("force_dimension",)),
     _rule("horizontal_gravity_normal_projection", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.force), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), assumptions=("horizontal_surface",), cost=3, hooks=("force_dimension", "direction_residual", "contact_validity")),
+    _rule("horizontal_stated_frame_gravity_normal_projection", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.force), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), assumptions=("constant_gravity",), cost=3, hooks=("force_dimension", "direction_residual", "contact_validity")),
     _rule("incline_gravity_tangent_projection", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.angle, QuantityRole.force), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), cost=3, hooks=("force_dimension", "direction_residual", "contact_validity")),
     _rule("incline_gravity_normal_projection", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.angle, QuantityRole.force), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), cost=3, hooks=("force_dimension", "direction_residual", "contact_validity")),
     _rule("contact_friction_bound", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), cost=4, hooks=("friction_regime",)),
@@ -1248,6 +1249,7 @@ class _HorizontalSurfaceContactLawProfile:
     applied_force: BoundQuantity | None
     carrier: BoundQuantity | None
     authority_ids: tuple[str, ...]
+    normal_projection_law_id: str
     state_ids: tuple[str, ...]
 
 
@@ -1256,25 +1258,27 @@ def _horizontal_surface_contact_profile(
 ) -> _HorizontalSurfaceContactLawProfile | None:
     """Recognize one evidenced fixed horizontal surface-contact graph."""
 
+    body_ids = tuple(
+        item.entity_id
+        for item in context.entities
+        if item.primitive in _FREE_BODY_PRIMITIVES
+    )
     by_primitive = {
         primitive: tuple(
             item.entity_id
             for item in context.entities
             if item.primitive is primitive
         )
-        for primitive in (
-            EntityPrimitive.particle,
-            EntityPrimitive.surface,
-            EntityPrimitive.environment,
-        )
+        for primitive in (EntityPrimitive.surface, EntityPrimitive.environment)
     }
     if (
         len(context.entities) != 3
+        or len(body_ids) != 1
         or any(len(by_primitive[item]) != 1 for item in by_primitive)
         or any(not item.evidence_refs for item in context.entities)
     ):
         return None
-    body_id = by_primitive[EntityPrimitive.particle][0]
+    body_id = body_ids[0]
     surface_id = by_primitive[EntityPrimitive.surface][0]
     environment_id = by_primitive[EntityPrimitive.environment][0]
 
@@ -1287,7 +1291,8 @@ def _horizontal_surface_contact_profile(
     contact_frames = tuple(
         item
         for item in context.reference_frames
-        if item.frame_type is ReferenceFrameType.tangential_normal
+        if item.frame_type
+        in {ReferenceFrameType.tangential_normal, ReferenceFrameType.cartesian_2d}
         and getattr(item.origin, "entity_id", None) == surface_id
     )
     if len(context.reference_frames) != 2 or len(world_frames) != len(contact_frames) != 1:
@@ -1307,6 +1312,25 @@ def _horizontal_surface_contact_profile(
             for axis in item.axes
         }
 
+    legacy_contact_axes = {
+        (AxisName.tangent, "axis", frame.frame_id, AxisName.tangent, 1),
+        (AxisName.normal, "axis", frame.frame_id, AxisName.normal, 1),
+    }
+    stated_horizontal_axes = tuple(
+        {
+            (AxisName.tangent, "axis", world.frame_id, AxisName.x, tangent_sign),
+            (AxisName.normal, "axis", world.frame_id, AxisName.y, 1),
+        }
+        for tangent_sign in (-1, 1)
+    )
+    legacy_contact_frame = (
+        frame.frame_type is ReferenceFrameType.tangential_normal
+        and axis_signature(frame) == legacy_contact_axes
+    )
+    source_stated_horizontal_frame = (
+        frame.frame_type is ReferenceFrameType.cartesian_2d
+        and axis_signature(frame) in stated_horizontal_axes
+    )
     if (
         world.parent_frame_id is not None
         or world.translating_with_entity_id is not None
@@ -1323,11 +1347,7 @@ def _horizontal_surface_contact_profile(
         or frame.rotating_about_point_id is not None
         or frame.generalized_coordinate_symbol_ids
         or len(frame.axes) != 2
-        or axis_signature(frame)
-        != {
-            (AxisName.tangent, "axis", frame.frame_id, AxisName.tangent, 1),
-            (AxisName.normal, "axis", frame.frame_id, AxisName.normal, 1),
-        }
+        or not (legacy_contact_frame or source_stated_horizontal_frame)
         or not world.evidence_refs
         or not frame.evidence_refs
     ):
@@ -1345,9 +1365,24 @@ def _horizontal_surface_contact_profile(
         or not interval.evidence_refs
     ):
         return None
-    authority_ids = context.approved_assumptions(
+    horizontal_authority_ids = context.approved_assumptions(
         "horizontal_surface", surface_id, interval.interval_id
     )
+    gravity_authority_ids = context.approved_assumptions(
+        "constant_gravity", body_id, interval.interval_id
+    )
+    if source_stated_horizontal_frame:
+        if len(gravity_authority_ids) != 1:
+            return None
+        authority_ids = gravity_authority_ids
+        normal_projection_law_id = (
+            "horizontal_stated_frame_gravity_normal_projection"
+        )
+    else:
+        if len(horizontal_authority_ids) != 1:
+            return None
+        authority_ids = horizontal_authority_ids
+        normal_projection_law_id = "horizontal_gravity_normal_projection"
     if len(authority_ids) != 1:
         return None
 
@@ -1373,7 +1408,12 @@ def _horizontal_surface_contact_profile(
         for item in context.interactions
         if item.kind is InteractionKind.applied_force
     )
-    if len(contacts) != 1 or len(gravities) != 1 or len(applied) > 1:
+    if (
+        len(contacts) != 1
+        or len(gravities) != 1
+        or len(applied) > 1
+        or len(context.interactions) != 2 + len(applied)
+    ):
         return None
     contact = contacts[0]
     gravity_link = gravities[0]
@@ -1456,12 +1496,26 @@ def _horizontal_surface_contact_profile(
         or coefficient.shape is not QuantityShape.scalar
         or mass.point_id is not None
         or mass.frame_id is not None
-        or mass.interval_id is not None
+        or mass.interval_id
+        not in (
+            {None, interval.interval_id}
+            if source_stated_horizontal_frame
+            else {None}
+        )
         or mass.event_id is not None
         or gravity.point_id is not None
         or gravity.frame_id is not None
-        or gravity.interval_id is not None
+        or gravity.interval_id
+        not in (
+            {None, interval.interval_id}
+            if source_stated_horizontal_frame
+            else {None}
+        )
         or gravity.event_id is not None
+        or (
+            source_stated_horizontal_frame
+            and gravity.subject_id != body_id
+        )
         or coefficient.subject_id != body_id
         or coefficient.point_id is not None
         or coefficient.frame_id is not None
@@ -1556,6 +1610,26 @@ def _horizontal_surface_contact_profile(
         return None
     regime = friction_state.state.value
 
+    support_angles = tuple(
+        item
+        for item in context.quantities
+        if item.role is QuantityRole.angle and item.subject_id == surface_id
+    )
+    if len(support_angles) > 1:
+        return None
+    support_angle = support_angles[0] if support_angles else None
+    if support_angle is not None and (
+        type(support_angle.known_si_value) is not float
+        or support_angle.known_si_value != 0.0
+        or any(support_angle.dimension.model_dump(mode="python").values())
+        or support_angle.point_id is not None
+        or support_angle.frame_id is not None
+        or support_angle.interval_id not in {None, interval.interval_id}
+        or support_angle.event_id is not None
+        or not support_angle.evidence_ids
+    ):
+        return None
+
     applied_force: BoundQuantity | None = None
     carrier: BoundQuantity | None = None
     if regime == "sticking":
@@ -1615,8 +1689,6 @@ def _horizontal_surface_contact_profile(
         ):
             return None
     else:
-        if applied or tangential_acceleration is not None:
-            return None
         if motion.state is not StateValue.moving or len(motion.quantity_ids) != 1:
             return None
         carrier = next(
@@ -1636,9 +1708,14 @@ def _horizontal_surface_contact_profile(
             or carrier.interval_id != interval.interval_id
             or carrier.event_id is not None
             or carrier.dimension != DimensionVector(length=1, time=-1)
-            or type(carrier.known_si_value) is not float
-            or not math.isfinite(carrier.known_si_value)
-            or carrier.known_si_value <= 0.0
+            or (
+                carrier.known_si_value is not None
+                and (
+                    type(carrier.known_si_value) is not float
+                    or not math.isfinite(carrier.known_si_value)
+                    or carrier.known_si_value <= 0.0
+                )
+            )
             or not carrier.evidence_ids
             or not _axis_bound(
                 carrier,
@@ -1654,6 +1731,58 @@ def _horizontal_surface_contact_profile(
             )
         ):
             return None
+        driven = bool(applied) or tangential_acceleration is not None
+        if driven:
+            if len(applied) != 1 or tangential_acceleration is None:
+                return None
+            applied_link = applied[0]
+            applied_force = _one(
+                item
+                for item in _interaction_quantities(
+                    context, applied_link.interaction_id
+                )
+                if item.role is QuantityRole.force
+                and item.component is QuantityComponent.tangential
+            )
+            if (
+                applied_force is None
+                or set(applied_link.participant_ids) != {body_id}
+                or len(applied_link.participant_ids) != 1
+                or applied_link.point_ids
+                or applied_link.frame_id != frame.frame_id
+                or applied_link.interval_id != interval.interval_id
+                or applied_link.event_id is not None
+                or not applied_link.evidence_refs
+                or applied_force.subject_id != body_id
+                or applied_force.point_id is not None
+                or applied_force.frame_id != frame.frame_id
+                or applied_force.interval_id != interval.interval_id
+                or applied_force.event_id is not None
+                or type(applied_force.known_si_value) is not float
+                or not math.isfinite(applied_force.known_si_value)
+                or applied_force.known_si_value < 0.0
+                or not applied_force.evidence_ids
+                or not _axis_bound(
+                    applied_force,
+                    frame.frame_id,
+                    QuantityComponent.tangential,
+                    applied_force.direction_sign,
+                )
+                or tangential_acceleration.known_si_value is not None
+                or not tangential_acceleration.evidence_ids
+                or tangential_acceleration.subject_id != body_id
+                or tangential_acceleration.point_id is not None
+                or tangential_acceleration.frame_id != frame.frame_id
+                or tangential_acceleration.interval_id != interval.interval_id
+                or tangential_acceleration.event_id is not None
+                or not _axis_bound(
+                    tangential_acceleration,
+                    frame.frame_id,
+                    QuantityComponent.tangential,
+                    tangential_acceleration.direction_sign,
+                )
+            ):
+                return None
 
     expected_quantities = {
         item.quantity_id
@@ -1668,6 +1797,7 @@ def _horizontal_surface_contact_profile(
             *(() if tangential_acceleration is None else (tangential_acceleration,)),
             *(() if applied_force is None else (applied_force,)),
             *(() if carrier is None else (carrier,)),
+            *(() if support_angle is None else (support_angle,)),
         )
     }
     if {item.quantity_id for item in context.quantities} != expected_quantities:
@@ -1691,6 +1821,7 @@ def _horizontal_surface_contact_profile(
         applied_force=applied_force,
         carrier=carrier,
         authority_ids=authority_ids,
+        normal_projection_law_id=normal_projection_law_id,
         state_ids=tuple(
             sorted(
                 item.state_condition_id
@@ -1713,7 +1844,7 @@ def _horizontal_surface_contact_emissions(
     emitted = [
         _emit(
             context,
-            "horizontal_gravity_normal_projection",
+            profile.normal_projection_law_id,
             Equality(
                 left=profile.weight.expression,
                 right=Multiply(

@@ -1,22 +1,15 @@
-"""B29 and B32: the source can say it; the closure catalogue cannot yet build it.
+"""B29 is closed; B32 remains a precisely identified catalogue wall.
 
 Both packages were opened, both were carried as far as the v2 contract reaches,
 and both stop in the same place — which is worth pinning, because "we could not
 close this" and "the corpus cannot express this" are different findings and only
 one of them is a corpus finding.
 
-**B29, horizontal-contact free body.**  The source states the support's
-orientation, the direction of travel and the kinetic regime, and v2 carries all
-three: the frame pair and the axis-relative motion sense project cleanly and
-regress nothing.  The wall is the engine's law catalogue.
-`_horizontal_surface_contact_profile` admits exactly two regimes — `sticking`, a
-body at rest under an applied force, and `sliding`, a moving body with **no**
-applied force and **no** tangential-acceleration unknown.  The B29 shape is a
-moving body *with* an applied force *and* an unknown tangential acceleration,
-which the sliding branch rejects by construction, and nothing emits
-`Σ F_t = m a_t` for a horizontal contact.  There is also no
-`ProfileId.horizontal_contact` transaction, and the profile's own capability
-prerequisite resolves to `unsupported`.
+**B29, horizontal-contact free body.**  The shared exact-shape reader consumes
+only the stated support-frame pair and value-free motion carrier.  Its
+transaction builds gravity, contact and applied-force interactions atomically,
+and the generic Newton plus Coulomb-friction laws now admit a driven sliding
+branch.  The query axis never supplies the direction of motion.
 
 **B32, spring natural-length endpoint.**  The source states the mass, the
 stiffness, the initial compression, the release from rest, the frictionless
@@ -29,15 +22,12 @@ matches period/frequency queries and resolves `unsupported`; `_TRANSACTIONS` has
 no spring transaction to build the spring interaction and the energy free body
 the existing `spring_potential` and `kinetic_energy` laws would need.
 
-Closing either needs a new engine law or a new closure transaction — capability
-work, not authority work.  Recorded rather than attempted, and pinned here so a
-later reader does not have to re-derive which kind of gap it is.
+Closing B32 needs a spring-energy profile and transaction — capability work,
+not authority work.  It remains pinned here so the next package starts at the
+actual wall rather than re-deriving it.
 """
 
 from __future__ import annotations
-
-import ast
-from pathlib import Path
 
 import pytest
 
@@ -45,17 +35,14 @@ from evaluation.phase56_stage7.complete_profile import ProfileId
 from evaluation.phase56_stage7.complete_profile_application import _TRANSACTIONS
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-
-
 # --------------------------------------------------------------------------
 # B29
 # --------------------------------------------------------------------------
-def test_no_transaction_builds_a_horizontal_contact_free_body() -> None:
-    assert ProfileId.horizontal_contact not in _TRANSACTIONS
+def test_horizontal_contact_has_an_atomic_transaction() -> None:
+    assert ProfileId.horizontal_contact in _TRANSACTIONS
 
 
-def test_the_horizontal_contact_profile_declares_no_capability() -> None:
+def test_the_horizontal_contact_profile_declares_its_real_capability() -> None:
     from evaluation.phase56_stage7.complete_profile import _PROFILES_BY_ID
 
     signature = _PROFILES_BY_ID[ProfileId.horizontal_contact]
@@ -65,35 +52,14 @@ def test_the_horizontal_contact_profile_declares_no_capability() -> None:
         if item[0] == "capability_horizontal_surface_profile"
     )
 
-    assert capability[2].__name__ == "_catalogue_has_no_capability"
+    assert capability[2].__name__ == "_horizontal_driven_capability"
 
 
-def test_the_sliding_regime_excludes_a_driven_body_by_construction() -> None:
-    """The exact branch, read off the engine source rather than described.
+def test_the_catalogue_contains_the_stated_frame_normal_projection() -> None:
+    from engine.mechanics.laws.core import CORE_LAW_CATALOG
 
-    `if applied or tangential_acceleration is not None: return None` is the
-    whole of B29's wall: a moving body that is being pushed, whose acceleration
-    is the unknown, is not a shape this recognizer has.
-    """
-
-    path = REPOSITORY_ROOT / "backend/engine/mechanics/laws/core.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    function = next(
-        node
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef)
-        and node.name == "_horizontal_surface_contact_profile"
-    )
-    guards = [
-        ast.unparse(node.test)
-        for node in ast.walk(function)
-        if isinstance(node, ast.If)
-    ]
-
-    assert any(
-        "applied" in guard and "tangential_acceleration is not None" in guard
-        for guard in guards
-    )
+    law_ids = {rule.law_id for rule in CORE_LAW_CATALOG}
+    assert "horizontal_stated_frame_gravity_normal_projection" in law_ids
 
 
 # --------------------------------------------------------------------------

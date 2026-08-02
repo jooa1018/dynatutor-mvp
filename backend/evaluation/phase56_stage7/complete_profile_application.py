@@ -51,6 +51,9 @@ from evaluation.phase56_stage7.complete_profile import (
     ProfileId,
     draft_structure_fingerprint,
 )
+from evaluation.phase56_stage7.horizontal_driven_contact import (
+    read_horizontal_driven_sliding_source,
+)
 from evaluation.phase56_stage7.typed_support_frames import (
     axis_bindings,
     frame_is_plain,
@@ -59,7 +62,7 @@ from evaluation.phase56_stage7.typed_support_frames import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v7"
+    "phase56-stage7-complete-profile-application-v8"
 )
 
 
@@ -216,6 +219,22 @@ INCLINE_SLIDING_WORLD_ID = "entity_closure_incline_sliding_world"
 INCLINE_SLIDING_CONTACT_POINT_ID = "pt_closure_incline_sliding_contact"
 INCLINE_SLIDING_GRAVITY_ID = "qty_closure_incline_sliding_gravity"
 INCLINE_SLIDING_GRAVITY_SYMBOL_ID = "sym_closure_incline_sliding_gravity"
+HORIZONTAL_CONTACT_WORLD_ID = "entity_closure_horizontal_contact_world"
+HORIZONTAL_CONTACT_POINT_ID = "pt_closure_horizontal_contact"
+HORIZONTAL_CONTACT_GRAVITY_ID = "qty_closure_horizontal_contact_gravity"
+HORIZONTAL_CONTACT_GRAVITY_SYMBOL_ID = "sym_closure_horizontal_contact_gravity"
+HORIZONTAL_CONTACT_WEIGHT_ID = "qty_closure_horizontal_contact_weight"
+HORIZONTAL_CONTACT_WEIGHT_SYMBOL_ID = "sym_closure_horizontal_contact_weight"
+HORIZONTAL_CONTACT_NORMAL_ID = "qty_closure_horizontal_contact_normal"
+HORIZONTAL_CONTACT_NORMAL_SYMBOL_ID = "sym_closure_horizontal_contact_normal"
+HORIZONTAL_CONTACT_FRICTION_ID = "qty_closure_horizontal_contact_friction"
+HORIZONTAL_CONTACT_FRICTION_SYMBOL_ID = "sym_closure_horizontal_contact_friction"
+HORIZONTAL_CONTACT_NORMAL_ACCELERATION_ID = (
+    "qty_closure_horizontal_contact_normal_acceleration"
+)
+HORIZONTAL_CONTACT_NORMAL_ACCELERATION_SYMBOL_ID = (
+    "sym_closure_horizontal_contact_normal_acceleration"
+)
 RIGID_AXIS_POINT_ID = "pt_closure_rigid_axis_material"
 TWO_POINT_SPEED_KNOWN_POINT_ID = "pt_closure_two_point_speed_known"
 TWO_POINT_SPEED_QUERY_POINT_ID = "pt_closure_two_point_speed_query"
@@ -6538,6 +6557,498 @@ def _rolling_incline_energy_speed_transaction(
     )
 
 
+def _horizontal_driven_contact_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one exact source-stated driven horizontal kinetic slide.
+
+    The shared reader owns applicability.  This transaction only materialises
+    the complete free body that reader licensed: gravity, contact and applied
+    interactions; their value-free reaction quantities; the contact states;
+    and the existing source query rebound onto the support tangent.  The
+    source's force value, friction coefficient, mass, support orientation and
+    motion direction are retained.  No acceleration, reaction, or answer value
+    is generated here.
+    """
+
+    source = read_horizontal_driven_sliding_source(payload)
+    if source is None:
+        return None
+
+    quantities_by_id = {
+        item["quantity_id"]: item for item in payload["quantities"]
+    }
+    mass = quantities_by_id[source.mass_quantity_id]
+    applied = quantities_by_id[source.applied_force_quantity_id]
+    coefficient = quantities_by_id[source.coefficient_quantity_id]
+    acceleration = quantities_by_id[source.acceleration_quantity_id]
+    motion = quantities_by_id[source.motion_quantity_id]
+    assumption = next(
+        item
+        for item in payload["assumptions"]
+        if item["assumption_id"] == source.gravity_assumption_id
+    )
+
+    try:
+        mass_value = normalize_quantity(
+            mass["raw_value"], mass["raw_unit"], "scalar", _MASS_DIMENSION
+        ).value
+        applied_value = normalize_quantity(
+            applied["raw_value"],
+            applied["raw_unit"],
+            "scalar",
+            DimensionVector(mass=1, length=1, time=-2),
+        ).value
+        coefficient_value = normalize_quantity(
+            coefficient["raw_value"],
+            coefficient["raw_unit"],
+            "scalar",
+            DimensionVector.dimensionless(),
+        ).value
+    except Exception:
+        return None
+    if (
+        type(mass_value) is not float
+        or not math.isfinite(mass_value)
+        or mass_value <= 0.0
+        or type(applied_value) is not float
+        or not math.isfinite(applied_value)
+        or applied_value < 0.0
+        or type(coefficient_value) is not float
+        or not math.isfinite(coefficient_value)
+        or coefficient_value < 0.0
+        or _directed_scalar_axis_sign(
+            source.applied_force_sign, applied.get("raw_value")
+        )
+        != source.applied_force_sign
+    ):
+        return None
+
+    gravity_authorization = authority.authorized_assumptions.get(
+        source.gravity_assumption_id
+    )
+    if (
+        source.gravity_assumption_id not in authority.approved_assumption_ids
+        or type(gravity_authorization) is not AssumptionAuthorization
+        or gravity_authorization.assumption_id != source.gravity_assumption_id
+        or gravity_authorization.subject_id != source.body_id
+        or gravity_authorization.interval_id != assumption.get("interval_id")
+        or str(
+            getattr(
+                gravity_authorization.role,
+                "value",
+                gravity_authorization.role,
+            )
+        )
+        != "gravity"
+        or assumption.get("proposed_value") != gravity_authorization.raw_value
+        or assumption.get("proposed_unit") != gravity_authorization.raw_unit
+    ):
+        return None
+
+    ids = {
+        "world": HORIZONTAL_CONTACT_WORLD_ID,
+        "point": HORIZONTAL_CONTACT_POINT_ID,
+        "gravity": HORIZONTAL_CONTACT_GRAVITY_ID,
+        "gravity_symbol": HORIZONTAL_CONTACT_GRAVITY_SYMBOL_ID,
+        "weight": HORIZONTAL_CONTACT_WEIGHT_ID,
+        "weight_symbol": HORIZONTAL_CONTACT_WEIGHT_SYMBOL_ID,
+        "normal": HORIZONTAL_CONTACT_NORMAL_ID,
+        "normal_symbol": HORIZONTAL_CONTACT_NORMAL_SYMBOL_ID,
+        "friction": HORIZONTAL_CONTACT_FRICTION_ID,
+        "friction_symbol": HORIZONTAL_CONTACT_FRICTION_SYMBOL_ID,
+        "normal_acceleration": HORIZONTAL_CONTACT_NORMAL_ACCELERATION_ID,
+        "normal_acceleration_symbol": (
+            HORIZONTAL_CONTACT_NORMAL_ACCELERATION_SYMBOL_ID
+        ),
+        "gravity_interaction": "rel_closure_horizontal_contact_gravity",
+        "contact_interaction": "rel_closure_horizontal_contact",
+        "applied_interaction": "rel_closure_horizontal_contact_applied",
+        "contact_state": "state_closure_horizontal_contact_touching",
+        "friction_state": "state_closure_horizontal_contact_sliding",
+        "motion_state": "state_closure_horizontal_contact_moving",
+        "surface_state": "state_closure_horizontal_contact_surface_fixed",
+    }
+    if _authored_draft_ids(payload) & set(ids.values()):
+        return None
+
+    evidence_by_id = {
+        item["evidence_id"]: item for item in payload["source_evidence"]
+    }
+
+    def evidence(*groups: Any) -> list[str]:
+        values = {
+            item
+            for group in groups
+            for item in (group or ())
+            if type(item) is str and item in evidence_by_id
+        }
+        return sorted(values)
+
+    frames_by_id = {
+        item["frame_id"]: item for item in payload["reference_frames"]
+    }
+    horizontal_evidence = evidence(
+        frames_by_id[source.world_frame_id].get("evidence_refs"),
+        frames_by_id[source.support_frame_id].get("evidence_refs"),
+    )
+    mass_evidence = evidence(mass.get("evidence_refs"))
+    applied_evidence = evidence(applied.get("evidence_refs"))
+    coefficient_evidence = evidence(coefficient.get("evidence_refs"))
+    motion_evidence = evidence(motion.get("evidence_refs"))
+    gravity_evidence = evidence(assumption.get("evidence_refs"))
+    if any(
+        not item
+        for item in (
+            horizontal_evidence,
+            mass_evidence,
+            applied_evidence,
+            coefficient_evidence,
+            motion_evidence,
+            gravity_evidence,
+        )
+    ):
+        return None
+    contact_evidence = evidence(
+        horizontal_evidence, coefficient_evidence, motion_evidence
+    )
+    query_evidence = evidence(
+        horizontal_evidence,
+        mass_evidence,
+        applied_evidence,
+        coefficient_evidence,
+        motion_evidence,
+        gravity_evidence,
+    )
+
+    def axis_direction(axis: str, sign: int) -> dict[str, Any]:
+        return {
+            "kind": "axis",
+            "frame_id": source.support_frame_id,
+            "axis": axis,
+            "sign": sign,
+        }
+
+    def unknown_quantity(
+        *,
+        quantity_id: str,
+        symbol_id: str,
+        role: str,
+        dimension: Mapping[str, int],
+        component: str,
+        sign: int,
+        evidence_refs: list[str],
+        point_id: str | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "quantity_id": quantity_id,
+            "symbol_id": symbol_id,
+            "role": role,
+            "subject_id": source.body_id,
+            "point_id": point_id,
+            "frame_id": source.support_frame_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "component": component,
+            "direction": axis_direction(
+                "tangent" if component == "tangential" else "normal", sign
+            ),
+            "shape": "scalar",
+            "dimension": dict(dimension),
+            "provenance": "unknown",
+            "evidence_refs": evidence_refs,
+            "assumption_policy_ref": None,
+            "correction_id": None,
+            "model_confidence": None,
+            "raw_value": None,
+            "raw_unit": None,
+        }
+
+    rebound_applied = dict(applied)
+    rebound_applied.update(
+        frame_id=source.support_frame_id,
+        interval_id=source.interval_id,
+        event_id=None,
+        component="tangential",
+        direction=axis_direction("tangent", source.applied_force_sign),
+    )
+    rebound_acceleration = dict(acceleration)
+    rebound_acceleration.update(
+        frame_id=source.support_frame_id,
+        interval_id=source.interval_id,
+        event_id=None,
+        component="tangential",
+        # The query asks for the world x component, and the source-authored
+        # support frame states which signed tangent is world +x.  This is a
+        # coordinate binding, not a prediction of acceleration's physical sign.
+        direction=axis_direction("tangent", source.tangent_world_x_sign),
+        evidence_refs=query_evidence,
+    )
+    gravity_quantity = {
+        "quantity_id": ids["gravity"],
+        "symbol_id": ids["gravity_symbol"],
+        "role": "gravity",
+        "subject_id": gravity_authorization.subject_id,
+        "point_id": None,
+        "frame_id": None,
+        "interval_id": gravity_authorization.interval_id,
+        "event_id": None,
+        "component": "magnitude",
+        "direction": None,
+        "shape": "scalar",
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "provenance": "server_default",
+        "evidence_refs": gravity_evidence,
+        "assumption_policy_ref": gravity_authorization.assumption_id,
+        "correction_id": None,
+        "model_confidence": None,
+        "raw_value": gravity_authorization.raw_value,
+        "raw_unit": gravity_authorization.raw_unit,
+    }
+    weight = unknown_quantity(
+        quantity_id=ids["weight"],
+        symbol_id=ids["weight_symbol"],
+        role="force",
+        dimension=_FORCE_DIMENSION,
+        component="normal",
+        sign=-1,
+        evidence_refs=evidence(gravity_evidence, horizontal_evidence),
+    )
+    normal = unknown_quantity(
+        quantity_id=ids["normal"],
+        symbol_id=ids["normal_symbol"],
+        role="force",
+        dimension=_FORCE_DIMENSION,
+        component="normal",
+        sign=1,
+        point_id=ids["point"],
+        evidence_refs=contact_evidence,
+    )
+    friction = unknown_quantity(
+        quantity_id=ids["friction"],
+        symbol_id=ids["friction_symbol"],
+        role="force",
+        dimension=_FORCE_DIMENSION,
+        component="tangential",
+        sign=-source.motion_sign,
+        point_id=ids["point"],
+        evidence_refs=contact_evidence,
+    )
+    normal_acceleration = unknown_quantity(
+        quantity_id=ids["normal_acceleration"],
+        symbol_id=ids["normal_acceleration_symbol"],
+        role="acceleration",
+        dimension=_ACCELERATION_DIMENSION,
+        component="normal",
+        sign=1,
+        evidence_refs=horizontal_evidence,
+    )
+
+    rewritten_quantities: list[dict[str, Any]] = []
+    for item in payload["quantities"]:
+        if item["quantity_id"] == source.applied_force_quantity_id:
+            rewritten_quantities.append(rebound_applied)
+        elif item["quantity_id"] == source.acceleration_quantity_id:
+            rewritten_quantities.append(rebound_acceleration)
+        else:
+            rewritten_quantities.append(item)
+    rewritten_quantities.extend(
+        [gravity_quantity, weight, normal, friction, normal_acceleration]
+    )
+    generated_quantities = (
+        gravity_quantity,
+        weight,
+        normal,
+        friction,
+        normal_acceleration,
+    )
+    generated_symbols = [
+        {
+            "symbol_id": item["symbol_id"],
+            "quantity_id": item["quantity_id"],
+            "dimension": item["dimension"],
+            "shape": "scalar",
+        }
+        for item in generated_quantities
+    ]
+
+    entities: list[dict[str, Any]] = []
+    for item in payload["entities"]:
+        entry = dict(item)
+        entry["evidence_refs"] = (
+            evidence(mass_evidence, applied_evidence, motion_evidence)
+            if item["entity_id"] == source.body_id
+            else evidence(horizontal_evidence, coefficient_evidence)
+        )
+        entities.append(entry)
+    entities.append(
+        {
+            "entity_id": ids["world"],
+            "primitive": "environment",
+            "evidence_refs": evidence(gravity_evidence, horizontal_evidence),
+        }
+    )
+
+    interval = dict(payload["motion_intervals"][0])
+    interval.update(
+        subject_ids=sorted(
+            {source.body_id, source.surface_id, ids["world"]}
+        ),
+        frame_id=source.support_frame_id,
+        start_event_id=None,
+        end_event_id=None,
+        evidence_refs=query_evidence,
+    )
+    support = dict(payload["geometry"][0])
+    support["evidence_refs"] = horizontal_evidence
+
+    queries = [dict(payload["queries"][0])]
+    target = dict(queries[0]["target"])
+    target.update(
+        frame_id=source.support_frame_id,
+        interval_id=source.interval_id,
+        event_id=None,
+        component="tangential",
+        direction=axis_direction("tangent", source.tangent_world_x_sign),
+        target_quantity_id=source.acceleration_quantity_id,
+    )
+    queries[0]["target"] = target
+    queries[0]["evidence_refs"] = query_evidence
+
+    interactions = [
+        {
+            "interaction_id": ids["gravity_interaction"],
+            "kind": "gravity",
+            "participant_ids": [source.body_id, ids["world"]],
+            "point_ids": [],
+            "frame_id": source.support_frame_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "quantity_ids": [
+                source.mass_quantity_id,
+                ids["gravity"],
+                ids["weight"],
+            ],
+            "evidence_refs": evidence(gravity_evidence, mass_evidence),
+        },
+        {
+            "interaction_id": ids["contact_interaction"],
+            "kind": "contact",
+            "participant_ids": [source.body_id, source.surface_id],
+            "point_ids": [ids["point"]],
+            "frame_id": source.support_frame_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "quantity_ids": [
+                ids["normal"],
+                ids["normal_acceleration"],
+                ids["friction"],
+                source.coefficient_quantity_id,
+                source.acceleration_quantity_id,
+            ],
+            "evidence_refs": contact_evidence,
+        },
+        {
+            "interaction_id": ids["applied_interaction"],
+            "kind": "applied_force",
+            "participant_ids": [source.body_id],
+            "point_ids": [],
+            "frame_id": source.support_frame_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "quantity_ids": [source.applied_force_quantity_id],
+            "evidence_refs": applied_evidence,
+        },
+    ]
+    states = [
+        {
+            "state_condition_id": ids["contact_state"],
+            "kind": "contact",
+            "state": "touching",
+            "subject_id": source.body_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "quantity_ids": [ids["normal"], ids["normal_acceleration"]],
+            "expression": None,
+            "evidence_refs": horizontal_evidence,
+        },
+        {
+            "state_condition_id": ids["friction_state"],
+            "kind": "friction",
+            "state": "sliding",
+            "subject_id": source.body_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "quantity_ids": [
+                ids["friction"],
+                ids["normal"],
+                source.coefficient_quantity_id,
+            ],
+            "expression": None,
+            "evidence_refs": contact_evidence,
+        },
+        {
+            "state_condition_id": ids["motion_state"],
+            "kind": "motion",
+            "state": "moving",
+            "subject_id": source.body_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "quantity_ids": [source.motion_quantity_id],
+            "expression": None,
+            "evidence_refs": motion_evidence,
+        },
+        {
+            "state_condition_id": ids["surface_state"],
+            "kind": "motion",
+            "state": "at_rest",
+            "subject_id": source.surface_id,
+            "interval_id": source.interval_id,
+            "event_id": None,
+            "quantity_ids": [],
+            "expression": None,
+            "evidence_refs": horizontal_evidence,
+        },
+    ]
+
+    closed = dict(payload)
+    closed.update(
+        {
+            "entities": entities,
+            "points": [
+                {
+                    "point_id": ids["point"],
+                    "role": "contact",
+                    "owner_entity_id": source.body_id,
+                    "frame_id": source.support_frame_id,
+                    "evidence_refs": horizontal_evidence,
+                }
+            ],
+            "reference_frames": list(payload["reference_frames"]),
+            "motion_intervals": [interval],
+            "events": [],
+            "symbols": [*payload["symbols"], *generated_symbols],
+            "quantities": rewritten_quantities,
+            "geometry": [support],
+            "interactions": interactions,
+            "constraints": [],
+            "state_conditions": states,
+            "queries": queries,
+            "assumptions": list(payload["assumptions"]),
+        }
+    )
+    created_ids = tuple(sorted(ids.values()))
+    rebound_ids = tuple(
+        sorted(
+            {
+                source.applied_force_quantity_id,
+                source.acceleration_quantity_id,
+            }
+        )
+    )
+    return closed, created_ids, rebound_ids
+
+
 _TRANSACTIONS = {
     ProfileId.signed_constant_acceleration_1d: (
         _signed_constant_acceleration_1d_transaction
@@ -6554,6 +7065,7 @@ _TRANSACTIONS = {
     ProfileId.fixed_pulley: _fixed_pulley_acceleration_transaction,
     ProfileId.incline_hanging_pulley: _incline_hanging_pulley_transaction,
     ProfileId.table_pulley_two_body: _table_pulley_two_body_transaction,
+    ProfileId.horizontal_contact: _horizontal_driven_contact_transaction,
     ProfileId.incline_kinetic_sliding: _incline_kinetic_sliding_transaction,
     ProfileId.rigid_two_point_speed: (
         _rigid_two_point_speed_transfer_transaction

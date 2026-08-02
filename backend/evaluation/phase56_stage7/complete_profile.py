@@ -52,8 +52,11 @@ from evaluation.phase56_stage7.typed_support_frames import (
     # compiler contract and the law recognizer read.  A test pins the identity.
     stated_support_orientation,
 )
+from evaluation.phase56_stage7.horizontal_driven_contact import (
+    read_horizontal_driven_sliding_source,
+)
 
-COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v3"
+COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v4"
 COMPLETE_PROFILE_CENSUS_VERSION = "phase56-stage7-complete-profile-census-v1"
 COMPLETE_PROFILE_PLAN_SCHEMA = "dynatutor.phase56_stage7.complete_profile_plan"
 COMPLETE_PROFILE_PLAN_VERSION = "1.0"
@@ -2527,6 +2530,7 @@ class _DraftFacts:
         "rigid_fixed_axis_profile",
         "rigid_two_point_speed_profile",
         "horizontal_support_orientation",
+        "horizontal_driven_contact_profile",
         "rolling_incline_energy_speed_profile",
         "rotating_relative_profile",
         "semantic_directions",
@@ -2575,6 +2579,11 @@ class _DraftFacts:
         )
         self.horizontal_support_orientation = (
             _horizontal_support_orientation(draft)
+        )
+        self.horizontal_driven_contact_profile = (
+            read_horizontal_driven_sliding_source(
+                draft.model_dump(mode="json", warnings="none")
+            )
         )
 
 
@@ -2643,6 +2652,30 @@ def _needs_horizontal_support(facts: "_DraftFacts") -> "PrerequisiteDisposition"
     return (
         PrerequisiteDisposition.explicit_source
         if facts.horizontal_support_orientation
+        else PrerequisiteDisposition.missing
+    )
+
+
+def _horizontal_driven_source(
+    facts: "_DraftFacts",
+) -> "PrerequisiteDisposition":
+    """The exact source topology shared with the B29 transaction."""
+
+    return (
+        PrerequisiteDisposition.explicit_source
+        if facts.horizontal_driven_contact_profile is not None
+        else PrerequisiteDisposition.missing
+    )
+
+
+def _horizontal_driven_capability(
+    facts: "_DraftFacts",
+) -> "PrerequisiteDisposition":
+    """The generic contact, Coulomb-friction and Newton laws own the solve."""
+
+    return (
+        PrerequisiteDisposition.explicit_source
+        if facts.horizontal_driven_contact_profile is not None
         else PrerequisiteDisposition.missing
     )
 
@@ -3659,34 +3692,43 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
     ),
     _ProfileSignature(
         ProfileId.horizontal_contact,
-        lambda facts: (
-            bool(facts.geometry.get("lies_on"))
-            and not facts.geometry.get("wraps")
-            and not facts.roles.get("angle")
-            and bool(facts.primitives.get("surface"))
-        ),
+        lambda facts: facts.horizontal_driven_contact_profile is not None,
         (
             ("geometry_support", PrerequisiteKind.geometry,
-             _needs_geometry("lies_on")),
+             _horizontal_driven_source),
+            ("orientation_horizontal_support", PrerequisiteKind.reference_frame,
+             _horizontal_driven_source),
+            ("motion_direction", PrerequisiteKind.state_condition,
+             _horizontal_driven_source),
+            ("quantity_applied_force", PrerequisiteKind.interaction_quantity,
+             _horizontal_driven_source),
             ("capability_horizontal_surface_profile", PrerequisiteKind.capability,
-             _catalogue_has_no_capability),
+             _horizontal_driven_capability),
             ("interaction_contact", PrerequisiteKind.interaction,
              _derivable_from_authority("constant_gravity")),
             ("interaction_gravity", PrerequisiteKind.interaction,
              _derivable_from_authority("constant_gravity")),
-            ("quantity_mass", PrerequisiteKind.interaction_quantity,
-             _needs_role("mass")),
-            ("quantity_coefficient_friction", PrerequisiteKind.interaction_quantity,
-             _needs_role("coefficient_friction")),
-            ("frame_tangential_normal", PrerequisiteKind.reference_frame,
+            ("interaction_applied_force", PrerequisiteKind.interaction,
+             _horizontal_driven_source),
+            ("authority_constant_gravity", PrerequisiteKind.authority,
+             _needs_authority("constant_gravity")),
+            ("quantity_gravity", PrerequisiteKind.interaction_quantity,
              _derivable_from_authority("constant_gravity")),
+            ("quantity_mass", PrerequisiteKind.interaction_quantity,
+             _horizontal_driven_source),
+            ("quantity_coefficient_friction", PrerequisiteKind.interaction_quantity,
+             _horizontal_driven_source),
             ("point_contact", PrerequisiteKind.point,
              _derivable_from_authority("constant_gravity")),
             ("state_friction_regime", PrerequisiteKind.state_condition,
-             _derivable_from_authority("constant_gravity")),
+             _horizontal_driven_source),
             ("symbol_normal_force", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
             ("symbol_friction_force", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
+            ("symbol_weight", PrerequisiteKind.unknown_symbol,
+             _generated_unknown),
+            ("symbol_normal_acceleration", PrerequisiteKind.unknown_symbol,
              _generated_unknown),
         ),
     ),
