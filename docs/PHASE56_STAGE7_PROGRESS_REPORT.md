@@ -6,6 +6,28 @@ Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
 
+## Current disposition — the authoritative list
+
+Every per-package table further down this document belongs to the session that
+wrote it and is retained as history. Where an older table says `ACCEPTED` and
+this one does not, **this one is current**.
+
+| Package | Current disposition |
+|---|---|
+| B28A prepare attestation + refusal population seal | `B28A_V2_PREPARE_ATTESTATION_AND_REFUSAL_POPULATION_SEAL_INCOMPLETE` — blocker `EXACT_MANIFEST_UNAVAILABLE` |
+| B28 gold-scored shadow + evidence hardening | `B28_V2_GOLD_SCORED_SHADOW_AND_EVIDENCE_HARDENING_INCOMPLETE` |
+| B29 horizontal-contact free body | `B29_V2_HORIZONTAL_CONTACT_FREE_BODY_INCOMPLETE` — engine wall |
+| B32 spring natural-length endpoint | `B32_V2_SPRING_NATURAL_LENGTH_ENDPOINT_INCOMPLETE` — catalogue wall |
+| B30 table-pulley typed frame | **not re-declared accepted** — not re-measured in the B28A sealed pipeline |
+| B31 incline kinetic motion sense | **not re-declared accepted** — not re-measured in the B28A sealed pipeline |
+| Stage 7 | `STAGE_7_IN_PROGRESS / NOT_ACCEPTED` |
+| Stage 8 | `STAGE_8_NOT_STARTED` |
+
+B30 and B31 were measured as 3-of-3 at the `e511b63` checkpoint and that record
+stands as history. They were not re-measured under the sealed B28A pipeline —
+the manifest that half of the campaign depends on is unavailable — so they are
+not carried forward as accepted here.
+
 ## The attested-preparation session (2026-08-01, latest) — read this first
 
 Independent verification of the previous checkpoint found one further
@@ -36,10 +58,18 @@ Forward-only from `3afed91`; no reset, rebase, amend, squash, force-push, or
 history rewrite.
 
 ```
-3afed91  (session start = prior documentation head)
+3afed91  (B28A session start = prior documentation head)
 61a940b  fix(stage7): bind runtime inputs to attested prepare state          [B28A]
 3e0f75f  test(stage7): pin refusal laundering and prepare replay attacks     [B28A]
+0263dd0  docs(stage7): record the attested-preparation checkpoint            [B28A]
+8471126  fix(stage7): publish prepare artifacts only after sealed validation [B28A cleanup]
+         docs(stage7): close exact-head CI and PR status evidence            [B28A cleanup]
 ```
+
+The final code head of the cleanup pass is `8471126b5c3a12346657f210a443a10754e34e58`;
+this document is its documentation-only descendant, with no code change between
+them. Exact-head CI for both is recorded in PR #17, which a commit cannot
+contain its own SHA to record here.
 
 | Package | Commit | Disposition |
 |---|---|---|
@@ -75,6 +105,68 @@ throughout. The v1 terminal map is byte-identical to the previous checkpoint's.
 
 `STAGE_7_IN_PROGRESS / NOT_ACCEPTED` and `STAGE_8_NOT_STARTED` stand.
 
+### Phase M publishes only after the seal passes
+
+A follow-up read found Phase M's docstring overstating its own guarantee. It
+claimed a failed preparation "leaves no partial evidence behind"; the
+forbidden-key scan does run before any write, but the **campaign seal did not**.
+The candidate archive and the runtime input went to their final paths first, and
+a preparation refused for being some other campaign exited 2 with two of its
+three artifacts left where Phase V, and a hand-run Phase R, look for them.
+
+Not an acceptance bypass — Phase V re-reads all three and refuses a set with no
+attestation — but a code/comment disagreement on a fail-closed path, which is
+what a bypass looks like one edit before it becomes one.
+
+The ordering constraint cannot be removed: the seal is judged over the
+attestation, the attestation carries each artifact's file SHA-256, and a file
+hash needs bytes on a filesystem. So the write stays and the **publication**
+moves. Each artifact is staged beside its destination as `<name>.partial`, its
+hash is recomputed from the bytes read back off the filesystem, the attestation
+and the seal are judged, and only then are all three renamed into place. A
+refusal unlinks its own staged files and leaves the final paths exactly as it
+found them — including an earlier honest preparation, which the old ordering
+overwrote before the seal had run.
+
+Three controls pin it, plus one on the orchestrator. Both negative controls were
+confirmed to **fail** against the previous ordering, so they are shown to fire
+rather than merely to pass; the seal they are judged against is derived from the
+synthetic campaign's own honest attestation, so the negative pair differs from
+the positive one by the two manifest hashes alone.
+
+`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED`. No threshold, tolerance, budget or
+population changed, and B28A's disposition is unmoved.
+
+### Exact-head CI, closed
+
+| head | push | pull_request |
+|---|---|---|
+| `3e0f75f` (final code) | 4 workflows, 4 success | 4 workflows, 4 success |
+| `0263dd0` (documentation) | 3 workflows, 3 success | 4 workflows, 4 success |
+
+15 runs, 15 success, **0 non-success**; run IDs are recorded in
+`PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md` §-3.9. Nothing was re-run and no empty
+commit was made to provoke a run.
+
+The push `DynaTutor release tests` at `0263dd0` **does not exist**, and that is
+the path filter working: `backend-tests.yml` filters its push trigger to
+`backend/**`, `frontend/**`, `scripts/**` and its own file, and `0263dd0` touches
+only `docs/`. An earlier report described that run as still in flight; it was
+never queued, so it had no terminal state to reach. The run actually still going
+at that moment was the push `Phase 56 Stage 7 offline evaluation` `30708379886`,
+which completed **success** after 27m44s. The Release suite is attested at this
+documentation head by the pull_request run `30708381513` (success).
+
+### Two earlier reports corrected
+
+1. The **23.1-minute Stage 7 regression run was not a hang.** It completed
+   normally; the wall time was runner contention, and it was misread as a stall.
+2. The **benchmark wrapper failure was an invocation artifact, not a defect.**
+   The venv's `bin` was missing from `PATH`, so a bare `pytest` subprocess
+   resolved to a different interpreter that could not import the project's
+   dependencies. Running with the venv first on `PATH` — the discipline every
+   local figure in this document now follows — reproduces neither failure.
+
 ## The gold-scoring and pilot-campaign session (2026-08-01, earlier) — read this first
 
 The previous session reported a v2 shadow result of **3 newly solved, 0 wrong**.
@@ -101,13 +193,19 @@ afe95c5  engine(stage7): consume typed incline motion states                    
 8352079  test(stage7): state the B30 support-orientation contract in the B15 suite
 ```
 
-| Package | Commit | Disposition |
+**Historical / superseded.** The dispositions in the table below are the ones
+this earlier session declared, at the `e511b63` checkpoint. Three of them no
+longer stand: B28 is now `INCOMPLETE`, and B30 and B31 are not re-declared
+accepted because the sealed B28A pipeline did not re-measure them. Read the
+authoritative list at the top of this document instead.
+
+| Package | Commit | Disposition **as declared then** |
 |---|---|---|
-| B28 gold-scored shadow + evidence/axis hardening | `d19370b` | **`B28_V2_GOLD_SCORED_SHADOW_AND_EVIDENCE_HARDENING_ACCEPTED`** |
-| B29 V2 horizontal-contact free body | `7aba65f` (evidence) | **`B29_V2_HORIZONTAL_CONTACT_FREE_BODY_INCOMPLETE`** — engine wall |
-| B30 V2 table-pulley typed frame | `0a50ccd` | **`B30_V2_TABLE_PULLEY_TYPED_FRAME_ACCEPTED`** — 3 of 3 |
-| B31 V2 incline kinetic motion sense | `afe95c5` | **`B31_V2_INCLINE_KINETIC_MOTION_SENSE_ACCEPTED`** — 3 of 3 |
-| B32 V2 spring natural-length endpoint | `7aba65f` (evidence) | **`B32_V2_SPRING_NATURAL_LENGTH_ENDPOINT_INCOMPLETE`** — catalogue wall |
+| B28 gold-scored shadow + evidence/axis hardening | `d19370b` | `B28_V2_GOLD_SCORED_SHADOW_AND_EVIDENCE_HARDENING_ACCEPTED` — **superseded, now `INCOMPLETE`** |
+| B29 V2 horizontal-contact free body | `7aba65f` (evidence) | **`B29_V2_HORIZONTAL_CONTACT_FREE_BODY_INCOMPLETE`** — engine wall, still current |
+| B30 V2 table-pulley typed frame | `0a50ccd` | `B30_V2_TABLE_PULLEY_TYPED_FRAME_ACCEPTED` — 3 of 3 **at that checkpoint; not re-declared accepted** |
+| B31 V2 incline kinetic motion sense | `afe95c5` | `B31_V2_INCLINE_KINETIC_MOTION_SENSE_ACCEPTED` — 3 of 3 **at that checkpoint; not re-declared accepted** |
+| B32 V2 spring natural-length endpoint | `7aba65f` (evidence) | **`B32_V2_SPRING_NATURAL_LENGTH_ENDPOINT_INCOMPLETE`** — catalogue wall, still current |
 
 ### The two scores, which are different objects
 

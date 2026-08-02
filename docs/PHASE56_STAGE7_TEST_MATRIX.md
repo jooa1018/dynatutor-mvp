@@ -120,6 +120,14 @@ completeness rule satisfied by a measurement of nothing.
 | campaign seal | exact 97 / 3 population, refusal identities, corpus SHA and both manifest hashes, as a versioned contract |
 | laundering controls | one context, all 97, identity swap at equal counts, joint input+attestation forgery |
 | import isolation | Phase R, Phase G and Phase V import graphs, by AST rather than substring |
+| Phase M atomic publication | a refused seal publishes none of the three artifacts, leaves no `.partial`, and does not disturb an earlier honest one; a sealed preparation publishes all three with hashes recomputed from the published bytes |
+
+The Phase M publication controls are a matched pair over one synthetic campaign,
+differing only in the two manifest hashes — the same two fields the live blocker
+turns on. Both negative controls were confirmed to **fail** against the previous
+write-then-seal ordering, so they are shown to fire rather than merely to pass.
+A fourth control reads the orchestrator's AST and pins that a Phase M exit 2
+returns before Phase V, so "no artifacts" is also "no later phase ran".
 
 Each control asserts the exact gate name it hits. A control that failed for a
 different reason than intended is treated as no control at all: a state-map

@@ -300,7 +300,101 @@ the real archive — which is why the manifest is the only thing missing.
 No artifact carries a wall-clock timestamp or a path; that is what makes the two
 runs byte-identical rather than merely equivalent.
 
-### -3.8 What this checkpoint still is not
+### -3.8 Phase M publishes only after the seal passes
+
+A follow-up read of §-3.3 found the command's own docstring overstating what it
+guaranteed. Phase M claimed that "everything is derived and scanned before
+anything is written, so a preparation that fails leaves no partial evidence
+behind", and the forbidden-key scan really does run before any write — but the
+*campaign seal* did not. The order was: write the candidate archive to its final
+path, write the runtime input to its final path, build the attestation over
+their file hashes, then judge the seal. A preparation refused for being some
+other campaign therefore exited 2 with two of its three artifacts sitting
+exactly where Phase V, and a hand-run Phase R, look for them.
+
+This was never an acceptance bypass: Phase V re-reads all three artifacts and
+refuses a set with no attestation, and both later phases require one. What it
+was is a code/comment disagreement on a fail-closed path, which is the kind of
+thing that becomes a bypass the next time somebody trusts the comment.
+
+The ordering constraint is real and cannot be removed — the seal is judged over
+the attestation, the attestation carries each artifact's file SHA-256, and a
+file hash needs bytes on a filesystem. So the write is kept and the *publication*
+is moved: each artifact is staged beside its destination as `<name>.partial`,
+its hash is recomputed from the bytes that came back off the filesystem, the
+attestation and the seal are judged, and only then are all three renamed into
+place. A refused preparation unlinks its own staged files and leaves the final
+paths holding whatever they held before it ran.
+
+| guarantee | before | now |
+|---|---|---|
+| forbidden-key scan before any write | yes | yes |
+| candidate archive on seal failure | left at final path | absent |
+| runtime input on seal failure | left at final path | absent |
+| prepare attestation on seal failure | absent | absent |
+| an earlier honest artifact | overwritten before the seal ran | untouched |
+| file hash source | the body the command meant to write | the bytes read back off disk |
+
+Three controls pin it, and the two negative ones were confirmed to **fire**
+against the previous ordering rather than merely to pass against the new one:
+
+| control | asserts |
+|---|---|
+| `test_a_failed_campaign_seal_publishes_no_prepare_artifact` | exit 2; none of the three final paths exists; no `.partial` left behind; the failure names `campaign_seal_manifest_digest_mismatch` and `campaign_seal_manifest_file_sha_mismatch` and *not* the population gates |
+| `test_a_failed_campaign_seal_leaves_an_earlier_preparation_intact` | a pre-existing artifact at each final path is byte-unchanged after the refusal |
+| `test_a_sealed_preparation_publishes_all_three_artifacts` | all three published; each file SHA-256 and canonical digest recomputed from the published bytes matches the attestation; `runtime_input_binding_failures` empty |
+
+The seal both controls are judged against is built from the synthetic campaign's
+own honest attestation, so the negative pair differs from the positive one by
+the two manifest hashes alone — which is the shape of this package's live
+blocker, not an incidental choice. A fourth control reads the orchestrator's AST
+and pins that the statement after Phase M returns its status, so an exit 2 means
+Phase V, Phase R and Phase G are unreachable.
+
+`PHASE_M_ATOMIC_PUBLICATION_CONFIRMED`. This changes no threshold, no tolerance
+and no population, and it does not move B28A's disposition.
+
+### -3.9 Exact-head CI, closed
+
+The §-3 checkpoint's two heads both reached terminal status; every triggered run
+succeeded. (§-3.8's cleanup adds a further code head,
+`8471126b5c3a12346657f210a443a10754e34e58`, and this documentation-only
+descendant of it; their exact-head runs are recorded in PR #17, since a commit
+cannot carry its own SHA.)
+
+| head | event | workflow | run ID | conclusion |
+|---|---|---|---|---|
+| `3e0f75f` code | push | Phase 55 textbook parser | `30708207308` | success |
+| `3e0f75f` code | push | Phase 56 Stage 6 multimodal | `30708207346` | success |
+| `3e0f75f` code | push | Phase 56 Stage 7 offline evaluation | `30708207320` | success |
+| `3e0f75f` code | push | DynaTutor release tests | `30708207333` | success |
+| `3e0f75f` code | pull_request | Phase 55 textbook parser | `30708208675` | success |
+| `3e0f75f` code | pull_request | Phase 56 Stage 6 multimodal | `30708208657` | success |
+| `3e0f75f` code | pull_request | Phase 56 Stage 7 offline evaluation | `30708208644` | success |
+| `3e0f75f` code | pull_request | DynaTutor release tests | `30708208664` | success |
+| `0263dd0` docs | push | Phase 55 textbook parser | `30708379850` | success |
+| `0263dd0` docs | push | Phase 56 Stage 6 multimodal | `30708379847` | success |
+| `0263dd0` docs | push | Phase 56 Stage 7 offline evaluation | `30708379886` | success |
+| `0263dd0` docs | pull_request | Phase 55 textbook parser | `30708381487` | success |
+| `0263dd0` docs | pull_request | Phase 56 Stage 6 multimodal | `30708381530` | success |
+| `0263dd0` docs | pull_request | Phase 56 Stage 7 offline evaluation | `30708381503` | success |
+| `0263dd0` docs | pull_request | DynaTutor release tests | `30708381513` | success |
+
+15 runs, 15 success, **0 non-success**. Nothing was re-run and no empty commit
+was made to provoke a run.
+
+**The push `DynaTutor release tests` at `0263dd0` does not exist, and its absence
+is the path filter working.** `backend-tests.yml` filters its push trigger to
+`backend/**`, `frontend/**`, `scripts/**` and its own file; `0263dd0` touches
+only `docs/`, so no run was created — the same as at the `3afed91` documentation
+head before it. An earlier report described this run as still in flight. It was
+never queued, so it had no terminal state to reach; the run that was actually
+still going at that moment was the push `Phase 56 Stage 7 offline evaluation`
+`30708379886`, which completed **success** at 17:00:44Z after 27m44s. The
+Release suite is attested at this documentation head by the pull_request run
+`30708381513` (success, 15m25s), and at the code head by both events.
+
+### -3.10 What this checkpoint still is not
 
 `STAGE_7_ACCEPTED`, `STAGE_8_READY_TO_START`, `PUBLIC_CORPUS_V2_OFFICIAL` and
 `V1_TARGET_REPLACED` are **not** declared. B29 and B32 remain `INCOMPLETE`, and
@@ -311,7 +405,22 @@ separate number about a candidate archive, and the two are never added.
 B28A itself is recorded as **`INCOMPLETE`** under the blocker
 `EXACT_MANIFEST_UNAVAILABLE`. Every structural gate it adds is implemented,
 tested and verified; the augmented half of the public campaign could not be
-re-measured, and nothing about it is restated here as though it had been.
+re-measured, and nothing about it is restated here as though it had been. The
+`9 / 9` and the three closed cohorts recorded in §-2.6 are the **§-2 checkpoint's
+measurement**, retained as history — they are not a re-measurement at this head,
+and this session did not produce one.
+
+The exact manifest the seal pins remains unavailable in this environment:
+
+| field | value |
+|---|---|
+| `augmentation_manifest_digest` | `c72229789cd417c70eb2533212508b259a9f8df903415f1f6aac710464929328` |
+| `augmentation_manifest_file_sha256` | `95aca08407e9508364468fe7be3a373ad0fe6d3e028bb5d0aa79052717542579` |
+
+Regenerating a manifest that merely *hashes* to those values is not possible and
+guessing one that plausibly resembles it is not permitted, so the seal check
+fails on exactly those two fields against any substitute. That is the correct
+outcome, and it must not be softened into a pass.
 
 ---
 
