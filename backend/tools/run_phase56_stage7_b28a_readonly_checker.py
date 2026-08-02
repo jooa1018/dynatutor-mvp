@@ -23,6 +23,7 @@ import ast
 import json
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -947,41 +948,101 @@ def check_canonical_digests_are_not_reprs() -> list[Finding]:
 
 
 def check_direct_phase_invocation_requires_an_attestation() -> list[Finding]:
-    """Neither Phase R nor Phase G has a path that runs without one."""
+    """Neither Phase R nor Phase G has a path that runs without one.
+
+    Checked behaviorally rather than by reading the argparse AST.  The flag
+    stopped being ``required=True`` when the publication-pinned mode arrived —
+    in that mode the attestation comes from inside the resolved generation,
+    which cannot omit it — so a schema probe would now check the spelling
+    rather than the property.  What must still be true is the property: a
+    direct invocation with no attestation refuses by name, an unresolvable
+    publication refuses by name, and neither refusal writes an artifact.
+    """
 
     findings: list[Finding] = []
-    for name in (
-        "run_phase56_stage7_v2_shadow_runtime.py",
-        "run_phase56_stage7_v2_shadow_score.py",
-    ):
-        tree = ast.parse((TOOLS / name).read_text("utf-8"))
-        required = False
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            if not (
-                isinstance(node.func, ast.Attribute)
-                and node.func.attr == "add_argument"
+    with tempfile.TemporaryDirectory(prefix="b28a-checker-") as scratch:
+        scratch_path = Path(scratch)
+        empty_root = scratch_path / "empty-publication"
+        empty_root.mkdir()
+        probes = {
+            "run_phase56_stage7_v2_shadow_runtime.py": {
+                "outputs": [
+                    "--runtime-snapshot",
+                    str(scratch_path / "snapshot.json"),
+                    "--redacted-view",
+                    str(scratch_path / "redacted.json"),
+                ],
+                "unattested": ["--runtime-input", str(scratch_path / "b.json")],
+                "artifacts": ("snapshot.json", "redacted.json"),
+            },
+            "run_phase56_stage7_v2_shadow_score.py": {
+                "outputs": [
+                    "--corpus-archive",
+                    str(scratch_path / "corpus.zip"),
+                    "--runtime-snapshot",
+                    str(scratch_path / "snapshot.json"),
+                    "--shadow-report",
+                    str(scratch_path / "report.json"),
+                    "--scorecard",
+                    str(scratch_path / "scorecard.json"),
+                ],
+                "unattested": [],
+                "artifacts": ("report.json", "scorecard.json"),
+            },
+        }
+        for name, probe in probes.items():
+            unattested = subprocess.run(
+                [
+                    sys.executable,
+                    str(TOOLS / name),
+                    *probe["unattested"],
+                    *probe["outputs"],
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if unattested.returncode != 2 or (
+                "--prepare-attestation" not in unattested.stderr
             ):
-                continue
-            if not node.args or not isinstance(node.args[0], ast.Constant):
-                continue
-            if node.args[0].value != "--prepare-attestation":
-                continue
-            required = any(
-                keyword.arg == "required"
-                and isinstance(keyword.value, ast.Constant)
-                and keyword.value.value is True
-                for keyword in node.keywords
-            )
-        if not required:
-            findings.append(
-                Finding(
-                    f"attestation_optional_in_{name}",
-                    True,
-                    f"{name} does not require --prepare-attestation",
+                findings.append(
+                    Finding(
+                        f"attestation_optional_in_{name}",
+                        True,
+                        f"{name} did not refuse a run with no attestation",
+                    )
                 )
+            unresolvable = subprocess.run(
+                [
+                    sys.executable,
+                    str(TOOLS / name),
+                    "--publication-root",
+                    str(empty_root),
+                    *probe["outputs"],
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
             )
+            if unresolvable.returncode != 2 or (
+                "publication_pointer_missing" not in unresolvable.stderr
+            ):
+                findings.append(
+                    Finding(
+                        f"publication_fail_open_in_{name}",
+                        True,
+                        f"{name} did not refuse an unresolvable publication",
+                    )
+                )
+            for artifact in probe["artifacts"]:
+                if (scratch_path / artifact).exists():
+                    findings.append(
+                        Finding(
+                            f"refusal_wrote_{artifact}_in_{name}",
+                            True,
+                            f"{name} wrote {artifact} while refusing",
+                        )
+                    )
     return findings
 
 

@@ -20,6 +20,14 @@ reused rather than reimplemented.  There is no v2 comparator to soften.
 carries.**  A run that reports FAIL exits 2.  The previous runner printed
 `ACCEPTANCE=FAIL` and returned 0, so a shell or a CI step reading the exit
 status was told the measurement had succeeded.
+
+The attestation arrives one of two ways, mutually exclusive.  The
+authoritative pipeline contract is ``--publication-root`` with the
+``--publication-id`` Phase M printed: the pinned generation is resolved once
+and ``CURRENT.json`` is never re-read, so the attestation this run scores
+against is the same one Phase V verified and Phase R was admitted on, whatever
+a later writer did to the pointer.  ``--prepare-attestation`` remains as the
+non-authoritative probe harness; the binding gates apply to it unchanged.
 """
 
 from __future__ import annotations
@@ -54,6 +62,10 @@ from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E
     PrepareAttestationRefused,
     PrepareBindingFailure,
     load_prepare_attestation,
+)
+from evaluation.phase56_stage7.corpus_v2.publication import (  # noqa: E402
+    PublicationRefused,
+    resolve_published_generation,
 )
 from evaluation.phase56_stage7.corpus_v2.reporting import (  # noqa: E402
     assert_scores_are_separated,
@@ -157,7 +169,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
     parser.add_argument("--runtime-snapshot", type=Path, required=True)
-    parser.add_argument("--prepare-attestation", type=Path, required=True)
+    parser.add_argument(
+        "--publication-root",
+        type=Path,
+        default=None,
+        help=(
+            "resolve the attestation from a published generation. The "
+            "authoritative pipeline contract; excludes --prepare-attestation."
+        ),
+    )
+    parser.add_argument(
+        "--publication-id",
+        type=str,
+        default=None,
+        help=(
+            "the exact generation to score against, as printed by Phase M. "
+            "When given, CURRENT.json is never read."
+        ),
+    )
+    parser.add_argument("--prepare-attestation", type=Path, default=None)
     parser.add_argument("--shadow-report", type=Path, required=True)
     parser.add_argument("--scorecard", type=Path, required=True)
     parser.add_argument(
@@ -179,6 +209,32 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+
+    if args.publication_root is not None:
+        if args.prepare_attestation is not None:
+            print(
+                "STAGE7_V2_SHADOW_ACCEPTANCE=FAIL:publication_input_contract: "
+                "--publication-root excludes --prepare-attestation",
+                file=sys.stderr,
+            )
+            return SCORE_FAILURE_EXIT
+        try:
+            published = resolve_published_generation(
+                args.publication_root, publication_id=args.publication_id
+            )
+        except PublicationRefused as exc:
+            print(f"STAGE7_V2_SHADOW_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
+            return SCORE_FAILURE_EXIT
+        args.prepare_attestation = published.prepare_attestation
+        print(f"STAGE7_V2_SHADOW_PUBLICATION_ID={published.generation_id}")
+    elif args.publication_id is not None or args.prepare_attestation is None:
+        print(
+            "STAGE7_V2_SHADOW_ACCEPTANCE=FAIL:publication_input_contract: "
+            "pass --publication-root [--publication-id], or "
+            "--prepare-attestation",
+            file=sys.stderr,
+        )
+        return SCORE_FAILURE_EXIT
 
     try:
         snapshot = load_full_runtime_snapshot(

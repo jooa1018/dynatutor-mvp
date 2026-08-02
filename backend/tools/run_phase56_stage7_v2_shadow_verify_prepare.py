@@ -33,6 +33,18 @@ Ordering matters.  Phase V runs **between** Phase M and Phase R, so a
 preparation that fails verification never reaches the runtime at all — zero
 runtime calls, zero pipeline invocations, zero scores.
 
+The artifacts arrive one of two ways, and the two are mutually exclusive.  The
+authoritative pipeline contract is ``--publication-root`` with the
+``--publication-id`` Phase M printed: the pinned generation is resolved once,
+never re-read from ``CURRENT.json``, so this phase cannot drift onto a
+different publication than the one the orchestrator captured.  A resolution
+that fails — a malformed pointer, a missing generation, a hash that does not
+match — exits 2 before anything is verified, and no report is written, because
+there is nothing attributable to report about.  The three explicit artifact
+paths remain as the direct-input probe harness the attack matrix drives forged
+files through; they carry no authority and every gate below applies to them
+unchanged.
+
 Exit 0 when the artifacts on disk are exactly what the corpus and the manifest
 rebuild to, 2 otherwise.
 """
@@ -71,6 +83,10 @@ from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E
 from evaluation.phase56_stage7.corpus_v2.prepare_builder import (  # noqa: E402
     PrepareBuildRefused,
     build_prepared_campaign,
+)
+from evaluation.phase56_stage7.corpus_v2.publication import (  # noqa: E402
+    PublicationRefused,
+    resolve_published_generation,
 )
 from evaluation.phase56_stage7.corpus_v2.runtime_input import (  # noqa: E402
     RuntimeInputRefused,
@@ -122,9 +138,30 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--candidate-archive", type=Path, required=True)
-    parser.add_argument("--runtime-input", type=Path, required=True)
-    parser.add_argument("--prepare-attestation", type=Path, required=True)
+    parser.add_argument(
+        "--publication-root",
+        type=Path,
+        default=None,
+        help=(
+            "resolve the three artifacts from a published generation. This is "
+            "the authoritative pipeline contract; the explicit paths below are "
+            "the non-authoritative probe harness and cannot be combined with "
+            "it."
+        ),
+    )
+    parser.add_argument(
+        "--publication-id",
+        type=str,
+        default=None,
+        help=(
+            "the exact generation to verify, as printed by Phase M. When "
+            "given, CURRENT.json is never read, so a pointer moved by a later "
+            "writer cannot redirect this phase."
+        ),
+    )
+    parser.add_argument("--candidate-archive", type=Path, default=None)
+    parser.add_argument("--runtime-input", type=Path, default=None)
+    parser.add_argument("--prepare-attestation", type=Path, default=None)
     parser.add_argument("--verification-report", type=Path, required=True)
     parser.add_argument(
         "--exact-code-head",
@@ -143,6 +180,42 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+
+    direct = (args.candidate_archive, args.runtime_input, args.prepare_attestation)
+    if args.publication_root is not None:
+        if any(path is not None for path in direct):
+            print(
+                "STAGE7_V2_VERIFY_PREPARE_ACCEPTANCE=FAIL:"
+                "publication_input_contract: --publication-root excludes the "
+                "direct artifact paths",
+                file=sys.stderr,
+            )
+            return VERIFY_FAILURE_EXIT
+        try:
+            published = resolve_published_generation(
+                args.publication_root, publication_id=args.publication_id
+            )
+        except PublicationRefused as exc:
+            print(
+                f"STAGE7_V2_VERIFY_PREPARE_ACCEPTANCE=FAIL:{exc}",
+                file=sys.stderr,
+            )
+            return VERIFY_FAILURE_EXIT
+        args.candidate_archive = published.candidate_archive
+        args.runtime_input = published.runtime_input
+        args.prepare_attestation = published.prepare_attestation
+        print(
+            "STAGE7_V2_VERIFY_PREPARE_PUBLICATION_ID="
+            f"{published.generation_id}"
+        )
+    elif args.publication_id is not None or any(path is None for path in direct):
+        print(
+            "STAGE7_V2_VERIFY_PREPARE_ACCEPTANCE=FAIL:"
+            "publication_input_contract: pass --publication-root "
+            "[--publication-id], or all three artifact paths",
+            file=sys.stderr,
+        )
+        return VERIFY_FAILURE_EXIT
 
     failures: list[str] = []
 

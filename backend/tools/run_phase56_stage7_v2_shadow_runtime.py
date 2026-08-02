@@ -55,6 +55,14 @@ neither artifact written.  What this command cannot detect is a runtime input
 and an attestation forged *together*; that is Phase V's job, and Phase V runs
 before this one.
 
+The bundle and the attestation arrive one of two ways, mutually exclusive.
+The authoritative pipeline contract is ``--publication-root`` with the
+``--publication-id`` Phase M printed: the pinned generation is resolved once
+and ``CURRENT.json`` is never re-read, so this phase cannot be redirected onto
+a different publication by a writer that moved the pointer meanwhile.  The
+explicit paths remain as the non-authoritative probe harness the attack matrix
+drives forged files through; every gate above applies to them unchanged.
+
 Exit 0 when every context is accounted for, 2 otherwise.
 """
 
@@ -82,6 +90,10 @@ from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E
     PrepareAttestationRefused,
     load_prepare_attestation,
     runtime_input_binding_failures,
+)
+from evaluation.phase56_stage7.corpus_v2.publication import (  # noqa: E402
+    PublicationRefused,
+    resolve_published_generation,
 )
 from evaluation.phase56_stage7.corpus_v2.runtime_input import (  # noqa: E402
     RuntimeInputRefused,
@@ -175,8 +187,27 @@ def _write_atomic(path: Path, body: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runtime-input", type=Path, required=True)
-    parser.add_argument("--prepare-attestation", type=Path, required=True)
+    parser.add_argument(
+        "--publication-root",
+        type=Path,
+        default=None,
+        help=(
+            "resolve the runtime input and the attestation from a published "
+            "generation. The authoritative pipeline contract; excludes the "
+            "direct paths below."
+        ),
+    )
+    parser.add_argument(
+        "--publication-id",
+        type=str,
+        default=None,
+        help=(
+            "the exact generation to run, as printed by Phase M. When given, "
+            "CURRENT.json is never read."
+        ),
+    )
+    parser.add_argument("--runtime-input", type=Path, default=None)
+    parser.add_argument("--prepare-attestation", type=Path, default=None)
     parser.add_argument("--runtime-snapshot", type=Path, required=True)
     parser.add_argument("--redacted-view", type=Path, required=True)
     parser.add_argument("--exact-code-head", type=str, default=None)
@@ -190,6 +221,38 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
+
+    if args.publication_root is not None:
+        if args.runtime_input is not None or args.prepare_attestation is not None:
+            print(
+                "STAGE7_V2_RUNTIME_ACCEPTANCE=FAIL:publication_input_contract: "
+                "--publication-root excludes --runtime-input and "
+                "--prepare-attestation",
+                file=sys.stderr,
+            )
+            return RUNTIME_FAILURE_EXIT
+        try:
+            published = resolve_published_generation(
+                args.publication_root, publication_id=args.publication_id
+            )
+        except PublicationRefused as exc:
+            print(f"STAGE7_V2_RUNTIME_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
+            return RUNTIME_FAILURE_EXIT
+        args.runtime_input = published.runtime_input
+        args.prepare_attestation = published.prepare_attestation
+        print(f"STAGE7_V2_RUNTIME_PUBLICATION_ID={published.generation_id}")
+    elif (
+        args.publication_id is not None
+        or args.runtime_input is None
+        or args.prepare_attestation is None
+    ):
+        print(
+            "STAGE7_V2_RUNTIME_ACCEPTANCE=FAIL:publication_input_contract: "
+            "pass --publication-root [--publication-id], or both "
+            "--runtime-input and --prepare-attestation",
+            file=sys.stderr,
+        )
+        return RUNTIME_FAILURE_EXIT
 
     # --- the trust boundary -------------------------------------------------
     # Everything from here to the binding check runs before the pipeline is

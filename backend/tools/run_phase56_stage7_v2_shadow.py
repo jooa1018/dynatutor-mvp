@@ -1,6 +1,6 @@
-"""Run the whole v2 shadow evaluation: prepare, then runtime, then score.
+"""Run the whole v2 shadow evaluation: prepare, then verify, then run, then score.
 
-This is a thin orchestrator over three commands that each do one job, and it
+This is a thin orchestrator over four commands that each do one job, and it
 invokes them as **separate processes** rather than calling into them.  That is
 the point of the file, so it is worth saying why.
 
@@ -9,14 +9,16 @@ answer.  When all three jobs ran in one process, that claim rested on where the
 comments were: the process loaded `PublicCorpusCaseV1` objects — which contain
 `gold` — before it ran anything, held them across the whole pipeline, and read
 the expected answers at the end.  A test could show that the runtime callback
-did not reach for one.  Nothing could show that it could not have.
+did not reach for one.  Nothing could show that it could not.
 
 Split into processes, the claim becomes a property of what each one opens:
 
 * ``run_phase56_stage7_v2_shadow_prepare`` reads the corpus and the manifest,
-  migrates them, and writes the candidate archive, a gold-free runtime input
-  bundle, and an attestation of what it prepared.  It runs no pipeline and
-  compares no answer.
+  migrates them, and publishes the candidate archive, a gold-free runtime
+  input bundle, and an attestation of what it prepared — together, as one
+  immutable generation under ``--publication-root``, made authoritative by a
+  single ``CURRENT.json`` pointer replace.  It runs no pipeline and compares
+  no answer.
 * ``run_phase56_stage7_v2_shadow_verify_prepare`` rebuilds the preparation from
   the corpus and the manifest and compares its own result against those files.
   It exists because the other checks in this chain are all comparisons *between
@@ -24,14 +26,24 @@ Split into processes, the claim becomes a property of what each one opens:
   together agree with each other perfectly.  Going back to the frozen corpus is
   the only comparison a forger cannot satisfy.  It solves nothing, runs no
   pipeline, scores nothing, and writes only its own report.
-* ``run_phase56_stage7_v2_shadow_runtime`` reads *only* that bundle — a type
-  with no field an expectation could be written into — checks it against the
-  attestation, runs the pipeline, and freezes the full restricted snapshot and
-  the public redacted view.  It never opens the corpus.
+* ``run_phase56_stage7_v2_shadow_runtime`` reads *only* the published bundle —
+  a type with no field an expectation could be written into — checks it against
+  the attestation, runs the pipeline, and freezes the full restricted snapshot
+  and the public redacted view.  It never opens the corpus.
 * ``run_phase56_stage7_v2_shadow_score`` reads the frozen snapshot back **from
   disk** and the corpus, checks the snapshot is bound to the attested
   preparation, and compares.  It holds no compiler, solver or projection, so it
   cannot re-run anything having seen the gold.
+
+**One pipeline, one generation.**  Phase M prints
+``STAGE7_V2_PREPARE_PUBLICATION_ID=<generation-id>`` on success; this
+orchestrator captures that id exactly once and passes the same value to Phase
+V, Phase R and Phase G.  Each of them resolves the pinned generation directly
+and never re-reads ``CURRENT.json``, so a second writer that publishes — and
+re-points the authority — while this pipeline is mid-flight cannot make two of
+its phases observe two different preparations.  A Phase M that exits 0 without
+printing the id is refused here, before Phase V, for the same reason a failed
+Phase M is: nothing downstream may run unpinned.
 
 The order is load-bearing: Phase V runs **between** preparation and runtime, so
 a preparation that fails verification reaches the pipeline zero times.
@@ -57,6 +69,9 @@ VERIFY_PREPARE = TOOLS / "run_phase56_stage7_v2_shadow_verify_prepare.py"
 RUNTIME = TOOLS / "run_phase56_stage7_v2_shadow_runtime.py"
 SCORE = TOOLS / "run_phase56_stage7_v2_shadow_score.py"
 
+PUBLICATION_ID_KEY = "STAGE7_V2_PREPARE_PUBLICATION_ID="
+PUBLICATION_FAILURE_EXIT = 2
+
 
 def _run(step: str, command: list[str]) -> int:
     print(f"--- {step}: {' '.join(command)}", flush=True)
@@ -65,13 +80,44 @@ def _run(step: str, command: list[str]) -> int:
     return completed.returncode
 
 
+def _run_prepare(step: str, command: list[str]) -> tuple[int, str | None]:
+    """Run Phase M, echoing its output while capturing the publication id.
+
+    Captured rather than re-derived: the id names the exact generation Phase M
+    made authoritative, and re-resolving ``CURRENT.json`` here instead would
+    re-introduce the race this pipeline is pinned against.  The last
+    occurrence wins if the key were ever printed twice, but Phase M prints it
+    exactly once, immediately before its acceptance line.
+    """
+
+    print(f"--- {step}: {' '.join(command)}", flush=True)
+    completed = subprocess.run(command, check=False, capture_output=True, text=True)
+    sys.stdout.write(completed.stdout)
+    sys.stdout.flush()
+    sys.stderr.write(completed.stderr)
+    sys.stderr.flush()
+    print(f"--- {step} exit={completed.returncode}", flush=True)
+    publication_id = None
+    for line in completed.stdout.splitlines():
+        if line.startswith(PUBLICATION_ID_KEY):
+            publication_id = line[len(PUBLICATION_ID_KEY) :].strip()
+    return completed.returncode, publication_id
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--candidate-archive", type=Path, required=True)
-    parser.add_argument("--runtime-input", type=Path, required=True)
-    parser.add_argument("--prepare-attestation", type=Path, required=True)
+    parser.add_argument(
+        "--publication-root",
+        type=Path,
+        required=True,
+        help=(
+            "where Phase M publishes the generation the whole pipeline is "
+            "pinned to. Replaces the three per-artifact paths: the artifacts "
+            "of one preparation are never published separately."
+        ),
+    )
     parser.add_argument("--verification-report", type=Path, required=True)
     parser.add_argument("--runtime-snapshot", type=Path, required=True)
     parser.add_argument("--redacted-view", type=Path, required=True)
@@ -89,20 +135,32 @@ def main() -> int:
         str(args.corpus_archive),
         "--manifest",
         str(args.manifest),
-        "--candidate-archive",
-        str(args.candidate_archive),
-        "--runtime-input",
-        str(args.runtime_input),
-        "--prepare-attestation",
-        str(args.prepare_attestation),
+        "--publication-root",
+        str(args.publication_root),
         "--exact-code-head",
         args.exact_code_head,
     ]
     if args.campaign_seal:
         prepare_command += ["--campaign-seal", args.campaign_seal]
-    status = _run("PHASE_M_PREPARE", prepare_command)
+    status, publication_id = _run_prepare("PHASE_M_PREPARE", prepare_command)
     if status:
         return status
+    if publication_id is None:
+        print(
+            "STAGE7_V2_SHADOW_ORCHESTRATOR=FAIL:prepare_publication_id_missing",
+            file=sys.stderr,
+        )
+        return PUBLICATION_FAILURE_EXIT
+
+    # The one pin, spelled once.  Every downstream phase receives this exact
+    # pair and resolves the generation directly, so none of them re-interprets
+    # whatever CURRENT.json says by the time it starts.
+    pinned = [
+        "--publication-root",
+        str(args.publication_root),
+        "--publication-id",
+        publication_id,
+    ]
 
     verify_command = [
         sys.executable,
@@ -111,12 +169,7 @@ def main() -> int:
         str(args.corpus_archive),
         "--manifest",
         str(args.manifest),
-        "--candidate-archive",
-        str(args.candidate_archive),
-        "--runtime-input",
-        str(args.runtime_input),
-        "--prepare-attestation",
-        str(args.prepare_attestation),
+        *pinned,
         "--verification-report",
         str(args.verification_report),
         "--exact-code-head",
@@ -131,10 +184,7 @@ def main() -> int:
     runtime_command = [
         sys.executable,
         str(RUNTIME),
-        "--runtime-input",
-        str(args.runtime_input),
-        "--prepare-attestation",
-        str(args.prepare_attestation),
+        *pinned,
         "--runtime-snapshot",
         str(args.runtime_snapshot),
         "--redacted-view",
@@ -155,8 +205,7 @@ def main() -> int:
         str(args.corpus_archive),
         "--runtime-snapshot",
         str(args.runtime_snapshot),
-        "--prepare-attestation",
-        str(args.prepare_attestation),
+        *pinned,
         "--shadow-report",
         str(args.shadow_report),
         "--scorecard",

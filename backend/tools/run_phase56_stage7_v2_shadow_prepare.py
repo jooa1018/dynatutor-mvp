@@ -1,9 +1,9 @@
 """Phase M — build the v2 candidate archive, the runtime input, and attest them.
 
 This command reads the corpus and the manifest, migrates one against the other,
-and writes three files: the candidate archive, the gold-free bundle the runtime
-phase will be given, and a restricted attestation of what it prepared.  It runs
-no pipeline and compares no answer.
+and publishes three artifacts as **one generation**: the candidate archive, the
+gold-free bundle the runtime phase will be given, and a restricted attestation
+of what it prepared.  It runs no pipeline and compares no answer.
 
 Splitting it out is what lets Phase R be provably gold-free.  When one process
 did all three jobs it held `PublicCorpusCaseV1` objects — which contain `gold` —
@@ -30,20 +30,36 @@ refused and under which code — and hashes it, so a later phase can re-derive t
 same statement from the file it was handed and see the disagreement.
 
 The forbidden-key scan runs on the raw payload *before* validation and before
-any write, so a bundle naming a gold member never reaches disk at all.  It used
-to run after the file had been written.
+any write, so a bundle naming a gold member never reaches disk at all.
 
-Publication is all-or-nothing for the same reason.  The campaign seal is judged
-over the attestation, the attestation carries each artifact's file hash, and a
-file hash needs bytes on a filesystem — so the three artifacts are staged beside
-their destinations, hashed from what was actually written, put to every gate,
-and only then renamed into place.  Before, the candidate archive and the runtime
-input went straight to their final paths and the seal was checked afterwards, so
-a preparation refused for being some other campaign still left two of its three
-artifacts sitting where the next phase looks for them.
+Publication is a single commit point, not three renames.  An earlier fix staged
+each artifact beside its final path and renamed all three at the end — which
+kept a *refused* preparation off the final paths, but still left the success
+path publishing through three consecutive renames.  Each rename was atomic; the
+set was not.  An exception or a process kill between them left the final paths
+holding artifacts from two different preparations, and nothing could undo the
+renames that had already happened.  So the artifacts now live together in an
+immutable generation directory under ``--publication-root``, staged in a
+per-run private directory, validated in full — read-back hashes, attestation,
+campaign seal, cross-artifact binding — and made authoritative by exactly one
+``os.replace`` of the ``CURRENT.json`` pointer.  A reader resolving the
+publication sees the previous complete generation or the new complete
+generation, never a mixture.  On success this command prints
+``STAGE7_V2_PREPARE_PUBLICATION_ID=<generation-id>`` so the orchestrator can
+pin Phase V, Phase R and Phase G to exactly this generation.
 
-Exit 0 when all three artifacts were published, 2 when they could not be built
-honestly — and in that case the final paths hold whatever they held before.
+Failure semantics, stated exactly.  A refusal before the generation is promoted
+removes this run's staging directory and touches nothing else: the previous
+``CURRENT.json`` and every existing generation are byte-unchanged.  A failure
+between the promote and the pointer replace leaves the previous authority
+standing and the new generation on disk as a complete but *unreferenced*
+orphan — deliberately, because deleting it could delete a directory another
+writer just committed to.  No fixed-name staging file exists anywhere in this
+protocol, so two concurrent preparations cannot overwrite each other's staging.
+
+Exit 0 when the generation was published and the pointer committed, 2 when the
+preparation could not be built or published honestly — and in that case the
+previous authority holds exactly what it held before.
 """
 
 from __future__ import annotations
@@ -63,13 +79,22 @@ from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
 from evaluation.phase56_stage7.corpus_v2.canonical import file_sha256  # noqa: E402
 from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E402
     build_prepare_attestation,
+    runtime_input_binding_failures,
 )
 from evaluation.phase56_stage7.corpus_v2.prepare_builder import (  # noqa: E402
     PrepareBuildRefused,
     build_prepared_campaign,
 )
+from evaluation.phase56_stage7.corpus_v2.publication import (  # noqa: E402
+    CANDIDATE_ARCHIVE_NAME,
+    PREPARE_ATTESTATION_NAME,
+    RUNTIME_INPUT_NAME,
+    GenerationTransaction,
+    PublicationRefused,
+)
 from evaluation.phase56_stage7.corpus_v2.runtime_input import (  # noqa: E402
     RuntimeInputRefused,
+    load_runtime_input,
 )
 from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (  # noqa: E402
     LedgerState,
@@ -78,55 +103,20 @@ from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (  # noqa: E402
 PREPARE_FAILURE_EXIT = 2
 
 
-def _stage(path: Path, body: str) -> tuple[Path, str] | None:
-    """Write an artifact beside its final name without publishing it.
-
-    Returns the staged path and the SHA-256 of the bytes that came back off the
-    filesystem, or `None` when those are not the bytes we meant to write.  The
-    hash is recomputed from the file rather than from `body` deliberately: a
-    write that lost its tail would otherwise be attested as intact, and the
-    attestation is the thing a later phase trusts.
-    """
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staged = path.with_name(path.name + ".partial")
-    staged.write_text(body, encoding="utf-8")
-    written = file_sha256(staged.read_text(encoding="utf-8"))
-    if written != file_sha256(body):
-        return None
-    return staged, written
-
-
-def _publish(staged: list[tuple[Path, Path]]) -> None:
-    """Move every staged artifact to its final path, after all gates passed.
-
-    A rename is the last thing this command does, so the window in which the
-    final paths could disagree with each other is one `replace` call wide and
-    contains no decision that could still refuse the preparation.
-    """
-
-    for source, destination in staged:
-        source.replace(destination)
-
-
-def _discard(staged: list[tuple[Path, Path]]) -> None:
-    """Remove the staged artifacts, leaving the final paths as they were found.
-
-    Only the files this run created are touched.  A refused preparation must
-    not take an earlier honest one down with it.
-    """
-
-    for source, _ in staged:
-        source.unlink(missing_ok=True)
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--candidate-archive", type=Path, required=True)
-    parser.add_argument("--runtime-input", type=Path, required=True)
-    parser.add_argument("--prepare-attestation", type=Path, required=True)
+    parser.add_argument(
+        "--publication-root",
+        type=Path,
+        required=True,
+        help=(
+            "the directory that holds immutable generations and the CURRENT "
+            "pointer. The three artifacts are published together inside one "
+            "generation here; there is no flat-path publication mode."
+        ),
+    )
     parser.add_argument(
         "--exact-code-head",
         type=str,
@@ -160,30 +150,35 @@ def main() -> int:
 
     contexts = prepared.runtime_input.contexts
 
-    # Nothing reaches a final artifact path until every gate below has passed.
-    # The gates need file hashes and file hashes need bytes on disk, so each
-    # artifact is staged beside its destination and the three are published
-    # together at the end.  A refused preparation leaves the final paths holding
-    # exactly what they held before it ran.
-    staged: list[tuple[Path, Path]] = []
-
     def _refuse(reason: str) -> int:
-        _discard(staged)
         print(f"STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:{reason}", file=sys.stderr)
         return PREPARE_FAILURE_EXIT
 
+    # Nothing becomes authoritative until every gate below has passed.  The
+    # gates need file hashes and file hashes need bytes on disk, so the three
+    # artifacts are staged in this run's private generation directory, judged
+    # there, and made visible by one pointer replace at the very end.  A
+    # refused preparation leaves the previous authority holding exactly what
+    # it held before this run started.
     try:
-        candidate = _stage(args.candidate_archive, prepared.candidate_body)
-        if candidate is None:
-            return _refuse("prepare_candidate_archive_write_mismatch")
-        staged.append((candidate[0], args.candidate_archive))
-        candidate_file_sha = candidate[1]
+        transaction = GenerationTransaction(args.publication_root)
+    except PublicationRefused as exc:
+        return _refuse(str(exc))
 
-        bundle = _stage(args.runtime_input, prepared.runtime_input_body)
-        if bundle is None:
+    with transaction:
+        try:
+            candidate_file_sha = transaction.stage(
+                CANDIDATE_ARCHIVE_NAME, prepared.candidate_body
+            )
+        except PublicationRefused:
+            return _refuse("prepare_candidate_archive_write_mismatch")
+
+        try:
+            bundle_file_sha = transaction.stage(
+                RUNTIME_INPUT_NAME, prepared.runtime_input_body
+            )
+        except PublicationRefused:
             return _refuse("prepare_runtime_input_write_mismatch")
-        staged.append((bundle[0], args.runtime_input))
-        bundle_file_sha = bundle[1]
 
         attestation = build_prepare_attestation(
             campaign_seal_name=args.campaign_seal,
@@ -222,17 +217,37 @@ def main() -> int:
             )
             + "\n"
         )
-        attested = _stage(args.prepare_attestation, attestation_body)
-        if attested is None:
+        try:
+            attestation_file_sha = transaction.stage(
+                PREPARE_ATTESTATION_NAME, attestation_body
+            )
+        except PublicationRefused:
             return _refuse("prepare_attestation_write_mismatch")
-        staged.append((attested[0], args.prepare_attestation))
-        attestation_file_sha = attested[1]
 
-        _publish(staged)
-    except BaseException:
-        # An unanticipated failure must not publish half a preparation either.
-        _discard(staged)
-        raise
+        # The generation is judged as a reader would see it — from the staged
+        # bytes, not from the values still in memory — before any authority
+        # moves.  This is the whole-generation validation: the runtime input
+        # reloads, and every binding between it and the attestation holds.
+        staged_bundle_body = transaction.staged_body(RUNTIME_INPUT_NAME)
+        try:
+            staged_bundle = load_runtime_input(staged_bundle_body)
+        except RuntimeInputRefused as exc:
+            return _refuse(f"prepare_publication_binding_mismatch:{exc}")
+        binding = runtime_input_binding_failures(
+            attestation,
+            staged_bundle,
+            runtime_input_file_sha256=file_sha256(staged_bundle_body),
+            exact_code_head=args.exact_code_head,
+        )
+        if binding:
+            return _refuse(
+                "prepare_publication_binding_mismatch:" + ",".join(binding)
+            )
+
+        try:
+            published = transaction.commit(attestation.attestation_digest)
+        except PublicationRefused as exc:
+            return _refuse(str(exc))
 
     print(
         "STAGE7_V2_PREPARE_ORIGINAL_V1_ARCHIVE_SHA256="
@@ -293,6 +308,10 @@ def main() -> int:
     )
     print(f"STAGE7_V2_PREPARE_CAMPAIGN_SEAL={args.campaign_seal or 'none'}")
     print(f"STAGE7_V2_PREPARE_EXACT_CODE_HEAD={args.exact_code_head}")
+    # The machine-readable pin.  The orchestrator captures this once and hands
+    # the same generation to Phase V, Phase R and Phase G, so one pipeline
+    # cannot straddle two publications however the pointer moves meanwhile.
+    print(f"STAGE7_V2_PREPARE_PUBLICATION_ID={published.generation_id}")
     print("STAGE7_V2_PREPARE_ACCEPTANCE=PASS")
     return 0
 

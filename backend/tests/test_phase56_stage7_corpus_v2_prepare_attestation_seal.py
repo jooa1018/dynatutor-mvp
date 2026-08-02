@@ -92,6 +92,11 @@ from evaluation.phase56_stage7.corpus_v2.runtime_input import (
     assert_bundle_has_no_gold,
     load_runtime_input,
 )
+from evaluation.phase56_stage7.corpus_v2.publication import (
+    CURRENT_POINTER_NAME,
+    GENERATIONS_DIRECTORY_NAME,
+    resolve_published_generation,
+)
 from evaluation.phase56_stage7.corpus_v2.runtime_ledger import (
     LedgerState,
     RefusalCode,
@@ -1860,7 +1865,7 @@ def test_the_attestation_carries_no_wall_clock_field() -> None:
 
 
 # ==========================================================================
-# Phase M atomic publication
+# Phase M single-commit generation publication
 # ==========================================================================
 #
 # The seal is judged over the attestation, the attestation carries each
@@ -1868,10 +1873,19 @@ def test_the_attestation_carries_no_wall_clock_field() -> None:
 # used to resolve that by writing the candidate archive and the runtime input to
 # their final paths first and checking the seal afterwards — so a preparation
 # refused for being some other campaign still left two of its three artifacts
-# exactly where Phase V, and a hand-run Phase R, look for them.
+# exactly where Phase V, and a hand-run Phase R, look for them.  The first fix
+# staged each artifact beside its destination and renamed all three after the
+# gates — which kept a *refused* preparation off the final paths, but still
+# published a *successful* one through three consecutive renames, and a crash
+# between them could mix two preparations at the authoritative paths.  The
+# publication is now one immutable generation directory plus a single CURRENT
+# pointer replace; these controls are the earlier ones restated against that
+# protocol, and `test_phase56_stage7_corpus_v2_publication_transaction.py`
+# holds the crash/concurrency attack matrix the flat-path protocol could not
+# even express.
 #
-# The two controls below are a matched pair over one synthetic campaign.  The
-# seal they are judged against is built from that campaign's own honest
+# The two seal controls below are a matched pair over one synthetic campaign.
+# The seal they are judged against is built from that campaign's own honest
 # attestation, so the *only* thing that differs between them is the manifest
 # pair — which is the shape of this project's live blocker: the population is
 # reproducible from the corpus, and the exact manifest hashes are not.
@@ -1931,30 +1945,21 @@ def _seal_from(attestation, **overrides) -> CampaignPopulationSealV1:
     return CampaignPopulationSealV1(**values)
 
 
-def _prepare_paths(tmp_path) -> tuple[Path, Path, Path]:
-    return (
-        tmp_path / "out" / "candidate.json",
-        tmp_path / "out" / "runtime_input.json",
-        tmp_path / "out" / "attestation.json",
-    )
+def _publication_root(tmp_path) -> Path:
+    return tmp_path / "publication"
 
 
 def _run_prepare(tmp_path, monkeypatch, archive, manifest, *, seal=None) -> int:
     import runpy
 
-    candidate, runtime_input, attestation = _prepare_paths(tmp_path)
     argv = [
         str(PREPARE_TOOL),
         "--corpus-archive",
         str(archive),
         "--manifest",
         str(manifest),
-        "--candidate-archive",
-        str(candidate),
-        "--runtime-input",
-        str(runtime_input),
-        "--prepare-attestation",
-        str(attestation),
+        "--publication-root",
+        str(_publication_root(tmp_path)),
         "--exact-code-head",
         SYNTHETIC_CODE_HEAD,
     ]
@@ -1965,21 +1970,42 @@ def _run_prepare(tmp_path, monkeypatch, archive, manifest, *, seal=None) -> int:
     return module["main"]()
 
 
+def _generation_directories(tmp_path) -> list[Path]:
+    generations = _publication_root(tmp_path) / GENERATIONS_DIRECTORY_NAME
+    if not generations.exists():
+        return []
+    return sorted(generations.iterdir())
+
+
 def _assert_nothing_published(tmp_path) -> None:
-    for path in _prepare_paths(tmp_path):
-        assert not path.exists(), f"{path.name} was published by a refused prepare"
-        staged = path.with_name(path.name + ".partial")
-        assert not staged.exists(), f"{staged.name} was left behind"
+    """No pointer, no generation, no staging directory, no ``.partial``.
+
+    The refused run's abort removes the one staging directory it owns, and a
+    fixed-name staging file cannot be left behind because the protocol has
+    none — each run stages under its own random token.
+    """
+
+    root = _publication_root(tmp_path)
+    assert not (
+        root / CURRENT_POINTER_NAME
+    ).exists(), "a refused prepare committed the authority pointer"
+    assert (
+        _generation_directories(tmp_path) == []
+    ), "a refused prepare left a generation or staging directory behind"
+    if root.exists():
+        assert list(root.rglob("*.partial")) == []
 
 
 def test_a_failed_campaign_seal_publishes_no_prepare_artifact(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    """The negative control: refused for the manifest, and nothing on disk.
+    """The negative control: refused for the manifest, and nothing published.
 
     The candidate archive and the runtime input are derived, staged and hashed
     before the seal can be judged at all — that ordering is forced, not chosen.
-    What the fix changes is where those bytes are while the judging happens.
+    What the protocol decides is where those bytes are while the judging
+    happens: in this run's private staging directory, which no reader
+    resolves, and which the refusal removes whole.
     """
 
     from evaluation.phase56_stage7.corpus_v2 import campaign_seal
@@ -2011,27 +2037,49 @@ def test_a_failed_campaign_seal_publishes_no_prepare_artifact(
 def test_a_failed_campaign_seal_leaves_an_earlier_preparation_intact(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    """A refused run must not delete what an honest one published.
+    """A refused run must not disturb what an honest one published.
 
-    The staged path is a sibling of the final one, so "clean up after yourself"
-    and "unlink the artifact somebody is about to score" are one keystroke
-    apart.  This pins which of the two happens.
+    The refused run's staging lives one directory over from the committed
+    generation, so "clean up after yourself" and "delete the generation
+    somebody is about to score" are one path apart.  This pins which of the
+    two happens: after the refusal, the pointer bytes, the generation's three
+    artifacts and the generation *set* are all exactly as the honest run left
+    them.
     """
 
     from evaluation.phase56_stage7.corpus_v2 import campaign_seal
 
     archive, manifest, prepared = _prepared_campaign(tmp_path, monkeypatch)
-    existing = {}
-    for path in _prepare_paths(tmp_path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(f"an earlier honest {path.name}\n", encoding="utf-8")
-        existing[path] = path.read_text(encoding="utf-8")
+    honest_seal = _seal_from(_honest_attestation(prepared, name=SYNTHETIC_SEAL_NAME))
+    monkeypatch.setitem(
+        campaign_seal.CAMPAIGN_SEALS, SYNTHETIC_SEAL_NAME, honest_seal
+    )
+    assert (
+        _run_prepare(tmp_path, monkeypatch, archive, manifest, seal=SYNTHETIC_SEAL_NAME)
+        == 0
+    )
+    capsys.readouterr()
 
-    seal = _seal_from(
+    root = _publication_root(tmp_path)
+    pointer_before = (root / CURRENT_POINTER_NAME).read_bytes()
+    published = resolve_published_generation(root)
+    artifacts_before = {
+        path: path.read_bytes()
+        for path in (
+            published.candidate_archive,
+            published.runtime_input,
+            published.prepare_attestation,
+        )
+    }
+    generations_before = _generation_directories(tmp_path)
+
+    refusing_seal = _seal_from(
         _honest_attestation(prepared, name=SYNTHETIC_SEAL_NAME),
         augmentation_manifest_digest="9" * 64,
     )
-    monkeypatch.setitem(campaign_seal.CAMPAIGN_SEALS, SYNTHETIC_SEAL_NAME, seal)
+    monkeypatch.setitem(
+        campaign_seal.CAMPAIGN_SEALS, SYNTHETIC_SEAL_NAME, refusing_seal
+    )
 
     status = _run_prepare(
         tmp_path, monkeypatch, archive, manifest, seal=SYNTHETIC_SEAL_NAME
@@ -2039,9 +2087,14 @@ def test_a_failed_campaign_seal_leaves_an_earlier_preparation_intact(
     capsys.readouterr()
 
     assert status == 2
-    for path, body in existing.items():
-        assert path.read_text(encoding="utf-8") == body
-        assert not path.with_name(path.name + ".partial").exists()
+    assert (root / CURRENT_POINTER_NAME).read_bytes() == pointer_before
+    for path, body in artifacts_before.items():
+        assert path.read_bytes() == body
+    assert _generation_directories(tmp_path) == generations_before
+    assert list(root.rglob("*.partial")) == []
+    assert resolve_published_generation(root).generation_id == (
+        published.generation_id
+    )
 
 
 def test_a_sealed_preparation_publishes_all_three_artifacts(
@@ -2065,26 +2118,36 @@ def test_a_sealed_preparation_publishes_all_three_artifacts(
         tmp_path, monkeypatch, archive, manifest, seal=SYNTHETIC_SEAL_NAME
     )
     captured = capsys.readouterr()
-    candidate, runtime_input, attestation_path = _prepare_paths(tmp_path)
 
     assert status == 0, captured.err
     assert "STAGE7_V2_PREPARE_ACCEPTANCE=PASS" in captured.out
-    for path in (candidate, runtime_input, attestation_path):
-        assert path.exists()
-        assert not path.with_name(path.name + ".partial").exists()
+
+    # The publication resolves: one pointer, one complete generation, and the
+    # machine-readable id the orchestrator pins the rest of the pipeline to.
+    root = _publication_root(tmp_path)
+    published = resolve_published_generation(root)
+    assert (
+        f"STAGE7_V2_PREPARE_PUBLICATION_ID={published.generation_id}"
+        in captured.out
+    )
+    assert [path.name for path in _generation_directories(tmp_path)] == [
+        published.generation_id
+    ]
+    assert list(root.rglob("*.partial")) == []
 
     # Every check below re-reads the published bytes.  An artifact that is on
     # disk but is not the one the attestation describes is exactly the failure
-    # a rename-after-validation is supposed to make impossible.
-    bundle_body = runtime_input.read_text(encoding="utf-8")
+    # a single-commit publication is supposed to make impossible.
+    bundle_body = published.runtime_input.read_text(encoding="utf-8")
     attestation = load_prepare_attestation(
-        attestation_path.read_text(encoding="utf-8")
+        published.prepare_attestation.read_text(encoding="utf-8")
     )
+    assert attestation.attestation_digest == published.generation_id
     assert attestation.campaign_seal_name == SYNTHETIC_SEAL_NAME
     assert campaign_seal_failures(attestation, seal) == ()
 
     assert attestation.candidate_archive_file_sha256 == file_sha256(
-        candidate.read_text(encoding="utf-8")
+        published.candidate_archive.read_text(encoding="utf-8")
     )
     assert attestation.runtime_input_file_sha256 == file_sha256(bundle_body)
     assert attestation.candidate_archive_digest == prepared.candidate_archive_digest
@@ -2101,12 +2164,16 @@ def test_a_sealed_preparation_publishes_all_three_artifacts(
 
 
 def test_a_refused_preparation_stops_the_pipeline_before_phase_v(tmp_path) -> None:
-    """Why "no artifacts" is also "no later phase ran".
+    """Why "nothing published" is also "no later phase ran".
 
-    The orchestrator's guard is read off the AST rather than asserted in prose:
-    the statement after Phase M is the one that returns its status, so nothing
-    downstream is reachable on an exit 2 — including the phases that would have
-    consumed the artifacts a refused preparation used to leave behind.
+    The orchestrator's guards are read off the AST rather than asserted in
+    prose.  Phase M is invoked through `_run_prepare`, which returns its exit
+    status *and* the publication id it printed; the next statement returns a
+    non-zero status, and the one after that refuses to continue when the id is
+    missing — so on a refused preparation nothing downstream is reachable, and
+    on an accepted one nothing downstream can run unpinned.  Every later phase
+    receives the captured id through one `pinned` argument list, which is how
+    a pointer moved mid-pipeline cannot redirect Phase V, R or G.
     """
 
     tree = ast.parse((TOOLS / "run_phase56_stage7_v2_shadow.py").read_text("utf-8"))
@@ -2116,38 +2183,90 @@ def test_a_refused_preparation_stops_the_pipeline_before_phase_v(tmp_path) -> No
         if isinstance(node, ast.FunctionDef) and node.name == "main"
     )
 
+    def _calls(statement, name):
+        return [
+            node
+            for node in ast.walk(statement)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        ]
+
     phases = [
         (index, statement)
         for index, statement in enumerate(main.body)
-        for node in ast.walk(statement)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "_run"
+        if _calls(statement, "_run") or _calls(statement, "_run_prepare")
     ]
     assert phases, "no phase invocation found in the orchestrator"
 
-    prepare_index, _ = phases[0]
-    assert isinstance(
-        ast.literal_eval(
-            next(
-                node
-                for node in ast.walk(main.body[prepare_index])
-                if isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Name)
-                and node.func.id == "_run"
-            ).args[0]
-        ),
-        str,
-    )
+    # Phase M is first, invoked through the capturing runner exactly once in
+    # the whole function, and its status and publication id are bound together.
+    prepare_index, prepare_statement = phases[0]
+    prepare_calls = _calls(prepare_statement, "_run_prepare")
+    assert len(prepare_calls) == 1
+    assert ast.literal_eval(prepare_calls[0].args[0]) == "PHASE_M_PREPARE"
+    assert sum(len(_calls(node, "_run_prepare")) for node in main.body) == 1
+    assert isinstance(prepare_statement, ast.Assign)
+    (target,) = prepare_statement.targets
+    assert isinstance(target, ast.Tuple)
+    assert [name.id for name in target.elts] == ["status", "publication_id"]
 
-    guard = main.body[prepare_index + 1]
-    assert isinstance(guard, ast.If)
-    assert isinstance(guard.test, ast.Name) and guard.test.id == "status"
-    assert len(guard.body) == 1 and isinstance(guard.body[0], ast.Return)
-    assert isinstance(guard.body[0].value, ast.Name)
-    assert guard.body[0].value.id == "status"
-    # Every later phase sits after that guard.
-    assert all(index > prepare_index for index, _ in phases[1:])
+    status_guard = main.body[prepare_index + 1]
+    assert isinstance(status_guard, ast.If)
+    assert isinstance(status_guard.test, ast.Name)
+    assert status_guard.test.id == "status"
+    assert len(status_guard.body) == 1
+    assert isinstance(status_guard.body[0], ast.Return)
+    assert isinstance(status_guard.body[0].value, ast.Name)
+    assert status_guard.body[0].value.id == "status"
+
+    pin_guard = main.body[prepare_index + 2]
+    assert isinstance(pin_guard, ast.If)
+    assert isinstance(pin_guard.test, ast.Compare)
+    assert isinstance(pin_guard.test.left, ast.Name)
+    assert pin_guard.test.left.id == "publication_id"
+    assert isinstance(pin_guard.test.ops[0], ast.Is)
+    assert isinstance(pin_guard.body[-1], ast.Return)
+
+    # The pin is spelled once, carries the captured id, and every later phase
+    # sits after both guards.
+    pinned = next(
+        statement
+        for statement in main.body
+        if isinstance(statement, ast.Assign)
+        and isinstance(statement.targets[0], ast.Name)
+        and statement.targets[0].id == "pinned"
+    )
+    pinned_names = {
+        node.id for node in ast.walk(pinned.value) if isinstance(node, ast.Name)
+    }
+    pinned_literals = {
+        node.value
+        for node in ast.walk(pinned.value)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }
+    assert "publication_id" in pinned_names
+    assert "--publication-id" in pinned_literals
+    assert "--publication-root" in pinned_literals
+    assert main.body.index(pinned) > prepare_index + 2
+    assert all(index > main.body.index(pinned) for index, _ in phases[1:])
+    for _, statement in phases[1:]:
+        (call,) = _calls(statement, "_run")
+        command_name = call.args[1]
+        assert isinstance(command_name, ast.Name)
+        construction = next(
+            candidate
+            for candidate in main.body
+            if isinstance(candidate, ast.Assign)
+            and isinstance(candidate.targets[0], ast.Name)
+            and candidate.targets[0].id == command_name.id
+        )
+        starred = {
+            node.value.id
+            for node in ast.walk(construction.value)
+            if isinstance(node, ast.Starred) and isinstance(node.value, ast.Name)
+        }
+        assert "pinned" in starred, command_name.id
 
 
 # ==========================================================================
