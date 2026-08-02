@@ -576,11 +576,60 @@ def test_the_upload_path_is_the_validated_path(workflow_text: str) -> None:
     assert "stage7_offline_gate_report.json" not in workflow_text
 
 
+def test_the_run_publishes_the_report_bytes_for_external_review(
+    workflow_text: str,
+) -> None:
+    """The uploaded bytes must be checkable without reaching the blob store.
+
+    Named "review" rather than "audit" deliberately: ``tests/conftest.py``
+    marks any nodeid containing "audit" with the ``audit`` marker, and
+    ``pytest.ini`` deselects that marker by default, so an "audit" in the name
+    would silently remove this control from every default run and from CI.
+
+    An auditor on a network that cannot fetch the artifact blob can still
+    decode the base64 out of the run log, hash it, and compare against the
+    sealed digest and the report's own `exact_head_sha` — so the run's verdict
+    is checkable rather than merely assertable.  Raw bytes, not pretty JSON:
+    only the exact bytes reproduce the digest.
+    """
+
+    record = workflow_text[workflow_text.index("Record uploaded artifact identity") :]
+    assert 'base64 -w 0 "$STAGE7_REPORT_PATH"' in record
+    assert "STAGE7_ARTIFACT_REPORT_BASE64_BEGIN" in record
+    assert "STAGE7_ARTIFACT_REPORT_BASE64_END" in record
+    assert "STAGE7_ARTIFACT_UPLOAD_DIGEST" in record
+    # The dump is a reader placed after the upload, so it cannot sit between
+    # the identity check and the upload it guards.
+    assert workflow_text.index("Upload redacted aggregate artifact") < workflow_text.index(
+        "Record uploaded artifact identity"
+    )
+
+
 def test_the_checker_receives_the_seal_the_gate_produced(workflow_text: str) -> None:
     assert (
         "sed -n 's/^STAGE7_OFFLINE_GATE_REPORT_SHA256=//p'" in workflow_text
     )
     assert '--expect-raw-sha256 "$STAGE7_REPORT_RAW_SHA256"' in workflow_text
+
+
+def test_none_of_these_controls_is_deselected_by_default() -> None:
+    """A control that never runs is not a control.
+
+    ``tests/conftest.py`` marks by nodeid substring and ``pytest.ini``
+    deselects ``benchmark``, ``audit``, ``frontend`` and ``slow`` by default,
+    so naming a test here "..._audit" would quietly remove it from CI while
+    still reading like coverage.  One of these was named that way and was
+    caught by the collected-count moving; this pins it instead.
+    """
+
+    deselecting = ("audit", "frontend", "slow", "benchmark")
+    offenders = [
+        name
+        for name in globals()
+        if name.startswith("test_")
+        and any(word in name.casefold() for word in deselecting)
+    ]
+    assert offenders == []
 
 
 def test_no_test_resolves_the_upload_path_or_writes_into_runner_temp() -> None:

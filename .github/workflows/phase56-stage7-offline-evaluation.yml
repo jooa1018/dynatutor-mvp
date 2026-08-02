@@ -179,9 +179,16 @@ jobs:
           path: ${{ env.STAGE7_REPORT_PATH }}
           if-no-files-found: error
 
-      # Printed so an auditor who cannot re-download the blob can still bind
-      # the stored artifact to this job: the uploader's digest is reported by
-      # the Artifacts API for the same artifact id.
+      # Printed so the artifact can be audited from outside the run without
+      # re-downloading the blob, which some networks cannot reach: the
+      # uploader's digest is reported by the Artifacts API for the same
+      # artifact id, and the report's exact bytes are reproduced here in
+      # base64.  Decoding them and hashing gives back
+      # STAGE7_ARTIFACT_REPORT_RAW_SHA256, so an auditor can read the very
+      # JSON that was uploaded rather than trusting this job's own verdict.
+      # It is safe to print: the identity check above already enforced the
+      # redaction contract on this exact file, and the same bytes are
+      # published as a public artifact.
       - name: Record uploaded artifact identity
         if: always() && steps.stage7_artifact_upload.outcome == 'success'
         run: |
@@ -190,6 +197,9 @@ jobs:
           printf 'STAGE7_ARTIFACT_REPORT_RAW_SHA256=%s\n' "$STAGE7_REPORT_RAW_SHA256"
           printf 'STAGE7_ARTIFACT_ID=%s\n' '${{ steps.stage7_artifact_upload.outputs.artifact-id }}'
           printf 'STAGE7_ARTIFACT_UPLOAD_DIGEST=%s\n' '${{ steps.stage7_artifact_upload.outputs.artifact-digest }}'
+          printf 'STAGE7_ARTIFACT_REPORT_BASE64_BEGIN\n'
+          base64 -w 0 "$STAGE7_REPORT_PATH"
+          printf '\nSTAGE7_ARTIFACT_REPORT_BASE64_END\n'
 
   b7-slow-contracts:
     name: B7 polar slow contracts
