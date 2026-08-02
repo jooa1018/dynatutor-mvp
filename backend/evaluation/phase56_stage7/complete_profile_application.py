@@ -54,6 +54,9 @@ from evaluation.phase56_stage7.complete_profile import (
 from evaluation.phase56_stage7.horizontal_driven_contact import (
     read_horizontal_driven_sliding_source,
 )
+from evaluation.phase56_stage7.spring_natural_length import (
+    read_spring_natural_length_source,
+)
 from evaluation.phase56_stage7.typed_support_frames import (
     axis_bindings,
     frame_is_plain,
@@ -62,7 +65,7 @@ from evaluation.phase56_stage7.typed_support_frames import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v8"
+    "phase56-stage7-complete-profile-application-v9"
 )
 
 
@@ -376,6 +379,10 @@ class ProfileApplication:
     profile_id: ProfileId | None = None
     created_record_ids: tuple[str, ...] = ()
     rebound_quantity_ids: tuple[str, ...] = ()
+    # Closed semantic authorities derived by the selected exact transaction.
+    # These are not value authorizations and are rechecked against the closed
+    # Draft before the caller may add them to its approved-id snapshot.
+    derived_approved_assumption_ids: tuple[str, ...] = ()
     sanitized_reason: str | None = None
 
     @property
@@ -7049,6 +7056,457 @@ def _horizontal_driven_contact_transaction(
     return closed, created_ids, rebound_ids
 
 
+def _spring_natural_length_energy_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[
+    dict[str, Any], tuple[str, ...], tuple[str, ...], tuple[str, ...]
+] | None:
+    """Build the exact spring-energy endpoint graph as one transaction.
+
+    The shared source reader owns applicability.  The transaction materialises
+    no numerical value: the initial speed remains an unknown constrained by the
+    exact ``at_rest`` law, and final deformation remains an unknown constrained
+    by the exact zero-deformation law.  All energy quantities and the final
+    speed likewise remain value-free unknowns.
+
+    A ``no_energy_loss`` semantic authority is derived only after the reader has
+    proved the complete spring-only interaction inventory and this function has
+    consumed the exact frictionless authorization.  It carries no proposed
+    value and is returned separately for the runner to recheck before approval.
+    """
+
+    source = read_spring_natural_length_source(payload)
+    if source is None:
+        return None
+    assumptions = {
+        item["assumption_id"]: item for item in payload["assumptions"]
+    }
+
+    def exact_authorization(
+        assumption_id: str, role: str
+    ) -> AssumptionAuthorization | None:
+        record = assumptions.get(assumption_id)
+        authorization = authority.authorized_assumptions.get(assumption_id)
+        if (
+            record is None
+            or assumption_id not in authority.approved_assumption_ids
+            or type(authorization) is not AssumptionAuthorization
+            or authorization.assumption_id != assumption_id
+            or authorization.subject_id != source.body_id
+            or authorization.interval_id != source.interval_id
+            or str(getattr(authorization.role, "value", authorization.role))
+            != role
+            or authorization.raw_value != record.get("proposed_value")
+            or authorization.raw_unit != record.get("proposed_unit")
+        ):
+            return None
+        return authorization
+
+    friction_authorization = exact_authorization(
+        source.friction_assumption_id, "coefficient_friction"
+    )
+    rest_authorization = exact_authorization(
+        source.rest_assumption_id, "velocity"
+    )
+    if (
+        friction_authorization is None
+        or rest_authorization is None
+        or friction_authorization.raw_value != "0"
+        or friction_authorization.raw_unit != ""
+        or rest_authorization.raw_value != "0"
+        or rest_authorization.raw_unit != "m/s"
+    ):
+        return None
+
+    quantities_by_id = {
+        item["quantity_id"]: item for item in payload["quantities"]
+    }
+    mass = quantities_by_id[source.mass_quantity_id]
+    stiffness = quantities_by_id[source.stiffness_quantity_id]
+    deformation_start = quantities_by_id[source.deformation_start_quantity_id]
+    try:
+        mass_value = normalize_quantity(
+            mass["raw_value"], mass["raw_unit"], "scalar", DimensionVector(mass=1)
+        ).value
+        stiffness_value = normalize_quantity(
+            stiffness["raw_value"],
+            stiffness["raw_unit"],
+            "scalar",
+            DimensionVector(mass=1, time=-2),
+        ).value
+        deformation_value = normalize_quantity(
+            deformation_start["raw_value"],
+            deformation_start["raw_unit"],
+            "scalar",
+            DimensionVector(length=1),
+        ).value
+    except Exception:
+        return None
+    if (
+        type(mass_value) is not float
+        or not math.isfinite(mass_value)
+        or mass_value <= 0.0
+        or type(stiffness_value) is not float
+        or not math.isfinite(stiffness_value)
+        or stiffness_value <= 0.0
+        or type(deformation_value) is not float
+        or not math.isfinite(deformation_value)
+    ):
+        return None
+
+    ids = {
+        "frame": "frame_closure_spring_energy",
+        "attachment": "geo_closure_spring_attachment",
+        "deformation_end": "qty_closure_spring_deformation_end",
+        "deformation_end_symbol": "sym_closure_spring_deformation_end",
+        "kinetic_start": "qty_closure_spring_kinetic_start",
+        "kinetic_start_symbol": "sym_closure_spring_kinetic_start",
+        "kinetic_end": "qty_closure_spring_kinetic_end",
+        "kinetic_end_symbol": "sym_closure_spring_kinetic_end",
+        "spring_energy_start": "qty_closure_spring_energy_start",
+        "spring_energy_start_symbol": "sym_closure_spring_energy_start",
+        "spring_energy_end": "qty_closure_spring_energy_end",
+        "spring_energy_end_symbol": "sym_closure_spring_energy_end",
+        "body_final_state": "state_closure_spring_body_final",
+        "spring_initial_state": "state_closure_spring_initial",
+        "no_energy_loss": "asm_closure_spring_no_energy_loss",
+    }
+    if _authored_draft_ids(payload) & set(ids.values()):
+        return None
+
+    evidence_by_id = {
+        item["evidence_id"]: item for item in payload["source_evidence"]
+    }
+
+    def evidence(*groups: Any) -> list[str]:
+        return sorted(
+            {
+                item
+                for group in groups
+                for item in (group or ())
+                if type(item) is str and item in evidence_by_id
+            }
+        )
+
+    states_by_id = {
+        item["state_condition_id"]: item for item in payload["state_conditions"]
+    }
+    rest_state = states_by_id[source.rest_state_id]
+    endpoint_state = states_by_id[source.endpoint_state_id]
+    rest_evidence = evidence(
+        rest_state.get("evidence_refs"),
+        assumptions[source.rest_assumption_id].get("evidence_refs"),
+    )
+    endpoint_evidence = evidence(endpoint_state.get("evidence_refs"))
+    deformation_evidence = evidence(deformation_start.get("evidence_refs"))
+    stiffness_evidence = evidence(stiffness.get("evidence_refs"))
+    mass_evidence = evidence(mass.get("evidence_refs"))
+    friction_evidence = evidence(
+        assumptions[source.friction_assumption_id].get("evidence_refs")
+    )
+    all_evidence = evidence(
+        rest_evidence,
+        endpoint_evidence,
+        deformation_evidence,
+        stiffness_evidence,
+        mass_evidence,
+        friction_evidence,
+    )
+    if any(
+        not group
+        for group in (
+            rest_evidence,
+            endpoint_evidence,
+            deformation_evidence,
+            stiffness_evidence,
+            mass_evidence,
+            friction_evidence,
+        )
+    ):
+        return None
+
+    axis_direction = {
+        "kind": "axis",
+        "frame_id": ids["frame"],
+        "axis": "x",
+        "sign": 1,
+    }
+    frame = {
+        "frame_id": ids["frame"],
+        "frame_type": "cartesian_1d",
+        "origin": {"kind": "world"},
+        "axes": [{"axis": "x", "direction": axis_direction}],
+        "parent_frame_id": None,
+        "translating_with_entity_id": None,
+        "rotating_about_point_id": None,
+        "generalized_coordinate_symbol_ids": [],
+        "evidence_refs": all_evidence,
+    }
+
+    interval = dict(payload["motion_intervals"][0])
+    interval.update(frame_id=ids["frame"], evidence_refs=all_evidence)
+    events = []
+    for original in payload["events"]:
+        event = dict(original)
+        if event["event_id"] == source.start_event_id:
+            event["evidence_refs"] = rest_evidence
+        elif event["event_id"] == source.end_event_id:
+            event["evidence_refs"] = endpoint_evidence
+        events.append(event)
+
+    rewritten_quantities: list[dict[str, Any]] = []
+    rebound: list[str] = []
+    for original in payload["quantities"]:
+        item = dict(original)
+        quantity_id = item["quantity_id"]
+        if quantity_id == source.stiffness_quantity_id:
+            item.update(subject_id=source.spring_id)
+            rebound.append(quantity_id)
+        elif quantity_id == source.deformation_start_quantity_id:
+            item.update(
+                frame_id=ids["frame"],
+                component="x",
+                direction=axis_direction,
+            )
+            rebound.append(quantity_id)
+        elif quantity_id == source.speed_start_quantity_id:
+            item.update(
+                frame_id=ids["frame"],
+                component="magnitude",
+                direction=None,
+                evidence_refs=rest_evidence,
+            )
+            rebound.append(quantity_id)
+        elif quantity_id == source.speed_end_quantity_id:
+            item.update(
+                role="speed",
+                frame_id=ids["frame"],
+                component="magnitude",
+                direction=None,
+                evidence_refs=endpoint_evidence,
+            )
+            rebound.append(quantity_id)
+        rewritten_quantities.append(item)
+
+    length_dimension = DimensionVector(length=1).model_dump(mode="json")
+    speed_dimension = DimensionVector(length=1, time=-1).model_dump(mode="json")
+    energy_dimension = DimensionVector(
+        mass=1, length=2, time=-2
+    ).model_dump(mode="json")
+
+    def generated_quantity(
+        quantity_id: str,
+        symbol_id: str,
+        role: str,
+        subject_id: str,
+        dimension: dict[str, int],
+        event_id: str,
+        evidence_refs: list[str],
+        *,
+        component: str,
+        direction: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "quantity_id": quantity_id,
+            "symbol_id": symbol_id,
+            "role": role,
+            "subject_id": subject_id,
+            "point_id": None,
+            "frame_id": ids["frame"],
+            "interval_id": source.interval_id,
+            "event_id": event_id,
+            "component": component,
+            "direction": direction,
+            "shape": "scalar",
+            "dimension": dimension,
+            "provenance": "inferred",
+            "evidence_refs": evidence_refs,
+            "assumption_policy_ref": None,
+            "correction_id": None,
+            "model_confidence": None,
+            "raw_value": None,
+            "raw_unit": None,
+        }
+
+    generated_quantities = [
+        generated_quantity(
+            ids["deformation_end"],
+            ids["deformation_end_symbol"],
+            "displacement",
+            source.spring_id,
+            length_dimension,
+            source.end_event_id,
+            endpoint_evidence,
+            component="x",
+            direction=axis_direction,
+        ),
+        generated_quantity(
+            ids["kinetic_start"],
+            ids["kinetic_start_symbol"],
+            "energy",
+            source.body_id,
+            energy_dimension,
+            source.start_event_id,
+            rest_evidence,
+            component="magnitude",
+        ),
+        generated_quantity(
+            ids["kinetic_end"],
+            ids["kinetic_end_symbol"],
+            "energy",
+            source.body_id,
+            energy_dimension,
+            source.end_event_id,
+            endpoint_evidence,
+            component="magnitude",
+        ),
+        generated_quantity(
+            ids["spring_energy_start"],
+            ids["spring_energy_start_symbol"],
+            "energy",
+            source.spring_id,
+            energy_dimension,
+            source.start_event_id,
+            deformation_evidence,
+            component="magnitude",
+        ),
+        generated_quantity(
+            ids["spring_energy_end"],
+            ids["spring_energy_end_symbol"],
+            "energy",
+            source.spring_id,
+            energy_dimension,
+            source.end_event_id,
+            endpoint_evidence,
+            component="magnitude",
+        ),
+    ]
+    # Kept explicit: the source's final-speed unknown is retained, never
+    # replaced by or initialized from an answer.
+    assert speed_dimension == payload["queries"][0]["output_dimension"]
+
+    generated_symbols = [
+        {
+            "symbol_id": item["symbol_id"],
+            "quantity_id": item["quantity_id"],
+            "dimension": item["dimension"],
+            "shape": "scalar",
+            "vector_length": None,
+        }
+        for item in generated_quantities
+    ]
+
+    support = dict(payload["geometry"][0])
+    support["evidence_refs"] = friction_evidence
+    attachment = {
+        "relation_id": ids["attachment"],
+        "kind": "attached",
+        "participant_ids": [source.body_id, source.spring_id],
+        "expression": None,
+        "quantity_ids": [],
+        "interval_id": source.interval_id,
+        "evidence_refs": evidence(deformation_evidence, stiffness_evidence),
+    }
+
+    interaction = dict(payload["interactions"][0])
+    interaction.update(
+        frame_id=ids["frame"],
+        quantity_ids=[
+            source.stiffness_quantity_id,
+            source.deformation_start_quantity_id,
+            ids["deformation_end"],
+            ids["spring_energy_start"],
+            ids["spring_energy_end"],
+        ],
+        evidence_refs=evidence(deformation_evidence, stiffness_evidence),
+    )
+
+    body_initial = dict(rest_state)
+    body_initial.update(
+        quantity_ids=[source.speed_start_quantity_id, ids["kinetic_start"]],
+        evidence_refs=rest_evidence,
+    )
+    body_final = {
+        "state_condition_id": ids["body_final_state"],
+        "kind": "final",
+        "state": "active",
+        "subject_id": source.body_id,
+        "interval_id": source.interval_id,
+        "event_id": source.end_event_id,
+        "expression": None,
+        "quantity_ids": [source.speed_end_quantity_id, ids["kinetic_end"]],
+        "evidence_refs": endpoint_evidence,
+    }
+    spring_initial = {
+        "state_condition_id": ids["spring_initial_state"],
+        "kind": "initial",
+        "state": "active",
+        "subject_id": source.spring_id,
+        "interval_id": source.interval_id,
+        "event_id": source.start_event_id,
+        "expression": None,
+        "quantity_ids": [
+            source.deformation_start_quantity_id,
+            ids["spring_energy_start"],
+        ],
+        "evidence_refs": deformation_evidence,
+    }
+    spring_final = dict(endpoint_state)
+    spring_final.update(
+        quantity_ids=[ids["deformation_end"], ids["spring_energy_end"]],
+        evidence_refs=endpoint_evidence,
+    )
+
+    query = dict(payload["queries"][0])
+    target = dict(query["target"])
+    target.update(role="speed", frame_id=ids["frame"])
+    query.update(target=target, evidence_refs=endpoint_evidence)
+
+    no_energy_loss = {
+        "assumption_id": ids["no_energy_loss"],
+        "kind": "no_energy_loss",
+        "subject_id": source.body_id,
+        "interval_id": source.interval_id,
+        "disposition": "approved",
+        "proposed_role": None,
+        "proposed_value": None,
+        "proposed_unit": None,
+        "reason": (
+            "closed semantic policy: exact frictionless support and the complete "
+            "spring-only interaction inventory conserve mechanical energy"
+        ),
+        "evidence_refs": evidence(friction_evidence, endpoint_evidence),
+    }
+
+    closed = dict(payload)
+    closed.update(
+        {
+            "reference_frames": [frame],
+            "motion_intervals": [interval],
+            "events": events,
+            "symbols": [*payload["symbols"], *generated_symbols],
+            "quantities": [*rewritten_quantities, *generated_quantities],
+            "geometry": [support, attachment],
+            "interactions": [interaction],
+            "state_conditions": [
+                body_initial,
+                body_final,
+                spring_initial,
+                spring_final,
+            ],
+            "queries": [query],
+            "assumptions": [*payload["assumptions"], no_energy_loss],
+        }
+    )
+    created_ids = tuple(sorted(ids.values()))
+    return (
+        closed,
+        created_ids,
+        tuple(sorted(rebound)),
+        (ids["no_energy_loss"],),
+    )
+
+
 _TRANSACTIONS = {
     ProfileId.signed_constant_acceleration_1d: (
         _signed_constant_acceleration_1d_transaction
@@ -7066,6 +7524,9 @@ _TRANSACTIONS = {
     ProfileId.incline_hanging_pulley: _incline_hanging_pulley_transaction,
     ProfileId.table_pulley_two_body: _table_pulley_two_body_transaction,
     ProfileId.horizontal_contact: _horizontal_driven_contact_transaction,
+    ProfileId.spring_energy_natural_length: (
+        _spring_natural_length_energy_transaction
+    ),
     ProfileId.incline_kinetic_sliding: _incline_kinetic_sliding_transaction,
     ProfileId.rigid_two_point_speed: (
         _rigid_two_point_speed_transfer_transaction
@@ -7154,7 +7615,25 @@ def apply_complete_profile(
             sanitized_reason="profile_shape_not_closable",
         )
 
-    closed_payload, created, rebound = built
+    if len(built) == 3:
+        closed_payload, created, rebound = built
+        derived_approved: tuple[str, ...] = ()
+    elif len(built) == 4:
+        closed_payload, created, rebound, derived_approved = built
+        if plan.profile_id is not ProfileId.spring_energy_natural_length:
+            return ProfileApplication(
+                ApplicationOutcome.rejected,
+                draft,
+                plan.profile_id,
+                sanitized_reason="derived_authority_not_permitted",
+            )
+    else:
+        return ProfileApplication(
+            ApplicationOutcome.rejected,
+            draft,
+            plan.profile_id,
+            sanitized_reason="transaction_contract_invalid",
+        )
     try:
         closed = MechanicsProblemDraftV1.model_validate(closed_payload)
     except Exception as exc:
@@ -7166,12 +7645,40 @@ def apply_complete_profile(
             plan.profile_id,
             sanitized_reason=type(exc).__name__,
         )
+    if derived_approved:
+        assumptions = {
+            item.assumption_id: item for item in closed.assumptions
+        }
+        original_ids = {item.assumption_id for item in draft.assumptions}
+        if (
+            derived_approved
+            != ("asm_closure_spring_no_energy_loss",)
+            or not set(derived_approved) <= set(created)
+            or set(derived_approved) & original_ids
+            or any(
+                assumption_id not in assumptions
+                or assumptions[assumption_id].kind != "no_energy_loss"
+                or assumptions[assumption_id].disposition.value != "approved"
+                or assumptions[assumption_id].proposed_role is not None
+                or assumptions[assumption_id].proposed_value is not None
+                or assumptions[assumption_id].proposed_unit is not None
+                or not assumptions[assumption_id].evidence_refs
+                for assumption_id in derived_approved
+            )
+        ):
+            return ProfileApplication(
+                ApplicationOutcome.rejected,
+                draft,
+                plan.profile_id,
+                sanitized_reason="derived_authority_invalid",
+            )
     return ProfileApplication(
         ApplicationOutcome.applied,
         closed,
         plan.profile_id,
         created_record_ids=created,
         rebound_quantity_ids=rebound,
+        derived_approved_assumption_ids=derived_approved,
     )
 
 
@@ -7243,8 +7750,10 @@ def close_projected_draft(
     touched.
 
     `authorized_assumptions` is the Lane B authority bundle's own immutable
-    map, passed through for transactions to consume.  Closure can spend that
-    authority; it can never create it.
+    map, passed through for transactions to consume.  Closure can never create
+    a value authorization.  One exact transaction may return a separately
+    checked value-free semantic authority derived from complete source
+    topology; the caller decides whether to add that id to its approved set.
     """
 
     from evaluation.phase56_stage7.complete_profile import plan_every_profile

@@ -564,6 +564,7 @@ def test_the_profile_table_and_enum_cannot_drift():
         ProfileId.rotating_relative_frame,
         ProfileId.relative_translating_frame,
         ProfileId.horizontal_contact,
+        ProfileId.spring_energy_natural_length,
     }
 
 

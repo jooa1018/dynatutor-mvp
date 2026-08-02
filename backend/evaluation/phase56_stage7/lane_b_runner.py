@@ -311,11 +311,18 @@ def run_lane_b_case(
     # a partially attached one.  A profile that does not close leaves the Draft
     # exactly as projected.  Closure receives the bundle's own immutable map so
     # a transaction can spend an issued authorization; it can never mint one.
-    draft = close_projected_draft(
+    closure = close_projected_draft(
         projection.draft,
         approved_assumption_ids=approved,
         authorized_assumptions=authority_map,
-    ).draft
+    )
+    draft = closure.draft
+    # A transaction may return a bounded, value-free semantic authority only
+    # after `apply_complete_profile` has revalidated its closed record.  Value
+    # authorizations remain exclusively in the pre-closure authority bundle.
+    approved = tuple(
+        sorted(set(approved) | set(closure.derived_approved_assumption_ids))
+    )
     return _run_lane_b_from_closed_draft(
         text=projection.problem_text,
         draft=draft,
@@ -364,6 +371,9 @@ def run_lane_b_case_with_selected_profile(
         profile_id,
         approved_assumption_ids=approved,
         authorized_assumptions=authority_map,
+    )
+    approved = tuple(
+        sorted(set(approved) | set(application.derived_approved_assumption_ids))
     )
     return application, _run_lane_b_from_closed_draft(
         text=projection.problem_text,

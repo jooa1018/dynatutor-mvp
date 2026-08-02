@@ -33,6 +33,7 @@ from evaluation.phase56_stage7.corpus_v2.records import (
     FrameType,
     ScalarEncoding,
 )
+from engine.mechanics.spring_endpoint import canonical_spring_endpoint
 
 
 CORPUS_V2_VALIDATION_VERSION = "phase56-stage7-corpus-v2-validation-v3"
@@ -436,10 +437,38 @@ def validate_augmentation(
     for endpoint in augmentation.endpoint_conditions:
         if events and endpoint.boundary_event_id not in events:
             raise _fail(V2ValidationReason.endpoint_without_event)
-    if _duplicates(
-        item.boundary_event_id for item in augmentation.endpoint_conditions
-    ):
-        raise _fail(V2ValidationReason.duplicate_endpoint)
+    by_boundary: dict[str, list[object]] = {}
+    for endpoint in augmentation.endpoint_conditions:
+        by_boundary.setdefault(endpoint.boundary_event_id, []).append(endpoint)
+    for endpoints in by_boundary.values():
+        if len(endpoints) == 1:
+            continue
+        # The sole redundant spelling admitted by the contract: the two exact
+        # spring natural-length tokens may state the same endpoint twice.  They
+        # must bind the same subject, scope, quantity and expression; otherwise
+        # they are two competing physical claims, just like every B26 conflict.
+        conditions = {item.condition.value for item in endpoints}
+        signatures = {
+            (
+                item.subject_id,
+                item.interval_id,
+                item.event_id,
+                item.condition_quantity_id,
+                item.condition_expression,
+            )
+            for item in endpoints
+        }
+        if not (
+            len(endpoints) == 2
+            and conditions
+            == {"reaches_natural_length", "zero_spring_deformation"}
+            and all(
+                canonical_spring_endpoint(item.condition) is not None
+                for item in endpoints
+            )
+            and len(signatures) == 1
+        ):
+            raise _fail(V2ValidationReason.duplicate_endpoint)
 
     # --- constraints and interaction targets --------------------------------
     for constraint in augmentation.constraint_authorities:

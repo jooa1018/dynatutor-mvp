@@ -55,8 +55,11 @@ from evaluation.phase56_stage7.typed_support_frames import (
 from evaluation.phase56_stage7.horizontal_driven_contact import (
     read_horizontal_driven_sliding_source,
 )
+from evaluation.phase56_stage7.spring_natural_length import (
+    read_spring_natural_length_source,
+)
 
-COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v4"
+COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v5"
 COMPLETE_PROFILE_CENSUS_VERSION = "phase56-stage7-complete-profile-census-v1"
 COMPLETE_PROFILE_PLAN_SCHEMA = "dynatutor.phase56_stage7.complete_profile_plan"
 COMPLETE_PROFILE_PLAN_VERSION = "1.0"
@@ -95,6 +98,7 @@ class ProfileId(str, Enum):
     slot_pin_relative_frame = "slot_pin_relative_frame"
     rotating_relative_frame = "rotating_relative_frame"
     relative_translating_frame = "relative_translating_frame"
+    spring_energy_natural_length = "spring_energy_natural_length"
     spring_vibration_deferred = "spring_vibration_deferred"
 
 
@@ -2534,6 +2538,7 @@ class _DraftFacts:
         "rolling_incline_energy_speed_profile",
         "rotating_relative_profile",
         "semantic_directions",
+        "spring_natural_length_profile",
         "vertical_circle_top_speed_profile",
     )
 
@@ -2584,6 +2589,9 @@ class _DraftFacts:
             read_horizontal_driven_sliding_source(
                 draft.model_dump(mode="json", warnings="none")
             )
+        )
+        self.spring_natural_length_profile = read_spring_natural_length_source(
+            draft.model_dump(mode="json", warnings="none")
         )
 
 
@@ -3231,6 +3239,52 @@ def _direct_constant_force_work_capability(
     """The existing force-work law and linear solver own this scalar balance."""
 
     return PrerequisiteDisposition.explicit_source
+
+
+def _spring_natural_length_prerequisite(name: str) -> "_Resolver":
+    """Resolve one slot of the exact typed spring endpoint profile."""
+
+    explicit = {
+        "spring_body_ownership",
+        "endpoint_zero_deformation",
+        "energy_interval_events",
+        "quantity_initial_deformation",
+        "capability_spring_energy_speed",
+    }
+    server = {
+        "frame_spring_energy",
+        "quantity_initial_speed_authorized",
+        "authority_no_energy_loss",
+    }
+    generated = {
+        "quantity_final_deformation",
+        "quantities_endpoint_energy",
+    }
+
+    def resolve(facts: _DraftFacts) -> PrerequisiteDisposition:
+        if facts.spring_natural_length_profile is None:
+            return PrerequisiteDisposition.missing
+        if name == "authority_frictionless":
+            return (
+                PrerequisiteDisposition.explicit_source
+                if "frictionless" in facts.approved
+                else PrerequisiteDisposition.missing
+            )
+        if name == "authority_starts_from_rest":
+            return (
+                PrerequisiteDisposition.explicit_source
+                if "starts_from_rest" in facts.approved
+                else PrerequisiteDisposition.missing
+            )
+        if name in explicit:
+            return PrerequisiteDisposition.explicit_source
+        if name in server:
+            return PrerequisiteDisposition.server_derivable
+        if name in generated:
+            return PrerequisiteDisposition.generated_unknown
+        return PrerequisiteDisposition.missing
+
+    return resolve
 
 
 class _ProfileSignature:
@@ -4007,6 +4061,82 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _generated_unknown),
             ("capability_relative_acceleration_readout", PrerequisiteKind.capability,
              _relative_acceleration_capability),
+        ),
+    ),
+    _ProfileSignature(
+        ProfileId.spring_energy_natural_length,
+        lambda facts: facts.spring_natural_length_profile is not None,
+        (
+            (
+                "authority_frictionless",
+                PrerequisiteKind.authority,
+                _spring_natural_length_prerequisite("authority_frictionless"),
+            ),
+            (
+                "authority_starts_from_rest",
+                PrerequisiteKind.authority,
+                _spring_natural_length_prerequisite("authority_starts_from_rest"),
+            ),
+            (
+                "spring_body_ownership",
+                PrerequisiteKind.geometry,
+                _spring_natural_length_prerequisite("spring_body_ownership"),
+            ),
+            (
+                "endpoint_zero_deformation",
+                PrerequisiteKind.state_condition,
+                _spring_natural_length_prerequisite("endpoint_zero_deformation"),
+            ),
+            (
+                "energy_interval_events",
+                PrerequisiteKind.state_condition,
+                _spring_natural_length_prerequisite("energy_interval_events"),
+            ),
+            (
+                "quantity_initial_deformation",
+                PrerequisiteKind.interaction_quantity,
+                _spring_natural_length_prerequisite(
+                    "quantity_initial_deformation"
+                ),
+            ),
+            (
+                "frame_spring_energy",
+                PrerequisiteKind.reference_frame,
+                _spring_natural_length_prerequisite("frame_spring_energy"),
+            ),
+            (
+                "quantity_initial_speed_authorized",
+                PrerequisiteKind.interaction_quantity,
+                _spring_natural_length_prerequisite(
+                    "quantity_initial_speed_authorized"
+                ),
+            ),
+            (
+                "quantity_final_deformation",
+                PrerequisiteKind.unknown_symbol,
+                _spring_natural_length_prerequisite(
+                    "quantity_final_deformation"
+                ),
+            ),
+            (
+                "quantities_endpoint_energy",
+                PrerequisiteKind.unknown_symbol,
+                _spring_natural_length_prerequisite(
+                    "quantities_endpoint_energy"
+                ),
+            ),
+            (
+                "authority_no_energy_loss",
+                PrerequisiteKind.authority,
+                _spring_natural_length_prerequisite("authority_no_energy_loss"),
+            ),
+            (
+                "capability_spring_energy_speed",
+                PrerequisiteKind.capability,
+                _spring_natural_length_prerequisite(
+                    "capability_spring_energy_speed"
+                ),
+            ),
         ),
     ),
     _ProfileSignature(

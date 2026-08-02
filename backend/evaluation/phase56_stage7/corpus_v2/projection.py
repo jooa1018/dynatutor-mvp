@@ -48,6 +48,7 @@ from evaluation.phase56_stage7.corpus_v2.validation import (
     V2ValidationError,
     V2ValidationReason,
 )
+from engine.mechanics.spring_endpoint import canonical_spring_endpoint
 
 
 CORPUS_V2_PROJECTION_VERSION = "phase56-stage7-corpus-v2-projection-v3"
@@ -425,7 +426,18 @@ def project_augmentation(
             for condition in conditions
         )
 
-    for endpoint in augmentation.endpoint_conditions:
+    # A validated natural-length/zero-deformation pair is a redundant typed
+    # spelling.  Stable ordering makes its fill-only no-op independent of input
+    # record order; every non-redundant endpoint retains its authored identity.
+    endpoints = sorted(
+        augmentation.endpoint_conditions,
+        key=lambda item: (
+            item.boundary_event_id,
+            canonical_spring_endpoint(item.condition) or item.condition.value,
+            item.endpoint_id,
+        ),
+    )
+    for endpoint in endpoints:
         state = ENGINE_STATE_VALUE.get(endpoint.condition.value)
         if state is None:
             # No engine state means this endpoint, so it is carried only by its

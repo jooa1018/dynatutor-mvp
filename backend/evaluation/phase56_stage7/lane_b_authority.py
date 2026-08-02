@@ -14,8 +14,8 @@ validation**, outside any complete-profile transaction, and produces one
 
 * the approved assumption IDs, exactly the projection's own;
 * an authorization per approved assumption of a **closed value policy** —
-  today exactly ``constant_gravity`` — whose proposal matches that policy to
-  the character;
+  gravity, exact frictionless coefficient, or exact starts-from-rest speed —
+  whose proposal matches that policy to the character;
 * a fingerprint of the source Draft it was built from; and
 * a fingerprint of the bundle itself.
 
@@ -59,7 +59,7 @@ from engine.mechanics.validation import AssumptionAuthorization
 
 from evaluation.phase56_stage7.lane_b_draft_projection import DraftProjection
 
-LANE_B_AUTHORITY_BUNDLE_VERSION = "phase56-stage7-lane-b-authority-bundle-v1"
+LANE_B_AUTHORITY_BUNDLE_VERSION = "phase56-stage7-lane-b-authority-bundle-v2"
 
 # The closed value policy: the only assumption kinds whose approval may ground
 # a server-valued quantity, and the exact role/value/unit each one is permitted
@@ -67,6 +67,8 @@ LANE_B_AUTHORITY_BUNDLE_VERSION = "phase56-stage7-lane-b-authority-bundle-v1"
 # widening it is a contract change, not a convenience.
 _AUTHORITY_VALUE_POLICY: dict[str, tuple[str, str, str]] = {
     "constant_gravity": ("gravity", "9.81", "m/s^2"),
+    "frictionless": ("coefficient_friction", "0", ""),
+    "starts_from_rest": ("velocity", "0", "m/s"),
 }
 
 # The closed role → dimension mapping for authorized values.  A role absent
@@ -75,6 +77,8 @@ _AUTHORITY_VALUE_POLICY: dict[str, tuple[str, str, str]] = {
 # number.
 _AUTHORITY_ROLE_DIMENSIONS: dict[str, tuple[tuple[str, int], ...]] = {
     "gravity": (("length", 1), ("time", -2)),
+    "coefficient_friction": (),
+    "velocity": (("length", 1), ("time", -1)),
 }
 
 # Bounded canonical grammars.  The policy match is already exact, so these are
@@ -328,8 +332,12 @@ def build_lane_b_authority_bundle(
             or item.proposed_unit != policy_unit
         ):
             refusal = AuthorityRefusal.policy_mismatch
-        elif not _VALUE_GRAMMAR.fullmatch(policy_value) or not _UNIT_GRAMMAR.fullmatch(
-            policy_unit
+        elif not _VALUE_GRAMMAR.fullmatch(policy_value) or not (
+            _UNIT_GRAMMAR.fullmatch(policy_unit)
+            or (
+                policy_unit == ""
+                and _AUTHORITY_ROLE_DIMENSIONS.get(policy_role) == ()
+            )
         ):
             refusal = AuthorityRefusal.grammar_rejected
         elif (

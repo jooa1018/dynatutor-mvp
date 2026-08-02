@@ -33,6 +33,8 @@ drift apart.
 
 from __future__ import annotations
 
+from engine.mechanics.spring_endpoint import ZERO_DEFORMATION
+
 from enum import Enum
 from typing import Any, Iterable, Mapping
 
@@ -78,8 +80,8 @@ ENGINE_AXIS_NAMES: frozenset[str] = frozenset(
 ENGINE_STATE_VALUE: dict[str, str] = {
     "comes_to_rest": "at_rest",
     "contact_loss": "separated",
-    "reaches_natural_length": "inactive",
-    "zero_spring_deformation": "inactive",
+    "reaches_natural_length": ZERO_DEFORMATION,
+    "zero_spring_deformation": ZERO_DEFORMATION,
     # The unilateral contact-maintenance boundary is active at this instant:
     # the typed statement behind "the least speed that just keeps contact".
     # Distinct from `contact_loss` — the contact holds, exactly at N = 0.

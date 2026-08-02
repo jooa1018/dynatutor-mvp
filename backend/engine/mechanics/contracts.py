@@ -739,6 +739,9 @@ class StateValue(str, Enum):
     rolling = "rolling"
     no_slip = "no_slip"
     unknown = "unknown"
+    # Exact spring boundary, not a generic inactive/final state.  Appended to
+    # preserve every existing enum value and its declaration order.
+    zero_deformation = "zero_deformation"
 
 
 class StateCondition(StrictModel):

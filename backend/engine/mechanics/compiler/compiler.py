@@ -98,6 +98,9 @@ from engine.mechanics.math_ast import (
     VectorNode,
     validate_math_expressions,
 )
+from engine.mechanics.spring_endpoint import (
+    is_exact_zero_deformation_endpoint,
+)
 from engine.mechanics.normalization import NORMALIZATION_POLICY_VERSION, VALIDATION_POLICY_VERSION
 from engine.mechanics.units import normalize_quantity
 from engine.mechanics.validation import AssumptionAuthorization, CorrectionAuthorization
@@ -10282,6 +10285,8 @@ def _wave_e_contract(
         primitive: sum(item.primitive is primitive for item in ir.entities)
         for primitive in (
             EntityPrimitive.particle,
+            EntityPrimitive.rigid_body,
+            EntityPrimitive.body_component,
             EntityPrimitive.spring,
             EntityPrimitive.surface,
             EntityPrimitive.incline,
@@ -10309,13 +10314,22 @@ def _wave_e_contract(
     spring_displacement_count = sum(
         item.role is QuantityRole.displacement for item in ir.quantities
     )
+    has_exact_zero_deformation_endpoint = any(
+        item.kind.value == "boundary"
+        and is_exact_zero_deformation_endpoint(item.state)
+        for item in ir.state_conditions
+    )
     if (
         (primitive_counts[EntityPrimitive.spring] or has_spring)
         and query.target.role is QuantityRole.speed
         and spring_energy_count == 4
         and spring_displacement_count == 2
     ):
-        kind = "spring_energy_speed"
+        kind = (
+            "spring_natural_length_speed"
+            if has_exact_zero_deformation_endpoint
+            else "spring_energy_speed"
+        )
     elif (
         has_radius
         and has_contact
@@ -10352,13 +10366,26 @@ def _wave_e_contract(
     expected_entities = {
         "spring_energy_speed": {
             EntityPrimitive.particle: 1,
+            EntityPrimitive.rigid_body: 0,
+            EntityPrimitive.body_component: 0,
             EntityPrimitive.spring: 1,
             EntityPrimitive.surface: 0,
             EntityPrimitive.incline: 0,
             EntityPrimitive.environment: 0,
         },
+        "spring_natural_length_speed": {
+            EntityPrimitive.particle: 0,
+            EntityPrimitive.rigid_body: 1,
+            EntityPrimitive.body_component: 0,
+            EntityPrimitive.spring: 1,
+            EntityPrimitive.surface: 1,
+            EntityPrimitive.incline: 0,
+            EntityPrimitive.environment: 0,
+        },
         "flat_curve_friction": {
             EntityPrimitive.particle: 1,
+            EntityPrimitive.rigid_body: 0,
+            EntityPrimitive.body_component: 0,
             EntityPrimitive.spring: 0,
             EntityPrimitive.surface: 1,
             EntityPrimitive.incline: 0,
@@ -10366,6 +10393,8 @@ def _wave_e_contract(
         },
         "banked_curve_no_friction": {
             EntityPrimitive.particle: 1,
+            EntityPrimitive.rigid_body: 0,
+            EntityPrimitive.body_component: 0,
             EntityPrimitive.spring: 0,
             EntityPrimitive.surface: 0,
             EntityPrimitive.incline: 1,
@@ -10428,7 +10457,7 @@ def _wave_e_contract(
             (QuantityRole.mass, "mass"),
             (QuantityRole.stiffness, "spring stiffness"),
         )
-        if kind == "spring_energy_speed"
+        if kind in {"spring_energy_speed", "spring_natural_length_speed"}
         else (
             (QuantityRole.mass, "mass"),
             (QuantityRole.gravity, "gravity magnitude"),
@@ -10486,6 +10515,11 @@ def _wave_e_contract(
             "kinetic_energy",
             "no_energy_loss",
         },
+        "spring_natural_length_speed": {
+            "frictionless",
+            "starts_from_rest",
+            "no_energy_loss",
+        },
         "flat_curve_friction": {
             "horizontal_surface",
             "uniform_circular_motion",
@@ -10503,9 +10537,18 @@ def _wave_e_contract(
     if any(not item.evidence_refs for item in ir.assumptions):
         return None, failure("requires source evidence on every authority")
 
-    if kind == "spring_energy_speed":
+    if kind in {"spring_energy_speed", "spring_natural_length_speed"}:
+        body_primitives = (
+            {EntityPrimitive.particle}
+            if kind == "spring_energy_speed"
+            else {
+                EntityPrimitive.particle,
+                EntityPrimitive.rigid_body,
+                EntityPrimitive.body_component,
+            }
+        )
         particles = tuple(
-            item for item in ir.entities if item.primitive is EntityPrimitive.particle
+            item for item in ir.entities if item.primitive in body_primitives
         )
         final_states = tuple(
             item
@@ -10520,6 +10563,49 @@ def _wave_e_contract(
                 "requires the queried speed in one exact final particle state",
                 speed.quantity_id,
             )
+        if kind == "spring_natural_length_speed":
+            intervals = tuple(
+                item
+                for item in ir.motion_intervals
+                if item.interval_id == speed.interval_id
+            )
+            rest_velocities = tuple(
+                item
+                for item in ir.quantities
+                if item.role is QuantityRole.velocity
+                and item.subject_id == speed.subject_id
+                and item.interval_id == speed.interval_id
+            )
+            exact_endpoints = tuple(
+                item
+                for item in ir.state_conditions
+                if item.kind.value == "boundary"
+                and is_exact_zero_deformation_endpoint(item.state)
+                and item.interval_id == speed.interval_id
+            )
+            rest_states = tuple(
+                item
+                for item in ir.state_conditions
+                if item.kind.value == "initial"
+                and item.state is StateValue.at_rest
+                and item.subject_id == speed.subject_id
+                and item.interval_id == speed.interval_id
+            )
+            if (
+                len(intervals) != 1
+                or len(rest_velocities) != 1
+                or len(exact_endpoints) != 1
+                or len(rest_states) != 1
+                or intervals[0].start_event_id != rest_velocities[0].event_id
+                or intervals[0].start_event_id != rest_states[0].event_id
+                or intervals[0].end_event_id != speed.event_id
+                or intervals[0].end_event_id != exact_endpoints[0].event_id
+                or rest_velocities[0].quantity_id not in rest_states[0].quantity_ids
+            ):
+                return None, failure(
+                    "requires exact rest and zero-deformation event boundaries",
+                    speed.quantity_id,
+                )
     elif kind == "flat_curve_friction":
         regimes = tuple(
             item

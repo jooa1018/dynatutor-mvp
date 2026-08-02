@@ -47,6 +47,9 @@ from engine.mechanics.math_ast import (
     Sqrt,
     Subtract,
 )
+from engine.mechanics.spring_endpoint import (
+    is_exact_zero_deformation_endpoint,
+)
 
 
 def _rule(
@@ -106,6 +109,7 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("kinetic_energy", "work_energy", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.energy), cost=3, hooks=("energy_residual",)),
     _rule("gravity_potential", "work_energy", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.height, QuantityRole.energy), interactions=(InteractionKind.gravity.value,), cost=3, hooks=("energy_residual",)),
     _rule("spring_potential", "work_energy", (QuantityRole.stiffness, QuantityRole.displacement, QuantityRole.energy), interactions=(InteractionKind.spring.value,), cost=3, hooks=("energy_residual",)),
+    _rule("spring_zero_deformation_endpoint", "constraint", (QuantityRole.displacement,), interactions=(InteractionKind.spring.value,), cost=1, hooks=("boundary_residual", "constitutive_residual")),
     _rule("mechanical_energy_conservation", "work_energy", (QuantityRole.energy,), assumptions=("no_energy_loss",), cost=4, hooks=("energy_residual",)),
     _rule("contact_limiting_static_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction",), cost=3, hooks=("friction_regime", "force_balance")),
     _rule("flat_curve_zero_friction_boundary", "constraint", (QuantityRole.speed, QuantityRole.acceleration, QuantityRole.coefficient_friction, QuantityRole.gravity, QuantityRole.radius), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction", "uniform_circular_motion"), cost=1, hooks=("domain_residual", "friction_regime", "kinematic_residual")),
@@ -10294,6 +10298,8 @@ class _SpringEnergySpeedLawProfile:
     kinetic_energy_ids: tuple[str, ...]
     conservation_ids: tuple[str, ...]
     state_ids: tuple[str, ...]
+    zero_deformation_state_id: str | None = None
+    initial_rest_state_id: str | None = None
 
 
 def _exact_world_cartesian_1d_frame(frame: object) -> bool:
@@ -10319,7 +10325,7 @@ def _exact_world_cartesian_1d_frame(frame: object) -> bool:
     )
 
 
-def _spring_energy_speed_profile(
+def _legacy_spring_energy_speed_profile(
     context: LawContext,
 ) -> _SpringEnergySpeedLawProfile | None:
     bodies = tuple(
@@ -10617,6 +10623,422 @@ def _spring_energy_speed_profile(
     )
 
 
+def _spring_natural_length_energy_speed_profile(
+    context: LawContext,
+) -> _SpringEnergySpeedLawProfile | None:
+    """Recognize only the closed typed-source natural-length transaction.
+
+    This is deliberately a sibling of the legacy fixture recognizer, not a
+    relaxation of it.  Events, the support, the exact endpoint state and the
+    two source authorities are required here and remain forbidden there.
+    """
+
+    body_primitives = {
+        EntityPrimitive.particle,
+        EntityPrimitive.rigid_body,
+        EntityPrimitive.body_component,
+    }
+    bodies = tuple(
+        item for item in context.entities if item.primitive in body_primitives
+    )
+    springs = tuple(
+        item for item in context.entities if item.primitive is EntityPrimitive.spring
+    )
+    surfaces = tuple(
+        item for item in context.entities if item.primitive is EntityPrimitive.surface
+    )
+    if (
+        len(context.entities) != 3
+        or len(bodies) != 1
+        or len(springs) != 1
+        or len(surfaces) != 1
+    ):
+        return None
+    body_id = bodies[0].entity_id
+    spring_id = springs[0].entity_id
+    surface_id = surfaces[0].entity_id
+
+    if len(context.reference_frames) != 1 or context.points:
+        return None
+    frame = context.reference_frames[0]
+    if not _exact_world_cartesian_1d_frame(frame):
+        return None
+
+    if len(context.motion_intervals) != 1 or len(context.events) != 2:
+        return None
+    interval = context.motion_intervals[0]
+    start_event_id = interval.start_event_id
+    end_event_id = interval.end_event_id
+    if (
+        set(interval.subject_ids) != {body_id, spring_id}
+        or len(interval.subject_ids) != 2
+        or interval.frame_id != frame.frame_id
+        or start_event_id is None
+        or end_event_id is None
+        or start_event_id == end_event_id
+        or not interval.evidence_refs
+    ):
+        return None
+    events = {item.event_id: item for item in context.events}
+    if len(events) != 2:
+        return None
+    start_event = events.get(start_event_id)
+    end_event = events.get(end_event_id)
+    if start_event is None or end_event is None:
+        return None
+    for event, expected_kind in (
+        (start_event, "release"),
+        (end_event, "finish"),
+    ):
+        if (
+            getattr(event.kind, "value", event.kind) != expected_kind
+            or set(event.subject_ids) != {body_id, spring_id}
+            or len(event.subject_ids) != 2
+            or set(event.interval_ids) != {interval.interval_id}
+            or event.occurs_in_interval_ids
+            or event.time_quantity_id is not None
+            or not event.evidence_refs
+        ):
+            return None
+
+    if len(context.geometry) != 2:
+        return None
+    attachments = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.attached
+    )
+    supports = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.lies_on
+    )
+    if len(attachments) != 1 or len(supports) != 1:
+        return None
+    attachment = attachments[0]
+    support = supports[0]
+    if (
+        set(attachment.participant_ids) != {body_id, spring_id}
+        or len(attachment.participant_ids) != 2
+        or attachment.expression is not None
+        or attachment.quantity_ids
+        or attachment.interval_id != interval.interval_id
+        or not attachment.evidence_refs
+        or set(support.participant_ids) != {body_id, surface_id}
+        or len(support.participant_ids) != 2
+        or support.expression is not None
+        or support.quantity_ids
+        or support.interval_id != interval.interval_id
+        or not support.evidence_refs
+    ):
+        return None
+
+    interactions = tuple(
+        item for item in context.interactions if item.kind is InteractionKind.spring
+    )
+    if len(context.interactions) != 1 or len(interactions) != 1:
+        return None
+    interaction = interactions[0]
+    if (
+        set(interaction.participant_ids) != {body_id, spring_id}
+        or len(interaction.participant_ids) != 2
+        or interaction.point_ids
+        or interaction.frame_id != frame.frame_id
+        or interaction.interval_id != interval.interval_id
+        or interaction.event_id is not None
+        or not interaction.evidence_refs
+    ):
+        return None
+
+    states = tuple(context.state_conditions)
+    if len(states) != 4 or any(
+        item.interval_id != interval.interval_id
+        or item.expression is not None
+        or not item.evidence_refs
+        for item in states
+    ):
+        return None
+    body_start = tuple(
+        item
+        for item in states
+        if item.subject_id == body_id
+        and item.kind is StateKind.initial
+        and item.state is StateValue.at_rest
+        and item.event_id == start_event_id
+    )
+    body_end = tuple(
+        item
+        for item in states
+        if item.subject_id == body_id
+        and item.kind is StateKind.final
+        and item.state is StateValue.active
+        and item.event_id == end_event_id
+    )
+    spring_start = tuple(
+        item
+        for item in states
+        if item.subject_id == spring_id
+        and item.kind is StateKind.initial
+        and item.state is StateValue.active
+        and item.event_id == start_event_id
+    )
+    spring_end = tuple(
+        item
+        for item in states
+        if item.subject_id == spring_id
+        and item.kind is StateKind.boundary
+        and is_exact_zero_deformation_endpoint(item.state)
+        and item.event_id == end_event_id
+    )
+    if any(
+        len(items) != 1
+        for items in (body_start, body_end, spring_start, spring_end)
+    ):
+        return None
+    body_start_state = body_start[0]
+    body_end_state = body_end[0]
+    spring_start_state = spring_start[0]
+    spring_end_state = spring_end[0]
+
+    quantities = {item.quantity_id: item for item in context.quantities}
+    if None in quantities or len(quantities) != len(context.quantities):
+        return None
+
+    def state_pair(
+        state: object, role_a: QuantityRole, role_b: QuantityRole
+    ) -> tuple[BoundQuantity, BoundQuantity] | None:
+        if len(state.quantity_ids) != 2:
+            return None
+        selected = tuple(quantities.get(item) for item in state.quantity_ids)
+        if any(item is None for item in selected):
+            return None
+        by_role = {item.role: item for item in selected}
+        if len(by_role) != 2 or set(by_role) != {role_a, role_b}:
+            return None
+        return by_role[role_a], by_role[role_b]
+
+    body_start_pair = state_pair(
+        body_start_state, QuantityRole.velocity, QuantityRole.energy
+    )
+    body_end_pair = state_pair(
+        body_end_state, QuantityRole.speed, QuantityRole.energy
+    )
+    spring_start_pair = state_pair(
+        spring_start_state, QuantityRole.displacement, QuantityRole.energy
+    )
+    spring_end_pair = state_pair(
+        spring_end_state, QuantityRole.displacement, QuantityRole.energy
+    )
+    if any(
+        item is None
+        for item in (
+            body_start_pair,
+            body_end_pair,
+            spring_start_pair,
+            spring_end_pair,
+        )
+    ):
+        return None
+    speed_start, kinetic_start = body_start_pair
+    speed_end, kinetic_end = body_end_pair
+    displacement_start, spring_energy_start = spring_start_pair
+    displacement_end, spring_energy_end = spring_end_pair
+
+    masses = _by_role(context, QuantityRole.mass)
+    stiffnesses = _by_role(context, QuantityRole.stiffness)
+    if len(masses) != 1 or len(stiffnesses) != 1:
+        return None
+    mass = masses[0]
+    stiffness = stiffnesses[0]
+    energy_dimension = DimensionVector(mass=1, length=2, time=-2)
+    speed_dimension = DimensionVector(length=1, time=-1)
+    displacement_dimension = DimensionVector(length=1)
+    stiffness_dimension = DimensionVector(mass=1, time=-2)
+    if (
+        mass.subject_id != body_id
+        or mass.shape is not QuantityShape.scalar
+        or mass.dimension != DimensionVector(mass=1)
+        or mass.point_id is not None
+        or mass.frame_id is not None
+        or mass.interval_id != interval.interval_id
+        or mass.event_id is not None
+        or type(mass.known_si_value) is not float
+        or not math.isfinite(mass.known_si_value)
+        or mass.known_si_value <= 0.0
+        or not mass.evidence_ids
+        or stiffness.subject_id != spring_id
+        or stiffness.shape is not QuantityShape.scalar
+        or stiffness.dimension != stiffness_dimension
+        or stiffness.point_id is not None
+        or stiffness.frame_id is not None
+        or stiffness.interval_id != interval.interval_id
+        or stiffness.event_id is not None
+        or type(stiffness.known_si_value) is not float
+        or not math.isfinite(stiffness.known_si_value)
+        or stiffness.known_si_value <= 0.0
+        or not stiffness.evidence_ids
+    ):
+        return None
+
+    for displacement, event_id, known in (
+        (displacement_start, start_event_id, True),
+        (displacement_end, end_event_id, False),
+    ):
+        if (
+            displacement.subject_id != spring_id
+            or displacement.shape is not QuantityShape.scalar
+            or displacement.dimension != displacement_dimension
+            or displacement.point_id is not None
+            or displacement.frame_id != frame.frame_id
+            or displacement.interval_id != interval.interval_id
+            or displacement.event_id != event_id
+            or displacement.component is not QuantityComponent.x
+            or bool(displacement.known_si_value is not None) is not known
+            or (
+                known
+                and (
+                    type(displacement.known_si_value) is not float
+                    or not math.isfinite(displacement.known_si_value)
+                )
+            )
+            or not displacement.evidence_ids
+            or not _axis_bound(
+                displacement,
+                frame.frame_id,
+                QuantityComponent.x,
+                displacement.direction_sign,
+            )
+        ):
+            return None
+    for speed, event_id, known in (
+        (speed_start, start_event_id, False),
+        (speed_end, end_event_id, False),
+    ):
+        if (
+            speed.subject_id != body_id
+            or speed.shape is not QuantityShape.scalar
+            or speed.dimension != speed_dimension
+            or speed.point_id is not None
+            or speed.frame_id != frame.frame_id
+            or speed.interval_id != interval.interval_id
+            or speed.event_id != event_id
+            or speed.component is not QuantityComponent.magnitude
+            or bool(speed.known_si_value is not None) is not known
+            or (
+                known
+                and (
+                    type(speed.known_si_value) is not float
+                    or not math.isfinite(speed.known_si_value)
+                    or speed.known_si_value != 0.0
+                )
+            )
+            or not speed.evidence_ids
+        ):
+            return None
+    for energy, subject_id, event_id in (
+        (kinetic_start, body_id, start_event_id),
+        (kinetic_end, body_id, end_event_id),
+        (spring_energy_start, spring_id, start_event_id),
+        (spring_energy_end, spring_id, end_event_id),
+    ):
+        if (
+            energy.subject_id != subject_id
+            or energy.shape is not QuantityShape.scalar
+            or energy.dimension != energy_dimension
+            or energy.point_id is not None
+            or energy.frame_id != frame.frame_id
+            or energy.interval_id != interval.interval_id
+            or energy.event_id != event_id
+            or energy.component
+            not in {QuantityComponent.magnitude, QuantityComponent.unspecified}
+            or energy.known_si_value is not None
+            or not energy.evidence_ids
+        ):
+            return None
+
+    expected_quantities = {
+        mass.quantity_id,
+        stiffness.quantity_id,
+        displacement_start.quantity_id,
+        displacement_end.quantity_id,
+        speed_start.quantity_id,
+        speed_end.quantity_id,
+        kinetic_start.quantity_id,
+        kinetic_end.quantity_id,
+        spring_energy_start.quantity_id,
+        spring_energy_end.quantity_id,
+    }
+    if (
+        set(quantities) != expected_quantities
+        or set(interaction.quantity_ids)
+        != {
+            stiffness.quantity_id,
+            displacement_start.quantity_id,
+            displacement_end.quantity_id,
+            spring_energy_start.quantity_id,
+            spring_energy_end.quantity_id,
+        }
+        or len(interaction.quantity_ids) != 5
+    ):
+        return None
+
+    frictionless_ids = context.approved_assumptions(
+        "frictionless", body_id, interval.interval_id
+    )
+    rest_ids = context.approved_assumptions(
+        "starts_from_rest", body_id, interval.interval_id
+    )
+    conservation_ids = context.approved_assumptions(
+        "no_energy_loss", body_id, interval.interval_id
+    )
+    approved_records = tuple(
+        item
+        for item in context.assumptions
+        if item.assumption_id in context.approved_assumption_ids
+    )
+    if (
+        len(frictionless_ids) != 1
+        or len(rest_ids) != 1
+        or len(conservation_ids) != 1
+        or len(context.assumptions) != 3
+        or len(approved_records) != 3
+        or {item.kind for item in approved_records}
+        != {"frictionless", "starts_from_rest", "no_energy_loss"}
+        or any(not item.evidence_refs for item in context.assumptions)
+    ):
+        return None
+
+    return _SpringEnergySpeedLawProfile(
+        body_id=body_id,
+        spring_id=spring_id,
+        frame_id=frame.frame_id,
+        interval_id=interval.interval_id,
+        mass=mass,
+        stiffness=stiffness,
+        displacement_start=displacement_start,
+        displacement_end=displacement_end,
+        speed_start=speed_start,
+        speed_end=speed_end,
+        spring_energy_start=spring_energy_start,
+        spring_energy_end=spring_energy_end,
+        kinetic_energy_start=kinetic_start,
+        kinetic_energy_end=kinetic_end,
+        linear_spring_ids=(),
+        kinetic_energy_ids=(),
+        conservation_ids=conservation_ids,
+        state_ids=tuple(sorted(item.state_condition_id for item in states)),
+        zero_deformation_state_id=spring_end_state.state_condition_id,
+        initial_rest_state_id=body_start_state.state_condition_id,
+    )
+
+
+def _spring_energy_speed_profile(
+    context: LawContext,
+) -> _SpringEnergySpeedLawProfile | None:
+    """Keep legacy and exact typed-source profiles separate and fail closed."""
+
+    legacy = _legacy_spring_energy_speed_profile(context)
+    if legacy is not None:
+        return legacy
+    return _spring_natural_length_energy_speed_profile(context)
+
+
 def _spring_energy_speed_emissions(context: LawContext) -> list[LawEmission]:
     profile = _spring_energy_speed_profile(context)
     if profile is None:
@@ -10631,6 +11053,40 @@ def _spring_energy_speed_emissions(context: LawContext) -> list[LawEmission]:
         (profile.kinetic_energy_end, profile.speed_end),
     )
     emitted: list[LawEmission] = []
+    if profile.initial_rest_state_id is not None:
+        emitted.append(
+            _emit(
+                context,
+                "state_at_rest",
+                Equality(
+                    left=profile.speed_start.expression,
+                    right=LiteralNode(
+                        value=0.0,
+                        dimension=profile.speed_start.dimension,
+                    ),
+                ),
+                (profile.speed_start,),
+                constraint_ids=(profile.initial_rest_state_id,),
+                extra_entity_ids=(profile.body_id,),
+            )
+        )
+    if profile.zero_deformation_state_id is not None:
+        emitted.append(
+            _emit(
+                context,
+                "spring_zero_deformation_endpoint",
+                Equality(
+                    left=profile.displacement_end.expression,
+                    right=LiteralNode(
+                        value=0.0,
+                        dimension=profile.displacement_end.dimension,
+                    ),
+                ),
+                (profile.displacement_end,),
+                constraint_ids=(profile.zero_deformation_state_id,),
+                extra_entity_ids=(profile.body_id, profile.spring_id),
+            )
+        )
     for energy, displacement in spring_pairs:
         emitted.append(
             _emit(
