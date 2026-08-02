@@ -208,3 +208,28 @@ forgery, substitution and isolation attacks against the real types rather than
 reading the source and being satisfied.  It reads only: it never writes to the
 repository, dispatches a workflow, pushes, mutates a pull request, or touches a
 secret.
+
+## Pause-checkpoint closure runs at `1b7dfe4`
+
+Interpreter `/home/user/.venv-stage7/bin/python`, Python 3.11.15, rebuilt for
+this session from `backend/requirements-lock.txt`. `pytest` resolves to
+`/home/user/.venv-stage7/bin/pytest` with the repository `pytest.ini` in
+`backend/`.
+
+| # | Exact command | Exit | Passed | Failed | Skipped | Deselected | Wall |
+|---|---|---:|---:|---:|---:|---:|---:|
+| A | `python -m pytest -q tests/test_phase56_stage7_b29_horizontal_driven_contact.py tests/test_phase56_stage7_b32_spring_natural_length.py tests/test_phase56_stage7_corpus_v2_closure_catalogue_walls.py tests/test_phase56_stage7_profile_application.py` | 0 | **122** | 0 | 0 | 0 | 65.20 s |
+| B | `python -m pytest -q tests/test_phase56_mechanics_banked_curve_no_friction_same_fixture_parity.py tests/test_phase56_mechanics_flat_curve_friction_same_fixture_parity.py tests/test_phase56_mechanics_instant_center_velocity_same_fixture_parity.py` | 0 | **30** | 0 | 0 | 12 | 68.49 s |
+| C | `python backend/tools/run_phase56_stage7_b28a_readonly_checker.py` (clean tree) | 0 | 24 checks, **0 blocking**, 0 non-blocking, `ACCEPTANCE=PASS` | — | — | — | 10.12 s |
+| D | `python backend/tools/run_phase56_stage7_offline_gate.py --output … --expect-head-sha 1b7dfe4…` (offline env) | 0 | `STAGE7_OFFLINE_GATE=PASS`, scope `CORPUS_INDEPENDENT_REGRESSION`, public lanes `NOT_RUN` | — | — | — | — |
+| E | `python backend/tools/check_stage7_ci_artifact_identity.py --report … --expect-head-sha … --expect-raw-sha256 …` | 0 | `STAGE7_ARTIFACT_IDENTITY_MATCH=true`, `STAGE7_CI_ARTIFACT_IDENTITY=PASS` | — | — | — | — |
+| F | official v1 strict re-measurement over the approved archive (runtime first, gold second, canonical scorer) | 0 | 41/81 supported correct, 0 wrong, 0 solved-but-unscored, 12/12 deferred, terminal mapping 58/100 | — | — | — | 327.48 s |
+
+Run B is recorded because the banked-curve, flat-curve and instant-centre
+**engine** law paths are the reusable laws the supplemental yield campaign
+depends on; the run establishes that those laws are green at this head, before
+any evaluation-side profile is built on them.
+
+Runs A–F are a focused selection, not a full backend suite: `pytest.ini`
+deselects the `benchmark`, `audit`, `frontend` and `slow` markers, and run B
+reports 12 deselected for that reason.

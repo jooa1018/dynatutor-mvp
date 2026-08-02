@@ -1612,3 +1612,153 @@ first package that can raise **supported** is the co-required bundle B5+B6+B7,
 because a frame alone unlocks zero laws (`frame_alone_unlocks = 0`, §6b-4).
 
 Stage 8 must not start.
+
+---
+
+# Pause-checkpoint closure at `1b7dfe4`
+
+This section closes the evidence the pause checkpoint left open. It reports
+measurements taken at exactly `1b7dfe45608552a087bba4eb1e84085330431bdc`, on a
+clean working tree, in a venv rebuilt for this session from
+`backend/requirements-lock.txt` (`/home/user/.venv-stage7/bin/python`,
+Python 3.11.15).
+
+## Exact-head CI — 8 runs, 8 success, 0 non-success
+
+Both the `push` and the `pull_request` event were checked for all four
+workflows. Every run is attempt 1; there is no re-run and no empty commit.
+
+| Workflow | Event | Run ID | Attempt | Head SHA | Status | Conclusion | Duration |
+|---|---|---|---|---|---|---|---|
+| Phase 55 textbook parser | push | `30746069488` | 1 | `1b7dfe4` | completed | success | 0m31s |
+| Phase 56 Stage 6 multimodal | push | `30746069466` | 1 | `1b7dfe4` | completed | success | 9m31s |
+| DynaTutor release tests | push | `30746069461` | 1 | `1b7dfe4` | completed | success | 10m59s |
+| Phase 56 Stage 7 offline evaluation | push | `30746069493` | 1 | `1b7dfe4` | completed | success | 26m13s |
+| Phase 55 textbook parser | pull_request | `30746070902` | 1 | `1b7dfe4` | completed | success | 2m12s |
+| Phase 56 Stage 6 multimodal | pull_request | `30746070909` | 1 | `1b7dfe4` | completed | success | 10m22s |
+| DynaTutor release tests | pull_request | `30746070894` | 1 | `1b7dfe4` | completed | success | 15m20s |
+| Phase 56 Stage 7 offline evaluation | pull_request | `30746070911` | 1 | `1b7dfe4` | completed | success | 25m34s |
+
+## The uploaded Stage 7 artifact, audited from outside the run
+
+```
+STAGE7_ARTIFACT_RUN_ID=30746069493
+STAGE7_ARTIFACT_RUN_ATTEMPT=1
+STAGE7_ARTIFACT_RUN_HEAD_SHA=1b7dfe45608552a087bba4eb1e84085330431bdc
+STAGE7_ARTIFACT_CHECKOUT_SHA=1b7dfe45608552a087bba4eb1e84085330431bdc
+STAGE7_ARTIFACT_REPORT_SHA=1b7dfe45608552a087bba4eb1e84085330431bdc
+STAGE7_ARTIFACT_REPORT_RAW_SHA256=c4d783205f1e1becf9fad0a84544e25d1c473ddd1607c2cba6904f6d3d002791
+STAGE7_ARTIFACT_ID=8833183975
+STAGE7_ARTIFACT_ZIP_SHA256=160c0d85eff2bb22698acdd7fed155fb603ad16d52aa7ac8f4539522fb6fd3c8
+STAGE7_ARTIFACT_IDENTITY_MATCH=true
+```
+
+Run head, checkout head and the report's own `exact_head_sha` are the same
+commit, and the raw-byte seal agrees across three independent sources:
+
+1. the run's own pre-upload checker (`STAGE7_CI_ARTIFACT_IDENTITY=PASS`), with
+   the upload conditioned on it;
+2. the report bytes republished in the run log, which decode to JSON carrying
+   `"exact_head_sha": "1b7dfe45…"`, `public_corpus` and `lane_b` `NOT_RUN`,
+   `external_model_calls` 0 and `private_heldout_accesses` 0;
+3. **an independent regeneration at this head, outside CI, which came out
+   byte-identical** — same SHA-256 `c4d78320…`, 9241 bytes. Re-running
+   `check_stage7_ci_artifact_identity.py` over the regenerated file returns
+   `STAGE7_ARTIFACT_IDENTITY_MATCH=true`.
+
+The uploader's own digest `160c0d85…` equals the digest the Artifacts API
+reports for artifact `8833183975`, binding the stored blob to those bytes.
+
+**Stated exactly:** the artifact ZIP was *not* re-downloaded. This
+environment's egress policy denies `productionresultssa10.blob.core.windows.net`
+at CONNECT with 403, recorded by the proxy as a policy denial; per the proxy
+contract a policy denial is reported, not routed around. Confirmation (3) is
+what replaces the download, and it is the stronger evidence: a download proves
+what was stored, a reproduction proves what the source produces.
+
+## Clean-tree read-only checker
+
+`run_phase56_stage7_b28a_readonly_checker.py` on a clean tree at `1b7dfe4`:
+**24 checks, 0 blocking findings, 0 non-blocking findings, `ACCEPTANCE=PASS`.**
+The non-blocking note recorded against the previous dirty-tree run does not
+reappear on a clean tree.
+
+## B29 and B32 at this head
+
+Both engine implementations are confirmed present and green, and neither is
+declared accepted.
+
+| | B29 horizontal contact | B32 spring natural length |
+|---|---|---|
+| Typed source reader | `horizontal_driven_contact.py` | `spring_natural_length.py` |
+| `ProfileId` member | `horizontal_contact` | `spring_energy_natural_length` |
+| Registered transaction | `_horizontal_driven_contact_transaction` | `_spring_natural_length_energy_transaction` |
+| Value-free | no numeric force, acceleration, speed or natural length is invented | same |
+| Focused + walls + application regression | **122 passed** (joint run at this head) | same run |
+| Disposition | `ENGINE_IMPLEMENTATION_CONFIRMED`, `GOLD_SCORED_ACCEPTANCE_BLOCKED_ON_EXACT_MANIFEST` | same |
+
+Measured, not assumed: at this head **the B29 and B32 corpus cohorts are still
+not solved on the raw v1 public archive** — the three `horizontal_friction_force`
+and three `spring_energy` contexts that remain unsolved all reach
+`compiler_failure / underdetermined`. Their closure evidence is an augmented
+campaign, and the augmented half of that campaign is a function of the
+unavailable exact manifest.
+
+## Official v1 strict, re-measured at this head
+
+Re-run against the approved public archive
+(SHA-256 `cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef`),
+runtime first and gold afterwards, through the canonical scorer:
+
+| Metric | Measured at `1b7dfe4` | Frozen v1 |
+|---|---:|---:|
+| supported correct | **41 / 81** | 41 / 81 |
+| supported wrong | **0** | 0 |
+| solved-but-unscored | **0** | 0 |
+| supported downgraded | **0** | 0 |
+| deferred | **12 / 12** | 12 / 12 |
+| terminal mapping | **58 / 100** | 58 / 100 |
+| blocked numeric answers | **0** | 0 |
+| blocked silent solves | **0** | 0 |
+| deferred silent solves | **0** | 0 |
+| query binding | **41** | 41 |
+
+Terminal distribution: 41 `solved`, 34 `compiler_failure`, 12
+`verified_unsupported`, 8 `compiler_unsupported`, 2 `needs_figure`, 2
+`needs_confirmation`, 1 `insufficient_information` — the last three being the
+three the frozen record groups as `projection_refused`.
+
+```
+OFFICIAL_V1_SUPPORTED_CORRECT = 41/81
+```
+
+This is the only official score. The historical experimental
+`+9` was measured at `e511b63` against an augmented archive and is **not**
+re-measured here and never added to it.
+
+## Historical exact manifest — recovery audit
+
+| Field | Value |
+|---|---|
+| canonical digest | `c72229789cd417c70eb2533212508b259a9f8df903415f1f6aac710464929328` |
+| raw file SHA-256 | `95aca08407e9508364468fe7be3a373ad0fe6d3e028bb5d0aa79052717542579` |
+
+Searched: this session's attachments, every mounted filesystem
+(`/root`, `/home`, `/tmp`, `/var/tmp`, `/opt`, `/srv`, `/mnt`, `/media`,
+`/data`), `/root/stage7_external/`, `work/`, the whole git history for any path
+that ever carried such a manifest, this PR's comment history, and the Actions
+artifacts of the checkpoint runs. **37 228 files were hashed and compared
+against the raw file SHA-256 by content, not by name.**
+
+```
+HISTORICAL_EXACT_MANIFEST_AVAILABLE = false
+EXACT_HISTORICAL_MANIFEST_UNAVAILABLE
+```
+
+`/root/stage7_external/` and `work/` do not exist in this container; the only
+supplied artifact is the approved public corpus archive itself, whose SHA-256
+is `cc8d8b27…` and whose internal `manifest.json`
+(SHA-256 `9d1555dc07dbcb8f4ab22d2563031a9f8c20ca862e02c509f5c52f2b3abd4241`) is
+**not** the exact augmentation manifest and was not used as one. No manifest
+was reconstructed, guessed, approximated or synthesised, and no threshold,
+tolerance, population or seal was relaxed to work around its absence.
