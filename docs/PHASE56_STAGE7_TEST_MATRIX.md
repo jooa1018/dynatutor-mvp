@@ -157,7 +157,43 @@ The permanent offline workflow must:
 4. enable the fail-fast evaluation network guard;
 5. run Lane A, 100 public cases, compositional 12, synthetic 38, metamorphic,
    hard-safety, product/API, and frontend gates;
-6. upload only the redacted aggregate report.
+6. upload only the redacted aggregate report;
+7. write that report to a path naming the exact head, the run and the attempt,
+   refusing a path that already exists;
+8. bind the report to the source before measuring anything, and refuse the
+   upload unless the identity check passes.
+
+## Uploaded-artifact identity
+
+`test_phase56_stage7_ci_artifact_identity.py` — 47 controls, none deselected.
+
+The invariant is
+
+```
+configured expected head == git rev-parse HEAD == report exact_head_sha
+```
+
+plus the report's raw bytes still hashing to the digest the gate sealed from
+the bytes it read back off disk.
+
+| Group | Controls |
+|---|---|
+| head disagreement | stale head; the live `refs/pull/N/merge` value; a configured head that is not the checkout |
+| post-seal change | one mutated byte; substitution by another *valid* report; a synthetic fixture at the upload path |
+| path isolation | a second writer elsewhere; two concurrent writers; the gate refusing to run with no `--output` |
+| provenance | the resolved head ignores `GITHUB_SHA`; no `GITHUB_SHA` lookup anywhere in the gate; no 40-hex literal in either tool |
+| fail-closed parsing | malformed JSON; a non-object document; a missing report; missing and null `exact_head_sha`; seven non-canonical SHA spellings; malformed expected inputs |
+| raw-byte seal | CRLF against LF, which a text-mode read cannot tell apart |
+| semantic contract | required fields; unexpected schema; privacy contract; non-zero external-call claim; a corpus-independent run claiming a public lane PASS, with its supplied-corpus counterpart; parse-not-grep |
+| the workflow itself | run-unique path; head binding; checker placement with no writer between it and the upload; upload conditioned on the check; the published path is the validated path; the seal reaches the checker; the report bytes are republished in the log |
+| self-protection | no control in the module may be named so that `conftest.py` auto-marks it into a deselected marker |
+
+The mismatch control was confirmed to fire against the actual pre-fix resolver,
+so it is shown to fire rather than merely to pass.
+
+`check_stage7_ci_artifact_identity.py` is a reusable structural checker, not a
+grep: it parses the report and reads the field, so the right SHA appearing
+somewhere else in the file does not satisfy it.
 
 It must not edit source, push, dispatch a finalizer, access secrets, use private
 or full corpus material, or call an external model endpoint.

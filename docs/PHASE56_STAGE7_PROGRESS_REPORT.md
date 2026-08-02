@@ -14,6 +14,7 @@ this one does not, **this one is current**.
 
 | Package | Current disposition |
 |---|---|
+| B28A Stage 7 exact-head artifact integrity | `B28A_STAGE7_EXACT_HEAD_ARTIFACT_INTEGRITY_HARDENING_CONFIRMED` |
 | B28A prepare attestation + refusal population seal | `B28A_V2_PREPARE_ATTESTATION_AND_REFUSAL_POPULATION_SEAL_INCOMPLETE` — blocker `EXACT_MANIFEST_UNAVAILABLE` |
 | B28 gold-scored shadow + evidence hardening | `B28_V2_GOLD_SCORED_SHADOW_AND_EVIDENCE_HARDENING_INCOMPLETE` |
 | B29 horizontal-contact free body | `B29_V2_HORIZONTAL_CONTACT_FREE_BODY_INCOMPLETE` — engine wall |
@@ -28,7 +29,211 @@ stands as history. They were not re-measured under the sealed B28A pipeline —
 the manifest that half of the campaign depends on is unavailable — so they are
 not carried forward as accepted here.
 
-## The single-commit publication session (2026-08-02, latest) — read this first
+## The uploaded-artifact identity session (2026-08-02, latest) — read this first
+
+External review accepted the Phase M publication work below and found a
+separate defect in the evidence *about* it: the Stage 7 artifact the CI
+uploaded named a commit that no run had checked out. This session closed
+that and nothing else. No cohort was added or removed, no threshold moved,
+no physics changed, and B29, B32 and Stage 8 were not touched.
+
+### The defect
+
+`_exact_head_sha()` in the offline gate read `GITHUB_SHA` in preference to
+the worktree. On a `pull_request` event GitHub sets `GITHUB_SHA` to the
+ephemeral `refs/pull/&lt;n&gt;/merge` commit — the test-merge of the head into
+the base — not to the commit `actions/checkout` places in the worktree. The
+workflow's own `EXACT_HEAD_SHA` was correct and was used for the checkout;
+the gate never read it. So every **pull_request-event** run recorded the
+merge commit while compiling, testing and gating the head, and nothing in
+the workflow ever compared the two.
+
+| head | run | event | checkout | report `exact_head_sha` |
+|---|---|---|---|---|
+| `df27bc7d` | `30729850273` | pull_request | `df27bc7d` | `42b0f2f1…` |
+| `d709c851` | `30731194110` | pull_request | `d709c851` | `014732…` |
+
+Both recorded values are test-merge commits, reachable from no branch: the
+commits API answers **422 No commit found** for `42b0f2f1e57ddd…`. Fetching
+`refs/pull/17/merge` at the time of writing gives
+`014732bea2e4b927c2a59a0194d01fe1b212187e`, whose parents are exactly the
+base `4762727e` and the head `d709c851` — the same construction, for the
+same PR. The push-event runs at those heads were unaffected, because on a
+push `GITHUB_SHA` *is* the head.
+
+Reproduced directly rather than inferred: with `GITHUB_SHA` set to that
+merge commit the pre-fix resolver returns it, and the `git rev-parse HEAD`
+fallback — which was already correct — is never reached.
+
+**The overwrite hypothesis is disproved and recorded as such.** The
+suspicion was that a later `pytest` step re-used a shared default report
+path and clobbered the file before upload. It did not. The runner's default
+output was `REPOSITORY_ROOT/stage7_offline_gate_report.json`, never the
+`RUNNER_TEMP` path the workflow wrote and uploaded; no test writes that
+path; and the one in-suite subprocess invocation of the gate already wrote
+into its own `TemporaryDirectory`. The defect was provenance, not
+collision. The path hardening below was still done — a default output
+inside the working tree is a latent hazard — but it is not what caused this.
+
+### What changed
+
+| Point | Guarantee |
+|---|---|
+| gate resolves the head from `git rev-parse HEAD` only | the environment describes the *event*; only the worktree describes the *source*, and the artifact is evidence about the source. An unresolvable head raises instead of degrading to a placeholder |
+| `--expect-head-sha` | configured head and worktree must agree *before* anything is measured, so a disagreement costs a second and can never reach a written report |
+| `--output` required, no default | no two commands in one job have a shared path to collide on |
+| `stage7-offline-&lt;head&gt;-&lt;run id&gt;-&lt;attempt&gt;.json` | the path names the run and the source, and an existing path is a failure rather than an overwrite |
+| `check_stage7_ci_artifact_identity.py` before the upload | re-opens the file, parses it structurally, and requires configured head == `git rev-parse HEAD` == report `exact_head_sha`, canonical 40-lowercase-hex, the schema, the privacy contract, no public-100 PASS in a corpus-independent run, and the sealed raw digest |
+| upload conditioned on that check | a mismatched or tampered report is refused, not published |
+| raw-byte seal | hashed from `read_bytes()`, so CRLF and LF cannot seal alike |
+
+The checker parses rather than greps: the correct SHA appearing elsewhere in
+the document does not satisfy it.
+
+48 controls in `test_phase56_stage7_ci_artifact_identity.py`, each asserting
+the **name** of the gate it hits; the matrix is in
+`docs/PHASE56_STAGE7_TEST_MATRIX.md`. The mismatch control was confirmed to
+fire against the actual pre-fix resolver, so it is shown to fire rather than
+merely to pass. One of them exists because a control named `..._for_external_audit`
+collected and never ran: `tests/conftest.py` marks any nodeid containing
+"audit" and `pytest.ini` deselects that marker, so the test read like coverage
+while being absent from every default run. It was caught by the collected
+count moving, and is now pinned.
+
+### Local evidence at the exact code head `d49d3610`
+
+venv rebuilt for this session from `backend/requirements-lock.txt`;
+`/home/user/.venv-stage7/bin/python`, Python 3.11.15.
+
+| run | exit | result | wall |
+|---|---:|---|---:|
+| repository-default backend regression (`python -m pytest -q`) | 0 | **4618 passed**, 1 skipped, 0 failed, 903 deselected | 1634.07 s |
+| Stage 7 focused glob (`tests/test_phase56_stage7_*.py`) | 0 | 1454 passed, 474 deselected | 312.68 s |
+| Phase M publication + attestation seal + fail-closed + gold-scored + gold isolation | 0 | 234 passed | 77.88 s |
+| artifact identity focused (`test_phase56_stage7_ci_artifact_identity.py`) | 0 | 48 passed, 0 deselected | 8.0 s |
+| B28A read-only checker | 0 | 24 checks, 0 blocking, `ACCEPTANCE=PASS` | — |
+| Stage 7 offline gate | 0 | `CORPUS_INDEPENDENT_REGRESSION`, public lanes `NOT_RUN` | — |
+| artifact identity checker | 0 | `STAGE7_CI_ARTIFACT_IDENTITY=PASS` | — |
+| `python -m compileall -q app engine evaluation tools tests` | 0 | clean | — |
+
+**4618 = the previously recorded 4570 plus exactly the 48 new controls**, and
+the deselected count is unchanged at 903 — the corroboration that nothing else
+moved. This is the repository-default backend regression selection, not a full
+backend suite: `pytest.ini` deselects
+`benchmark`, `audit`, `frontend` and `slow`.
+
+### Auditing the artifact from outside the run
+
+The uploaded artifact could previously only be checked by downloading it
+from the Actions blob store. Where egress policy blocks that host — as it
+does in this environment, which is denied `productionresultssa7.blob.core.windows.net`
+at CONNECT — the run's own verdict was the only evidence available, which is
+exactly the dependency this package exists to remove. The run now reproduces
+the **exact uploaded bytes** in its log as base64, after the upload,
+alongside the artifact id and the uploader's digest. Decoding and hashing
+them reproduces `STAGE7_ARTIFACT_REPORT_RAW_SHA256` and yields the report's
+own `exact_head_sha`, so the invariant is checkable against the log rather
+than assertable by the job. The Artifacts API reports the same digest for
+the same artifact id, which binds the stored blob to those bytes.
+
+### The superseded declaration
+
+`EXACT_HEAD_CI_EVIDENCE_CLOSED`, as declared for the `df27bc7d` / `d709c851`
+pass, **was not true of the uploaded artifacts** and is withdrawn for those
+heads. What held there is narrower and is restated as:
+
+```
+CI_WORKFLOW_CONCLUSIONS_GREEN
+STAGE7_UPLOADED_EXACT_HEAD_ARTIFACT_INTEGRITY_INCOMPLETE
+```
+
+`PHASE_M_SINGLE_COMMIT_GENERATION_PUBLICATION_CONFIRMED` stands: the
+publication protocol was reviewed and found valid, this session did not
+touch it, and its regression is re-run at this head.
+
+### Exact-head CI and the uploaded artifact
+
+Two code heads, each with a complete run set. **16 runs, 16 success, 0
+non-success, no re-run, no empty commit.** `in_progress`, `queued`,
+`cancelled` and `skipped` are not counted as success.
+
+| head | event | workflow | run ID | attempt | conclusion | duration |
+|---|---|---|---|---|---|---|
+| `76dce50d` | push | Phase 55 textbook parser | `30734816960` | 1 | success | 0m38s |
+| `76dce50d` | push | Phase 56 Stage 6 multimodal | `30734816967` | 1 | success | 18m08s |
+| `76dce50d` | push | Phase 56 Stage 7 offline evaluation | `30734816959` | 1 | success | 23m26s |
+| `76dce50d` | push | DynaTutor release tests | `30734816969` | 1 | success | 21m28s |
+| `76dce50d` | pull_request | Phase 55 textbook parser | `30734818390` | 1 | success | 6m40s |
+| `76dce50d` | pull_request | Phase 56 Stage 6 multimodal | `30734818379` | 1 | success | 17m41s |
+| `76dce50d` | pull_request | Phase 56 Stage 7 offline evaluation | `30734818367` | 1 | success | 23m59s |
+| `76dce50d` | pull_request | DynaTutor release tests | `30734818374` | 1 | success | 21m38s |
+| `d49d3610` | push | Phase 55 textbook parser | `30735017371` | 1 | success | 2m52s |
+| `d49d3610` | push | Phase 56 Stage 6 multimodal | `30735017397` | 1 | success | 13m51s |
+| `d49d3610` | push | Phase 56 Stage 7 offline evaluation | `30735017381` | 1 | success | 28m13s |
+| `d49d3610` | push | DynaTutor release tests | `30735017379` | 1 | success | 16m36s |
+| `d49d3610` | pull_request | Phase 55 textbook parser | `30735018750` | 1 | success | 1m25s |
+| `d49d3610` | pull_request | Phase 56 Stage 6 multimodal | `30735018748` | 1 | success | 14m28s |
+| `d49d3610` | pull_request | Phase 56 Stage 7 offline evaluation | `30735018754` | 1 | success | 25m59s |
+| `d49d3610` | pull_request | DynaTutor release tests | `30735018746` | 1 | success | 16m59s |
+
+**The defect shown closed, at `76dce50d`.** The push run and the pull_request
+run at that head produced **byte-identical** reports —
+`STAGE7_ARTIFACT_REPORT_RAW_SHA256=0191341d…` in both. On a push
+`GITHUB_SHA` is the head; on a pull_request it is the merge commit. Under the
+old resolver the two reports would have differed in exactly one field. They
+do not differ at all.
+
+**The uploaded artifact, audited at `d49d3610`.**
+
+```
+STAGE7_ARTIFACT_RUN_ID=30735017381
+STAGE7_ARTIFACT_RUN_ATTEMPT=1
+STAGE7_ARTIFACT_RUN_HEAD_SHA=d49d3610877a03653fea83efde42f7ffff60d199
+STAGE7_ARTIFACT_CHECKOUT_SHA=d49d3610877a03653fea83efde42f7ffff60d199
+STAGE7_ARTIFACT_REPORT_SHA=d49d3610877a03653fea83efde42f7ffff60d199
+STAGE7_ARTIFACT_REPORT_RAW_SHA256=8725c3bd264a33924f348b3979a4d12c96c410ad517ba1d2359b56903215443d
+STAGE7_ARTIFACT_ID=8829540891
+STAGE7_ARTIFACT_ZIP_SHA256=d25f8705127f77ae5330033dd164c0c6e7907c68ead82206481df7027d90eb92
+STAGE7_ARTIFACT_IDENTITY_MATCH=true
+```
+
+Three independent confirmations, not one:
+
+1. the run's own pre-upload checker passed, and the upload was conditioned
+   on it;
+2. the report bytes republished in the run log decode to JSON carrying
+   `"exact_head_sha": "d49d3610877a03653fea83efde42f7ffff60d199"`, with
+   `public_corpus` and `lane_b` `NOT_RUN`, `external_model_calls` 0 and
+   `private_heldout_accesses` 0 — the corpus-independent scope intact;
+3. the report was **regenerated independently at this head outside CI** and
+   came out byte-identical — same SHA-256 `8725c3bd…`, same base64 prefix and
+   suffix — so the uploaded bytes are reproducible from the source rather than
+   merely asserted by the run that made them.
+
+The uploader's digest `d25f8705…` equals the digest the Artifacts API reports
+for artifact `8829540891`, which binds the stored blob to those bytes.
+
+**Stated exactly:** the artifact ZIP itself was *not* re-downloaded, because
+this environment's egress policy denies
+`productionresultssa7.blob.core.windows.net` at CONNECT (403). That host was
+not routed around. The three confirmations above are what replaces it, and
+the byte-level reproduction in (3) is stronger than a download would have
+been: a download proves what was stored, a reproduction proves what the
+source produces.
+
+`EXACT_HEAD_CI_EVIDENCE_CLOSED` — for `76dce50d` and `d49d3610`, on the
+evidence above.
+
+### B29 and B32
+
+Neither was started. Beyond the engine walls recorded further down, both are
+blocked from *acceptance* at this head for the same reason B28A is: their
+closure evidence is the augmented-campaign measurement, and the augmented
+half of the campaign is a function of the exact augmentation manifest, which
+is unavailable. Engine capability work on them could proceed independently;
+a moved disposition could not.
+
+## The single-commit publication session (2026-08-02, previous) — superseded only where §latest states
 
 Independent review of the previous cleanup found its central declaration
 overstated, and this session closed only that. No cohort was added or removed,
