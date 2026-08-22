@@ -9,13 +9,13 @@
 
 | Question | Label | Current answer / lead |
 |---|---|---|
-| Which repository state is authoritative? | `confirmed (self-gated)` | `codex/phase56-generic-mechanics-engine` at `fee7003a078e59de280018a2cd4f8e9bda66e848`, matching upstream and PR #17 after fetch/push; [authority snapshot](../knowledge/phase56-authority-snapshot.md) |
+| Which repository state is authoritative? | `confirmed (self-gated)` | `codex/phase56-generic-mechanics-engine` at `166d40c3a2368a4a514e93d7766196efdb6a9d8d`, matching upstream and PR #17 after fetch/push; [authority snapshot](../knowledge/phase56-authority-snapshot.md) |
 | Is current Stage 7 accepted? | `confirmed by current contract` | No: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`; [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) and [PR #17](https://github.com/jooa1018/dynatutor-mvp/pull/17) |
 | May Stage 8 start now? | `confirmed by current contract` | No: `STAGE_8_NOT_STARTED` and stage-order rule; its specification search is deferred until Stage 7 acceptance |
 | Can the historical exact augmentation manifest be recovered or substituted? | `confirmed constraint` | It is unavailable and must not be reconstructed, guessed, synthesized, or replaced; [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) |
 | What legitimate measurement path remains? | `confirmed direction, outcome unknown` | The separately identified supplemental campaign with its own identity, source-only discovery, manifest/seal, baseline, gold isolation, canonical scoring, final measurement, and reproducible evidence; [candidate contract](../../docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md) |
-| Does the current environment hold every non-historical input needed to run that path? | `unknown` | Inspect approved corpus/runtime inputs and fail-closed tools before executing the baseline |
-| Which current-head implementation or contract defects remain after `fee7003`? | `unknown` | Reconstruct from code, checkers, current tests, and executable baseline; do not inherit historical package labels blindly |
+| Does the current environment hold every non-historical input needed to run that path? | `observed` | The approved official-v1 public archive is available and matches the frozen SHA-256; the distinct supplemental manifest/runtime bundle is not yet built |
+| Which current-head implementation or contract defects remain after `166d40c`? | `observed` | 40 supported official-v1 cases remain terminal-not-solved; partial strict CLI flags can produce a false run-scope note; supplemental manifest remains unlocked |
 | What important thing is not yet mapped? | `unknown` | Stage 8 specification location, production/runtime availability, and exact whole-product operational evidence remain gated terrain |
 
 ## Mobilization table
@@ -48,10 +48,10 @@ Source: [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md), [candid
 
 | Leaf | Status | Source / lead |
 |---|---|---|
-| 2.1 What exact current-head commands and artifacts define the Stage 7 baseline? | named-unfilled | Stage 7 tools, workflows, test matrix, and evaluation contract |
-| 2.2 Does exact-head/artifact provenance remain fail-closed at the current head? | named-unfilled | artifact identity checker and CI workflow |
-| 2.3 Does corpus-independent evaluation pass without public/gold access? | named-unfilled | offline gate with public lanes `NOT_RUN` |
-| 2.4 Does official v1 remeasure without correctness/safety regression? | named-unfilled | approved public archive plus canonical scorer; input availability first |
+| 2.1 What exact current-head commands and artifacts define the Stage 7 baseline? | filled | evaluation contract, test matrix, workflows, tool entrypoints, and [verified baseline](../knowledge/phase56-authority-snapshot.md) |
+| 2.2 Does exact-head/artifact provenance remain fail-closed at the current head? | filled for `166d40c`; remeasure after change | artifact identity PASS and B28A 24/24 clean at exact head |
+| 2.3 Does corpus-independent evaluation pass without public/gold access? | filled for `166d40c`; remeasure after change | offline gate PASS, public lanes `NOT_RUN`, report SHA in authority snapshot |
+| 2.4 Does official v1 remeasure without correctness/safety regression? | partial | diagnostic 41/81 and hard-safety 23/23 at `166d40c`; rerun supported two-flag strict mode for formal baseline |
 | 2.5 What is B28A/B28's current executable disposition without the historical manifest? | named-unfilled | prepare/seal/gold-isolation tools and current contract |
 | 2.6 Are B29/B32 general engine implementations complete and adversarially verified? | named-unfilled | typed profiles, catalogue walls, profile application tests |
 | 2.7 Can the distinct supplemental campaign be frozen before change with source-only selection and an immutable seal? | named-unfilled | supplemental section of candidate contract; no source yet for runtime artifact |
@@ -92,11 +92,12 @@ Source: ballast verify-gate, proof-standard, rehearsal, checkpoint; [PRODUCT-TRU
 
 ## Single next leaf
 
-Leaf 2.1 — inspect the Stage 7 evaluation contract, test matrix, workflows, tools, and input discovery paths at `fee7003`, then run the smallest corpus-independent current-head baseline without modifying product code.
+Leaf 2.4 — make mismatched strict CLI flags fail closed, then execute and seal the supported `--require-public-corpus --require-full-stage7` current-head baseline before supplemental capability changes.
 
 ## Known gaps
 
-- Approved public corpus availability in this Windows environment is unknown.
+- The approved public corpus is available and frozen-hash verified; no historical augmentation manifest was found or inferred.
+- The offline gate accepts mismatched strict flags and can print a false corpus-independent note after running public Lane B; this must be closed before relying on CLI evidence.
 - Supplemental runtime manifest does not yet exist and must be created only after a sealed baseline-before-change process is proven.
 - Stage 8 specification remains intentionally unread until Stage 7 acceptance permits work there.
 - Production/deployment operational evidence is not yet current.

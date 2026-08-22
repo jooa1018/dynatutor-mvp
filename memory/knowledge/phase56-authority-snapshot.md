@@ -17,3 +17,12 @@
 - Primary sources: `docs/PHASE56_STAGE7_PROGRESS_REPORT.md`; `docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md`; PR #17 current body; `.claude/ballast.rules.json`.
 - Sample: 4 current authority surfaces.
 - Limits: this verifies the current repository/PR contract, not a fresh exhaustive filesystem search for the missing historical artifact. The earlier 37,228-file recovery audit remains historical evidence and was not rerun in this bootstrap phase.
+
+## Exact-head Stage 7 baseline before product changes — verified 2026-08-23
+
+- Label: `verified executable evidence`.
+- Claim: at exact head `166d40c3a2368a4a514e93d7766196efdb6a9d8d`, the corpus-independent offline gate passed; its sealed report SHA-256 is `61213ce896022877962b614ef4b777e7d48814c3444f172c01aff7589d545eae`. The artifact identity checker matched configured, checkout, report, and raw artifact identity. B28A's read-only checker returned 24 clean checks and no findings. Focused B29/B32 and catalogue-wall tests passed 122 tests; banked/flat/instant-centre parity tests passed 30 tests.
+- Refutation attempted: ran each command in an isolated Python 3.11 virtual environment installed from `backend/requirements-lock.txt`; kept provider credentials/base URLs empty; wrote reports outside the repository; checked the worktree afterwards.
+- Primary sources: exact commands from `docs/PHASE56_STAGE7_TEST_MATRIX.md`; `backend/tools/run_phase56_stage7_offline_gate.py`; `backend/tools/check_phase56_stage7_ci_artifact_identity.py`; `backend/tools/run_phase56_stage7_b28a_readonly_checker.py`; pytest output and sealed external artifacts under the current session's temporary report directory.
+- Sample: one corpus-independent aggregate run, one artifact identity run, one 24-control B28A run, 152 focused/adversarial tests.
+- Limits: none of these results is public-corpus acceptance. The official-v1 probe measured the frozen distribution at 41/81 and hard-safety 23/23 with zero nonzero signals, but used an unsupported one-flag CLI combination whose stdout scope was false; it is diagnostic only until the supported two-flag strict command is repeated.
