@@ -54,7 +54,7 @@ Source: [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md), [candid
 | 2.4 Does official v1 remeasure without correctness/safety regression? | filled for `532ef1f`; remeasure at final head | supported strict run: 41/81 correct, 0 wrong, hard-safety 23/23 measured with zero nonzero; report SHA `3490db4…`; acceptance gates correctly fail |
 | 2.5 What is B28A/B28's current executable disposition without the historical manifest? | named-unfilled | prepare/seal/gold-isolation tools and current contract |
 | 2.6 Are B29/B32 general engine implementations complete and adversarially verified? | named-unfilled | typed profiles, catalogue walls, profile application tests |
-| 2.7 Can the distinct supplemental campaign be frozen before change with source-only selection and an immutable seal? | named-unfilled | supplemental section of candidate contract; no source yet for runtime artifact |
+| 2.7 Can the distinct supplemental campaign be frozen before change with source-only selection and an immutable seal? | filled at `5889b76`; portable output-hash repair pending before capability change | nine-entry manifest digest `32aa3ce5…`, named supplemental seal, sealed M→V→R→G baseline; [authority snapshot](../knowledge/phase56-authority-snapshot.md) |
 | 2.8 Which general typed capabilities close the selected cohorts without corpus-specific routing? | named-unfilled | current engine laws/profile architecture and measured candidates |
 | 2.9 Does final canonical remeasurement satisfy the supplemental target with zero wrong/unscored leakage? | named-unfilled | locked supplemental manifest, baseline/final reports, canonical scorer |
 | 2.10 Do full relevant local matrices, exact-head CI, checker review, and PR evidence jointly satisfy Stage 7 acceptance? | named-unfilled | test matrix, GitHub Actions, release gates, current disposition contract |
@@ -92,13 +92,13 @@ Source: ballast verify-gate, proof-standard, rehearsal, checkpoint; [PRODUCT-TRU
 
 ## Single next leaf
 
-Leaf 2.7 — freeze the supplemental campaign's source-only nine-context manifest and immutable named seal, then run its exact-head baseline before supplemental capability changes.
+Leaf 2.8 — first repair the Windows V/R/G atomic writer and actual-file-hash claim exposed by the sealed baseline, rerun the same baseline, then implement only the general typed capabilities needed by the three frozen cohorts.
 
 ## Known gaps
 
 - The approved public corpus is available and frozen-hash verified; no historical augmentation manifest was found or inferred.
 - Exact-head CI at `532ef1f` found one temp-path naming violation in the new strict-flag control; `d5ed247` fixes it and its 102 directly affected tests pass, while new-head CI is pending.
-- Supplemental runtime manifest does not yet exist and must be created only after a sealed baseline-before-change process is proven.
+- The supplemental manifest and seal are frozen, and its pre-change baseline is measured. Phase V/R/G file-hash output needs a Windows-portable actual-byte repair and exact-head rerun before engine capability changes.
 - Stage 8 specification remains intentionally unread until Stage 7 acceptance permits work there.
 - Production/deployment operational evidence is not yet current.
 
