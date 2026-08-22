@@ -5,17 +5,17 @@
 - Goal: Recover DynaTutor from the authoritative Phase 56 branch and close the contracted product work without weakening physics, evaluation, provenance, privacy, or acceptance rules.
 - Done: Every required current Stage 7 gate is reproducibly satisfied, Stage 8 is then completed if authorized by its specification, whole-product contracted gates are verified, and PR/checkpoint/truth evidence supports COMPLETE; otherwise only a genuinely external blocker remains after three legitimate routes and all independent work are exhausted.
 
-## Terrain map — v1 — 2026-08-23
+## Terrain map — v2 — 2026-08-23
 
 | Question | Label | Current answer / lead |
 |---|---|---|
-| Which repository state is authoritative? | `confirmed (self-gated)` | `codex/phase56-generic-mechanics-engine` at `166d40c3a2368a4a514e93d7766196efdb6a9d8d`, matching upstream and PR #17 after fetch/push; [authority snapshot](../knowledge/phase56-authority-snapshot.md) |
+| Which repository state is authoritative? | `confirmed (self-gated)` | `codex/phase56-generic-mechanics-engine`; mechanics evidence head `7794168734321be78b6fa54373bf20a6938d4bd4`, with later evidence-documentation descendants pushed to upstream/PR #17; [proof](../knowledge/phase56-supplemental-yield-proof.md) |
 | Is current Stage 7 accepted? | `confirmed by current contract` | No: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`; [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) and [PR #17](https://github.com/jooa1018/dynatutor-mvp/pull/17) |
 | May Stage 8 start now? | `confirmed by current contract` | No: `STAGE_8_NOT_STARTED` and stage-order rule; its specification search is deferred until Stage 7 acceptance |
 | Can the historical exact augmentation manifest be recovered or substituted? | `confirmed constraint` | It is unavailable and must not be reconstructed, guessed, synthesized, or replaced; [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) |
-| What legitimate measurement path remains? | `confirmed direction, outcome unknown` | The separately identified supplemental campaign with its own identity, source-only discovery, manifest/seal, baseline, gold isolation, canonical scoring, final measurement, and reproducible evidence; [candidate contract](../../docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md) |
-| Does the current environment hold every non-historical input needed to run that path? | `observed` | The approved official-v1 public archive is available and matches the frozen SHA-256; the distinct supplemental manifest/runtime bundle is not yet built |
-| Which current-head implementation or contract defects remain after `166d40c`? | `observed` | 40 supported official-v1 cases remain terminal-not-solved; partial strict CLI flags can produce a false run-scope note; supplemental manifest remains unlocked |
+| What legitimate measurement path remains? | `verified complete under separate identity` | The distinct source-only supplemental campaign is sealed and passed baseline/final M/V/R/G at `+9` with zero regression; it is explicitly not historical acceptance; [candidate contract](../../docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md) |
+| Does the current environment hold every non-historical input needed to run that path? | `verified` | Yes. The approved official-v1 archive and frozen supplemental manifest/seal were sufficient for reproducible official and supplemental measurements |
+| Which current-head implementation or contract defects remain? | `verified blocker` | Official v1 is 44/81 with zero wrong and 37 authority-insufficient supported records; unsupported-other is 0/2. Historical sealed acceptance cannot be remeasured because the exact manifest is unavailable |
 | What important thing is not yet mapped? | `unknown` | Stage 8 specification location, production/runtime availability, and exact whole-product operational evidence remain gated terrain |
 
 ## Mobilization table
@@ -49,15 +49,15 @@ Source: [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md), [candid
 | Leaf | Status | Source / lead |
 |---|---|---|
 | 2.1 What exact current-head commands and artifacts define the Stage 7 baseline? | filled | evaluation contract, test matrix, workflows, tool entrypoints, and [verified baseline](../knowledge/phase56-authority-snapshot.md) |
-| 2.2 Does exact-head/artifact provenance remain fail-closed at the current head? | filled for `166d40c`; remeasure after change | artifact identity PASS and B28A 24/24 clean at exact head |
-| 2.3 Does corpus-independent evaluation pass without public/gold access? | filled for `166d40c`; remeasure after change | offline gate PASS, public lanes `NOT_RUN`, report SHA in authority snapshot |
-| 2.4 Does official v1 remeasure without correctness/safety regression? | filled for `532ef1f`; remeasure at final head | supported strict run: 41/81 correct, 0 wrong, hard-safety 23/23 measured with zero nonzero; report SHA `3490db4…`; acceptance gates correctly fail |
-| 2.5 What is B28A/B28's current executable disposition without the historical manifest? | named-unfilled | prepare/seal/gold-isolation tools and current contract |
-| 2.6 Are B29/B32 general engine implementations complete and adversarially verified? | named-unfilled | typed profiles, catalogue walls, profile application tests |
+| 2.2 Does exact-head/artifact provenance remain fail-closed at the current head? | filled | final supplemental raw bytes externally hash-match; B28A 24/24 clean on the documentation descendant |
+| 2.3 Does corpus-independent evaluation pass without public/gold access? | filled | earlier exact-head offline gate PASS, public lanes `NOT_RUN`; final M/V/R/G retains process-level gold isolation |
+| 2.4 Does official v1 remeasure without correctness/safety regression? | filled at final mechanics head `7794168` | 44/81 correct, 0 wrong, hard-safety 23/23 measured with zero nonzero; report SHA `2ae079b…`; acceptance gates correctly fail |
+| 2.5 What is B28A/B28's current executable disposition without the historical manifest? | filled | supplemental M/V/R/G PASS under a separate seal; historical B28A/B28 acceptance remains blocked on exact manifest |
+| 2.6 Are B29/B32 general engine implementations complete and adversarially verified? | filled for implementation, blocked for acceptance | implementations confirmed; 122 focused tests; gold-scored acceptance depends on unavailable exact manifest |
 | 2.7 Can the distinct supplemental campaign be frozen before change with source-only selection and an immutable seal? | filled at `51a9c68` | nine-entry manifest digest `32aa3ce5…`, named supplemental seal, portable exact-head sealed M→V→R→G baseline; [authority snapshot](../knowledge/phase56-authority-snapshot.md) |
-| 2.8 Which general typed capabilities close the selected cohorts without corpus-specific routing? | named-unfilled | current engine laws/profile architecture and measured candidates |
-| 2.9 Does final canonical remeasurement satisfy the supplemental target with zero wrong/unscored leakage? | named-unfilled | locked supplemental manifest, baseline/final reports, canonical scorer |
-| 2.10 Do full relevant local matrices, exact-head CI, checker review, and PR evidence jointly satisfy Stage 7 acceptance? | named-unfilled | test matrix, GitHub Actions, release gates, current disposition contract |
+| 2.8 Which general typed capabilities close the selected cohorts without corpus-specific routing? | filled | typed curve-design invariants, query objective authority, event-scoped IC, and order-independent constraint scope |
+| 2.9 Does final canonical remeasurement satisfy the supplemental target with zero wrong/unscored leakage? | filled | 41 -> 50 (`+9`), 6/6 same-head augmented correct, 0 wrong/unscored/regressed, cohort yield 2 |
+| 2.10 Do full relevant local matrices, exact-head CI, checker review, and PR evidence jointly satisfy Stage 7 acceptance? | blocked | local strict/checker/evidence matrices are current; CI is pending on the evidence-documentation head; historical manifest and raw-source authority gaps still prevent contract acceptance |
 
 ### 3. Stage 8 — conclusion: Stage 8 starts only from genuinely accepted Stage 7 and closes its own specification
 
@@ -92,13 +92,13 @@ Source: ballast verify-gate, proof-standard, rehearsal, checkpoint; [PRODUCT-TRU
 
 ## Single next leaf
 
-Leaf 2.8 — implement only the general typed capabilities needed by the three frozen cohorts, with adjacent/adversarial/authority-isolation regressions. The manifest, seal, population, gold boundary, scorer, and thresholds stay frozen.
+Leaf 5.3 — finish exact-head CI/PR evidence, perform the zero-context rehearsal, and write the final recoverable blocker checkpoint. Stage 8 remains gated.
 
 ## Known gaps
 
 - The approved public corpus is available and frozen-hash verified; no historical augmentation manifest was found or inferred.
-- Exact-head CI at `532ef1f` found one temp-path naming violation in the new strict-flag control; `d5ed247` fixes it and its 102 directly affected tests pass, while new-head CI is pending.
-- The supplemental manifest and seal are frozen and the portable exact-head pre-change baseline is complete. The selected cohorts still have zero supplemental yield; general typed capability work is next.
+- Exact-head CI is pending on the latest evidence-documentation head; earlier pushed mechanics/checkpoint heads started the complete push/PR workflow set.
+- The supplemental manifest and seal are frozen and the final campaign has met the separate `+9` target with zero regression.
 - Stage 8 specification remains intentionally unread until Stage 7 acceptance permits work there.
 - Production/deployment operational evidence is not yet current.
 
@@ -106,13 +106,13 @@ Leaf 2.8 — implement only the general typed capabilities needed by the three f
 
 | Check | Status |
 |---|---|
-| Stage 7 current contract | pending |
+| Stage 7 current contract | genuinely blocked on unavailable exact manifest and source-authority gaps; not accepted |
 | Stage 8 current contract | gated |
-| Whole-product release gates | pending |
-| PRODUCT-TRUTH evidence | pending |
+| Whole-product release gates | deterministic Stage 7 lanes pass; final exact-head CI pending; production release not claimed |
+| PRODUCT-TRUTH evidence | updated with verified and explicitly absent states |
 | Rehearsal | pending |
 | Clean exact branch/PR/checkpoint | pending |
 
 ## Superseded cuts
 
-None.
+- Terrain map v1 and its pre-capability single-next-leaf status are superseded by v2; git history retains the full earlier cut.
