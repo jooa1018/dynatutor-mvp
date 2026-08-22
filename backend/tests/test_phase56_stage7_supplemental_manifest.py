@@ -15,6 +15,12 @@ from evaluation.phase56_stage7.corpus_records import (
     CorpusRelationV1,
     CorpusSegmentV1,
 )
+from evaluation.phase56_stage7.corpus_v2.campaign_seal import (
+    STAGE7_PUBLIC_CAMPAIGN_SEAL_V1,
+    STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_NAME,
+    STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1,
+    resolve_campaign_seal,
+)
 from evaluation.phase56_stage7.corpus_v2.migration import (
     assert_manifest_has_no_answer_authority,
 )
@@ -325,3 +331,20 @@ def test_manifest_bytes_are_deterministic_and_end_with_one_newline() -> None:
     assert first.manifest.digest == second.manifest.digest
     assert first_body == supplemental_manifest_body(second.manifest)
     assert first_body.endswith("\n") and not first_body.endswith("\n\n")
+
+
+def test_supplemental_seal_is_distinct_and_binds_the_frozen_manifest() -> None:
+    seal = STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1
+
+    assert seal.name == STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_NAME
+    assert seal.name != STAGE7_PUBLIC_CAMPAIGN_SEAL_V1.name
+    assert seal.augmentation_manifest_digest == (
+        "32aa3ce51e3006e533913b2f822251d22dccba2a379a35008f19e7a7e1aef7cd"
+    )
+    assert seal.augmentation_manifest_file_sha256 == (
+        "946cd6364669c123341d54999a87a468bc22f7260ea2b8500ddee267878bcd3a"
+    )
+    assert seal.augmentation_manifest_digest != (
+        STAGE7_PUBLIC_CAMPAIGN_SEAL_V1.augmentation_manifest_digest
+    )
+    assert resolve_campaign_seal(seal.name) is seal

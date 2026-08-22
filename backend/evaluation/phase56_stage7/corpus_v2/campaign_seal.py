@@ -51,6 +51,9 @@ from evaluation.phase56_stage7.contracts import FrozenStrictModel, Sha256
 CORPUS_V2_CAMPAIGN_SEAL_VERSION = "phase56-stage7-corpus-v2-campaign-seal-v1"
 
 STAGE7_PUBLIC_CAMPAIGN_SEAL_NAME = "phase56-stage7-v2-public-campaign-v1"
+STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_NAME = (
+    "phase56-stage7-v2-supplemental-yield-campaign-v1"
+)
 
 _Token = Annotated[str, StringConstraints(min_length=1, max_length=120)]
 
@@ -142,8 +145,57 @@ STAGE7_PUBLIC_CAMPAIGN_SEAL_V1 = CampaignPopulationSealV1(
     ),
 )
 
+# A distinct, newly authored measurement.  It intentionally shares the
+# approved public archive and its manifest-independent 97/3 prepared
+# population with the historical campaign, but binds a new source-only
+# nine-entry manifest.  Passing this seal says nothing about the unavailable
+# historical manifest and cannot satisfy the historical Stage 7 acceptance
+# claim.
+STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1 = CampaignPopulationSealV1(
+    name=STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_NAME,
+    original_v1_archive_sha256=(
+        "cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef"
+    ),
+    augmentation_manifest_digest=(
+        "32aa3ce51e3006e533913b2f822251d22dccba2a379a35008f19e7a7e1aef7cd"
+    ),
+    augmentation_manifest_file_sha256=(
+        "946cd6364669c123341d54999a87a468bc22f7260ea2b8500ddee267878bcd3a"
+    ),
+    expected_context_count=100,
+    context_index_set_digest=(
+        "9dd50adbd73bc58bb391efca85d1436fcc4c19cb0bc2495ec0eeb4c1e42f6952"
+    ),
+    expected_handle_set_digest=(
+        "571e7c40a8999bc04b820ac8d26f5278a76039a06f254da1cef72398711205fd"
+    ),
+    prepared_state_map_digest=(
+        "d66a27bc98baed7d8c1f8c3210e9b3319b6d00fdd06143b8d515649d93df5c84"
+    ),
+    refusal_handle_set_digest=(
+        "84efd8804e234c4f280b8e8dda665e70011732b53af6c5443d95f2a1d4966cc5"
+    ),
+    prepared_state_counts=(
+        ("migration_refused", 0),
+        ("projection_refused", 3),
+        ("runtime_completed", 97),
+        ("runtime_failed", 0),
+        ("snapshot_rejected", 0),
+    ),
+    prepared_refusal_counts=(
+        ("migration_refused_conflicting_entry", 0),
+        ("migration_refused_unresolved_entry", 0),
+        ("projection_refused_no_draft", 3),
+        ("runtime_failed_unexpected_exception", 0),
+        ("snapshot_rejected_incomplete_record", 0),
+    ),
+)
+
 CAMPAIGN_SEALS: dict[str, CampaignPopulationSealV1] = {
     STAGE7_PUBLIC_CAMPAIGN_SEAL_V1.name: STAGE7_PUBLIC_CAMPAIGN_SEAL_V1,
+    STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1.name: (
+        STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1
+    ),
 }
 
 
@@ -196,6 +248,8 @@ __all__ = [
     "CORPUS_V2_CAMPAIGN_SEAL_VERSION",
     "STAGE7_PUBLIC_CAMPAIGN_SEAL_NAME",
     "STAGE7_PUBLIC_CAMPAIGN_SEAL_V1",
+    "STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_NAME",
+    "STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1",
     "CampaignPopulationSealV1",
     "CampaignSealFailure",
     "campaign_seal_failures",
