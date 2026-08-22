@@ -31,6 +31,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -904,6 +905,16 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
         return {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
     frontend = REPOSITORY_ROOT / "frontend"
     steps: list[dict[str, Any]] = []
+    npm_executable = shutil.which("npm")
+    if npm_executable is None:
+        return {
+            "result": "NOT_RUN",
+            "executed": False,
+            "steps": [
+                {"step": "install", "result": "NOT_RUN", "reason": "toolchain_missing"}
+            ],
+            "reason": "install_unavailable",
+        }
 
     def run_step(name: str, command: list[str], timeout_s: int = 1200) -> bool:
         try:
@@ -911,7 +922,8 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
                 command,
                 cwd=frontend,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=timeout_s,
             )
         except FileNotFoundError:
@@ -925,7 +937,7 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
         )
         return completed.returncode == 0
     if not (frontend / "node_modules").exists():
-        if not run_step("install", ["npm", "ci"], timeout_s=1800):
+        if not run_step("install", [npm_executable, "ci"], timeout_s=1800):
             return {"result": "NOT_RUN", "executed": False, "steps": steps, "reason": "install_unavailable"}
     # The lint toolchain is pinned outside package.json on purpose.  An
     # out-of-tree strict run may receive an exact, already-verified node_modules
@@ -961,7 +973,7 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
         lint_ready = run_step(
             "lint_toolchain",
             [
-                "npm", "install", "--no-save", "--no-package-lock",
+                npm_executable, "install", "--no-save", "--no-package-lock",
                 "--ignore-scripts", "--no-audit", "--no-fund",
                 "eslint@9.39.5", "eslint-config-next@15.5.18",
             ],
@@ -969,10 +981,10 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
         )
     ok = lint_ready
     for name, command in (
-        ("tests", ["npm", "test"]),
-        ("lint", ["npm", "run", "lint"]),
-        ("typecheck", ["npm", "run", "typecheck"]),
-        ("build", ["npm", "run", "build"]),
+        ("tests", [npm_executable, "test"]),
+        ("lint", [npm_executable, "run", "lint"]),
+        ("typecheck", [npm_executable, "run", "typecheck"]),
+        ("build", [npm_executable, "run", "build"]),
     ):
         ok = run_step(name, command) and ok
     return {
@@ -1383,7 +1395,12 @@ def _strict_requirements(
             "blocked_case_carried_a_numeric_answer",
         )
         for lane in ("lane_c", "lane_d", "lane_e"):
-            require(f"strict_{lane}_pass", report.get(lane, {}).get("result") == "PASS", "not_run")
+            lane_result = report.get(lane, {}).get("result")
+            require(
+                f"strict_{lane}_pass",
+                lane_result == "PASS",
+                "not_run" if lane_result in (None, "NOT_RUN") else "lane_failed",
+            )
         for name in (
             "compositional_12",
             "synthetic_38",
@@ -1392,7 +1409,14 @@ def _strict_requirements(
             "hard_safety",
             "redaction",
         ):
-            require(f"strict_{name}_pass", report.get(name, {}).get("result") == "PASS", "not_run")
+            section_result = report.get(name, {}).get("result")
+            require(
+                f"strict_{name}_pass",
+                section_result == "PASS",
+                "not_run"
+                if section_result in (None, "NOT_RUN")
+                else "section_failed",
+            )
         # The catalog is only a safety claim when every signal in it was
         # actually examined.  These three bind the per-signal registry, so a
         # signal that lost its instrument fails the gate instead of quietly

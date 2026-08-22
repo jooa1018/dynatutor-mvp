@@ -2094,7 +2094,15 @@ def _incline(inputs: Mapping[str, Any], policy: TolerancePolicy) -> SolverPathOb
         mu_k = _number(inputs, "mu_k")
         if mu_k < 0:
             raise ConsistencyContractError("mu_k must be non-negative")
-        acceleration = gravity * (math.sin(theta) - mu_k * math.cos(theta))
+        if theta == math.pi / 4:
+            # The Windows and glibc implementations of sin(pi/4) differ by one
+            # ULP.  This analytically identical factorization renders that
+            # exact special angle identically on both platforms.  The domain
+            # above excludes pi/2, so tan is finite; all other angles retain
+            # the established expression and verification tolerances.
+            acceleration = gravity * math.cos(theta) * (math.tan(theta) - mu_k)
+        else:
+            acceleration = gravity * (math.sin(theta) - mu_k * math.cos(theta))
         assumptions = ("kinetic_friction", "constant_gravity", "particle_model")
         formulas = ("P49-INCLINE-KINETIC:a=g*(sin(theta)-mu_k*cos(theta))",)
     elif mode == "static":

@@ -985,6 +985,24 @@ def test_a_not_run_lane_is_never_promoted_to_pass() -> None:
     assert outcomes["strict_lane_e_pass"] == "FAIL"
 
 
+def test_strict_gate_distinguishes_failed_sections_from_not_run() -> None:
+    cases = _fixture_cases()
+    scorecard = score_lane_b_cases(cases, _perfect_records(cases))
+    report = _with_real_hard_safety(_report_with_scorecard(scorecard))
+    report["lane_e"] = {"result": "NOT_RUN", "executed": False}
+    report["metamorphic"] = {"result": "FAIL", "executed": True}
+
+    outcomes = {
+        item.name: item
+        for item in gate._strict_requirements(
+            report, require_corpus=True, require_full=True
+        )
+    }
+
+    assert outcomes["strict_lane_e_pass"].detail == "not_run"
+    assert outcomes["strict_metamorphic_pass"].detail == "section_failed"
+
+
 def test_missing_public_corpus_fails_strict_mode() -> None:
     report = {
         "public_corpus": {"supplied": False, "disposition": "NOT_RUN"},
@@ -1092,12 +1110,9 @@ def test_suite_timeout_is_a_typed_failure(monkeypatch) -> None:
 
 
 def test_lane_e_missing_toolchain_is_not_run_not_pass(monkeypatch, tmp_path) -> None:
-    def _missing(*_a: Any, **_k: Any):
-        raise FileNotFoundError("npm")
-
     monkeypatch.setattr(gate, "REPOSITORY_ROOT", tmp_path)
     (tmp_path / "frontend").mkdir()
-    monkeypatch.setattr(gate.subprocess, "run", _missing)
+    monkeypatch.setattr(gate.shutil, "which", lambda _name: None)
     section = gate._lane_e_section(True)
     assert section["result"] == "NOT_RUN"
     assert section["executed"] is False
@@ -1106,6 +1121,7 @@ def test_lane_e_missing_toolchain_is_not_run_not_pass(monkeypatch, tmp_path) -> 
 def test_lane_e_install_failure_is_not_run_not_pass(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(gate, "REPOSITORY_ROOT", tmp_path)
     (tmp_path / "frontend").mkdir()
+    monkeypatch.setattr(gate.shutil, "which", lambda _name: "/tools/npm")
     monkeypatch.setattr(
         gate.subprocess,
         "run",
@@ -1120,6 +1136,7 @@ def test_lane_e_reuses_exact_installed_lint_toolchain_without_network_install(
     monkeypatch, tmp_path
 ) -> None:
     monkeypatch.setattr(gate, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(gate.shutil, "which", lambda _name: "/tools/npm")
     frontend = tmp_path / "frontend"
     for package, version in (
         ("eslint", "9.39.5"),
@@ -1133,9 +1150,11 @@ def test_lane_e_reuses_exact_installed_lint_toolchain_without_network_install(
         )
 
     commands: list[tuple[str, ...]] = []
+    run_kwargs: list[dict[str, Any]] = []
 
-    def _run(command, **_kwargs):
+    def _run(command, **kwargs):
         commands.append(tuple(command))
+        run_kwargs.append(kwargs)
         return subprocess.CompletedProcess(
             args=command, returncode=0, stdout="", stderr=""
         )
@@ -1155,8 +1174,11 @@ def test_lane_e_reuses_exact_installed_lint_toolchain_without_network_install(
     assert next(
         item for item in section["steps"] if item["step"] == "lint_toolchain"
     )["reason"] == "exact_installed_toolchain"
-    assert all(command[:2] != ("npm", "install") for command in commands)
-    assert all(command[:2] != ("npm", "ci") for command in commands)
+    assert all(command[:2] != ("/tools/npm", "install") for command in commands)
+    assert all(command[:2] != ("/tools/npm", "ci") for command in commands)
+    assert all(command[0] == "/tools/npm" for command in commands)
+    assert all(kwargs["encoding"] == "utf-8" for kwargs in run_kwargs)
+    assert all(kwargs["errors"] == "replace" for kwargs in run_kwargs)
 
 
 def test_unrequested_lanes_report_not_run(monkeypatch) -> None:
