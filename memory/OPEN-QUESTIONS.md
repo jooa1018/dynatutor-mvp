@@ -4,7 +4,7 @@ Rule: anything unresolved gets a row here the moment it surfaces. A question is 
 
 | ID | Question | Opened | Status |
 |---|---|---|---|
-| Q-001 | What acceptance-valid evidence path can close B28A/B28 and the gold-scored acceptance of B29/B32 now that the exact historical augmentation manifest is confirmed unavailable? | 2026-08-23 | blocked — `EXACT_HISTORICAL_MANIFEST_UNAVAILABLE`; a supplemental manifest must not be substituted for the historical one |
+| Q-001 | What acceptance-valid evidence path can close B28A/B28 and the gold-scored acceptance of B29/B32 now that the exact historical augmentation manifest is confirmed unavailable? | 2026-08-23 | closed by [D-002](DECISIONS.md#d-002--execute-phase-56-autonomously-to-an-evidence-backed-terminal-state--2026-08-23-user-long-goal-handoff) — use the already-defined separate supplemental path; never substitute it for the historical seal |
 | Q-002 | Can the separately identified supplemental campaign meet its additional `+9` supported-correct target under its own locked identity and provenance? | 2026-08-23 | open — no cohort transaction built, manifest not locked, baseline/final comparison not run; current additional yield is 0 |
 
 ## Readings in force — assumed, not decided

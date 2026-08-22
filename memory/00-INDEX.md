@@ -10,6 +10,9 @@ Purpose: this folder is the durable memory for dynatutor-mvp. Conversations forg
 | `OPEN-QUESTIONS.md` | Unresolved items awaiting a decision, and readings in force the user has not confirmed | Two tables. Close each row with a link to the resolving decision, or drop it |
 | `SESSION-LOG.md` | What happened, per working session | Append, dated |
 | `PRODUCT-TRUTH.md` | What the product actually does (if applicable) | Evidence + date only. Three sections: implemented / not / excluded |
+| `CHECKPOINT.md` | Current thirty-second recovery point for the active goal | Replace only after archiving the outgoing checkpoint |
+| `goal/` | Canonical goal terrain, skeleton, gaps, and done-check | Update by versioned diff; retain superseded cuts |
+| `knowledge/` | Findings that passed the verify gate | Evidence, sample, limits, label, and verification date required |
 
 ## Existing authoritative project sources
 
