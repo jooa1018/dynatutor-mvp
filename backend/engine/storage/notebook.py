@@ -176,7 +176,11 @@ def list_records(limit: int = 50, *, favorite: bool | None = None, due_only: boo
         where.append("favorite=?")
         params.append(1 if favorite else 0)
     if due_only:
-        where.append("date(review_due) <= date('now')")
+        # Keep the due-record population on the same local-calendar boundary as
+        # record_stats(). SQLite's date('now') is UTC and can disagree with
+        # date.today() for users east or west of UTC near midnight.
+        where.append("date(review_due) <= date(?)")
+        params.append(_iso(_today()))
     if query:
         where.append("(problem_text LIKE ? OR note LIKE ? OR problem_type LIKE ? OR solver LIKE ?)")
         q = f"%{query}%"
