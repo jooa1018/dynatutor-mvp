@@ -1,15 +1,15 @@
-# Checkpoint — Phase 56 completion — 2026-08-23 04:45 Asia/Seoul
+# Checkpoint - Phase 56 completion - 2026-08-23 05:05 Asia/Seoul
 
 ## The story so far
 
-The distinct `STAGE7_V2_SUPPLEMENTAL_YIELD_CAMPAIGN_V1` now has a deterministic source-only nine-entry manifest and a separate named population seal. Discovery used only typed source structure and selected exactly three banked-frictionless, three flat-curve maximum-speed, and three instantaneous-centre two-point contexts; full record fingerprints were bound only after selection. The frozen manifest canonical digest is `32aa3ce51e3006e533913b2f822251d22dccba2a379a35008f19e7a7e1aef7cd`, file SHA-256 `946cd6364669c123341d54999a87a468bc22f7260ea2b8500ddee267878bcd3a`, and selection identity digest `dcabc7f3a64ad448093d4d854e501da12d515c2876923bb8a456fccc192c4231`. Commits `341286a` and `5889b76` are pushed and local/upstream converge.
+The distinct supplemental campaign remains frozen under manifest digest `32aa3ce51e3006e533913b2f822251d22dccba2a379a35008f19e7a7e1aef7cd` and seal `phase56-stage7-v2-supplemental-yield-campaign-v1`. Commit `51a9c6811a43e1790bc317c6e32a3ef14a7faa4d` now writes V/R/G evidence as exact UTF-8 bytes, hashes the committed destination, and forces Phase M publication writes into binary mode on Windows. Focused publication/attestation/writer regressions passed 134 tests.
 
-At exact seal head `5889b76a2d59bb8dbd0261f2cfbdebdcb2d83487`, the sealed M→V→R→G baseline passed: 100 contexts accounted, 97 runtime-completed, 3 projection-refused, 6 carrier-augmented, 91 unresolved, 41 all-shadow correct, zero wrong, zero unscored, zero regressions, and supplemental yield zero before capability changes. During file-level verification, the Phase V/R/G tools' printed `*_FILE_SHA256` values were found not to match the actual bytes on Windows because `Path.write_text` translated newlines after the tools hashed the pre-write string. Phase M's binary publication and the manifest/seal hashes are unaffected. Stage 7 remains `IN_PROGRESS / NOT_ACCEPTED`; Stage 8 remains `NOT_STARTED`.
+At that exact pushed head, sealed M -> V -> R -> G passed again: 100 expected/accounted, 97 runtime-completed, 3 projection-refused, 6 carrier-augmented, 91 unresolved, 41 correct, zero wrong/unscored/regressed, and supplemental pre-change yield zero. External SHA-256 checks now exactly match the tool claims for verify (`8216bfb3...`), runtime (`1f93269c...`), redacted (`0276595a...`), shadow (`945f8675...`), and scorecard (`a596cca1...`) artifacts. Stage 7 remains `IN_PROGRESS / NOT_ACCEPTED`; Stage 8 remains `NOT_STARTED`.
 
 ## Decided
 
-- D-001 — use the ballast durable memory structure.
-- D-002 — execute Phase 56 autonomously to evidence-backed COMPLETE or genuine external BLOCKED, preserving every current authority and safety gate.
+- D-001 - use the Ballast durable memory structure.
+- D-002 - execute Phase 56 autonomously to evidence-backed COMPLETE or genuine external BLOCKED while preserving all authority and safety gates.
 
 ## Waiting on the user
 
@@ -17,10 +17,10 @@ None. Routine reversible choices are delegated by D-002; one-way external action
 
 ## Next first action
 
-Repair and adversarially test the Windows-portable atomic writer/file-hash path used by Phase V, Phase R, and Phase G, then rerun the same sealed exact-head baseline before changing any supplemental engine capability.
+Implement and adversarially verify only the general typed/evaluator capabilities needed by the frozen banked-frictionless, flat-curve maximum-speed, and instantaneous-centre two-point cohorts. Do not alter the manifest, seal, population, gold boundary, scorer, or acceptance thresholds.
 
 ## Tried
 
-- The first supplemental manifest used the source query role `q1` directly; migration correctly refused it because the v1 Draft projects that source identity as `qry_q1`. The builder was corrected before the manifest was sealed.
-- The manifest builder refuses overwriting a differing existing artifact. A second out-of-tree candidate path was used after the pre-seal correction, preserving both provenance attempts.
-- The first sealed baseline completed successfully but its post-run actual-byte audit exposed the Windows newline/file-hash mismatch in V/R/G output claims. This is retained as baseline evidence with an explicit limitation, not promoted to final provenance evidence.
+- Raw-byte readback initially exposed that Phase M's low-level `os.open` also inherited Windows CRT text mode. Adding `O_BINARY` made its existing pre-write hash check truthful instead of weakening the check.
+- A verifier isolation test expected one direct `write_text`; it was strengthened to require zero direct filesystem mutation calls and exactly one call to the tested shared byte-exact writer.
+- The first sealed baseline remains historical evidence with an explicit V/R/G file-hash limitation; it was not promoted. The exact-head `51a9c68` rerun supersedes it for portable file provenance.
