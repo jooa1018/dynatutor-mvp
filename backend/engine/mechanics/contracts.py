@@ -742,6 +742,11 @@ class StateValue(str, Enum):
     # Exact spring boundary, not a generic inactive/final state.  Appended to
     # preserve every existing enum value and its declaration order.
     zero_deformation = "zero_deformation"
+    # A point that is the instantaneous centre of one rigid body's planar
+    # motion at one declared event.  This is deliberately distinct from
+    # ``at_rest``: the carrier states a kinematic role at an instant, not that
+    # the point is a ground-fixed support over the surrounding interval.
+    instantaneous_center = "instantaneous_center"
 
 
 class StateCondition(StrictModel):

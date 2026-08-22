@@ -107,6 +107,27 @@ def _projected_frame_type(frame: ReferenceFrameV2) -> str:
     return engine_type
 
 
+def _projected_parent_frame_id(frame: ReferenceFrameV2) -> str | None:
+    """Preserve the parent implied by an exact cross-frame axis binding.
+
+    A v2 support frame can state its complete relation to a world frame in its
+    axis bindings while leaving the redundant parent field empty.  When every
+    axis binds to the same other frame, that frame is the only possible parent
+    and projecting it adds no new orientation.  Mixed, self, or absent
+    bindings remain unparented and therefore fail the downstream typed-support
+    reader exactly as before.
+    """
+
+    if frame.parent_frame_id is not None:
+        return frame.parent_frame_id
+    parents = {
+        axis.bound_frame_id
+        for axis in frame.axes
+        if axis.bound_frame_id != frame.frame_id
+    }
+    return next(iter(parents)) if len(parents) == 1 else None
+
+
 def derived_authority_records(
     augmentation: CorpusV2AugmentationV1,
 ) -> list[dict[str, Any]]:
@@ -260,7 +281,7 @@ def project_augmentation(
                 "frame_id": frame.frame_id,
                 "frame_type": _projected_frame_type(frame),
                 "origin": _projected_origin(frame),
-                "parent_frame_id": frame.parent_frame_id,
+                "parent_frame_id": _projected_parent_frame_id(frame),
                 "axes": axes,
                 "translating_with_entity_id": frame.translating_with_entity_id,
                 "rotating_about_point_id": frame.rotating_about_point_id,
@@ -468,6 +489,34 @@ def project_augmentation(
 
     # --- constraints --------------------------------------------------------
     for constraint in augmentation.constraint_authorities:
+        if constraint.authority.value == "instantaneous_center":
+            centre_ids = tuple(
+                participant
+                for participant in constraint.participant_ids
+                if participant != constraint.subject_id
+            )
+            if len(constraint.participant_ids) != 2 or len(centre_ids) != 1:
+                raise V2ValidationError(
+                    V2ValidationReason.constraint_without_participants
+                )
+            conditions.append(
+                {
+                    "state_condition_id": constraint.constraint_id,
+                    "kind": "motion",
+                    "state": "instantaneous_center",
+                    # The state belongs to the rigid body's motion.  The exact
+                    # profile resolves the carrier's sole non-body participant
+                    # as the centre point; keeping the body's already-declared
+                    # event subject avoids widening the source event actors.
+                    "subject_id": constraint.subject_id,
+                    "interval_id": constraint.interval_id,
+                    "event_id": constraint.event_id,
+                    "expression": None,
+                    "quantity_ids": [],
+                    "evidence_refs": list(constraint.evidence_refs),
+                }
+            )
+            continue
         mapped = ENGINE_CONSTRAINT_STATE.get(constraint.authority.value)
         if mapped is None:
             continue
@@ -499,7 +548,7 @@ def project_augmentation(
 
     # --- query objective ----------------------------------------------------
     objective_by_query = {
-        objective.query_id: objective.objective.value
+        objective.query_id: objective
         for objective in augmentation.query_objectives
     }
     queries = []
@@ -507,7 +556,11 @@ def project_augmentation(
         updated = dict(query)
         objective = objective_by_query.get(updated.get("query_id"))
         if objective is not None and updated.get("objective") is None:
-            updated["objective"] = objective
+            updated["objective"] = objective.objective.value
+            updated["evidence_refs"] = sorted(
+                set(updated.get("evidence_refs") or ())
+                | set(objective.evidence_refs)
+            )
         queries.append(updated if updated != query else query)
     payload["queries"] = queries
 

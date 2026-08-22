@@ -2387,9 +2387,15 @@ def _is_static_fixed_axis_two_point_speed_boundary_graph(
     event_ids = _graph_event_ids(graph)
     speed_law = "fixed_axis_speed"
     domain_law = "angular_speed_nonnegative"
+    instant_center_constraints = tuple(
+        item
+        for item in graph.constraints
+        if item.constraint_kind == "state_motion_instantaneous_center"
+    )
     if (
         len(event_ids) != 1
-        or graph.constraints
+        or len(graph.constraints) not in {0, 1}
+        or len(instant_center_constraints) != len(graph.constraints)
         or graph.initial_conditions
         or graph.alternative_closed_sets
         or len(graph.equations) != 3
@@ -2453,6 +2459,22 @@ def _is_static_fixed_axis_two_point_speed_boundary_graph(
     ):
         return False
 
+    if instant_center_constraints:
+        carrier = instant_center_constraints[0]
+        carrier_ids = (carrier.constraint_id,)
+        if (
+            carrier.scope.event_ids != event_ids
+            or carrier.scope.event_id != event_ids[0]
+            or carrier.scope.interval_id is None
+            or len(carrier.scope.entity_ids) != 1
+            or carrier.scope.point_ids
+            or not carrier.source_evidence_ids
+            or any(item.constraint_ids != carrier_ids for item in graph.equations)
+        ):
+            return False
+    elif any(item.constraint_ids for item in graph.equations):
+        return False
+
     by_role: dict[str, list[object]] = {}
     for item in graph.symbols:
         if item.generated or item.quantity_role is None:
@@ -2513,6 +2535,11 @@ def _is_static_fixed_axis_two_point_speed_boundary_graph(
         or None in interval_ids
         or len(frame_ids) != 1
         or symbol_event_ids != set(event_ids)
+    ):
+        return False
+    if instant_center_constraints and (
+        set(instant_center_constraints[0].scope.entity_ids) != subject_ids
+        or instant_center_constraints[0].scope.interval_id not in interval_ids
     ):
         return False
 
@@ -2659,6 +2686,195 @@ def _is_static_vertical_circle_top_boundary_graph(graph: EquationGraph) -> bool:
     ):
         return False
     return not incidence.get(nonnegative.equation_id)
+
+
+def _is_static_curve_design_boundary_graph(graph: EquationGraph) -> bool:
+    """Recognize one exact mass-cancelled circular-road design boundary.
+
+    The finish event scopes the readout, not a timed root.  Only either closed
+    invariant law plus the ordinary nonnegative-speed predicate receives the
+    event-free algebraic plan.  Geometry and authority provenance must resolve
+    on both the equation and its application before this exception applies.
+    """
+
+    event_ids = _graph_event_ids(graph)
+    domain_law = "translational_speed_nonnegative"
+    invariant_laws = {
+        "flat_curve_maximum_speed_invariant": (
+            "coefficient_friction",
+            ("geometry_radius",),
+            1,
+        ),
+        "banked_curve_design_speed_invariant": (
+            "angle",
+            ("geometry_angle", "geometry_radius"),
+            2,
+        ),
+    }
+    present = {item.law_id for item in graph.equations}
+    selected = tuple(item for item in invariant_laws if item in present)
+    if len(selected) != 1:
+        return False
+    invariant_law = selected[0]
+    design_role, expected_constraint_kinds, assumption_count = invariant_laws[
+        invariant_law
+    ]
+    expected_laws = {invariant_law, domain_law}
+    if (
+        len(event_ids) != 1
+        or graph.initial_conditions
+        or graph.alternative_closed_sets
+        or len(graph.equations) != 2
+        or len(graph.applications) != 2
+        or {item.law_id for item in graph.equations} != expected_laws
+        or {item.law_id for item in graph.applications} != expected_laws
+        or tuple(sorted(item.constraint_kind for item in graph.constraints))
+        != expected_constraint_kinds
+        or graph.rank.equality_count != 1
+        or graph.rank.inequality_count != 1
+        or graph.rank.unknown_count != 1
+        or graph.rank.structural_rank != 1
+        or graph.rank.underdetermined
+        or graph.rank.overdetermined
+        or graph.rank.conflicting
+    ):
+        return False
+
+    equations = {item.law_id: item for item in graph.equations}
+    applications = {item.law_id: item for item in graph.applications}
+    invariant = equations[invariant_law]
+    nonnegative = equations[domain_law]
+    if (
+        not isinstance(invariant.expression, Equality)
+        or not isinstance(nonnegative.expression, Inequality)
+        or graph.selected_equation_ids != (invariant.equation_id,)
+        or len(invariant.assumption_ids) != assumption_count
+        or len(nonnegative.assumption_ids) != assumption_count
+        or set(invariant.constraint_ids)
+        != {item.constraint_id for item in graph.constraints}
+        or set(nonnegative.constraint_ids)
+        != {item.constraint_id for item in graph.constraints}
+        or not invariant.source_evidence_ids
+        or not nonnegative.source_evidence_ids
+        or any(
+            application.equation_ids != (equations[law_id].equation_id,)
+            or application.source_quantity_ids
+            != equations[law_id].source_quantity_ids
+            or application.source_evidence_ids
+            != equations[law_id].source_evidence_ids
+            or application.assumption_ids != equations[law_id].assumption_ids
+            or application.constraint_ids != equations[law_id].constraint_ids
+            or application.generated_unknown_symbol_ids
+            != equations[law_id].generated_unknown_symbol_ids
+            or application.complexity_cost != equations[law_id].complexity_cost
+            or application.scope != equations[law_id].scope
+            for law_id, application in applications.items()
+        )
+    ):
+        return False
+
+    by_role: dict[str, list[object]] = {}
+    for item in graph.symbols:
+        if item.generated or item.quantity_role is None:
+            return False
+        if item.known_si_value is not None and (
+            type(item.known_si_value) is not float
+            or not math.isfinite(item.known_si_value)
+        ):
+            return False
+        by_role.setdefault(item.quantity_role, []).append(item)
+    # The bank angle is deliberately partial-evaluated by the law into one
+    # finite tangent literal.  Its quantity remains in the invariant's source
+    # provenance and its typed geometry relation remains a graph constraint,
+    # but it is therefore not an algebraic symbol.  The flat coefficient is
+    # itself a factor and remains one.
+    expected_symbol_roles = (
+        {"radius", "gravity", "speed", design_role}
+        if invariant_law == "flat_curve_maximum_speed_invariant"
+        else {"radius", "gravity", "speed"}
+    )
+    if (
+        set(by_role) != expected_symbol_roles
+        or any(len(by_role[role]) != 1 for role in by_role)
+        or len(graph.symbols) != len(expected_symbol_roles)
+    ):
+        return False
+    radius = by_role["radius"][0]
+    gravity = by_role["gravity"][0]
+    speed = by_role["speed"][0]
+    design = by_role.get(design_role, [None])[0]
+    if (
+        radius.known_si_value is None
+        or radius.known_si_value <= 0.0
+        or gravity.known_si_value is None
+        or gravity.known_si_value <= 0.0
+        or (
+            design is not None
+            and (
+                design.known_si_value is None
+                or design.known_si_value < 0.0
+            )
+        )
+        or speed.known_si_value is not None
+        or speed.event_id != event_ids[0]
+        or graph.query_symbol_id != speed.symbol.symbol_id
+    ):
+        return False
+
+    left = invariant.expression.left
+    right = invariant.expression.right
+    predicate = nonnegative.expression
+    if (
+        not isinstance(left, Power)
+        or not isinstance(left.base, SymbolRef)
+        or left.base.symbol_id != speed.symbol.symbol_id
+        or not isinstance(left.exponent, LiteralNode)
+        or left.exponent.value != 2.0
+        or not isinstance(right, Multiply)
+        or len(right.factors) != 3
+        or not isinstance(predicate.left, SymbolRef)
+        or predicate.left.symbol_id != speed.symbol.symbol_id
+        or not isinstance(predicate.right, LiteralNode)
+        or predicate.right.value != 0.0
+    ):
+        return False
+    right_symbol_ids = {
+        item.symbol_id for item in right.factors if isinstance(item, SymbolRef)
+    }
+    right_literals = tuple(
+        item.value for item in right.factors if isinstance(item, LiteralNode)
+    )
+    expected_right_symbol_ids = {
+        radius.symbol.symbol_id,
+        gravity.symbol.symbol_id,
+    }
+    if design is not None:
+        expected_right_symbol_ids.add(design.symbol.symbol_id)
+    if (
+        right_symbol_ids != expected_right_symbol_ids
+        or (
+            invariant_law == "flat_curve_maximum_speed_invariant"
+            and right_literals
+        )
+        or (
+            invariant_law == "banked_curve_design_speed_invariant"
+            and (
+                len(right_literals) != 1
+                or not math.isfinite(right_literals[0])
+                or right_literals[0] <= 0.0
+            )
+        )
+    ):
+        return False
+
+    incidence: dict[str, set[str]] = {}
+    for edge in graph.incidence:
+        incidence.setdefault(edge.equation_id, set()).add(edge.symbol_id)
+    return (
+        tuple(sorted(incidence.get(invariant.equation_id, ())))
+        == (speed.symbol.symbol_id,)
+        and not incidence.get(nonnegative.equation_id)
+    )
 
 
 def _is_static_rolling_incline_endpoint_boundary_graph(
@@ -2849,7 +3065,6 @@ def _is_static_rolling_incline_endpoint_boundary_graph(
         or None in interval_ids
     ):
         return False
-
     incidence: dict[str, set[str]] = {}
     for edge in graph.incidence:
         incidence.setdefault(edge.equation_id, set()).add(edge.symbol_id)
@@ -3089,6 +3304,7 @@ def _graph_plan_event_ids(graph: EquationGraph) -> tuple[str, ...]:
             or _is_static_particle_work_energy_boundary_graph(graph)
             or _is_static_fixed_axis_two_point_speed_boundary_graph(graph)
             or _is_static_vertical_circle_top_boundary_graph(graph)
+            or _is_static_curve_design_boundary_graph(graph)
             or _is_static_rolling_incline_endpoint_boundary_graph(graph)
         )
         else _graph_event_ids(graph)

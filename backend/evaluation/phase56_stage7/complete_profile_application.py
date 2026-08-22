@@ -57,6 +57,9 @@ from evaluation.phase56_stage7.horizontal_driven_contact import (
 from evaluation.phase56_stage7.spring_natural_length import (
     read_spring_natural_length_source,
 )
+from evaluation.phase56_stage7.curve_design_profile import (
+    read_curve_design_source,
+)
 from evaluation.phase56_stage7.typed_support_frames import (
     axis_bindings,
     frame_is_plain,
@@ -65,7 +68,7 @@ from evaluation.phase56_stage7.typed_support_frames import (
 )
 
 COMPLETE_PROFILE_APPLICATION_VERSION = (
-    "phase56-stage7-complete-profile-application-v9"
+    "phase56-stage7-complete-profile-application-v10"
 )
 
 
@@ -252,6 +255,10 @@ COLLISION_PARTNER_AFTER_QUANTITY_ID = "qty_closure_collision_partner_after"
 COLLISION_PARTNER_AFTER_SYMBOL_ID = "sym_closure_collision_partner_after"
 ROLLING_GRAVITY_QUANTITY_ID = "qty_closure_rolling_gravity"
 ROLLING_GRAVITY_SYMBOL_ID = "sym_closure_rolling_gravity"
+CURVE_DESIGN_GRAVITY_QUANTITY_ID = "qty_closure_curve_design_gravity"
+CURVE_DESIGN_GRAVITY_SYMBOL_ID = "sym_closure_curve_design_gravity"
+CURVE_DESIGN_RADIUS_RELATION_ID = "geo_closure_curve_design_radius"
+CURVE_DESIGN_ANGLE_RELATION_ID = "geo_closure_curve_design_angle"
 
 _FIXED_PULLEY_SCOPED_ASSUMPTIONS: Mapping[str, str] = {
     "massless_rope": "asm_closure_fixed_pulley_massless_rope",
@@ -4848,12 +4855,11 @@ def _rigid_two_point_speed_transfer_transaction(
     unknown through which the existing ``fixed_axis_speed`` law couples the
     two points at the source-declared instant.
 
-    The coupling is licensed only by the source's own fixed rotation
-    centre: exactly one ``coincident`` rotation relation must bind the body
-    to a third, otherwise-inert centre point.  That single typed centre is
-    what makes both radii the same rotation's radii; without it — or with
-    two candidate centres, or a centre that acts, carries a quantity, or is
-    bound as an on-body point — the transaction refuses and closes nothing.
+    The coupling is licensed only by the source's own typed centre: either
+    one ``coincident`` fixed-centre relation or one event-scoped
+    ``instantaneous_center`` state.  That authority makes both radii the same
+    rotation's radii; a floating point alone, multiple candidate centres, or
+    any state outside the readout event makes the transaction refuse.
     """
 
     reserved_ids = {
@@ -4871,7 +4877,6 @@ def _rigid_two_point_speed_transfer_transaction(
         or payload["points"]
         or payload["interactions"]
         or payload["constraints"]
-        or payload["state_conditions"]
         or payload["principle_hints"]
         or payload["ambiguities"]
         or payload["unsupported_features"]
@@ -4909,9 +4914,9 @@ def _rigid_two_point_speed_transfer_transaction(
     interval = payload["motion_intervals"][0]
     interval_id = interval.get("interval_id")
     if (
-        len(payload["geometry"]) != 3
+        len(payload["geometry"]) != len(lies_on) + len(centre_relations)
         or len(lies_on) != 2
-        or len(centre_relations) != 1
+        or len(centre_relations) > 1
         or any(
             len(item.get("participant_ids", ())) != 2
             or body_id not in item.get("participant_ids", ())
@@ -4935,7 +4940,7 @@ def _rigid_two_point_speed_transfer_transaction(
     if len(bound_ids) != 2 or len(point_ids - set(bound_ids)) != 1:
         return None
     centre_id = next(iter(point_ids - set(bound_ids)))
-    if {
+    if centre_relations and {
         participant
         for item in centre_relations
         for participant in item.get("participant_ids", ())
@@ -4993,6 +4998,27 @@ def _rigid_two_point_speed_transfer_transaction(
     def evidenced(item: dict[str, Any]) -> bool:
         refs = set(item.get("evidence_refs", ()))
         return bool(refs) and refs.issubset(source_evidence_ids)
+
+    instant_center_states = [
+        item
+        for item in payload["state_conditions"]
+        if item.get("kind") == "motion"
+        and item.get("state") == "instantaneous_center"
+    ]
+    fixed_centre = len(centre_relations) == 1 and not payload["state_conditions"]
+    event_centre = (
+        not centre_relations
+        and len(payload["state_conditions"]) == 1
+        and len(instant_center_states) == 1
+        and instant_center_states[0].get("subject_id") == body_id
+        and instant_center_states[0].get("interval_id") is None
+        and instant_center_states[0].get("event_id") == instant_id
+        and instant_center_states[0].get("expression") is None
+        and not instant_center_states[0].get("quantity_ids")
+        and evidenced(instant_center_states[0])
+    )
+    if not (fixed_centre or event_centre):
+        return None
 
     if any(
         item.get("subject_id") not in subject_ids
@@ -5194,6 +5220,22 @@ def _rigid_two_point_speed_transfer_transaction(
     closed["quantities"] = [*rewritten_quantities, omega_quantity]
     closed["symbols"] = [*payload["symbols"], omega_symbol]
     closed["queries"] = [rewritten_query]
+    if event_centre:
+        state = dict(instant_center_states[0])
+        # The source carrier is event-scoped before closure.  Once the exact
+        # surrounding motion interval has been resolved, bind the state to it
+        # so every attached kinematic quantity has reciprocal state scope.
+        state["interval_id"] = interval_id
+        state["quantity_ids"] = sorted(
+            [
+                target_quantity_id,
+                known_speed["quantity_id"],
+                radii_by_subject[known_point_entity_id]["quantity_id"],
+                radii_by_subject[query_point_entity_id]["quantity_id"],
+                TWO_POINT_SPEED_OMEGA_QUANTITY_ID,
+            ]
+        )
+        closed["state_conditions"] = [state]
     return (
         closed,
         (
@@ -5873,6 +5915,162 @@ def _explicit_resultant_force_transaction(
         (RESULTANT_FORCE_FRAME_ID, RESULTANT_FORCE_INTERACTION_ID),
         tuple(sorted(rebound)),
     )
+
+
+def _curve_design_speed_transaction(
+    payload: dict[str, Any], authority: TransactionAuthority
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]] | None:
+    """Close one mass-cancelled circular-road design-speed invariant.
+
+    The transaction consumes only the authority stage's already-issued gravity
+    value.  It creates no mass, force, acceleration, solver choice, equation,
+    or answer.  Radius/angle relations and contact quantity bindings merely
+    connect the exact source records the shared reader has already accepted.
+    """
+
+    reserved_ids = {
+        CURVE_DESIGN_GRAVITY_QUANTITY_ID,
+        CURVE_DESIGN_GRAVITY_SYMBOL_ID,
+        CURVE_DESIGN_RADIUS_RELATION_ID,
+        CURVE_DESIGN_ANGLE_RELATION_ID,
+    }
+    if reserved_ids & _authored_draft_ids(payload):
+        return None
+    source = read_curve_design_source(
+        payload,
+        approved_assumption_ids=authority.approved_assumption_ids,
+    )
+    if source is None:
+        return None
+
+    assumptions = {
+        item.get("assumption_id"): item for item in payload["assumptions"]
+    }
+    gravity_assumption = assumptions.get(source.gravity_assumption_id)
+    authorization = authority.authorized_assumptions.get(
+        source.gravity_assumption_id
+    )
+    if gravity_assumption is None or type(authorization) is not AssumptionAuthorization:
+        return None
+    if (
+        authorization.assumption_id != source.gravity_assumption_id
+        or str(getattr(authorization.role, "value", authorization.role)) != "gravity"
+        or authorization.subject_id != source.body_id
+        or authorization.interval_id != source.interval_id
+        or gravity_assumption.get("proposed_role") != "gravity"
+        or gravity_assumption.get("proposed_value") != authorization.raw_value
+        or gravity_assumption.get("proposed_unit") != authorization.raw_unit
+        or gravity_assumption.get("subject_id") != authorization.subject_id
+        or gravity_assumption.get("interval_id") != authorization.interval_id
+    ):
+        return None
+
+    quantities = {item["quantity_id"]: item for item in payload["quantities"]}
+    radius = quantities[source.radius_quantity_id]
+    design = quantities[source.design_quantity_id]
+    target = quantities[source.target_quantity_id]
+    evidence = sorted(
+        set(radius.get("evidence_refs", ()))
+        | set(design.get("evidence_refs", ()))
+        | set(gravity_assumption.get("evidence_refs", ()))
+        | set(payload["queries"][0].get("evidence_refs", ()))
+        | (
+            set(
+                assumptions[source.frictionless_assumption_id].get(
+                    "evidence_refs", ()
+                )
+            )
+            if source.frictionless_assumption_id is not None
+            else set()
+        )
+    )
+    if not evidence or len(evidence) > 16:
+        return None
+
+    gravity_quantity = {
+        "quantity_id": CURVE_DESIGN_GRAVITY_QUANTITY_ID,
+        "symbol_id": CURVE_DESIGN_GRAVITY_SYMBOL_ID,
+        "role": "gravity",
+        "subject_id": source.body_id,
+        "point_id": None,
+        "frame_id": None,
+        "interval_id": source.interval_id,
+        "event_id": None,
+        "component": "magnitude",
+        "shape": "scalar",
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "provenance": "server_default",
+        "raw_value": authorization.raw_value,
+        "raw_unit": authorization.raw_unit,
+        "assumption_policy_ref": authorization.assumption_id,
+        "evidence_refs": [],
+    }
+    gravity_symbol = {
+        "symbol_id": CURVE_DESIGN_GRAVITY_SYMBOL_ID,
+        "quantity_id": CURVE_DESIGN_GRAVITY_QUANTITY_ID,
+        "dimension": dict(_ACCELERATION_DIMENSION),
+        "shape": "scalar",
+    }
+
+    relations = [
+        {
+            "relation_id": CURVE_DESIGN_RADIUS_RELATION_ID,
+            "kind": "radius",
+            "participant_ids": [source.body_id, source.road_id],
+            "quantity_ids": [source.radius_quantity_id],
+            "interval_id": None,
+            "expression": None,
+            "evidence_refs": list(radius["evidence_refs"]),
+        }
+    ]
+    created = [
+        CURVE_DESIGN_GRAVITY_QUANTITY_ID,
+        CURVE_DESIGN_RADIUS_RELATION_ID,
+    ]
+    if source.kind == "banked":
+        relations.append(
+            {
+                "relation_id": CURVE_DESIGN_ANGLE_RELATION_ID,
+                "kind": "angle",
+                "participant_ids": [source.road_id],
+                "quantity_ids": [source.design_quantity_id],
+                "interval_id": None,
+                "expression": None,
+                "evidence_refs": list(design["evidence_refs"]),
+            }
+        )
+        created.append(CURVE_DESIGN_ANGLE_RELATION_ID)
+
+    contact = dict(payload["interactions"][0])
+    contact.update(
+        quantity_ids=sorted(
+            [
+                source.target_quantity_id,
+                source.radius_quantity_id,
+                source.design_quantity_id,
+                CURVE_DESIGN_GRAVITY_QUANTITY_ID,
+            ]
+        ),
+        evidence_refs=evidence,
+    )
+    rewritten_quantities: list[dict[str, Any]] = []
+    for original in payload["quantities"]:
+        item = dict(original)
+        if item["quantity_id"] == source.target_quantity_id:
+            item["role"] = "speed"
+        rewritten_quantities.append(item)
+    query = dict(payload["queries"][0])
+    query_target = dict(query["target"])
+    query_target["role"] = "speed"
+    query["target"] = query_target
+
+    closed = dict(payload)
+    closed["geometry"] = relations
+    closed["interactions"] = [contact]
+    closed["quantities"] = [*rewritten_quantities, gravity_quantity]
+    closed["symbols"] = [*payload["symbols"], gravity_symbol]
+    closed["queries"] = [query]
+    return closed, tuple(sorted(created)), (target["quantity_id"],)
 
 
 def _vertical_circle_top_speed_transaction(
@@ -7531,6 +7729,7 @@ _TRANSACTIONS = {
     ProfileId.rigid_two_point_speed: (
         _rigid_two_point_speed_transfer_transaction
     ),
+    ProfileId.curve_design_speed: _curve_design_speed_transaction,
     ProfileId.collision_restitution: (
         _collision_restitution_transaction
     ),

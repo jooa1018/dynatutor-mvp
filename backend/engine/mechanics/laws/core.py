@@ -113,6 +113,8 @@ CORE_LAW_CATALOG: tuple[LawRule, ...] = (
     _rule("mechanical_energy_conservation", "work_energy", (QuantityRole.energy,), assumptions=("no_energy_loss",), cost=4, hooks=("energy_residual",)),
     _rule("contact_limiting_static_friction", "newton_second_law", (QuantityRole.coefficient_friction, QuantityRole.force), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction",), cost=3, hooks=("friction_regime", "force_balance")),
     _rule("flat_curve_zero_friction_boundary", "constraint", (QuantityRole.speed, QuantityRole.acceleration, QuantityRole.coefficient_friction, QuantityRole.gravity, QuantityRole.radius), interactions=(InteractionKind.contact.value,), assumptions=("limiting_static_friction", "uniform_circular_motion"), cost=1, hooks=("domain_residual", "friction_regime", "kinematic_residual")),
+    _rule("flat_curve_maximum_speed_invariant", "constraint", (QuantityRole.speed, QuantityRole.coefficient_friction, QuantityRole.gravity, QuantityRole.radius), interactions=(InteractionKind.contact.value,), assumptions=("constant_gravity",), cost=1, hooks=("domain_residual", "friction_regime", "kinematic_residual")),
+    _rule("banked_curve_design_speed_invariant", "constraint", (QuantityRole.speed, QuantityRole.angle, QuantityRole.gravity, QuantityRole.radius), interactions=(InteractionKind.contact.value,), assumptions=("constant_gravity", "frictionless"), cost=1, hooks=("domain_residual", "contact_validity", "kinematic_residual")),
     _rule("banked_curve_vertical_balance", "newton_second_law", (QuantityRole.mass, QuantityRole.gravity, QuantityRole.force, QuantityRole.angle), interactions=(InteractionKind.gravity.value, InteractionKind.contact.value), assumptions=("frictionless_contact",), cost=4, hooks=("force_balance", "contact_validity")),
     _rule("banked_curve_inward_balance", "newton_second_law", (QuantityRole.mass, QuantityRole.acceleration, QuantityRole.force, QuantityRole.angle), interactions=(InteractionKind.contact.value,), assumptions=("frictionless_contact", "uniform_circular_motion"), cost=4, hooks=("force_balance", "contact_validity")),
     _rule("linear_momentum", "impulse_momentum", (QuantityRole.mass, QuantityRole.velocity, QuantityRole.momentum), cost=3, hooks=("momentum_residual",)),
@@ -6726,6 +6728,12 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
         for point in context.points
         if point.role is PointRole.joint
     }
+    instantaneous_center_states = tuple(
+        state
+        for state in context.state_conditions
+        if state.kind is StateKind.motion
+        and state.state is StateValue.instantaneous_center
+    )
     for speed in _by_role(context, QuantityRole.speed):
         if speed.subject_id not in rigid_ids or speed.shape is not QuantityShape.scalar:
             continue
@@ -6775,12 +6783,34 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
                     factors=(magnitude, radius.expression),
                     dimension=speed.dimension,
                 )
+                constraint_ids: tuple[str, ...] = ()
+                if instantaneous_center_states:
+                    linked_ids = {
+                        speed.quantity_id,
+                        angular.quantity_id,
+                        radius.quantity_id,
+                    }
+                    matching_states = tuple(
+                        state
+                        for state in instantaneous_center_states
+                        if state.event_id == speed.event_id
+                        and state.interval_id in {None, speed.interval_id}
+                        and linked_ids <= set(state.quantity_ids)
+                        and state.expression is None
+                        and bool(state.evidence_refs)
+                    )
+                    if len(matching_states) != 1:
+                        continue
+                    constraint_ids = (
+                        matching_states[0].state_condition_id,
+                    )
                 emitted.append(
                     _emit(
                         context,
                         "fixed_axis_speed",
                         Equality(left=speed.expression, right=product),
                         (speed, angular, radius),
+                        constraint_ids=constraint_ids,
                     )
                 )
     for angular in _by_role(context, QuantityRole.angular_velocity):
@@ -6793,6 +6823,19 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
             and angular.component is QuantityComponent.magnitude
             and angular.known_si_value is None
         ):
+            constraint_ids = tuple(
+                sorted(
+                    state.state_condition_id
+                    for state in instantaneous_center_states
+                    if state.event_id == angular.event_id
+                    and state.interval_id in {None, angular.interval_id}
+                    and angular.quantity_id in set(state.quantity_ids)
+                    and state.expression is None
+                    and bool(state.evidence_refs)
+                )
+            )
+            if instantaneous_center_states and len(constraint_ids) != 1:
+                continue
             emitted.append(
                 _emit(
                     context,
@@ -6805,6 +6848,7 @@ def _rigid_emissions(context: LawContext) -> list[LawEmission]:
                         ),
                     ),
                     (angular,),
+                    constraint_ids=constraint_ids,
                 )
             )
     linked_moments = {
@@ -11187,6 +11231,334 @@ def _spring_energy_speed_emissions(context: LawContext) -> list[LawEmission]:
 
 
 @dataclass(frozen=True)
+class _CurveDesignInvariantProfile:
+    kind: str
+    body_id: str
+    road_id: str
+    radius: BoundQuantity
+    design: BoundQuantity
+    gravity: BoundQuantity
+    speed: BoundQuantity
+    assumption_ids: tuple[str, ...]
+    relation_ids: tuple[str, ...]
+    evidence_ids: tuple[str, ...]
+
+
+def _curve_design_invariant_profile(
+    context: LawContext,
+) -> _CurveDesignInvariantProfile | None:
+    """Read an exact mass-cancelled circular-road design invariant."""
+
+    bodies = tuple(
+        item
+        for item in context.entities
+        if item.primitive
+        in {EntityPrimitive.particle, EntityPrimitive.rigid_body, EntityPrimitive.body_component}
+    )
+    roads = tuple(
+        item for item in context.entities if item.primitive is EntityPrimitive.surface
+    )
+    if (
+        len(context.entities) != 2
+        or len(bodies) != 1
+        or len(roads) != 1
+        or context.points
+    ):
+        return None
+    body_id = bodies[0].entity_id
+    road_id = roads[0].entity_id
+    if len(context.motion_intervals) != 1 or len(context.events) != 2:
+        return None
+    interval = context.motion_intervals[0]
+    events = {item.event_id: item for item in context.events}
+    start = events.get(interval.start_event_id)
+    finish = events.get(interval.end_event_id)
+    if (
+        set(interval.subject_ids) != {body_id}
+        or len(interval.subject_ids) != 1
+        or interval.frame_id is not None
+        or start is None
+        or finish is None
+        or start.kind.value != "start"
+        or finish.kind.value != "finish"
+        or any(
+            set(item.subject_ids) != {body_id}
+            or len(item.subject_ids) != 1
+            or item.time_quantity_id is not None
+            for item in context.events
+        )
+    ):
+        return None
+
+    if len(context.interactions) != 1:
+        return None
+    contact = context.interactions[0]
+    if (
+        contact.kind is not InteractionKind.contact
+        or set(contact.participant_ids) != {body_id, road_id}
+        or len(contact.participant_ids) != 2
+        or contact.point_ids
+        or contact.frame_id is not None
+        or contact.interval_id is not None
+        or contact.event_id is not None
+        or getattr(contact, "contact_side", None) is not None
+        or not contact.evidence_refs
+    ):
+        return None
+
+    by_role = {
+        role: tuple(item for item in context.quantities if item.role is role)
+        for role in QuantityRole
+    }
+    if (
+        len(context.quantities) != 4
+        or len(by_role[QuantityRole.radius]) != 1
+        or len(by_role[QuantityRole.gravity]) != 1
+        or len(by_role[QuantityRole.speed]) != 1
+    ):
+        return None
+    angles = by_role[QuantityRole.angle]
+    coefficients = by_role[QuantityRole.coefficient_friction]
+    if (len(angles), len(coefficients)) not in {(1, 0), (0, 1)}:
+        return None
+    kind = "banked" if angles else "flat"
+    radius = by_role[QuantityRole.radius][0]
+    gravity = by_role[QuantityRole.gravity][0]
+    speed = by_role[QuantityRole.speed][0]
+    design = angles[0] if angles else coefficients[0]
+
+    if any(
+        item.shape is not QuantityShape.scalar or item.symbol_id is None
+        for item in (radius, gravity, speed, design)
+    ):
+        return None
+    if (
+        radius.subject_id != body_id
+        or radius.point_id is not None
+        or radius.frame_id is not None
+        or radius.interval_id != interval.interval_id
+        or radius.event_id is not None
+        or radius.component is not QuantityComponent.unspecified
+        or radius.dimension != DimensionVector(length=1)
+        or type(radius.known_si_value) is not float
+        or not math.isfinite(radius.known_si_value)
+        or radius.known_si_value <= 0.0
+        or not radius.evidence_ids
+        or gravity.subject_id != body_id
+        or gravity.point_id is not None
+        or gravity.frame_id is not None
+        or gravity.interval_id != interval.interval_id
+        or gravity.event_id is not None
+        or gravity.component is not QuantityComponent.magnitude
+        or gravity.dimension != DimensionVector(length=1, time=-2)
+        or type(gravity.known_si_value) is not float
+        or not math.isfinite(gravity.known_si_value)
+        or gravity.known_si_value <= 0.0
+        or speed.subject_id != body_id
+        or speed.point_id is not None
+        or speed.frame_id is not None
+        or speed.interval_id != interval.interval_id
+        or speed.event_id != finish.event_id
+        or speed.component is not QuantityComponent.magnitude
+        or speed.dimension != DimensionVector(length=1, time=-1)
+        or speed.known_si_value is not None
+        or design.subject_id != road_id
+        or design.point_id is not None
+        or design.frame_id is not None
+        or design.interval_id is not None
+        or design.event_id is not None
+        or design.component is not QuantityComponent.unspecified
+        or design.dimension != DimensionVector()
+        or type(design.known_si_value) is not float
+        or not math.isfinite(design.known_si_value)
+        or not design.evidence_ids
+    ):
+        return None
+    if kind == "banked" and not 0.0 < design.known_si_value < math.pi / 2.0:
+        return None
+    if kind == "flat" and design.known_si_value < 0.0:
+        return None
+
+    radii = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.radius
+    )
+    angles_rel = tuple(
+        item for item in context.geometry if item.kind is GeometryRelationKind.angle
+    )
+    if (
+        len(context.geometry) != (2 if kind == "banked" else 1)
+        or len(radii) != 1
+        or len(angles_rel) != (1 if kind == "banked" else 0)
+        or set(radii[0].participant_ids) != {body_id, road_id}
+        or tuple(radii[0].quantity_ids) != (radius.quantity_id,)
+        or radii[0].interval_id is not None
+        or radii[0].expression is not None
+        or not radii[0].evidence_refs
+    ):
+        return None
+    if kind == "banked":
+        relation = angles_rel[0]
+        if (
+            tuple(relation.participant_ids) != (road_id,)
+            or tuple(relation.quantity_ids) != (design.quantity_id,)
+            or relation.interval_id is not None
+            or relation.expression is not None
+            or not relation.evidence_refs
+        ):
+            return None
+
+    linked_quantity_ids = {
+        radius.quantity_id,
+        design.quantity_id,
+        gravity.quantity_id,
+        speed.quantity_id,
+    }
+    if set(contact.quantity_ids) != linked_quantity_ids:
+        return None
+
+    gravity_ids = context.approved_assumptions(
+        "constant_gravity", body_id, interval.interval_id
+    )
+    frictionless_ids = context.approved_assumptions(
+        "frictionless", body_id, interval.interval_id
+    )
+    if (
+        len(gravity_ids) != 1
+        or len(frictionless_ids) != (1 if kind == "banked" else 0)
+        or len(context.assumptions) != (2 if kind == "banked" else 1)
+        or any(not item.evidence_refs for item in context.assumptions)
+    ):
+        return None
+
+    if kind == "flat":
+        if context.query_objective != "maximum" or not context.query_evidence_ids:
+            return None
+        if len(context.reference_frames) != 2:
+            return None
+        world = tuple(
+            item
+            for item in context.reference_frames
+            if item.frame_type is ReferenceFrameType.cartesian_2d
+            and getattr(item.origin, "kind", None) == "world"
+        )
+        support = tuple(
+            item
+            for item in context.reference_frames
+            if item.frame_type is ReferenceFrameType.cartesian_2d
+            and getattr(item.origin, "entity_id", None) == road_id
+        )
+        if len(world) != 1 or len(support) != 1:
+            return None
+        world_frame, support_frame = world[0], support[0]
+
+        def bindings(frame: object) -> set[tuple[object, ...]]:
+            return {
+                (
+                    axis.axis.value,
+                    getattr(axis.direction, "kind", None),
+                    getattr(axis.direction, "frame_id", None),
+                    getattr(axis.direction, "axis", None).value
+                    if getattr(axis.direction, "axis", None) is not None
+                    else None,
+                    getattr(axis.direction, "sign", None),
+                )
+                for axis in frame.axes
+            }
+
+        if (
+            world_frame.parent_frame_id is not None
+            or support_frame.parent_frame_id != world_frame.frame_id
+            or bindings(world_frame)
+            != {
+                ("x", "axis", world_frame.frame_id, "x", 1),
+                ("y", "axis", world_frame.frame_id, "y", 1),
+            }
+            or bindings(support_frame)
+            != {
+                ("tangent", "axis", world_frame.frame_id, "x", 1),
+                ("normal", "axis", world_frame.frame_id, "y", 1),
+            }
+            or any(not item.evidence_refs for item in context.reference_frames)
+        ):
+            return None
+    elif context.query_objective is not None or context.reference_frames:
+        return None
+
+    evidence_ids = tuple(
+        sorted(
+            set(context.query_evidence_ids)
+            | {evidence for item in context.assumptions for evidence in item.evidence_refs}
+        )
+    )
+    return _CurveDesignInvariantProfile(
+        kind=kind,
+        body_id=body_id,
+        road_id=road_id,
+        radius=radius,
+        design=design,
+        gravity=gravity,
+        speed=speed,
+        assumption_ids=tuple(sorted((*gravity_ids, *frictionless_ids))),
+        relation_ids=tuple(sorted(item.relation_id for item in context.geometry)),
+        evidence_ids=evidence_ids,
+    )
+
+
+def _curve_design_invariant_emissions(context: LawContext) -> list[LawEmission]:
+    profile = _curve_design_invariant_profile(context)
+    if profile is None:
+        return []
+    speed_squared_dimension = profile.speed.dimension.plus(profile.speed.dimension)
+    if speed_squared_dimension is None:
+        return []
+    if profile.kind == "flat":
+        factor = profile.design.expression
+    else:
+        tangent = math.tan(profile.design.known_si_value)
+        if not math.isfinite(tangent) or tangent <= 0.0:
+            return []
+        factor = LiteralNode(value=tangent)
+    return [
+        _emit(
+            context,
+            (
+                "flat_curve_maximum_speed_invariant"
+                if profile.kind == "flat"
+                else "banked_curve_design_speed_invariant"
+            ),
+            Equality(
+                left=Power(
+                    base=profile.speed.expression,
+                    exponent=LiteralNode(value=2.0),
+                ),
+                right=Multiply(
+                    factors=(profile.gravity.expression, profile.radius.expression, factor),
+                    dimension=speed_squared_dimension,
+                ),
+            ),
+            (profile.speed, profile.gravity, profile.radius, profile.design),
+            assumption_ids=profile.assumption_ids,
+            constraint_ids=profile.relation_ids,
+            extra_entity_ids=(profile.road_id,),
+            extra_evidence_ids=profile.evidence_ids,
+        ),
+        _emit(
+            context,
+            "translational_speed_nonnegative",
+            Inequality(
+                relation=InequalityRelation.ge,
+                left=profile.speed.expression,
+                right=LiteralNode(value=0.0, dimension=profile.speed.dimension),
+            ),
+            (profile.speed,),
+            assumption_ids=profile.assumption_ids,
+            constraint_ids=profile.relation_ids,
+            extra_evidence_ids=profile.evidence_ids,
+        ),
+    ]
+
+
+@dataclass(frozen=True)
 class _CurveSpeedLawProfile:
     kind: str
     body_id: str
@@ -13242,6 +13614,21 @@ def apply_core_laws(context: LawContext) -> tuple[LawEmission, ...]:
         return tuple(
             sorted(
                 spring_energy,
+                key=lambda item: (
+                    item.effective_cost,
+                    item.rule.law_id,
+                    item.entity_ids,
+                    item.interval_id or "",
+                    item.event_id or "",
+                    item.source_quantity_ids,
+                ),
+            )
+        )
+    curve_design = _curve_design_invariant_emissions(context)
+    if curve_design:
+        return tuple(
+            sorted(
+                curve_design,
                 key=lambda item: (
                     item.effective_cost,
                     item.rule.law_id,

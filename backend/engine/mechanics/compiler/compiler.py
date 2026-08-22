@@ -8481,6 +8481,10 @@ def _build_law_context(
         approved_assumption_ids=frozenset(approved_assumption_ids),
         symbols=tuple(sorted(source_symbols.values(), key=lambda item: item.symbol_id)),
         hinted_principles=(),
+        query_objective=(
+            query.objective.value if query.objective is not None else None
+        ),
+        query_evidence_ids=tuple(query.evidence_refs),
     )
     return context, symbol_nodes, query_symbol_id, None
 
@@ -11287,7 +11291,14 @@ class MechanicsCompiler:
         )
         descriptor_map.update(
             {
-                item.state_condition_id: (f"state_{item.kind.value}", tuple(item.evidence_refs))
+                item.state_condition_id: (
+                    (
+                        "state_motion_instantaneous_center"
+                        if item.state is StateValue.instantaneous_center
+                        else f"state_{item.kind.value}"
+                    ),
+                    tuple(item.evidence_refs),
+                )
                 for item in safe_ir.state_conditions
                 if item.state_condition_id in finalized.descriptor_equations
             }

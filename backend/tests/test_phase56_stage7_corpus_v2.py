@@ -594,6 +594,135 @@ def test_projection_does_not_mutate_its_input() -> None:
     assert json.dumps(payload, sort_keys=True) == before
 
 
+def test_projection_derives_the_single_cross_frame_axis_parent() -> None:
+    world = ReferenceFrameV2(
+        frame_id="v2_world",
+        frame_type=FrameType.world_cartesian,
+        subject_id="ramp",
+        axes=(
+            FrameAxisV2(
+                axis="x",
+                sense=AxisSense.along_surface_forward,
+                bound_frame_id="v2_world",
+                bound_axis="x",
+                bound_sign=1,
+                evidence_refs=EV,
+            ),
+            FrameAxisV2(
+                axis="y",
+                sense=AxisSense.up_the_page,
+                bound_frame_id="v2_world",
+                bound_axis="y",
+                bound_sign=1,
+                evidence_refs=EV,
+            ),
+        ),
+        evidence_refs=EV,
+    )
+    support = ReferenceFrameV2(
+        frame_id="v2_support",
+        frame_type=FrameType.surface_tangent_normal,
+        subject_id="ramp",
+        axes=(
+            FrameAxisV2(
+                axis="tangent",
+                sense=AxisSense.along_surface_forward,
+                bound_frame_id="v2_world",
+                bound_axis="x",
+                bound_sign=1,
+                evidence_refs=EV,
+            ),
+            FrameAxisV2(
+                axis="normal",
+                sense=AxisSense.away_from_surface,
+                bound_frame_id="v2_world",
+                bound_axis="y",
+                bound_sign=1,
+                evidence_refs=EV,
+            ),
+        ),
+        evidence_refs=EV,
+    )
+    payload = {"reference_frames": [], "quantities": [], "queries": []}
+
+    projected = project_augmentation(
+        payload,
+        _augmentation(reference_frames=(world, support)),
+    )
+
+    parents = {
+        item["frame_id"]: item["parent_frame_id"]
+        for item in projected["reference_frames"]
+    }
+    assert parents == {"v2_world": None, "v2_support": "v2_world"}
+
+
+def test_projection_preserves_objective_evidence_on_the_query() -> None:
+    payload = {
+        "reference_frames": [],
+        "quantities": [],
+        "queries": [{"query_id": "y1", "objective": None, "evidence_refs": []}],
+        "interactions": [],
+        "state_conditions": [],
+        "geometry": [],
+    }
+    augmentation = _augmentation(
+        query_objectives=(
+            QueryObjectiveV2(
+                objective_id="v2_objective",
+                query_id="y1",
+                objective=QueryObjective.maximum,
+                evidence_refs=EV,
+            ),
+        )
+    )
+
+    projected = project_augmentation(payload, augmentation)
+
+    assert projected["queries"] == [
+        {"query_id": "y1", "objective": "maximum", "evidence_refs": ["ev_1"]}
+    ]
+
+
+def test_projection_keeps_instantaneous_center_event_scope_and_participant() -> None:
+    payload = {
+        "reference_frames": [],
+        "quantities": [],
+        "queries": [],
+        "interactions": [],
+        "state_conditions": [],
+        "geometry": [],
+    }
+    augmentation = _augmentation(
+        constraint_authorities=(
+            ConstraintAuthorityV2(
+                constraint_id="v2_instant_center",
+                authority=ConstraintAuthority.instantaneous_center,
+                participant_ids=("body", "ramp"),
+                subject_id="body",
+                event_id="v1",
+                evidence_refs=EV,
+            ),
+        )
+    )
+
+    projected = project_augmentation(payload, augmentation)
+
+    assert projected["state_conditions"] == [
+        {
+            "state_condition_id": "v2_instant_center",
+            "kind": "motion",
+            "state": "instantaneous_center",
+            "subject_id": "body",
+            "interval_id": None,
+            "event_id": "v1",
+            "expression": None,
+            "quantity_ids": [],
+            "evidence_refs": ["ev_1"],
+        }
+    ]
+
+
 def test_a_v1_record_with_no_manifest_entry_is_not_upgraded() -> None:
     record = {"case": "anything", "gold": {"entities": []}}
 

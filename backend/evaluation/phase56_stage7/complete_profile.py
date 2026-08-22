@@ -58,8 +58,11 @@ from evaluation.phase56_stage7.horizontal_driven_contact import (
 from evaluation.phase56_stage7.spring_natural_length import (
     read_spring_natural_length_source,
 )
+from evaluation.phase56_stage7.curve_design_profile import (
+    read_curve_design_source,
+)
 
-COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v5"
+COMPLETE_PROFILE_PLANNER_VERSION = "phase56-stage7-complete-profile-planner-v6"
 COMPLETE_PROFILE_CENSUS_VERSION = "phase56-stage7-complete-profile-census-v1"
 COMPLETE_PROFILE_PLAN_SCHEMA = "dynatutor.phase56_stage7.complete_profile_plan"
 COMPLETE_PROFILE_PLAN_VERSION = "1.0"
@@ -91,6 +94,7 @@ class ProfileId(str, Enum):
     incline_kinetic_sliding = "incline_kinetic_sliding"
     rigid_fixed_axis = "rigid_fixed_axis"
     rigid_two_point_speed = "rigid_two_point_speed"
+    curve_design_speed = "curve_design_speed"
     vertical_circle_top_speed = "vertical_circle_top_speed"
     rolling_incline_energy_speed = "rolling_incline_energy_speed"
     # Declared in the order the closure step considers them, so the enum and the
@@ -1183,7 +1187,6 @@ def _rigid_two_point_speed_transfer_evidence(
         or draft.points
         or draft.interactions
         or draft.constraints
-        or draft.state_conditions
         or draft.principle_hints
         or draft.ambiguities
         or draft.unsupported_features
@@ -1259,17 +1262,9 @@ def _rigid_two_point_speed_transfer_evidence(
         for participant in item.participant_ids
         if participant != body_id
     }
-    centre_authority = (
-        PrerequisiteDisposition.explicit_source
-        if len(centre_relations) == 1 and centre_bound_ids == {centre_id}
-        else (
-            PrerequisiteDisposition.ambiguous
-            if len(centre_relations) > 1
-            or (centre_relations and centre_bound_ids != {centre_id})
-            else PrerequisiteDisposition.missing
-        )
-    )
-    if centre_authority is not PrerequisiteDisposition.explicit_source:
+    if len(centre_relations) > 1 or (
+        centre_relations and centre_bound_ids != {centre_id}
+    ):
         return None
     subject_ids = {body_id, *bound_ids}
 
@@ -1321,6 +1316,28 @@ def _rigid_two_point_speed_transfer_evidence(
     def evidenced(item: Any) -> bool:
         refs = set(item.evidence_refs)
         return bool(refs) and refs.issubset(evidence_ids)
+
+    instant_center_states = tuple(
+        item
+        for item in draft.state_conditions
+        if item.kind.value == "motion"
+        and item.state.value == "instantaneous_center"
+    )
+    fixed_centre = len(centre_relations) == 1 and not draft.state_conditions
+    event_centre = (
+        not centre_relations
+        and len(draft.state_conditions) == 1
+        and len(instant_center_states) == 1
+        and instant_center_states[0].subject_id == body_id
+        and instant_center_states[0].interval_id is None
+        and instant_center_states[0].event_id == instant_id
+        and instant_center_states[0].expression is None
+        and not instant_center_states[0].quantity_ids
+        and evidenced(instant_center_states[0])
+    )
+    if not (fixed_centre or event_centre):
+        return None
+    centre_authority = PrerequisiteDisposition.explicit_source
 
     if any(
         item.subject_id not in subject_ids
@@ -2519,6 +2536,7 @@ class _DraftFacts:
         "axis_families",
         "bounded_intervals",
         "collision_restitution_profile",
+        "curve_design_speed_profile",
         "explicit_resultant_force_profile",
         "geometry",
         "has_blocking_ambiguity",
@@ -2543,12 +2561,13 @@ class _DraftFacts:
     )
 
     def __init__(self, draft: Any, approved_assumption_ids: Iterable[str]) -> None:
+        approved_ids = tuple(approved_assumption_ids)
         self.has_query_objective = any(
             getattr(item, "objective", None) is not None
             for item in draft.queries
         )
         self.roles = _roles(draft)
-        self.approved = _approved_kinds(draft, approved_assumption_ids)
+        self.approved = _approved_kinds(draft, approved_ids)
         self.interactions = _interaction_kinds(draft)
         self.geometry = _geometry_kinds(draft)
         self.primitives = _primitives(draft)
@@ -2572,6 +2591,10 @@ class _DraftFacts:
         )
         self.collision_restitution_profile = (
             _collision_restitution_evidence(draft)
+        )
+        self.curve_design_speed_profile = read_curve_design_source(
+            draft.model_dump(mode="json", warnings="none"),
+            approved_assumption_ids=approved_ids,
         )
         self.explicit_resultant_force_profile = (
             _explicit_resultant_force_evidence(draft)
@@ -3922,6 +3945,26 @@ _PROFILES: tuple[_ProfileSignature, ...] = (
              _rigid_two_point_speed_prerequisite("capability")),
         ),
     ),
+    # The mass-cancelled circular-road design invariants.  The exact source
+    # reader distinguishes a frictionless bank from an explicitly maximum,
+    # stated-horizontal friction limit; neither shape needs a fictitious mass
+    # or a half-built free-body diagram to express its physical boundary.
+    _ProfileSignature(
+        ProfileId.curve_design_speed,
+        lambda facts: facts.curve_design_speed_profile is not None,
+        (
+            ("typed_curve_source", PrerequisiteKind.geometry,
+             lambda facts: PrerequisiteDisposition.explicit_source),
+            ("authority_gravity", PrerequisiteKind.authority,
+             lambda facts: PrerequisiteDisposition.explicit_source),
+            ("quantity_gravity", PrerequisiteKind.interaction_quantity,
+             lambda facts: PrerequisiteDisposition.server_derivable),
+            ("query_speed_normalization", PrerequisiteKind.capability,
+             lambda facts: PrerequisiteDisposition.server_derivable),
+            ("capability_curve_design_invariant", PrerequisiteKind.capability,
+             lambda facts: PrerequisiteDisposition.explicit_source),
+        ),
+    ),
     # One particle on one circular track, one source-valued radius, an
     # approved server-valued gravity authority, and one value-free scalar
     # minimum-speed query at the source-declared highest point, with the
@@ -4166,7 +4209,7 @@ _PROFILES_BY_ID: Mapping[ProfileId, _ProfileSignature] = {
 # refuses an objective-bearing draft outright: an exact-value reader answering
 # a minimum question would be answering a question the source never asked.
 _OBJECTIVE_AWARE_PROFILES: frozenset[ProfileId] = frozenset(
-    {ProfileId.vertical_circle_top_speed}
+    {ProfileId.vertical_circle_top_speed, ProfileId.curve_design_speed}
 )
 
 

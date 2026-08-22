@@ -91,6 +91,8 @@ class LawContext:
     approved_assumption_ids: frozenset[str]
     symbols: tuple[SymbolDefinition, ...]
     hinted_principles: tuple[str, ...]
+    query_objective: str | None = None
+    query_evidence_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if type(self.approved_assumption_ids) is not frozenset:
