@@ -74,15 +74,27 @@ def test_run_with_timeout_kills_term_ignoring_descendant():
     env = os.environ.copy()
     env["DYNATUTOR_RUN_KILL_AFTER"] = "1"
     started = time.monotonic()
+    if os.name == "nt":
+        child_code = "import time; time.sleep(60)"
+        launcher_code = (
+            "import subprocess, sys; "
+            f"subprocess.Popen([sys.executable, '-c', {child_code!r}]); "
+            "print('done')"
+        )
+        descendant_command = [sys.executable, "-c", launcher_code]
+    else:
+        descendant_command = [
+            "bash",
+            "-c",
+            "trap '' TERM; while :; do sleep 1; done & echo done",
+        ]
     proc = subprocess.run(
         [
             sys.executable,
             str(script),
             "30",
             "--",
-            "bash",
-            "-c",
-            "trap '' TERM; while :; do sleep 1; done & echo done",
+            *descendant_command,
         ],
         capture_output=True,
         text=True,
@@ -93,7 +105,10 @@ def test_run_with_timeout_kills_term_ignoring_descendant():
     output = proc.stderr + proc.stdout
     assert proc.returncode == 0, output[-500:]
     assert elapsed < 8
-    assert "sending SIGKILL" in output
+    if os.name == "nt":
+        assert "process tree terminated with Windows Job Object" in output
+    else:
+        assert "sending SIGKILL" in output
     assert "command exited with code 0" in output
 
 
@@ -128,11 +143,28 @@ def test_backend_benchmark_wrapper_returns_after_real_pytest_summary():
     """sleep 대역이 아니라 실제 benchmark pytest와 wrapper의 종료까지 검증한다."""
     root = Path(__file__).resolve().parents[2]
     script = root / "scripts" / "check_backend_benchmark.sh"
+    bash = "bash"
+    if os.name == "nt":
+        git_exec_path = subprocess.run(
+            ["git", "--exec-path"],
+            capture_output=True,
+            check=True,
+            text=True,
+        ).stdout.strip()
+        git_bash = Path(git_exec_path).parents[2] / "bin" / "bash.exe"
+        if git_bash.exists():
+            bash = str(git_bash)
     env = os.environ.copy()
     env["DYNATUTOR_BACKEND_BENCHMARK_TIMEOUT"] = "90"
     env["DYNATUTOR_RUN_KILL_AFTER"] = "1"
+    env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     proc = subprocess.run(
-        ["bash", str(script)],
+        [
+            bash,
+            "-c",
+            script.read_text(encoding="utf-8"),
+            script.relative_to(root).as_posix(),
+        ],
         cwd=root,
         capture_output=True,
         text=True,
