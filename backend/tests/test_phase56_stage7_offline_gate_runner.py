@@ -1274,13 +1274,13 @@ def test_partial_strict_mode_fails_before_writing_evidence(
     """One strict flag cannot create an artifact with a contradictory scope."""
 
     with tempfile.TemporaryDirectory() as tmp:
-        output = Path(tmp) / "report.json"
+        tmp_output = Path(tmp) / "report.json"
         completed = subprocess.run(
             [
                 sys.executable,
                 str(GATE_PATH),
                 "--output",
-                str(output),
+                str(tmp_output),
                 partial_flag,
             ],
             cwd=REPOSITORY_ROOT / "backend",
@@ -1294,7 +1294,7 @@ def test_partial_strict_mode_fails_before_writing_evidence(
             "STAGE7_OFFLINE_GATE=FAIL:strict_flags_must_be_used_together"
             in completed.stdout
         )
-        assert not output.exists()
+        assert not tmp_output.exists()
 
 
 def test_scorecard_artifact_is_privacy_safe() -> None:
