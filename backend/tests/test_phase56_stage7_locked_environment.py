@@ -24,6 +24,7 @@ from evaluation.phase56_stage7.locked_environment import (
     offline_environment_is_clean,
     parse_locked_requirements,
 )
+from tools.run_phase56_stage7_locked_strict import _venv_python_path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 LOCK_FILE = REPOSITORY_ROOT / "backend" / "requirements-lock.txt"
@@ -342,3 +343,12 @@ def test_the_locked_strict_runner_names_the_test_that_motivated_it() -> None:
     # "this test is order-dependent" from "this environment is wrong".
     assert "LANE_D_ISOLATED_TEST" in source
     assert "LANE_D_SUITES" in source
+
+
+def test_the_locked_strict_runner_uses_the_native_virtualenv_interpreter() -> None:
+    root = Path("locked-environment")
+
+    assert _venv_python_path(root, platform_name="posix") == root / "bin" / "python"
+    assert _venv_python_path(root, platform_name="nt") == (
+        root / "Scripts" / "python.exe"
+    )

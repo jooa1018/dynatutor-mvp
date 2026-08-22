@@ -118,10 +118,18 @@ def _python_version(python: Path) -> str:
     return completed.stdout.strip()
 
 
+def _venv_python_path(venv_root: Path, *, platform_name: str = os.name) -> Path:
+    """Return the platform-native interpreter path for ``venv_root``."""
+
+    if platform_name == "nt":
+        return venv_root / "Scripts" / "python.exe"
+    return venv_root / "bin" / "python"
+
+
 def build_locked_interpreter(venv_root: Path, *, reuse: bool) -> Path:
     """Create (or reuse) a virtual environment holding exactly the lock."""
 
-    python = venv_root / "bin" / "python"
+    python = _venv_python_path(venv_root)
     if python.exists() and reuse:
         print(f"reusing locked interpreter at {python}", flush=True)
         return python
