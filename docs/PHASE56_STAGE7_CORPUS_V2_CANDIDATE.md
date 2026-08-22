@@ -1,10 +1,90 @@
 # Phase 56 Stage 7 — public corpus v2 candidate contract
 
-Disposition: **`V2_CANDIDATE_GOLD_SCORED_AND_INDEPENDENTLY_RE_SCORABLE — three cohorts closed, two walls measured, the measurement itself fail-closed; the preparation is now attested and independently replayed, and the campaign population is sealed`**
+Disposition: **`HISTORICAL_V2_ACCEPTANCE_BLOCKED_ON_EXACT_MANIFEST`; distinct `STAGE7_V2_SUPPLEMENTAL_YIELD_CAMPAIGN_V1 = PASS (+9, zero regression)`**
 
 This document records a *candidate* contract and an *experimental* measurement.
 The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
 `STAGE_7_IN_PROGRESS / NOT_ACCEPTED` stands, and Stage 8 has not been started.
+
+---
+
+## -5. Supplemental yield campaign closure (2026-08-23, latest)
+
+This section supersedes the later `Supplemental yield campaign` section only
+where its pre-run status differs. It does not alter the historical v2 candidate,
+recover the historical manifest, make the supplemental population official, or
+accept Stage 7.
+
+The final source-only selection contains three banked frictionless curve, three
+flat limiting-friction maximum-speed, and three instantaneous-centre two-point
+contexts. It was frozen under:
+
+```
+SUPPLEMENTAL_CAMPAIGN_ID             = STAGE7_V2_SUPPLEMENTAL_YIELD_CAMPAIGN_V1
+SUPPLEMENTAL_CAMPAIGN_SEAL           = phase56-stage7-v2-supplemental-yield-campaign-v1
+SUPPLEMENTAL_MANIFEST_CANONICAL_SHA  = 32aa3ce51e3006e533913b2f822251d22dccba2a379a35008f19e7a7e1aef7cd
+SUPPLEMENTAL_MANIFEST_FILE_SHA256    = 946cd6364669c123341d54999a87a468bc22f7260ea2b8500ddee267878bcd3a
+SUPPLEMENTAL_SELECTION_DIGEST        = dcabc7f3a64ad448093d4d854e501da12d515c2876923bb8a456fccc192c4231
+HISTORICAL_EXACT_MANIFEST_AVAILABLE  = false
+```
+
+Selection reads only typed source structure. Case identity, family, expected
+terminal, expected failure, expected/reference answer, tolerance, split, gold,
+runtime result, and solver result are absent from the selection type and do not
+participate in clustering or selection. Full-record fingerprints are bound only
+after opaque selection.
+
+### Baseline before mechanics changes
+
+The portable exact-byte baseline at `51a9c6811a43e1790bc317c6e32a3ef14a7faa4d`
+passed M -> V -> R -> G with 100 accounted, 97 runtime-completed, 3
+projection-refused, 6 augmented, 41 all-correct, zero wrong/unscored/regressed,
+and supplemental yield zero. Publication id:
+`e24e0796d4fc9e102f61e03ddd151682f72b2a75dd1318c6bed0cabedea6b544`.
+
+### Final exact-head measurement
+
+At mechanics code head `7794168734321be78b6fa54373bf20a6938d4bd4`, the
+unchanged population and seal again passed M -> V -> R -> G:
+
+| Result | Count |
+|---|---:|
+| expected/accounted | 100 / 100 |
+| runtime-completed / projection-refused | 97 / 3 |
+| carrier-augmented / unresolved | 6 / 91 |
+| newly solved correct / wrong / unscored | **6 / 0 / 0** |
+| all correct / wrong / unscored | **50 / 0 / 0** |
+| regressed / forbidden-class solve / query-binding mismatch | **0 / 0 / 0** |
+| cohort yield | **2** |
+
+The locked baseline-to-final change is therefore **41 -> 50, exactly `+9`**.
+Publication id:
+`e67098ab596907c965ae1e312be1bc73c17a1e0ae83df64b3a4367fccc759746`.
+Final raw-file SHA-256 values:
+
+- runtime snapshot: `14c217f089d0c7aa5c9780854bf876b1bceada88469b087379636f5aa9bf8c31`;
+- redacted view: `ca85b703b0a4f37c7621a71513f4c16a70a13cce3915bb1eedf429ad169d9c5f`;
+- shadow report: `00ecaee13e89fd4a3ada64d8b46352f194b07a9260b20b7c083c1757f9c81adc`;
+- scorecard: `da4ee952113fd4bee57b7110bb9c95d104773608a1f11cadea21c1fefdf57242`.
+
+The mechanics closure is general: typed flat/banked curve invariants,
+source-authorized maximum-query authority, event-scoped instantaneous-centre
+authority, and order-independent typed constraint scope. The initial IC pass
+solved one of three because the compiler accidentally derived constraint scope
+from content-hash equation ordering; the final code anchors it to the unique
+typed body-scope equation and pins the two alternate orderings as regressions.
+
+```
+SUPPLEMENTAL_CAMPAIGN_MANIFEST_LOCKED = true
+ADDITIONAL_NEWLY_SOLVED_CORRECT       = 9
+SUPPLEMENTAL_M_V_R_G                  = PASS
+SUPPLEMENTAL_WRONG_UNSCORED_REGRESSED = 0 / 0 / 0
+```
+
+These are supplemental experimental claims only. They do not satisfy the
+historical exact manifest, do not make a v2 corpus official, do not replace the
+frozen official-v1 target, and do not declare B28/B29/B32 or Stage 7 accepted.
+Stage 8 remains not started.
 
 ---
 

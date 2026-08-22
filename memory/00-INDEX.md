@@ -15,6 +15,13 @@ Purpose: this folder is the durable memory for dynatutor-mvp. Conversations forg
 | `goal/` | Canonical goal terrain, skeleton, gaps, and done-check | Update by versioned diff; retain superseded cuts |
 | `knowledge/` | Findings that passed the verify gate | Evidence, sample, limits, label, and verification date required |
 
+## Verified recovery findings
+
+| Finding | Role |
+|---|---|
+| [`knowledge/phase56-authority-snapshot.md`](knowledge/phase56-authority-snapshot.md) | Mutable branch/PR authority, historical-manifest constraint, and earlier exact-head baselines |
+| [`knowledge/phase56-supplemental-yield-proof.md`](knowledge/phase56-supplemental-yield-proof.md) | Final frozen supplemental `+9` proof and current official-v1 strict result at exact mechanics head `7794168` |
+
 ## Existing authoritative project sources
 
 This memory folder is an index and recovery layer only. It does not replace, duplicate, or restate the sources below as a new source of truth; follow the original source and its own supersession rules.

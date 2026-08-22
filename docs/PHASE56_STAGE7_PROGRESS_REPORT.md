@@ -15,10 +15,10 @@ this one does not, **this one is current**.
 | Package | Current disposition |
 |---|---|
 | B28A Stage 7 exact-head artifact integrity | `B28A_STAGE7_EXACT_HEAD_ARTIFACT_INTEGRITY_HARDENING_CONFIRMED` |
-| B28A prepare attestation + refusal population seal | `B28A_V2_PREPARE_ATTESTATION_AND_REFUSAL_POPULATION_SEAL_INCOMPLETE` — blocker `EXACT_MANIFEST_UNAVAILABLE` |
-| B28 gold-scored shadow + evidence hardening | `B28_V2_GOLD_SCORED_SHADOW_AND_EVIDENCE_HARDENING_INCOMPLETE` |
-| B29 horizontal-contact free body | `B29_V2_HORIZONTAL_CONTACT_FREE_BODY_INCOMPLETE` — engine wall |
-| B32 spring natural-length endpoint | `B32_V2_SPRING_NATURAL_LENGTH_ENDPOINT_INCOMPLETE` — catalogue wall |
+| B28A prepare attestation + refusal population seal | historical acceptance remains `B28A_V2_PREPARE_ATTESTATION_AND_REFUSAL_POPULATION_SEAL_INCOMPLETE` — blocker `EXACT_MANIFEST_UNAVAILABLE`; the distinct supplemental seal passes and is not a substitute |
+| B28 gold-scored shadow + evidence hardening | historical acceptance remains `B28_V2_GOLD_SCORED_SHADOW_AND_EVIDENCE_HARDENING_INCOMPLETE`; the distinct supplemental M/V/R/G campaign passes with `+9` and cannot retroactively accept B28 |
+| B29 horizontal-contact free body | `ENGINE_IMPLEMENTATION_CONFIRMED`; `GOLD_SCORED_ACCEPTANCE_BLOCKED_ON_EXACT_MANIFEST` |
+| B32 spring natural-length endpoint | `ENGINE_IMPLEMENTATION_CONFIRMED`; `GOLD_SCORED_ACCEPTANCE_BLOCKED_ON_EXACT_MANIFEST` |
 | B30 table-pulley typed frame | **not re-declared accepted** — not re-measured in the B28A sealed pipeline |
 | B31 incline kinetic motion sense | **not re-declared accepted** — not re-measured in the B28A sealed pipeline |
 | Stage 7 | `STAGE_7_IN_PROGRESS / NOT_ACCEPTED` |
@@ -28,6 +28,110 @@ B30 and B31 were measured as 3-of-3 at the `e511b63` checkpoint and that record
 stands as history. They were not re-measured under the sealed B28A pipeline —
 the manifest that half of the campaign depends on is unavailable — so they are
 not carried forward as accepted here.
+
+## Completion-goal evidence session (2026-08-23, latest) — read this first
+
+This section supersedes the current measurements and package descriptions above
+where they differ; it does not rewrite any historical result below. The
+authoritative branch is `codex/phase56-generic-mechanics-engine`. The final
+mechanics code head measured here is
+`7794168734321be78b6fa54373bf20a6938d4bd4`; later commits in this section are
+documentation or Ballast recovery descendants and no result is re-attributed
+to them.
+
+### The separate supplemental campaign is complete
+
+The source-only nine-context selection was frozen before capability changes.
+Its canonical manifest digest is
+`32aa3ce51e3006e533913b2f822251d22dccba2a379a35008f19e7a7e1aef7cd`, its
+manifest file SHA-256 is
+`946cd6364669c123341d54999a87a468bc22f7260ea2b8500ddee267878bcd3a`, and its
+seal is `phase56-stage7-v2-supplemental-yield-campaign-v1`. The population,
+scorer, thresholds, gold boundary, and seal were unchanged between baseline and
+final measurement.
+
+| Exact head | Accounted | Runtime / refused | Augmented | All correct | Newly solved correct | Wrong / unscored / regressed | Cohort yield |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `51a9c68` pre-change baseline | 100 | 97 / 3 | 6 | 41 | 0 | 0 / 0 / 0 | 0 |
+| `7794168` final | 100 | 97 / 3 | 6 | **50** | **6 / 6** | **0 / 0 / 0** | **2** |
+
+The same frozen population therefore improved by exactly `+9` correct from the
+portable pre-change baseline. Final Phase M -> V -> R -> G returned PASS.
+Publication id:
+`e67098ab596907c965ae1e312be1bc73c17a1e0ae83df64b3a4367fccc759746`.
+The final runtime, redacted, shadow, and scorecard raw-file SHA-256 values are
+respectively `14c217f089d0c7aa5c9780854bf876b1bceada88469b087379636f5aa9bf8c31`,
+`ca85b703b0a4f37c7621a71513f4c16a70a13cce3915bb1eedf429ad169d9c5f`,
+`00ecaee13e89fd4a3ada64d8b46352f194b07a9260b20b7c083c1757f9c81adc`, and
+`da4ee952113fd4bee57b7110bb9c95d104773608a1f11cadea21c1fefdf57242`.
+
+The new capability is general typed mechanics, not corpus routing:
+
+- flat limiting-friction and frictionless banked-curve speed invariants read
+  only typed source structure and source-authorized query objective;
+- event-scoped instantaneous-centre authority now supports a two-radius,
+  two-point velocity chain;
+- constraint scope no longer depends on content-hash equation ordering. Two
+  order-variant cases that reproduced the defect are permanent regressions.
+
+Focused verification at the code head passed 56 B10/instantaneous-centre tests
+including slow tests and 175 adjacent compiler/solver tests. Earlier tests for
+the complete curve/IC implementation passed 147 corpus/profile, 47 slow
+B10/curve, and 228 adjacent compiler/solver/verifier tests. No case id, family,
+expected answer, gold field, array order, variable name, first root, tolerance,
+threshold, or population participated in routing or answer selection.
+
+### Current official-v1 result and safety boundary
+
+The supported locked strict command was re-run in a detached worktree at exact
+`7794168` against approved archive SHA-256
+`cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef`.
+Lane D passed 1 isolated and 24 whole-lane tests. The strict report SHA-256 is
+`2ae079b071388e8d738991b6e441a95d186c40e253ea44694fa9ca1b159e5b44`.
+
+| Metric | Current official v1 |
+|---|---:|
+| supported correct | **44 / 81** |
+| supported wrong | **0** |
+| solved-but-unscored | **0** |
+| supported unresolved/unscored | **37** |
+| deferred matched | **12 / 12** |
+| unsupported-other matched | **0 / 2** |
+| terminal mapping | **61 / 100** |
+| hard-safety | **23 / 23 measured, 0 unbound, 0 nonzero** |
+
+Lane C, Lane D, Lane E, compositional 12, synthetic 38, metamorphic,
+physics-changing controls, redaction, and every safety gate passed. The strict
+inner exit is correctly `2`: 81/81 supported, 2/2 unsupported-other, terminal
+mapping, six derived 100-percent metrics, and the supported-unscored gate remain
+unmet. This is an honest acceptance failure, not a harness or safety failure.
+
+B28A's clean-tree read-only checker again passed all 24 attacks with zero
+blocking and zero non-blocking findings; its report SHA-256 remains
+`545779ad258a8489d88b9da36c7114535b883dbe33c1bb66e04f9245ccc90a4d`.
+
+### Why Stage 7 remains blocked rather than accepted
+
+Three legitimate paths were exhausted without weakening the contract:
+
+1. The historical exact augmentation manifest remains absent after the recorded
+   recovery audit. Reconstructing, guessing, synthesizing, or substituting it is
+   prohibited, so its historical campaign cannot be re-measured or sealed.
+2. Raw official v1 cannot honestly close the remaining supported population:
+   the complete authority census shows the missing reference frames, contact
+   side, interval-scoped motion direction, endpoint state, and specialized-model
+   declarations are not typed by those source records. Manufacturing them would
+   turn assumptions into source facts and violate the physics/provenance gate.
+3. The separately identified supplemental route has now met its own `+9`,
+   reproducibility, gold-isolation, and zero-regression target. Its contract
+   explicitly forbids using it as the historical campaign or as Stage 7
+   acceptance.
+
+B29 and B32 remain implemented and regression-tested, but their cohort evidence
+belongs to the unavailable historical augmentation campaign; implementation
+complete is not acceptance complete. B30/B31 historical results are not promoted.
+Accordingly `STAGE_7_IN_PROGRESS / NOT_ACCEPTED` and
+`STAGE_8_NOT_STARTED` remain current. Stage 8 was neither searched nor started.
 
 ## The uploaded-artifact identity session (2026-08-02, latest) — read this first
 
