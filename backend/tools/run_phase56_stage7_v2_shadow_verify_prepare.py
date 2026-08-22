@@ -52,7 +52,6 @@ rebuild to, 2 otherwise.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from enum import Enum
@@ -61,6 +60,9 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPOSITORY_ROOT / "backend"))
 
+from evaluation.phase56_stage7.corpus_v2.artifact_io import (  # noqa: E402
+    write_utf8_atomic,
+)
 from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
     CampaignSealFailure,
     campaign_seal_failures,
@@ -423,17 +425,12 @@ def _finish(args, failures, attestation, rebuilt) -> int:
     }
     payload["report_digest"] = canonical_digest(payload)
     body = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-    args.verification_report.parent.mkdir(parents=True, exist_ok=True)
-    temporary = args.verification_report.with_name(
-        args.verification_report.name + ".partial"
-    )
-    temporary.write_text(body, encoding="utf-8")
-    temporary.replace(args.verification_report)
+    report_file_sha = write_utf8_atomic(args.verification_report, body)
 
     print(f"STAGE7_V2_VERIFY_PREPARE_REPORT_DIGEST={payload['report_digest']}")
     print(
         "STAGE7_V2_VERIFY_PREPARE_REPORT_FILE_SHA256="
-        f"{hashlib.sha256(body.encode('utf-8')).hexdigest()}"
+        f"{report_file_sha}"
     )
     if attestation is not None:
         print(

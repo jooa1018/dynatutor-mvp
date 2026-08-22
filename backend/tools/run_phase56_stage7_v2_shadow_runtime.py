@@ -69,7 +69,6 @@ Exit 0 when every context is accounted for, 2 otherwise.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -80,6 +79,9 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "backend"))
 
 from engine.mechanics.contracts import MechanicsProblemDraftV1  # noqa: E402
 
+from evaluation.phase56_stage7.corpus_v2.artifact_io import (  # noqa: E402
+    write_utf8_atomic,
+)
 from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
     CampaignSealFailure,
     campaign_seal_failures,
@@ -175,14 +177,6 @@ class _Projected:
     @property
     def projected(self) -> bool:
         return True
-
-
-def _write_atomic(path: Path, body: str) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".partial")
-    temporary.write_text(body, encoding="utf-8")
-    temporary.replace(path)
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def main() -> int:
@@ -399,7 +393,7 @@ def main() -> int:
         )
         + "\n"
     )
-    snapshot_file_sha = _write_atomic(args.runtime_snapshot, snapshot_body)
+    snapshot_file_sha = write_utf8_atomic(args.runtime_snapshot, snapshot_body)
 
     view = redact_runtime_snapshot(snapshot)
     view_payload = view.model_dump(mode="json")
@@ -407,7 +401,7 @@ def main() -> int:
     view_body = (
         json.dumps(view_payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
     )
-    view_file_sha = _write_atomic(args.redacted_view, view_body)
+    view_file_sha = write_utf8_atomic(args.redacted_view, view_body)
 
     print(f"STAGE7_V2_RUNTIME_SNAPSHOT_DIGEST={snapshot.runtime_snapshot_digest}")
     print(f"STAGE7_V2_RUNTIME_SNAPSHOT_FILE_SHA256={snapshot_file_sha}")

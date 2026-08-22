@@ -1288,10 +1288,11 @@ def test_the_verifier_writes_only_its_own_report() -> None:
         and isinstance(node.func, ast.Attribute)
         and node.func.attr in {"write_text", "write_bytes", "replace", "unlink"}
     }
-    # `write_text` and `replace` appear exactly once each, for the report's own
-    # atomic write.  Nothing else on disk is touched.
-    assert written <= {"write_text", "replace"}
-    assert source.count("write_text(") == 1
+    # The verifier delegates its one output to the byte-exact atomic writer.
+    # It has no direct filesystem mutation primitive with which it could repair
+    # the inputs it verifies.
+    assert written == set()
+    assert source.count("write_utf8_atomic(") == 1
 
 
 def test_the_orchestrator_runs_the_verifier_between_prepare_and_runtime() -> None:

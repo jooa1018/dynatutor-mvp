@@ -67,6 +67,7 @@ reader of a live filesystem can observe a mixed or half-published authority.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -174,7 +175,17 @@ def _write_file(path: Path, body: str) -> None:
     ordering discipline, claimed as ordering and not as power-loss proof."""
 
     data = body.encode("utf-8")
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    # ``os.open`` inherits the CRT text mode on Windows unless ``O_BINARY`` is
+    # explicit.  Text mode rewrites LF to CRLF, so a later raw-byte readback
+    # would (correctly) reject the file whose pre-write UTF-8 hash was attested.
+    descriptor = os.open(
+        path,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_TRUNC
+        | getattr(os, "O_BINARY", 0),
+        0o644,
+    )
     try:
         while data:
             data = data[os.write(descriptor, data) :]
@@ -186,7 +197,7 @@ def _write_file(path: Path, body: str) -> None:
 def _read_back_file_sha256(path: Path) -> str:
     """The hash of what a reader would actually get, not of what was meant."""
 
-    return file_sha256(path.read_text(encoding="utf-8"))
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _fsync_directory(path: Path) -> None:

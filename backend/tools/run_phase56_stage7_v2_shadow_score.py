@@ -33,7 +33,6 @@ non-authoritative probe harness; the binding gates apply to it unchanged.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from collections import Counter
@@ -52,6 +51,9 @@ from evaluation.phase56_stage7.corpus_v2.gold_scoring import (  # noqa: E402
     gold_pairing_failures,
     score_shadow_snapshot,
     totals,
+)
+from evaluation.phase56_stage7.corpus_v2.artifact_io import (  # noqa: E402
+    write_utf8_atomic,
 )
 from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
     CampaignSealFailure,
@@ -85,14 +87,6 @@ from evaluation.phase56_stage7.redaction import (  # noqa: E402
 
 
 SCORE_FAILURE_EXIT = 2
-
-
-def _write_atomic(path: Path, body: str) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".partial")
-    temporary.write_text(body, encoding="utf-8")
-    temporary.replace(path)
-    return hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 def _binding_failures(snapshot, attestation, expected_code_head: str | None):
@@ -316,14 +310,14 @@ def main() -> int:
     assert_privacy_safe_artifact(payload)
     assert_scores_are_separated({"observed_public_score": "41/81"}, payload)
 
-    report_file_sha = _write_atomic(
+    report_file_sha = write_utf8_atomic(
         args.shadow_report,
         json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
     )
     # The scorecard is the machine-readable disposition on its own: the same
     # acceptance values this process exits on, in a file a checker can read
     # without parsing stdout.
-    scorecard_file_sha = _write_atomic(
+    scorecard_file_sha = write_utf8_atomic(
         args.scorecard,
         json.dumps(
             {
