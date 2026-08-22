@@ -51,7 +51,7 @@ Source: [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md), [candid
 | 2.1 What exact current-head commands and artifacts define the Stage 7 baseline? | filled | evaluation contract, test matrix, workflows, tool entrypoints, and [verified baseline](../knowledge/phase56-authority-snapshot.md) |
 | 2.2 Does exact-head/artifact provenance remain fail-closed at the current head? | filled for `166d40c`; remeasure after change | artifact identity PASS and B28A 24/24 clean at exact head |
 | 2.3 Does corpus-independent evaluation pass without public/gold access? | filled for `166d40c`; remeasure after change | offline gate PASS, public lanes `NOT_RUN`, report SHA in authority snapshot |
-| 2.4 Does official v1 remeasure without correctness/safety regression? | partial | diagnostic 41/81 and hard-safety 23/23 at `166d40c`; rerun supported two-flag strict mode for formal baseline |
+| 2.4 Does official v1 remeasure without correctness/safety regression? | filled for `532ef1f`; remeasure at final head | supported strict run: 41/81 correct, 0 wrong, hard-safety 23/23 measured with zero nonzero; report SHA `3490db4…`; acceptance gates correctly fail |
 | 2.5 What is B28A/B28's current executable disposition without the historical manifest? | named-unfilled | prepare/seal/gold-isolation tools and current contract |
 | 2.6 Are B29/B32 general engine implementations complete and adversarially verified? | named-unfilled | typed profiles, catalogue walls, profile application tests |
 | 2.7 Can the distinct supplemental campaign be frozen before change with source-only selection and an immutable seal? | named-unfilled | supplemental section of candidate contract; no source yet for runtime artifact |
@@ -92,12 +92,12 @@ Source: ballast verify-gate, proof-standard, rehearsal, checkpoint; [PRODUCT-TRU
 
 ## Single next leaf
 
-Leaf 2.4 — make mismatched strict CLI flags fail closed, then execute and seal the supported `--require-public-corpus --require-full-stage7` current-head baseline before supplemental capability changes.
+Leaf 2.7 — freeze the supplemental campaign's source-only nine-context manifest and immutable named seal, then run its exact-head baseline before supplemental capability changes.
 
 ## Known gaps
 
 - The approved public corpus is available and frozen-hash verified; no historical augmentation manifest was found or inferred.
-- The offline gate accepts mismatched strict flags and can print a false corpus-independent note after running public Lane B; this must be closed before relying on CLI evidence.
+- Exact-head CI at `532ef1f` found one temp-path naming violation in the new strict-flag control; `d5ed247` fixes it and its 102 directly affected tests pass, while new-head CI is pending.
 - Supplemental runtime manifest does not yet exist and must be created only after a sealed baseline-before-change process is proven.
 - Stage 8 specification remains intentionally unread until Stage 7 acceptance permits work there.
 - Production/deployment operational evidence is not yet current.
