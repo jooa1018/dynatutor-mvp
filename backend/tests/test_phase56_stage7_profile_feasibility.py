@@ -554,6 +554,7 @@ def test_the_profile_table_and_enum_cannot_drift():
         ProfileId.incline_kinetic_sliding,
         ProfileId.rigid_fixed_axis,
         ProfileId.rigid_two_point_speed,
+        ProfileId.curve_design_speed,
         ProfileId.collision_restitution,
         ProfileId.explicit_resultant_force,
         ProfileId.vertical_circle_top_speed,
