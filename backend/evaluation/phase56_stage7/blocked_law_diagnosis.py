@@ -507,7 +507,7 @@ def counterfactual_outcome(
 
 
 # The emission functions ``apply_core_laws`` dispatches to, in its own order.
-# The first five are whole-context templates that return early when they match;
+# The first six are whole-context templates that return early when they match;
 # the rest each contribute independently.  A per-law diagnosis says which law is
 # blocked, which turns out to be the wrong question when a whole family is
 # unreachable — a family that never fires cannot be unblocked one law at a time.
@@ -517,6 +517,7 @@ _TEMPLATE_EMITTERS: tuple[str, ...] = (
     "_vertical_circle_emissions",
     "_rolling_energy_emissions",
     "_spring_energy_speed_emissions",
+    "_curve_design_invariant_emissions",
     "_curve_speed_emissions",
     "_wave_f_emissions",
 )
