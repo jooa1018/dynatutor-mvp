@@ -11303,6 +11303,30 @@ class MechanicsCompiler:
                 if item.state_condition_id in finalized.descriptor_equations
             }
         )
+        # A descriptor may license more than one emitted equation.  The
+        # generic finalizer retains one equation ID because ConstraintNode has
+        # one anchor, but its iteration order is a content hash and therefore
+        # must not decide which physical scope the descriptor receives.  An
+        # instantaneous-centre state licenses both point-speed equalities and
+        # the shared angular-speed domain predicate; anchor it to that unique
+        # body-scoped predicate, whose scope is the state condition's own
+        # event/interval scope.  Near misses with no unique predicate remain on
+        # the generic anchor and are rejected by solver admission.
+        descriptor_equations = dict(finalized.descriptor_equations)
+        instantaneous_center_ids = {
+            item.state_condition_id
+            for item in safe_ir.state_conditions
+            if item.state is StateValue.instantaneous_center
+        }
+        for identifier in instantaneous_center_ids:
+            domain_equations = tuple(
+                item
+                for item in component_equations
+                if identifier in item.constraint_ids
+                and item.law_id == "angular_speed_nonnegative"
+            )
+            if len(domain_equations) == 1:
+                descriptor_equations[identifier] = domain_equations[0].equation_id
         constraints = tuple(
             sorted(
                 (
@@ -11313,7 +11337,7 @@ class MechanicsCompiler:
                         scope=next(item.scope for item in component_equations if item.equation_id == equation_id),
                         source_evidence_ids=descriptor_map[identifier][1],
                     )
-                    for identifier, equation_id in finalized.descriptor_equations.items()
+                    for identifier, equation_id in descriptor_equations.items()
                     if equation_id in component_equation_ids and identifier in descriptor_map
                 ),
                 key=lambda item: item.constraint_id,

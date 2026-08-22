@@ -466,6 +466,87 @@ def test_event_scoped_instantaneous_center_carrier_solves_the_same_typed_law() -
     assert result.answer_value_si == pytest.approx(_expected(2.0, 0.2, 0.5))
 
 
+@pytest.mark.parametrize(
+    ("v_a", "r_a", "r_b"),
+    (("2", "0.25", "0.6"), ("1.5", "0.4", "0.7")),
+)
+def test_instantaneous_center_constraint_anchor_is_not_equation_hash_order(
+    v_a: str, r_a: str, r_b: str
+) -> None:
+    """Changing source values cannot move the typed carrier to a point scope."""
+
+    case = _case(
+        floating_center=True,
+        v_a=v_a,
+        r_a=r_a,
+        r_b=r_b,
+    )
+    phrase = "순간중심 방법으로"
+    text = f"{case.problem_text} {phrase} 계산한다."
+    case = case.model_copy(
+        update={
+            "problem_text": text,
+            "problem_hash": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        }
+    )
+    projection = _projection(case)
+    body_id = next(
+        item.entity_id
+        for item in projection.draft.entities
+        if item.primitive.value == "rigid_body"
+    )
+    centre_id = next(
+        item.entity_id
+        for item in projection.draft.entities
+        if item.primitive.value == "point"
+        and all(
+            item.entity_id not in relation.participant_ids
+            for relation in projection.draft.geometry
+        )
+    )
+    instant_id = next(
+        item.event_id
+        for item in projection.draft.events
+        if item.kind.value == "other"
+    )
+    augmentation = CorpusV2AugmentationV1(
+        source_quotes=(
+            SourceQuoteEvidenceV2(
+                evidence_id="v2_ev_instant_center",
+                quote=phrase,
+            ),
+        ),
+        constraint_authorities=(
+            ConstraintAuthorityV2(
+                constraint_id="v2_constraint_instant_center",
+                authority=ConstraintAuthority.instantaneous_center,
+                participant_ids=(body_id, centre_id),
+                subject_id=body_id,
+                event_id=instant_id,
+                evidence_refs=("v2_ev_instant_center",),
+            ),
+        ),
+    )
+    augmented = MechanicsProblemDraftV1.model_validate(
+        project_augmentation(
+            projection.draft.model_dump(mode="json", warnings="none"),
+            augmentation,
+            problem_text=text,
+        )
+    )
+
+    result = run_lane_b_case(
+        replace(projection, draft=augmented),
+        execution_token="b10-instant-center-order-token",
+    )
+
+    assert result.terminal is LaneBTerminal.solved
+    assert result.applied_law_ids == EXPECTED_LAWS
+    assert result.answer_value_si == pytest.approx(
+        _expected(float(v_a), float(r_a), float(r_b))
+    )
+
+
 def test_instantaneous_center_at_the_wrong_event_cannot_close_the_transfer() -> None:
     projection = _projection(_case(floating_center=True))
     payload = projection.draft.model_dump(mode="json", warnings="none")
