@@ -1450,6 +1450,22 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # The evaluation contract has exactly two supported modes: neither flag is
+    # the corpus-independent regression, and both flags are the strict public
+    # gate.  Accepting only one flag can execute public work while printing the
+    # corpus-independent NOT_RUN note, which makes the resulting evidence
+    # self-contradictory.  Refuse that state before inspecting the checkout or
+    # writing an artifact.
+    if args.require_public_corpus != args.require_full_stage7:
+        print("STAGE7_OFFLINE_GATE=FAIL:strict_flags_must_be_used_together")
+        return 2
+
+    run_scope = (
+        "STRICT_PUBLIC_CORPUS_GATE"
+        if args.require_public_corpus
+        else "CORPUS_INDEPENDENT_REGRESSION"
+    )
+
     # Bind the run to its source before anything is measured, so a head
     # disagreement costs a second rather than a full evaluation and can never
     # reach the point where a report is written.
@@ -1475,6 +1491,7 @@ def main() -> int:
     report, passed = build_report(
         run_full_suites=args.require_full_stage7, head_sha=head_sha
     )
+    report["run_scope"] = run_scope
     strict = _strict_requirements(
         report,
         require_corpus=args.require_public_corpus,
@@ -1489,8 +1506,11 @@ def main() -> int:
             "require_public_corpus": args.require_public_corpus,
             "require_full_stage7": args.require_full_stage7,
         }
-        assert_privacy_safe_artifact(report)
         passed = passed and all(gate.passed for gate in strict)
+
+    # The scope is evidence too.  Re-run the redaction assertion after all
+    # main-level provenance and strict-gate fields have been attached.
+    assert_privacy_safe_artifact(report)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
@@ -1512,13 +1532,8 @@ def main() -> int:
     print(f"STAGE7_LANE_B={report['lane_b']['disposition']}")
     # Name the run's own scope on the last line, so a green corpus-independent
     # run can never be read back as a public-100 acceptance.
-    strict_scope = (
-        "STRICT_PUBLIC_CORPUS_GATE"
-        if args.require_public_corpus and args.require_full_stage7
-        else "CORPUS_INDEPENDENT_REGRESSION"
-    )
-    print(f"STAGE7_RUN_SCOPE={strict_scope}")
-    if strict_scope == "CORPUS_INDEPENDENT_REGRESSION":
+    print(f"STAGE7_RUN_SCOPE={run_scope}")
+    if run_scope == "CORPUS_INDEPENDENT_REGRESSION":
         print(
             "STAGE7_NOTE=this run measures no public-100 lane; "
             "Lane B/C/D/E, compositional, synthetic, metamorphic and "

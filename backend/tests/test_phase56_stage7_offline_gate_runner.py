@@ -1225,6 +1225,7 @@ def test_corpus_independent_run_names_its_own_scope() -> None:
         report = json.loads((Path(tmp) / "report.json").read_text(encoding="utf-8"))
 
     # Every public-corpus-dependent lane must be NOT_RUN, never PASS.
+    assert report["run_scope"] == "CORPUS_INDEPENDENT_REGRESSION"
     for lane in (
         "lane_b",
         "lane_c",
@@ -1239,6 +1240,39 @@ def test_corpus_independent_run_names_its_own_scope() -> None:
         assert report[lane].get("result", "NOT_RUN") != "PASS", lane
     # And it emits no strict verdict at all, so none can be quoted.
     assert "strict_gates" not in report
+
+
+@pytest.mark.parametrize(
+    "partial_flag",
+    ("--require-public-corpus", "--require-full-stage7"),
+)
+def test_partial_strict_mode_fails_before_writing_evidence(
+    partial_flag: str,
+) -> None:
+    """One strict flag cannot create an artifact with a contradictory scope."""
+
+    with tempfile.TemporaryDirectory() as tmp:
+        output = Path(tmp) / "report.json"
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(GATE_PATH),
+                "--output",
+                str(output),
+                partial_flag,
+            ],
+            cwd=REPOSITORY_ROOT / "backend",
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        assert completed.returncode == 2
+        assert (
+            "STAGE7_OFFLINE_GATE=FAIL:strict_flags_must_be_used_together"
+            in completed.stdout
+        )
+        assert not output.exists()
 
 
 def test_scorecard_artifact_is_privacy_safe() -> None:
