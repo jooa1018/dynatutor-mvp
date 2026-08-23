@@ -88,7 +88,7 @@ Source: ballast verify-gate, proof-standard, rehearsal, checkpoint; [PRODUCT-TRU
 | Leaf | Status | Source / lead |
 |---|---|---|
 | 5.1 Are implemented/wired/operational/verified product states separated with current evidence? | filled | `PRODUCT-TRUTH.md` separates verified local implementation/readiness from unverified hosted operation and acceptance |
-| 5.2 Does a zero-context executor complete the final handoff without a blocking stall? | named-unfilled | rehearsal rounds, maximum three |
+| 5.2 Does a zero-context executor complete the final handoff without a blocking stall? | filled for pre-terminal checkpoint | rehearsal round 1 on 2026-08-24 was CLEAN with zero blocking stalls; two non-blocking authority-freshness observations were corrected before terminalization |
 | 5.3 Is the branch/PR/checkpoint clean, pushed, and exact at COMPLETE or genuine BLOCKED? | named-unfilled | final git/GitHub/checkpoint verification |
 
 ## Single next leaf
@@ -112,10 +112,14 @@ Leaf 5.3 — finish exact-head CI/PR evidence, perform the zero-context rehearsa
 | Stage 8 current contract | gated |
 | Whole-product release gates | deterministic Stage 7 lanes pass; dependency/deployment readiness hardened; final exact-head CI pending; production release not claimed |
 | PRODUCT-TRUTH evidence | updated with verified and explicitly absent states |
-| Rehearsal | pending |
+| Rehearsal | round 1 CLEAN; final terminal checkpoint requires one confirming round after CI/PR update |
 | Clean exact branch/PR/checkpoint | pending |
 
 ## Superseded cuts
 
 - Terrain map v2 and its pre-security/deployment status are superseded by v3; git history retains the full earlier cut.
 - Terrain map v1 and its pre-capability single-next-leaf status were superseded by v2; git history retains the full earlier cut.
+
+## Rehearsal log
+
+- Round 1 — 2026-08-24 — persona: next DynaTutor maintenance agent with Git/GitHub/Python/Node knowledge and zero conversation context. Deliverable: `memory/CHECKPOINT.md` only. Execution result: CLEAN; branch/upstream/PR, Stage 7/8 disposition, all named report hashes, and the exact next action were recovered with no blocking guess. Non-blocking observations: a historical progress-section sentence reversed the supersession direction; Q-004 had not been closed after later hosted performance PASS; repository slug had to be derived from `origin`; load-bearing reports are intentionally out-of-repo and therefore temp-location durability is limited. Fixes: corrected the supersession sentence and closed Q-004; retained the remote-derivation and out-of-repo limits as explicit handoff facts. One final confirming rehearsal is required after CI and the terminal next action are written.

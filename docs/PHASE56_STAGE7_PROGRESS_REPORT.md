@@ -118,8 +118,9 @@ must not be treated as a raw-byte attestation unless independently hashed.
 
 ## Completion-goal evidence session (2026-08-23, historical closure)
 
-This section supersedes the current measurements and package descriptions above
-where they differ; it does not rewrite any historical result below. The
+This section is retained as the 2026-08-23 closure record. The newer
+`Continuation evidence (2026-08-24, latest)` section above supersedes it where
+they differ; neither section rewrites any older historical result below. The
 authoritative branch is `codex/phase56-generic-mechanics-engine`. The final
 mechanics code head measured here is
 `7794168734321be78b6fa54373bf20a6938d4bd4`; later commits in this section are
