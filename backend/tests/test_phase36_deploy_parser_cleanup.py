@@ -36,7 +36,7 @@ def test_phase36_node_20_is_pinned_for_frontend():
     assert (PROJECT_ROOT / "frontend" / ".nvmrc").read_text(encoding="utf-8").strip() == "20"
     assert (PROJECT_ROOT / "frontend" / ".node-version").read_text(encoding="utf-8").strip() == "20"
     package_json = (PROJECT_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
-    assert '"node": ">=20 <21"' in package_json
+    assert '"node": ">=20.9 <21"' in package_json
 
 
 def test_phase36_elastic_collision_does_not_set_spring_flag():
