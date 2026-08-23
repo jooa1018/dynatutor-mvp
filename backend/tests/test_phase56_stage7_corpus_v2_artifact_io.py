@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import runpy
+import sys
 from pathlib import Path
 
 import pytest
@@ -67,3 +69,19 @@ def test_vrg_tools_share_the_byte_exact_writer(tool_name: str) -> None:
     assert "write_utf8_atomic" in source
     assert "write_text(body" not in source
     assert "hashlib.sha256(body.encode" not in source
+
+
+def test_b28a_checker_reports_the_committed_raw_byte_hash(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    checker = TOOLS / "run_phase56_stage7_b28a_readonly_checker.py"
+    module = runpy.run_path(str(checker), run_name="not_main")
+    module["CHECKS"] = ()
+    output = tmp_path / "b28a-report.json"
+    monkeypatch.setattr(sys, "argv", [str(checker), "--report", str(output)])
+
+    assert module["main"]() == 0
+
+    actual_sha256 = hashlib.sha256(output.read_bytes()).hexdigest()
+    assert f"B28A_CHECKER_REPORT_FILE_SHA256={actual_sha256}" in capsys.readouterr().out
+    assert b"\r\n" not in output.read_bytes()

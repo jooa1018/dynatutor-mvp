@@ -35,9 +35,11 @@ from evaluation.phase56_stage7.corpus_v2.campaign_seal import (  # noqa: E402
     CampaignSealFailure,
     campaign_seal_failures,
 )
+from evaluation.phase56_stage7.corpus_v2.artifact_io import (  # noqa: E402
+    write_utf8_atomic,
+)
 from evaluation.phase56_stage7.corpus_v2.canonical import (  # noqa: E402
     canonical_digest,
-    file_sha256,
 )
 from evaluation.phase56_stage7.corpus_v2.prepare_attestation import (  # noqa: E402
     PrepareAttestationRefused,
@@ -1200,9 +1202,8 @@ def main() -> int:
         }
         payload["report_digest"] = canonical_digest(payload)
         body = json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(body, encoding="utf-8")
-        print(f"B28A_CHECKER_REPORT_FILE_SHA256={file_sha256(body)}")
+        committed_sha256 = write_utf8_atomic(args.report, body)
+        print(f"B28A_CHECKER_REPORT_FILE_SHA256={committed_sha256}")
 
     print(
         "B28A_CHECKER_ACCEPTANCE=" + ("PASS" if not blocking else "FAIL")
