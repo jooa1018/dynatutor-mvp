@@ -44,6 +44,11 @@ esbuild.buildSync({
   define: {
     'process.env.NEXT_PUBLIC_DYNATUTOR_API_BASE': JSON.stringify(process.env.NEXT_PUBLIC_DYNATUTOR_API_BASE || ''),
     'process.env.NEXT_PUBLIC_API_BASE': JSON.stringify(process.env.NEXT_PUBLIC_API_BASE || ''),
+    // `next/image` normally receives these replacements from the Next build.
+    // This standalone esbuild path must replace them too; otherwise the static
+    // bundle dereferences Node's `process` global before React can mount.
+    'process.env.NEXT_DEPLOYMENT_ID': JSON.stringify(''),
+    'process.env.__NEXT_IMAGE_OPTS': 'undefined',
   },
   loader: { '.css': 'css' },
   logLevel: 'info',
