@@ -9,7 +9,7 @@
 
 | Question | Label | Current answer / lead |
 |---|---|---|
-| Which repository state is authoritative? | `confirmed (self-gated)` | `codex/phase56-generic-mechanics-engine`; mechanics/corpus evidence predecessor `b3b7291`, dependency-security commit `9d20655`, deployment-readiness commit `6bff99e`, Node contract follow-up `a442136`, with later evidence descendants belonging to PR #17; [progress](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) |
+| Which repository state is authoritative? | `confirmed (self-gated)` | `codex/phase56-generic-mechanics-engine`; mechanics/corpus predecessor `b3b7291`, dependency-security `9d20655`, deployment-readiness `6bff99e`, Node contract follow-up `a442136`, byte-exact B28A checker `ebdb238`, with later evidence descendants belonging to PR #17; [progress](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) |
 | Is current Stage 7 accepted? | `confirmed by current contract` | No: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`; [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) and [PR #17](https://github.com/jooa1018/dynatutor-mvp/pull/17) |
 | May Stage 8 start now? | `confirmed by current contract` | No: `STAGE_8_NOT_STARTED` and stage-order rule; its specification search is deferred until Stage 7 acceptance |
 | Can the historical exact augmentation manifest be recovered or substituted? | `confirmed constraint` | It is unavailable and must not be reconstructed, guessed, synthesized, or replaced; [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) |
@@ -50,9 +50,9 @@ Source: [progress report](../../docs/PHASE56_STAGE7_PROGRESS_REPORT.md), [candid
 | Leaf | Status | Source / lead |
 |---|---|---|
 | 2.1 What exact current-head commands and artifacts define the Stage 7 baseline? | filled | evaluation contract, test matrix, workflows, tool entrypoints, and [verified baseline](../knowledge/phase56-authority-snapshot.md) |
-| 2.2 Does exact-head/artifact provenance remain fail-closed at the current head? | filled | final supplemental raw bytes externally hash-match; B28A 24/24 clean on the documentation descendant |
+| 2.2 Does exact-head/artifact provenance remain fail-closed at the current head? | filled | final supplemental raw bytes externally hash-match; byte-exact B28A report writer is pinned by regression; clean `ebdb238` checker 24/24 with printed/read-back raw SHA agreement |
 | 2.3 Does corpus-independent evaluation pass without public/gold access? | filled | earlier exact-head offline gate PASS, public lanes `NOT_RUN`; final M/V/R/G retains process-level gold isolation |
-| 2.4 Does official v1 remeasure without correctness/safety regression? | filled at final mechanics head `7794168` | 44/81 correct, 0 wrong, hard-safety 23/23 measured with zero nonzero; report SHA `2ae079b…`; acceptance gates correctly fail |
+| 2.4 Does official v1 remeasure without correctness/safety regression? | filled at exact evidence head `2ad70c5` | 44/81 correct, 0 wrong, hard-safety 23/23 measured with zero nonzero; report raw SHA `35f6755…`; acceptance gates correctly fail |
 | 2.5 What is B28A/B28's current executable disposition without the historical manifest? | filled | supplemental M/V/R/G PASS under a separate seal; historical B28A/B28 acceptance remains blocked on exact manifest |
 | 2.6 Are B29/B32 general engine implementations complete and adversarially verified? | filled for implementation, blocked for acceptance | implementations confirmed; 122 focused tests; gold-scored acceptance depends on unavailable exact manifest |
 | 2.7 Can the distinct supplemental campaign be frozen before change with source-only selection and an immutable seal? | filled at `51a9c68` | nine-entry manifest digest `32aa3ce5…`, named supplemental seal, portable exact-head sealed M→V→R→G baseline; [authority snapshot](../knowledge/phase56-authority-snapshot.md) |

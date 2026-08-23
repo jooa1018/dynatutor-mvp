@@ -22,9 +22,10 @@ or query-mismatch cases. Publication id is
 scorecard SHA-256 is
 `5036c9e676546f9d4751fa3b6d631c23d1414ea1317862e9d0e1fc20bb929658`.
 
-Current product commit `a44213620d2a999305fe9640d8351377137613c1` is a
-frontend dependency/audit and deployment-configuration-only descendant and
-does not reattribute or alter that campaign. The result remains supplemental, non-historical, and
+Current code commit `ebdb238fb3531bf57c57ac35c9552133d99af8e4` is a
+frontend dependency/audit, deployment-configuration, and evidence-writer-only
+descendant. It does not reattribute or alter that campaign. The result remains
+supplemental, non-historical, and
 non-official. The historical exact manifest remains unavailable; Stage 7 stays
 `IN_PROGRESS / NOT_ACCEPTED`; Stage 8 stays `NOT_STARTED`.
 

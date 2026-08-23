@@ -22,13 +22,13 @@ Checked: 2026-08-23. Implementation is confirmed; gold-scored cohort acceptance 
 
 ## Stage 7 evaluation, provenance, gold isolation, and hard-safety harness — verified — 2026-08-23
 
-Evidence: exact official-v1 strict report at head `b3b7291d2a6bc38b853a5d16d1a26117ddf5008b`, SHA-256 `1a935f0a45452c1da1b4362530f53485fe0152519f8b4fe42337ca09a94712e7`; B28A clean-tree checker 24/24 at documentation head `11de74e` with report SHA-256 `545779ad258a8489d88b9da36c7114535b883dbe33c1bb66e04f9245ccc90a4d`; exact `b3b7291` supplemental scorecard SHA-256 `5036c9e676546f9d4751fa3b6d631c23d1414ea1317862e9d0e1fc20bb929658`.
+Evidence: exact official-v1 strict report at evidence head `2ad70c5ec905278c349ee66a2a246be5e984b3e8`, raw-file SHA-256 `35f6755874681a699a8c80d4c95b9eaf8b879fa9f63de3ce280a50f13c9a3770`; B28A clean-tree checker 24/24 at code head `ebdb238fb3531bf57c57ac35c9552133d99af8e4`, with printed and independently read-back raw-file SHA-256 both `545779ad258a8489d88b9da36c7114535b883dbe33c1bb66e04f9245ccc90a4d`; exact `b3b7291` supplemental scorecard SHA-256 `5036c9e676546f9d4751fa3b6d631c23d1414ea1317862e9d0e1fc20bb929658`.
 
 Checked: 2026-08-23. The harness is operational and fail-closed. Its current official result is deliberately incomplete: 44/81 supported correct, zero wrong, 12/12 deferred, 0/2 unsupported-other, 61/100 terminal mapping, and all 23 hard-safety signals measured at zero.
 
 ## Deterministic API and frontend Stage 7 lanes — verified in the offline gate — 2026-08-23
 
-Evidence: exact `b3b7291` strict run: Lane C PASS (81 tests), Lane D PASS (24 tests plus the separately repeated isolated test), Lane E PASS for install, tests, lint, typecheck, and production build; compositional 12, synthetic 38, metamorphic, physics-changing controls, and redaction also PASS.
+Evidence: exact `2ad70c5` strict run: Lane C PASS (81 tests), Lane D PASS (24 tests plus the separately repeated isolated test), Lane E PASS for install, tests, lint, typecheck, and production build; compositional 12, synthetic 38, metamorphic, physics-changing controls, and redaction also PASS.
 
 Checked: 2026-08-23. This is offline deterministic product-contract evidence, not a live provider-quality claim or production-deployment proof.
 

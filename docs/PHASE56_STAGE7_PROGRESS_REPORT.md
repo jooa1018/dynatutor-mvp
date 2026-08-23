@@ -32,14 +32,16 @@ not carried forward as accepted here.
 ## Continuation evidence (2026-08-24, latest) — read this first
 
 The authoritative branch remains `codex/phase56-generic-mechanics-engine`.
-Commit `a44213620d2a999305fe9640d8351377137613c1` is the current product head.
+Commit `ebdb238fb3531bf57c57ac35c9552133d99af8e4` is the current code head.
 Commit `9d206556a7874c78a18ca7fe9aab573377264fc6` remediates and locks frontend
 dependencies, makes the existing lint toolchain reproducible through `npm ci`,
 and enforces `npm audit` in every frontend-bearing workflow. `6bff99e` then
 migrates the tracked Render Blueprint to current `runtime` syntax and declares
 the existing public root health check. `a442136` aligns the existing Node-engine
 contract test with the security-required `>=20.9 <21` range after the first new
-push CI exposed the stale `>=20 <21` literal. None changes mechanics, corpus
+push CI exposed the stale `>=20 <21` literal. `ebdb238` fixes the B28A checker's
+Windows report writer so its printed file SHA hashes the committed raw bytes,
+with a platform-byte regression test. None changes mechanics, corpus
 population, gold, scorer, threshold, tolerance, or any Stage 7 disposition.
 
 The latest exact mechanics-and-frontend evidence predecessor is
@@ -90,6 +92,29 @@ None of this supplies the absent historical manifest or typed authority for the
 remaining official cases. Current disposition therefore remains
 `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`; Stage 8 remains `STAGE_8_NOT_STARTED` and
 was not inspected or begun.
+
+### Final strict/checker revalidation for this continuation
+
+The locked strict command was run in a new detached worktree and new lockfile
+venv at evidence head `2ad70c5ec905278c349ee66a2a246be5e984b3e8`. Lane D
+passed 1/1 isolated and 24/24 whole-lane. The strict report SHA-256 is
+`35f6755874681a699a8c80d4c95b9eaf8b879fa9f63de3ce280a50f13c9a3770`.
+Its exact result is unchanged: 44/81 supported correct, zero wrong, zero
+solved-but-unscored, 37 unresolved/unscored, 12/12 deferred, 0/2
+unsupported-other, 61/100 terminal mapping, Lane C/D/E and every control lane
+PASS, 23/23 hard-safety signals measured with zero unbound/nonzero, zero
+external/private calls, and exactly ten strict yield/coverage failures. Strict
+exit `2` remains the required honest result.
+
+That run exposed a separate checker-evidence defect: on Windows the B28A JSON
+was written through text-mode newline translation while its printed
+`FILE_SHA256` hashed the pre-write LF string. Commit `ebdb238` routes the report
+through the existing byte-exact atomic writer. A clean detached `ebdb238` run
+then passed all 24 attacks with zero findings, printed
+`545779ad258a8489d88b9da36c7114535b883dbe33c1bb66e04f9245ccc90a4d`,
+and an independent raw-file hash returned the same value. The earlier checker
+verdicts remain historical behavioral evidence; their Windows “file SHA” label
+must not be treated as a raw-byte attestation unless independently hashed.
 
 ## Completion-goal evidence session (2026-08-23, historical closure)
 
