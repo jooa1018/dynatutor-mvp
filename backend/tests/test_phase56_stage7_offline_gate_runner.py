@@ -1140,7 +1140,7 @@ def test_lane_e_reuses_exact_installed_lint_toolchain_without_network_install(
     frontend = tmp_path / "frontend"
     for package, version in (
         ("eslint", "9.39.5"),
-        ("eslint-config-next", "15.5.18"),
+        ("eslint-config-next", "15.5.23"),
     ):
         package_dir = frontend / "node_modules" / package
         package_dir.mkdir(parents=True, exist_ok=True)

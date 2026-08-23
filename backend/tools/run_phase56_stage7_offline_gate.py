@@ -958,7 +958,7 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
 
     exact_lint_toolchain = (
         installed_package_version("eslint") == "9.39.5"
-        and installed_package_version("eslint-config-next") == "15.5.18"
+        and installed_package_version("eslint-config-next") == "15.5.23"
     )
     if exact_lint_toolchain:
         steps.append(
@@ -975,7 +975,7 @@ def _lane_e_section(executed: bool) -> dict[str, Any]:
             [
                 npm_executable, "install", "--no-save", "--no-package-lock",
                 "--ignore-scripts", "--no-audit", "--no-fund",
-                "eslint@9.39.5", "eslint-config-next@15.5.18",
+                "eslint@9.39.5", "eslint-config-next@15.5.23",
             ],
             timeout_s=1800,
         )

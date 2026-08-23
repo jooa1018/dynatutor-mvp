@@ -263,8 +263,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
         run: npm ci
-      - name: Install exact lint tooling
-        run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund eslint@9.39.5 eslint-config-next@15.5.18
+      - name: Audit frontend dependencies
+        run: npm run audit
       - name: Frontend tests
         run: npm test
         env:
