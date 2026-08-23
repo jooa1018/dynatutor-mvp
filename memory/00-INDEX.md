@@ -21,6 +21,9 @@ Purpose: this folder is the durable memory for dynatutor-mvp. Conversations forg
 |---|---|
 | [`knowledge/phase56-authority-snapshot.md`](knowledge/phase56-authority-snapshot.md) | Mutable branch/PR authority, historical-manifest constraint, and earlier exact-head baselines |
 | [`knowledge/phase56-supplemental-yield-proof.md`](knowledge/phase56-supplemental-yield-proof.md) | Final frozen supplemental `+9` proof and current official-v1 strict result at exact mechanics head `7794168` |
+| [`knowledge/phase56-pr10-performance-reproduction.md`](knowledge/phase56-pr10-performance-reproduction.md) | Exact `b3b7291` PR10 performance-failure reproduction evidence, local limits, and remote-CI distinction |
+| [`knowledge/phase56-frontend-dependency-security.md`](knowledge/phase56-frontend-dependency-security.md) | Exact baseline/post-change npm audit evidence, locked remediation, CI audit enforcement, and bounded reachability finding |
+| [`knowledge/phase56-deployment-readiness.md`](knowledge/phase56-deployment-readiness.md) | Current Render Blueprint schema validation and production-mode local health/auth/docs/CORS evidence |
 
 ## Existing authoritative project sources
 

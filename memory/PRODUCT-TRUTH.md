@@ -22,15 +22,33 @@ Checked: 2026-08-23. Implementation is confirmed; gold-scored cohort acceptance 
 
 ## Stage 7 evaluation, provenance, gold isolation, and hard-safety harness — verified — 2026-08-23
 
-Evidence: exact official-v1 strict report at mechanics head `7794168`, SHA-256 `2ae079b071388e8d738991b6e441a95d186c40e253ea44694fa9ca1b159e5b44`; B28A clean-tree checker 24/24 with report SHA-256 `545779ad258a8489d88b9da36c7114535b883dbe33c1bb66e04f9245ccc90a4d`; separate frozen supplemental artifact hashes in `memory/knowledge/phase56-supplemental-yield-proof.md`.
+Evidence: exact official-v1 strict report at head `b3b7291d2a6bc38b853a5d16d1a26117ddf5008b`, SHA-256 `1a935f0a45452c1da1b4362530f53485fe0152519f8b4fe42337ca09a94712e7`; B28A clean-tree checker 24/24 at documentation head `11de74e` with report SHA-256 `545779ad258a8489d88b9da36c7114535b883dbe33c1bb66e04f9245ccc90a4d`; exact `b3b7291` supplemental scorecard SHA-256 `5036c9e676546f9d4751fa3b6d631c23d1414ea1317862e9d0e1fc20bb929658`.
 
 Checked: 2026-08-23. The harness is operational and fail-closed. Its current official result is deliberately incomplete: 44/81 supported correct, zero wrong, 12/12 deferred, 0/2 unsupported-other, 61/100 terminal mapping, and all 23 hard-safety signals measured at zero.
 
 ## Deterministic API and frontend Stage 7 lanes — verified in the offline gate — 2026-08-23
 
-Evidence: exact `7794168` strict run: Lane C PASS (81 tests), Lane D PASS (24 tests plus the separately repeated isolated test), Lane E PASS for install, tests, lint, typecheck, and production build; compositional 12, synthetic 38, metamorphic, physics-changing controls, and redaction also PASS.
+Evidence: exact `b3b7291` strict run: Lane C PASS (81 tests), Lane D PASS (24 tests plus the separately repeated isolated test), Lane E PASS for install, tests, lint, typecheck, and production build; compositional 12, synthetic 38, metamorphic, physics-changing controls, and redaction also PASS.
 
 Checked: 2026-08-23. This is offline deterministic product-contract evidence, not a live provider-quality claim or production-deployment proof.
+
+## Static frontend browser shell — verified locally — 2026-08-23
+
+Evidence: commit `b3b7291d2a6bc38b853a5d16d1a26117ddf5008b`; `frontend/scripts/build-static.js`; `frontend/tests/staticBuildContract.test.js`; 53/53 frontend tests, typecheck PASS, production build PASS, lint exit 0 with 9 existing warnings; fresh desktop and 390px-mobile Chromium sessions rendered the Korean solve UI, switched to the examples tab, showed no horizontal overflow, and reported zero fresh page runtime errors.
+
+Checked: 2026-08-23. The static shell is browser-operational. A backend browser round-trip and production deployment were not verified because the local static build intentionally had no API base and displayed its explicit configuration failure.
+
+## Locked frontend dependency graph and CI audit gate — verified — 2026-08-24
+
+Evidence: commit `9d206556a7874c78a18ca7fe9aab573377264fc6`; `frontend/package.json`; `frontend/package-lock.json`; the four frontend-bearing GitHub workflows; `memory/knowledge/phase56-frontend-dependency-security.md`; clean Node 20 `npm ci`; post-change `npm audit` with 0 findings; 53/53 frontend tests, lint with 0 errors and 9 existing warnings, typecheck, static production build, and a native `sharp 0.35.3` / libvips `8.18.3` PNG smoke.
+
+Checked: 2026-08-24. The currently locked graph had zero findings in that npm registry snapshot and CI now fails on high-severity audit findings. This is not a universal security, future-advisory, production-deployment, or exploitability claim.
+
+## Render Blueprint and production-mode API boundary — verified locally — 2026-08-24
+
+Evidence: commit `6bff99e39acd0c1e8f6a4abf90cecdfb5f79b71c`; current `render.yaml` validation against Render's live JSON Schema with 0 errors; 18 focused deployment/CORS/auth tests; a real local Uvicorn production-mode smoke showing health 200, protected API 401 without a token and 200 with a bearer token, disabled OpenAPI 404 with authentication, and the configured production CORS origin.
+
+Checked: 2026-08-24. Source/configuration and the local production boundary are deployment-ready. No hosted Render deployment, live secrets, DNS/TLS, durable storage, live LLM call, or production frontend-to-backend flow is claimed.
 
 ## Not implemented
 

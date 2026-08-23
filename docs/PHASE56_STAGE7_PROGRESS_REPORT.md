@@ -29,7 +29,69 @@ stands as history. They were not re-measured under the sealed B28A pipeline —
 the manifest that half of the campaign depends on is unavailable — so they are
 not carried forward as accepted here.
 
-## Completion-goal evidence session (2026-08-23, latest) — read this first
+## Continuation evidence (2026-08-24, latest) — read this first
+
+The authoritative branch remains `codex/phase56-generic-mechanics-engine`.
+Commit `a44213620d2a999305fe9640d8351377137613c1` is the current product head.
+Commit `9d206556a7874c78a18ca7fe9aab573377264fc6` remediates and locks frontend
+dependencies, makes the existing lint toolchain reproducible through `npm ci`,
+and enforces `npm audit` in every frontend-bearing workflow. `6bff99e` then
+migrates the tracked Render Blueprint to current `runtime` syntax and declares
+the existing public root health check. `a442136` aligns the existing Node-engine
+contract test with the security-required `>=20.9 <21` range after the first new
+push CI exposed the stale `>=20 <21` literal. None changes mechanics, corpus
+population, gold, scorer, threshold, tolerance, or any Stage 7 disposition.
+
+The latest exact mechanics-and-frontend evidence predecessor is
+`b3b7291d2a6bc38b853a5d16d1a26117ddf5008b`. Its official-v1 locked strict
+report has SHA-256
+`1a935f0a45452c1da1b4362530f53485fe0152519f8b4fe42337ca09a94712e7`:
+44/81 supported correct, zero wrong, 37 supported unresolved, 12/12 deferred,
+0/2 unsupported-other, 61/100 terminal mapping, and all 23 hard-safety signals
+measured with zero unbound or nonzero values. Lane C/D/E and all control lanes
+pass; the strict inner exit remains `2` with exactly ten yield/coverage gate
+failures. This remains an acceptance failure, not a safety or harness failure.
+
+The unchanged supplemental M -> V -> R -> G transaction also passed at exact
+`b3b7291`: 100 accounted, 97 runtime-completed, 3 projection-refused, 6/6
+newly solved correct, 50 total correct (`+9` from the exact-byte baseline 41),
+and zero wrong, unscored, forbidden-class, regressed, or query-mismatch cases.
+Publication id:
+`1af0a36293a324aeee97a0251a0880544acff4894abd125c69a0e6222e8f0f2b`;
+scorecard SHA-256:
+`5036c9e676546f9d4751fa3b6d631c23d1414ea1317862e9d0e1fc20bb929658`.
+It remains supplemental only.
+
+PR CI run `32627235071` at `b3b7291` is still a real failed run: pooled PR10
+`rigid_body` p95 was `+25.138%` against the unchanged 15% maximum. The exact
+workflow was replayed twice under Linux/Python 3.11.16 with native container
+filesystems; both independent campaigns passed at `-1.895%` and `-3.515%`.
+That narrows the evidence but does not erase the failed hosted run or establish
+its external cause. A new exact-head PR run is required before current CI can
+be called green.
+
+The locked baseline frontend graph reproduced four high-severity npm package
+records (`next`, `postcss`, `nanoid`, optional `sharp`). At `9d20655`, a clean
+Node 20 install resolves `next 15.5.23`, `postcss 8.5.26`, `nanoid 3.3.18`, and
+`sharp 0.35.3`; `npm audit` reports zero current findings. Frontend verification
+passes 53/53 tests, lint with zero errors and nine existing warnings, typecheck,
+static production build, and a native sharp/libvips PNG smoke. This is a dated
+dependency-audit result, not a universal security or production claim.
+
+The old Render Blueprint failed the current live schema because it used the
+deprecated `env` field. At `6bff99e` the Blueprint validates with zero schema
+errors. Eighteen focused deployment/CORS/auth tests pass, and a real local
+production-mode Uvicorn process returned health 200, protected API 401 without
+and 200 with a token, disabled OpenAPI 404 with authentication, and the exact
+configured CORS origin. This is deployment-readiness evidence only: no hosted
+service, live secret, DNS/TLS, durable storage, or production traffic changed.
+
+None of this supplies the absent historical manifest or typed authority for the
+remaining official cases. Current disposition therefore remains
+`STAGE_7_IN_PROGRESS / NOT_ACCEPTED`; Stage 8 remains `STAGE_8_NOT_STARTED` and
+was not inspected or begun.
+
+## Completion-goal evidence session (2026-08-23, historical closure)
 
 This section supersedes the current measurements and package descriptions above
 where they differ; it does not rewrite any historical result below. The

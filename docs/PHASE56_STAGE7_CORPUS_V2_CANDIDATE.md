@@ -8,7 +8,29 @@ The frozen v1 public corpus is unchanged, the v1 acceptance target is unchanged,
 
 ---
 
-## -5. Supplemental yield campaign closure (2026-08-23, latest)
+## -6. Exact descendant revalidation (2026-08-24, latest)
+
+The unchanged supplemental campaign was replayed at exact
+`b3b7291d2a6bc38b853a5d16d1a26117ddf5008b` after the final static-browser
+repair. Manifest digest, raw manifest hash, seal, source-only selection,
+population, scorer, thresholds, tolerance, and gold boundary were unchanged.
+Phase M -> V -> R -> G passed with 100 accounted, 97 runtime-completed, 3
+projection-refused, 6/6 newly solved correct, 50 total correct (`+9` from the
+exact-byte baseline 41), and zero wrong, unscored, forbidden-class, regressed,
+or query-mismatch cases. Publication id is
+`1af0a36293a324aeee97a0251a0880544acff4894abd125c69a0e6222e8f0f2b`; the
+scorecard SHA-256 is
+`5036c9e676546f9d4751fa3b6d631c23d1414ea1317862e9d0e1fc20bb929658`.
+
+Current product commit `a44213620d2a999305fe9640d8351377137613c1` is a
+frontend dependency/audit and deployment-configuration-only descendant and
+does not reattribute or alter that campaign. The result remains supplemental, non-historical, and
+non-official. The historical exact manifest remains unavailable; Stage 7 stays
+`IN_PROGRESS / NOT_ACCEPTED`; Stage 8 stays `NOT_STARTED`.
+
+---
+
+## -5. Supplemental yield campaign closure (2026-08-23, historical closure)
 
 This section supersedes the later `Supplemental yield campaign` section only
 where its pre-run status differs. It does not alter the historical v2 candidate,

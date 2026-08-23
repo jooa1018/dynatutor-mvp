@@ -1,0 +1,11 @@
+# Phase 56 deployment readiness
+
+## Render Blueprint and production-mode API boundary are locally verified — 2026-08-24
+
+- Label: `confirmed (self-gated)`, limited to source/configuration and the local process checks below. No second-model verifier is configured.
+- Claim: commit `6bff99e39acd0c1e8f6a4abf90cecdfb5f79b71c` migrates the tracked Render Blueprint from deprecated `env` to current `runtime`, declares the existing public root endpoint as `healthCheckPath`, and validates against Render's live Blueprint JSON Schema with zero errors. The API also starts under production-mode configuration and enforces the documented health/auth/docs/CORS boundaries locally.
+- Refutation attempted: the pre-change file was validated against the same live schema and failed because its service matched no current schema variant; the post-change file was revalidated. A real Uvicorn process was then started with production mode, an explicit test token, the configured production CORS origin, docs disabled, LLM disabled, and an out-of-tree temporary SQLite path. Requests tested both token states, the docs route, and the allowed origin.
+- Primary sources: `render.yaml`; `backend/app/main.py`; `backend/app/middleware/personal_auth.py`; `backend/tests/test_phase24_final_polish_deployment.py`; Render live schema `https://render.com/schema/render.yaml.json`; commit `6bff99e39acd0c1e8f6a4abf90cecdfb5f79b71c`.
+- Sample: live schema validation errors changed from 2 cascading errors to 0. Focused deployment/CORS/auth tests passed 18 with 8 deselections. Production-mode process observations: `/` 200, `/records` without token 401, `/records` with bearer token 200, `/openapi.json` with token 404 while public docs were disabled, and `Access-Control-Allow-Origin: https://dynatutor-mvp.vercel.app` for the configured origin.
+- Limits: no Render service was created, changed, or deployed; dashboard secrets, live DNS/TLS, live provider calls, persistence across restart, and production frontend-to-backend traffic were not tested. The Blueprint intentionally uses a free-plan `/tmp` SQLite path and therefore does not claim durable records. The Vercel preview/check state is separate mutable evidence.
+- Sub-foundations exposed: live Blueprint schema freshness — atomic and checked here; actual hosted environment/secrets/network — external and not claimed.
