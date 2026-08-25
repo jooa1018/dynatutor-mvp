@@ -56,11 +56,11 @@ Checked: 2026-08-24. Source/configuration and the local production boundary are 
 Checked: <YYYY-MM-DD> — this section goes stale in the other direction: a line left here after the
 capability shipped makes you claim less than you have earned. Sweep it on the same 90-day clock. -->
 
-- Stage 7 contract acceptance: not achieved as of 2026-08-23. The frozen 81/81 supported and 100/100 terminal requirements do not pass.
-- Stage 8: not started as of 2026-08-23 because Stage 7 is not accepted.
-- Historical augmentation-campaign remeasurement: not available; the exact manifest is absent and was not reconstructed or substituted.
-- Live OpenAI/Anthropic Korean modeler quality: `NOT_RUN / N/A` in Stage 7.
-- Production deployment/release: not performed or claimed by this goal.
+- Stage 7 contract acceptance: not achieved as of 2026-08-25. Exact-head CI is green, but the frozen 81/81 supported and 100/100 terminal requirements do not pass; see `knowledge/phase56-terminal-blocker.md`.
+- Stage 8: not started as of 2026-08-25 because Stage 7 is not accepted.
+- Historical augmentation-campaign remeasurement: not available as of 2026-08-25; the exact manifest is absent and was not reconstructed or substituted.
+- Live OpenAI/Anthropic Korean modeler quality: `NOT_RUN / N/A` in Stage 7 as of 2026-08-25.
+- Production deployment/release: not performed or claimed by this goal as of 2026-08-25.
 - Universal dynamics coverage: not implemented; unsupported and authority-insufficient inputs must remain typed neutral outcomes.
 
 ## Permanently excluded

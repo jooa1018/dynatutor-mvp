@@ -24,6 +24,7 @@ Purpose: this folder is the durable memory for dynatutor-mvp. Conversations forg
 | [`knowledge/phase56-pr10-performance-reproduction.md`](knowledge/phase56-pr10-performance-reproduction.md) | Exact `b3b7291` PR10 performance-failure reproduction evidence, local limits, and remote-CI distinction |
 | [`knowledge/phase56-frontend-dependency-security.md`](knowledge/phase56-frontend-dependency-security.md) | Exact baseline/post-change npm audit evidence, locked remediation, CI audit enforcement, and bounded reachability finding |
 | [`knowledge/phase56-deployment-readiness.md`](knowledge/phase56-deployment-readiness.md) | Current Render Blueprint schema validation and production-mode local health/auth/docs/CORS evidence |
+| [`knowledge/phase56-terminal-blocker.md`](knowledge/phase56-terminal-blocker.md) | Exact-head CI closure, exhausted contract-preserving routes, and the single external manifest unblock |
 
 ## Existing authoritative project sources
 

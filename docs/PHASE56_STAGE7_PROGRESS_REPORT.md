@@ -2,6 +2,8 @@
 
 Disposition: **`STAGE_7_IN_PROGRESS / NOT_ACCEPTED`**
 
+Completion-goal terminal state: **`GENUINE_EXTERNAL_BLOCKED`**
+
 Stage 7 is **not** accepted. Stage 8 has **not** been started. PR #16 and PR #17
 remain open, Draft, and unmerged, and `main` is unchanged at
 `00b3a60de6e13756d089655879a02e4094122047`.
@@ -32,7 +34,12 @@ not carried forward as accepted here.
 ## Continuation evidence (2026-08-24, latest) — read this first
 
 The authoritative branch remains `codex/phase56-generic-mechanics-engine`.
-Commit `ebdb238fb3531bf57c57ac35c9552133d99af8e4` is the current code head.
+Commit `ebdb238fb3531bf57c57ac35c9552133d99af8e4` is the latest code-changing
+artifact-integrity head; verified PR head
+`78594eeba477ba7c43060bed270684372a357f15` is a later documentation/evidence
+descendant. The terminal checkpoint commit that contains the current memory files
+is also documentation-only; always re-fetch PR #17 rather than treating a SHA in
+this report as permanently current.
 Commit `9d206556a7874c78a18ca7fe9aab573377264fc6` remediates and locks frontend
 dependencies, makes the existing lint toolchain reproducible through `npm ci`,
 and enforces `npm audit` in every frontend-bearing workflow. `6bff99e` then
@@ -64,13 +71,15 @@ scorecard SHA-256:
 `5036c9e676546f9d4751fa3b6d631c23d1414ea1317862e9d0e1fc20bb929658`.
 It remains supplemental only.
 
-PR CI run `32627235071` at `b3b7291` is still a real failed run: pooled PR10
-`rigid_body` p95 was `+25.138%` against the unchanged 15% maximum. The exact
-workflow was replayed twice under Linux/Python 3.11.16 with native container
-filesystems; both independent campaigns passed at `-1.895%` and `-3.515%`.
-That narrows the evidence but does not erase the failed hosted run or establish
-its external cause. A new exact-head PR run is required before current CI can
-be called green.
+PR CI run `32627235071` at `b3b7291` remains a real historical failed run:
+pooled PR10 `rigid_body` p95 was `+25.138%` against the unchanged 15% maximum.
+The exact workflow was replayed twice under Linux/Python 3.11.16 with native
+container filesystems; both independent campaigns passed at `-1.895%` and
+`-3.515%`. Later PR-event release run `32653941680` at `2ad70c5` passed the
+unchanged pooled PR10 gate, and final verified PR-head release run `32656856108`
+at `78594ee` also passed it. The original failure is not erased and no external
+cause is asserted; no threshold, tolerance, population, or comparison method
+was changed.
 
 The locked baseline frontend graph reproduced four high-severity npm package
 records (`next`, `postcss`, `nanoid`, optional `sharp`). At `9d20655`, a clean
@@ -115,6 +124,47 @@ then passed all 24 attacks with zero findings, printed
 and an independent raw-file hash returned the same value. The earlier checker
 verdicts remain historical behavioral evidence; their Windows “file SHA” label
 must not be treated as a raw-byte attestation unless independently hashed.
+
+
+### Terminal continuation disposition (2026-08-25)
+
+A cold recovery beginning only from the user's one-line continuation request
+reconstructed the current authority from repository memory, PR #17, exact
+source, and CI rather than from prior conversational state. It recovered the
+same branch, stage order, evidence hashes, and sole external unblock without an
+unsafe guess.
+
+At verified PR head `78594eeba477ba7c43060bed270684372a357f15`, every
+pull-request workflow completed successfully:
+
+| Workflow | Run | Result |
+|---|---:|---|
+| DynaTutor release tests | `32656856108` | success, including backend quality, all fast/slow shards and partition audits, pooled PR10 performance, frontend audit/tests/typecheck/build, and aggregate release gate |
+| Phase 55 textbook parser | `32656856009` | success |
+| Phase 56 Stage 6 multimodal | `32656856040` | success |
+| Phase 56 Stage 7 offline evaluation | `32656856079` | success |
+| Vercel commit status | `37CUUN8PYNbsvfqrTgNLZMk46ntT` | success |
+
+This closes the remaining CI/checkpoint/rehearsal work but does **not** close
+Stage 7. Three contract-preserving evidence routes remain exhausted: the exact
+historical manifest is absent and may not be reconstructed; official-v1 source
+records lack typed authority for the remaining cases; and the successful
+supplemental campaign is contractually non-substitutive. No remaining general
+typed capability, terminal classification, artifact-integrity defect,
+dependency defect, deployment-readiness defect, or reproducible performance
+regression was found that can change the acceptance result without weakening a
+gate.
+
+The Phase 56 completion goal therefore terminates as
+**`GENUINE_EXTERNAL_BLOCKED`** while Stage 7 remains
+**`STAGE_7_IN_PROGRESS / NOT_ACCEPTED`** and Stage 8 remains
+**`STAGE_8_NOT_STARTED`**. The sole unblock is an authorized original manifest
+whose raw-file SHA-256 is
+`95aca08407e9508364468fe7be3a373ad0fe6d3e028bb5d0aa79052717542579`
+and canonical digest is
+`c72229789cd417c70eb2533212508b259a9f8df903415f1f6aac710464929328`.
+It must be verified out of tree and replayed through the unchanged historical
+sealed campaign before any acceptance or stage-order claim changes.
 
 ## Completion-goal evidence session (2026-08-23, historical closure)
 
