@@ -1,0 +1,128 @@
+name: Temporary Phase 56 terminal blocker finalizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-terminal-blocker-base-78594ee
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PARENT_SHA: 78594eeba477ba7c43060bed270684372a357f15
+      PATCH_B64_SHA256: faa6cd1f74705c82adc8f1fdd74a2804937ee867e007b84893f1cc22ea239bd5
+      PATCH_GZ_SHA256: 3c49a75589b9af0e19657ada35ba72b7a07642c083ac05a65c099c06c3335a9d
+      PATCH_SHA256: 2aaa0a6781e398e35cc81589284dc3090d865a03284d3bb77c5222c65965a7b1
+      OLD_CHECKPOINT_SHA256: 9a60b6ade2cdd67d7da4d61aac552a2fd991472da5b7233ca2c113f068c2d808
+    steps:
+      - name: Check out temporary finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/astra-terminal-blocker-base-78594ee
+          fetch-depth: 0
+
+      - name: Reconstruct and verify reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            .stage7-tmp/astra-terminal-blocker.patch.gz.b64.part00 \
+            .stage7-tmp/astra-terminal-blocker.patch.gz.b64.part01 \
+            .stage7-tmp/astra-terminal-blocker.patch.gz.b64.part02 \
+            .stage7-tmp/astra-terminal-blocker.patch.gz.b64.part03 \
+            > "${RUNNER_TEMP}/terminal-blocker.patch.gz.b64"
+          test "$(sha256sum "${RUNNER_TEMP}/terminal-blocker.patch.gz.b64" | cut -d' ' -f1)" = "$PATCH_B64_SHA256"
+          base64 -d "${RUNNER_TEMP}/terminal-blocker.patch.gz.b64" > "${RUNNER_TEMP}/terminal-blocker.patch.gz"
+          test "$(sha256sum "${RUNNER_TEMP}/terminal-blocker.patch.gz" | cut -d' ' -f1)" = "$PATCH_GZ_SHA256"
+          gzip -dc "${RUNNER_TEMP}/terminal-blocker.patch.gz" > "${RUNNER_TEMP}/terminal-blocker.patch"
+          test "$(sha256sum "${RUNNER_TEMP}/terminal-blocker.patch" | cut -d' ' -f1)" = "$PATCH_SHA256"
+
+      - name: Verify exact parent and apply one atomic commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin codex/phase56-generic-mechanics-engine
+          actual="$(git rev-parse origin/codex/phase56-generic-mechanics-engine)"
+          printf 'EXPECTED_PARENT=%s\nACTUAL_PARENT=%s\n' "$PARENT_SHA" "$actual"
+          test "$actual" = "$PARENT_SHA"
+          git checkout -B terminal-blocker "$PARENT_SHA"
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git am "${RUNNER_TEMP}/terminal-blocker.patch"
+
+          mapfile -t paths < <(git diff-tree --no-commit-id --name-only -r HEAD | sort)
+          expected=(
+            docs/PHASE56_STAGE7_PROGRESS_REPORT.md
+            memory/00-INDEX.md
+            memory/CHECKPOINT.md
+            memory/OPEN-QUESTIONS.md
+            memory/PRODUCT-TRUTH.md
+            memory/SESSION-LOG.md
+            memory/checkpoints/2026-08-25T2307+0900-phase56-pre-terminal-checkpoint.md
+            memory/goal/phase56-completion.md
+            memory/knowledge/phase56-terminal-blocker.md
+          )
+          printf '%s\n' "${expected[@]}" | sort > "${RUNNER_TEMP}/expected-paths"
+          printf '%s\n' "${paths[@]}" > "${RUNNER_TEMP}/actual-paths"
+          diff -u "${RUNNER_TEMP}/expected-paths" "${RUNNER_TEMP}/actual-paths"
+
+      - name: Validate exact terminal handoff bytes and state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check HEAD^
+
+          cat > "${RUNNER_TEMP}/expected-files.sha256" <<'EOF'
+          5e9f0d302a4faead2f139407d5f3a149d6d7a60f7d3fa2f8e09381a366d9432c  docs/PHASE56_STAGE7_PROGRESS_REPORT.md
+          fbdf602a159a0bab9cedd713791b44189df4dbd1d530414a3b2f84c9ff2b322e  memory/00-INDEX.md
+          372a28cadec12dea83e9d4c1c3420f17098bf54db68c0d5120d6ae94ed5bba71  memory/CHECKPOINT.md
+          9449c65ee2714285a0f18027416f6f2962ba49ddb68402c456bb25342fba358a  memory/OPEN-QUESTIONS.md
+          377c423dc27a5156bfa030323b6b9411444bf5342f2f33e74a0111e678d29a66  memory/PRODUCT-TRUTH.md
+          77c8d9f4e09a5d81d1b502a7dee3b08a6619c73400d585607acc457eba1af019  memory/SESSION-LOG.md
+          9a60b6ade2cdd67d7da4d61aac552a2fd991472da5b7233ca2c113f068c2d808  memory/checkpoints/2026-08-25T2307+0900-phase56-pre-terminal-checkpoint.md
+          9d078136afa92f0697f78d0f091cf1ec1cb400778ff776414bce03d3e4ac6f29  memory/goal/phase56-completion.md
+          141f3bf43a33377ff605056842b75642ccb1d45848a2dd4fa96d286f5ba846ee  memory/knowledge/phase56-terminal-blocker.md
+          EOF
+          sed -i 's/^          //' "${RUNNER_TEMP}/expected-files.sha256"
+          sha256sum -c "${RUNNER_TEMP}/expected-files.sha256"
+
+          old_checkpoint_hash="$(git show HEAD^:memory/CHECKPOINT.md | sha256sum | cut -d' ' -f1)"
+          archived_checkpoint_hash="$(sha256sum memory/checkpoints/2026-08-25T2307+0900-phase56-pre-terminal-checkpoint.md | cut -d' ' -f1)"
+          test "$old_checkpoint_hash" = "$OLD_CHECKPOINT_SHA256"
+          test "$archived_checkpoint_hash" = "$OLD_CHECKPOINT_SHA256"
+
+          grep -Fq 'GENUINE_EXTERNAL_BLOCKED' memory/CHECKPOINT.md
+          grep -Fq 'STAGE_7_IN_PROGRESS / NOT_ACCEPTED' memory/CHECKPOINT.md
+          grep -Fq 'STAGE_8_NOT_STARTED' memory/CHECKPOINT.md
+          grep -Fq '95aca08407e9508364468fe7be3a373ad0fe6d3e028bb5d0aa79052717542579' memory/CHECKPOINT.md
+          grep -Fq 'c72229789cd417c70eb2533212508b259a9f8df903415f1f6aac710464929328' memory/CHECKPOINT.md
+
+      - name: Record and fast-forward the authoritative branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          result="$(git rev-parse HEAD)"
+          {
+            printf 'parent_sha=%s\n' "$PARENT_SHA"
+            printf 'result_sha=%s\n' "$result"
+            printf 'patch_sha256=%s\n' "$PATCH_SHA256"
+            printf 'old_checkpoint_sha256=%s\n' "$OLD_CHECKPOINT_SHA256"
+            printf 'changed_paths=9\n'
+            printf 'disposition=GENUINE_EXTERNAL_BLOCKED\n'
+          } > "${RUNNER_TEMP}/terminal-blocker-finalizer-report.txt"
+
+          git fetch origin codex/phase56-generic-mechanics-engine
+          test "$(git rev-parse origin/codex/phase56-generic-mechanics-engine)" = "$PARENT_SHA"
+          git push origin HEAD:refs/heads/codex/phase56-generic-mechanics-engine
+
+      - name: Upload finalizer report
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase56-terminal-blocker-finalizer-report
+          path: ${{ runner.temp }}/terminal-blocker-finalizer-report.txt
+          retention-days: 7
+          if-no-files-found: error
