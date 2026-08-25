@@ -14,10 +14,37 @@ def test_phase25_frontend_dependencies_are_exact_and_locked():
         assert version != "latest", name
         assert not version.startswith("^"), (name, version)
         assert not version.startswith("~"), (name, version)
-    assert pkg["dependencies"]["next"] == "15.5.18"
+    assert pkg["dependencies"]["next"] == "15.5.23"
     assert pkg["dependencies"]["react"] == "19.1.2"
     assert pkg["dependencies"]["react-dom"] == "19.1.2"
-    assert pkg.get("overrides", {}).get("postcss") == "8.5.10"
+    assert pkg["devDependencies"]["@eslint/eslintrc"] == "3.3.6"
+    assert pkg["devDependencies"]["eslint"] == "9.39.5"
+    assert pkg["devDependencies"]["eslint-config-next"] == "15.5.23"
+    assert pkg.get("overrides", {}).get("postcss") == "8.5.26"
+    assert pkg.get("overrides", {}).get("sharp") == "0.35.3"
+    assert pkg.get("engines", {}).get("node") == ">=20.9 <21"
+    assert pkg.get("scripts", {}).get("audit") == "npm audit --audit-level=high"
+
+
+def test_frontend_ci_jobs_enforce_the_locked_audit_gate():
+    workflows = (
+        "backend-tests.yml",
+        "phase55-textbook-parser.yml",
+        "phase56-stage6-multimodal.yml",
+        "phase56-stage7-offline-evaluation.yml",
+    )
+    for workflow in workflows:
+        text = (PROJECT_ROOT / ".github" / "workflows" / workflow).read_text(
+            encoding="utf-8"
+        )
+        assert "npm ci" in text, workflow
+        assert "npm run audit" in text, workflow
+
+    for workflow in workflows[2:]:
+        text = (PROJECT_ROOT / ".github" / "workflows" / workflow).read_text(
+            encoding="utf-8"
+        )
+        assert "npm install --no-save" not in text, workflow
 
 
 def test_phase25_backend_requirements_lock_exists():

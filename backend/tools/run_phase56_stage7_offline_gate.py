@@ -1,0 +1,1570 @@
+"""Permanent Stage 7 offline evaluation gate.
+
+The gate is read-only.  It never edits source, never pushes, never dispatches a
+finalizer, never modifies itself, and never reads a secret.
+
+Network, stated exactly.  Credentials and provider base URLs must be empty and
+socket creation is blocked for the whole *evaluation* phase, so the following
+are zero and provably so: model endpoint calls, provider calls, search or web
+calls, private-data fetches, and secret reads.  That is not the same as "the
+gate touches no external endpoint": Lane E installs its frontend toolchain with
+``npm ci``/``npm install`` exactly as the permanent workflow's own install step
+does, and dependency installation uses the network.  It runs *outside* the
+socket guard for that reason and is deliberately not described as offline.
+
+Corpus integrity runs before any execution.  When the authorised public archive
+is not supplied to the runner, the public-100 lanes are reported as
+``NOT_RUN`` — they are never reported as passing.  A run without
+``--require-public-corpus --require-full-stage7`` is a corpus-independent
+regression run: its success says the repository is healthy, and says nothing
+whatsoever about the public-100 distribution.
+
+Only a redacted aggregate artifact is emitted; the redaction contract is
+enforced before the artifact is written, so a redaction failure blocks report
+generation instead of leaking.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPOSITORY_ROOT / "backend"))
+
+from evaluation.phase56_stage7.contracts import (  # noqa: E402
+    STAGE7_CONTRACT_VERSION,
+    STAGE7_EVALUATOR_VERSION,
+    stage7_evaluation_contract,
+)
+from evaluation.phase56_stage7.corpus_integrity import (  # noqa: E402
+    read_public_corpus_archive,
+)
+from evaluation.phase56_stage7.corpus_preflight import (  # noqa: E402
+    assert_corpus_modules_are_execution_free,
+    assert_raw_corpus_is_not_committed,
+    load_public_cases,
+    run_corpus_integrity_preflight,
+)
+from evaluation.phase56_stage7.authority_census import (  # noqa: E402
+    ExpectedClass as AuthorityExpectedClass,
+    build_authority_census,
+    build_authority_context,
+    census_as_dict as authority_census_as_dict,
+)
+from evaluation.phase56_stage7.blocked_law_diagnosis import (  # noqa: E402
+    diagnose_blocked_laws,
+)
+from evaluation.phase56_stage7.complete_profile import (  # noqa: E402
+    build_complete_profile_census,
+    draft_structure_fingerprint,
+    plan_every_profile,
+)
+from evaluation.phase56_stage7.hard_safety_registry import (  # noqa: E402
+    bound_node_ids,
+    measure_signals,
+    summarize,
+)
+from evaluation.phase56_stage7.corpus_semantics import (  # noqa: E402
+    scope_adjusted_expected_terminal,
+)
+from evaluation.phase56_stage7.lane_b_draft_projection import (  # noqa: E402
+    project_case_to_draft,
+)
+from evaluation.phase56_stage7.lane_b_runner import (  # noqa: E402
+    deterministic_token,
+    run_lane_b_case,
+)
+from evaluation.phase56_stage7.lane_b_structural_blockers import (  # noqa: E402
+    build_structural_blocker_census,
+    census_as_dict,
+)
+from evaluation.phase56_stage7.profile_feasibility import (  # noqa: E402
+    measure_profile_feasibility,
+)
+from evaluation.phase56_stage7.query_readout_ownership import (  # noqa: E402
+    diagnose_query_readout_ownership,
+    diagnosis_as_dict,
+)
+from evaluation.phase56_stage7.lane_b_failure_matrix import (  # noqa: E402
+    build_pipeline_failure_matrix,
+)
+from evaluation.phase56_stage7.lane_b_scoring import (  # noqa: E402
+    LaneBScorecard,
+    ScoringFailure,
+    score_lane_b_cases,
+)
+from evaluation.phase56_stage7.law_prerequisites import (  # noqa: E402
+    law_context_for_projection,
+)
+from evaluation.phase56_stage7.evaluator_adapter import (  # noqa: E402
+    assert_gold_domain_has_no_execution_authority,
+)
+from evaluation.phase56_stage7.isolation import (  # noqa: E402
+    assert_production_runtime_isolated,
+    assert_public_fixtures_excluded_from_production_image,
+    assert_runtime_domain_does_not_import_gold,
+)
+from evaluation.phase56_stage7.network_guard import (  # noqa: E402
+    assert_offline_environment,
+    block_external_network,
+)
+from evaluation.phase56_stage7.preflight import (  # noqa: E402
+    PreflightTerminal,
+    run_contract_preflight,
+)
+from evaluation.phase56_stage7.redaction import (  # noqa: E402
+    assert_privacy_safe_artifact,
+)
+
+OFFLINE_GATE_SCHEMA = "dynatutor.phase56_stage7.offline_gate"
+OFFLINE_GATE_VERSION = "1.0"
+PUBLIC_CORPUS_PATH_ENV = "STAGE7_PUBLIC_CORPUS_PATH"
+
+
+@dataclass(frozen=True, slots=True)
+class GateOutcome:
+    name: str
+    result: str
+    detail: str | None = None
+
+    @property
+    def passed(self) -> bool:
+        return self.result == "PASS"
+
+
+def _run_gate(name: str, action) -> GateOutcome:
+    try:
+        action()
+    except Exception as exc:  # only the exception type reaches the artifact
+        return GateOutcome(name=name, result="FAIL", detail=type(exc).__name__)
+    return GateOutcome(name=name, result="PASS")
+
+
+CHECKOUT_HEAD_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
+
+
+class HeadShaUnavailable(RuntimeError):
+    """The checked-out source head could not be resolved."""
+
+
+def _checkout_head_sha() -> str:
+    """The SHA of the source this process actually has on disk.
+
+    ``git rev-parse HEAD`` is the only source of truth, deliberately.  This
+    function used to prefer ``GITHUB_SHA`` and must never do so again: on a
+    ``pull_request`` event GitHub sets ``GITHUB_SHA`` to the ephemeral
+    ``refs/pull/<n>/merge`` commit, which is *not* the commit
+    ``actions/checkout`` put in the worktree.  Reading it made the uploaded
+    artifact name a head that no run ever compiled, tested or gated — a merge
+    commit that is not reachable from any branch and that no auditor can
+    resolve.  The environment describes the event; only the worktree describes
+    the source, and the artifact is evidence about the source.
+
+    Fail closed: an unresolvable head raises rather than degrading to a
+    placeholder, so a report can never carry a head nobody checked.
+    """
+
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise HeadShaUnavailable("git rev-parse HEAD failed") from exc
+    head = completed.stdout.strip().casefold()
+    if not CHECKOUT_HEAD_SHA_PATTERN.fullmatch(head):
+        raise HeadShaUnavailable(f"git rev-parse HEAD returned {head!r}")
+    return head
+
+
+def _structural_gates() -> list[GateOutcome]:
+    return [
+        _run_gate(
+            "runtime_domain_does_not_import_gold",
+            lambda: assert_runtime_domain_does_not_import_gold(REPOSITORY_ROOT),
+        ),
+        _run_gate(
+            "production_runtime_isolated_from_evaluator",
+            lambda: assert_production_runtime_isolated(REPOSITORY_ROOT),
+        ),
+        _run_gate(
+            "public_fixtures_excluded_from_production_image",
+            lambda: assert_public_fixtures_excluded_from_production_image(
+                REPOSITORY_ROOT
+            ),
+        ),
+        _run_gate(
+            "gold_domain_has_no_execution_authority",
+            lambda: assert_gold_domain_has_no_execution_authority(REPOSITORY_ROOT),
+        ),
+        _run_gate(
+            "corpus_modules_are_execution_free",
+            lambda: assert_corpus_modules_are_execution_free(REPOSITORY_ROOT),
+        ),
+        _run_gate(
+            "raw_corpus_is_not_committed",
+            lambda: assert_raw_corpus_is_not_committed(REPOSITORY_ROOT),
+        ),
+    ]
+
+
+def _contract_preflight_gate() -> GateOutcome:
+    result = run_contract_preflight(REPOSITORY_ROOT)
+    if result.terminal is not PreflightTerminal.passed:
+        return GateOutcome(
+            name="stage7_contract_preflight",
+            result="FAIL",
+            detail=result.sanitized_reason,
+        )
+    if not result.ledger.zero_execution:
+        return GateOutcome(
+            name="stage7_contract_preflight",
+            result="FAIL",
+            detail="non_zero_execution_ledger",
+        )
+    return GateOutcome(name="stage7_contract_preflight", result="PASS")
+
+
+def _corpus_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutcome]:
+    if archive_path is None:
+        return (
+            {
+                "supplied": False,
+                "disposition": "NOT_RUN",
+                "reason": "authorised_public_archive_not_supplied_to_this_runner",
+                "public_dev": "NOT_RUN",
+                "public_adversarial": "NOT_RUN",
+                "public_total": "NOT_RUN",
+            },
+            GateOutcome(
+                name="public_corpus_integrity", result="NOT_RUN", detail="not_supplied"
+            ),
+        )
+
+    result = run_corpus_integrity_preflight(archive_path)
+    if result.terminal is not PreflightTerminal.passed:
+        return (
+            {
+                "supplied": True,
+                "disposition": "HARNESS_CONTRACT_FAILURE",
+                "reason": result.sanitized_reason,
+                "runtime_calls": result.ledger.runtime_calls,
+                "compiler_calls": result.ledger.compiler_calls,
+                "solver_calls": result.ledger.solver_calls,
+                "model_or_provider_calls": result.ledger.model_or_provider_calls,
+                "measured_cost_usd": result.ledger.measured_cost_usd,
+            },
+            GateOutcome(
+                name="public_corpus_integrity",
+                result="FAIL",
+                detail=result.sanitized_reason,
+            ),
+        )
+
+    evidence = result.semantic_evidence
+    assert evidence is not None
+    return (
+        {
+            "supplied": True,
+            "disposition": "PASS",
+            "archive_sha256": result.archive_sha256,
+            "public_dev": evidence.public_dev_count,
+            "public_adversarial": evidence.public_adversarial_count,
+            "public_total": evidence.public_dev_count
+            + evidence.public_adversarial_count,
+            "scope_adjusted_distribution": {
+                "supported_accepted": evidence.distribution.supported_accepted,
+                "deferred_unsupported": evidence.distribution.deferred_unsupported,
+                "unsupported_other": evidence.distribution.unsupported_other,
+                "needs_figure": evidence.distribution.needs_figure,
+                "needs_confirmation": evidence.distribution.needs_confirmation,
+                "insufficient_information": (
+                    evidence.distribution.insufficient_information
+                ),
+            },
+            "family_count": evidence.family_count,
+            "checked_fact_count": evidence.checked_fact_count,
+            "deferred_family_counts": dict(evidence.deferred_family_counts),
+            "runtime_calls": result.ledger.runtime_calls,
+            "compiler_calls": result.ledger.compiler_calls,
+            "solver_calls": result.ledger.solver_calls,
+            "model_or_provider_calls": result.ledger.model_or_provider_calls,
+            "measured_cost_usd": result.ledger.measured_cost_usd,
+            "zero_execution": result.ledger.zero_execution,
+            "entry_sha256": {
+                entry.name: entry.sha256 for entry in result.entry_evidence
+            },
+        },
+        GateOutcome(name="public_corpus_integrity", result="PASS"),
+    )
+
+
+def _lane_b_section(archive_path: Path | None) -> tuple[dict[str, Any], GateOutcome]:
+    """Execute the real public-corpus Lane B pipeline and score it case by case.
+
+    The archive is only supplied to a local run; a remote corpus-independent run
+    reports ``NOT_RUN`` rather than claiming a pass it did not measure.
+
+    Order matters and is enforced by construction: the runtime matrix is built
+    to completion first — it never reads a gold member — and only then is the
+    frozen record handed to the gold-domain scorer.
+    """
+
+    if archive_path is None:
+        return (
+            {"executed": False, "disposition": "NOT_RUN"},
+            GateOutcome(name="lane_b_public_100", result="NOT_RUN", detail="not_supplied"),
+        )
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        cases = (*public_dev, *public_adversarial)
+        matrix = build_pipeline_failure_matrix(cases)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return (
+            {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__},
+            GateOutcome(
+                name="lane_b_public_100", result="FAIL", detail=type(exc).__name__
+            ),
+        )
+
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(matrix.as_dict())
+    section["solved"] = dict(matrix.terminal_counts).get("solved", 0)
+
+    # --- the runtime snapshot is now complete and immutable; gold scoring begins
+    try:
+        scorecard = score_lane_b_cases(cases, matrix.case_records)
+    except ScoringFailure as exc:
+        # A scorer that cannot score is a typed FAIL.  The partial runtime
+        # aggregate above is kept for diagnosis but never presented as a pass.
+        section["scoring"] = {
+            "result": "FAIL",
+            "disposition": "SCORER_FAILURE",
+            "reason": exc.sanitized_reason,
+        }
+        return (
+            section,
+            GateOutcome(
+                name="lane_b_public_100", result="FAIL", detail="SCORER_FAILURE"
+            ),
+        )
+    except Exception as exc:  # only the exception type reaches the artifact
+        section["scoring"] = {
+            "result": "FAIL",
+            "disposition": "SCORER_FAILURE",
+            "reason": type(exc).__name__,
+        }
+        return (
+            section,
+            GateOutcome(
+                name="lane_b_public_100", result="FAIL", detail="SCORER_FAILURE"
+            ),
+        )
+
+    section["scoring"] = scorecard.as_dict()
+    section["answer_scoring"] = scorecard.answer_score.as_dict()
+    matched = _distribution_matched(scorecard)
+    return (
+        section,
+        GateOutcome(
+            name="lane_b_public_100",
+            result="PASS" if matched else "FAIL",
+            detail=None if matched else "frozen_distribution_not_met",
+        ),
+    )
+
+
+def _distribution_matched(scorecard: LaneBScorecard) -> bool:
+    """Whether every public case landed in its own expected class, correctly."""
+
+    return (
+        scorecard.terminal_mapping_matches == scorecard.total_cases
+        and scorecard.supported_correct == scorecard.supported_expected
+        and scorecard.supported_wrong == 0
+        and scorecard.supported_unscored == 0
+        and scorecard.deferred_matched == scorecard.deferred_expected
+        and scorecard.unsupported_other_matched == scorecard.unsupported_other_expected
+        and scorecard.needs_figure_matched == scorecard.needs_figure_expected
+        and scorecard.needs_confirmation_matched
+        == scorecard.needs_confirmation_expected
+        and scorecard.insufficient_information_matched
+        == scorecard.insufficient_information_expected
+    )
+
+
+def _blocked_law_diagnosis_section(archive_path: Path | None) -> dict[str, Any]:
+    """Measure what each blocked law is really blocked on.
+
+    Diagnostic, never a gate.  It reports which typed structure each blocked
+    emission function stops at, and what the real engine does when that
+    structure is supplied — so the next package is chosen from a measured
+    unlock rather than from a declared-prerequisite gap that counts contexts the
+    law has nothing to do with.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        contexts = [
+            context
+            for context in (
+                law_context_for_projection(project_case_to_draft(case))
+                for case in (*public_dev, *public_adversarial)
+            )
+            if context is not None
+        ]
+        report = diagnose_blocked_laws(contexts)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(report.as_dict())
+    return section
+
+
+def _complete_profile_census_section(archive_path: Path | None) -> dict[str, Any]:
+    """Measure how close each bounded profile is to closing, over every context.
+
+    Diagnostic, never a gate.  Its purpose is to decide *which* profile to build
+    next from a measurement rather than from a family label: a profile with a
+    nonzero complete population is one the source structure already reaches, and
+    everything else is reported as the precise reason it does not.
+
+    The section is counts only.  No case ID, family, split, problem text,
+    expected answer, expected terminal, or gold graph can appear in it — the
+    census records have no field that could hold one.  Planning is verified to
+    have left every Draft byte-identical before the counts are accepted.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        plan_sets = []
+        for case in (*public_dev, *public_adversarial):
+            projection = project_case_to_draft(case)
+            if not projection.projected:
+                continue
+            before = draft_structure_fingerprint(projection.draft)
+            plans = plan_every_profile(
+                projection.draft,
+                approved_assumption_ids=projection.approvable_assumption_ids,
+            )
+            if draft_structure_fingerprint(projection.draft) != before:
+                raise RuntimeError("complete-profile planning mutated a Draft")
+            plan_sets.append(plans)
+        census = build_complete_profile_census(plan_sets)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(census.as_dict())
+    return section
+
+
+def _structural_blocker_section(archive_path: Path | None) -> dict[str, Any]:
+    """Count the typed structure the sources do not state at all.
+
+    Diagnostic, never a gate.  The complete-profile census measures how close a
+    profile is to closing; this measures what is absent from every context
+    regardless of profile, which is what separates a planner gap that a closed
+    derivation can fill from a blocker no transaction can remove without
+    restating what the source says.
+
+    Counts only.  The record has no field that could hold identity or content.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        drafts = []
+        for case in (*public_dev, *public_adversarial):
+            projection = project_case_to_draft(case)
+            if not projection.projected:
+                continue
+            drafts.append(projection.draft)
+        census = build_structural_blocker_census(drafts)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(census_as_dict(census))
+    return section
+
+
+# The corpus states an expected terminal per case; the census only needs its
+# class.  Mapped here rather than inside the census so the census module stays
+# free of any gold vocabulary.
+_AUTHORITY_EXPECTED_CLASS: dict[str, AuthorityExpectedClass] = {
+    "accepted": AuthorityExpectedClass.supported,
+    "deferred_unsupported": AuthorityExpectedClass.deferred,
+    "unsupported_other": AuthorityExpectedClass.unsupported_other,
+    "needs_figure": AuthorityExpectedClass.needs_figure,
+    "needs_confirmation": AuthorityExpectedClass.needs_confirmation,
+    "insufficient_information": AuthorityExpectedClass.insufficient_information,
+}
+
+
+def _authority_census_section(archive_path: Path | None) -> dict[str, Any]:
+    """Partition every context by structure and report what each is short of.
+
+    Diagnostic, never a gate.  The structural-blocker census above counts what
+    is absent across all contexts at once; this one partitions the contexts
+    first, so "seventeen cohorts, of which N are short of a frame" is a
+    measurement in the artifact rather than a claim in a document.
+
+    It publishes its own negative control — solved contexts the carrier reading
+    nevertheless calls short — so a reader can see how much the reading
+    over-fires instead of having to trust that it does not.
+
+    Runtime first, gold second, exactly as Lane B does it: every lane result is
+    produced before any expected terminal is read.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        cases = (*public_dev, *public_adversarial)
+        projections = [project_case_to_draft(case) for case in cases]
+        results = [
+            run_lane_b_case(projection, execution_token=deterministic_token(index))
+            for index, projection in enumerate(projections)
+        ]
+        # --- runtime record complete; expected classes may now be read ------
+        rows = [
+            build_authority_context(
+                projection.draft,
+                result,
+                expected_class=_AUTHORITY_EXPECTED_CLASS.get(
+                    scope_adjusted_expected_terminal(case, case_index=index).value,
+                    AuthorityExpectedClass.unknown,
+                ),
+            )
+            for index, (case, projection, result) in enumerate(
+                zip(cases, projections, results)
+            )
+        ]
+        census = build_authority_census(rows)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(authority_census_as_dict(census))
+    return section
+
+
+def _query_readout_ownership_section(archive_path: Path | None) -> dict[str, Any]:
+    """Test whether query-readout ownership causally blocks anything.
+
+    Diagnostic, never a gate.  The structural blocker census counts contexts
+    whose queried readout sits on an entity outside the free-body set; this
+    section asks the real engine whether binding that readout to a carrier
+    changes anything, so a count of a property is never mistaken for a cause.
+
+    The counterfactual is evaluator-only.  It changes one field of one quantity
+    in a law context that is discarded immediately; no Draft, runtime result, or
+    answer is derived from it, no entity primitive is rewritten, and nothing is
+    added to the engine's free-body set.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        pairs = []
+        for case in (*public_dev, *public_adversarial):
+            projection = project_case_to_draft(case)
+            if not projection.projected:
+                continue
+            context = law_context_for_projection(projection)
+            if context is None:
+                continue
+            target_quantity_id = projection.draft.queries[0].target.target_quantity_id
+            if target_quantity_id is None:
+                continue
+            pairs.append((context, target_quantity_id))
+        diagnosis = diagnose_query_readout_ownership(pairs)
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(diagnosis_as_dict(diagnosis))
+    return section
+
+
+def _resolve_archive_path() -> Path | None:
+    raw = os.environ.get(PUBLIC_CORPUS_PATH_ENV, "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser()
+
+
+def _profile_feasibility_section(archive_path: Path | None) -> dict[str, Any]:
+    """Measure every applicable (profile, context) pair independently.
+
+    Diagnostic, never a gate.  Each selected profile is planned and applied
+    against the pristine projected Draft and run through the full lane on
+    its own — no first-wins, no declaration-order credit — under the closed
+    isolated status vocabulary; an unimplemented profile reads
+    ``profile_not_implemented`` (not measured), never a yield zero it never
+    earned.  The next package is chosen by this measured feasibility rather
+    than by a structure count.
+
+    Counts only.  Rows carry closed profile IDs, bounded status names, and
+    integers; no identity or content field exists on the record.
+    """
+
+    if archive_path is None:
+        return {"executed": False, "disposition": "NOT_RUN"}
+    try:
+        inventory = read_public_corpus_archive(archive_path)
+        public_dev, public_adversarial = load_public_cases(inventory)
+        matrix = measure_profile_feasibility((*public_dev, *public_adversarial))
+    except Exception as exc:  # only the exception type reaches the artifact
+        return {"executed": False, "disposition": "FAIL", "reason": type(exc).__name__}
+    section: dict[str, Any] = {"executed": True, "disposition": "EXECUTED"}
+    section.update(matrix.as_dict())
+    return section
+
+
+# ---------------------------------------------------------------------------
+# Full-Stage-7 suite sections.  Each section executes the *exact* existing
+# suites for its lane — nothing is duplicated, nothing is simulated — via a
+# fresh interpreter per suite, and records counts only.  A lane that was not
+# requested is NOT_RUN, never PASS.
+# ---------------------------------------------------------------------------
+
+_BACKEND_ROOT = REPOSITORY_ROOT / "backend"
+_SUITE_TIMEOUT_S = 1800
+_SUMMARY_PATTERN = re.compile(r"(\d+) (passed|failed|errors?|deselected|skipped)")
+
+# Lane C — recorded/fake modeler: deterministic fake provider contract, one
+# combined call, at most one sanitized repair, reconciliation, revisions,
+# zero answer authority.  Actual model quality is NOT_RUN / N/A by contract.
+_LANE_C_SUITES: tuple[str, ...] = (
+    "tests/test_phase56_mechanics_modeler.py",
+    "tests/test_phase56_stage6_contracts.py",
+    "tests/test_phase56_stage6_reconciliation.py",
+)
+# Lane D — product API/runtime through FastAPI boundaries: auth, limits,
+# schemas, idempotency, stale revisions, owner isolation, image security,
+# privacy-safe observability.
+_LANE_D_SUITES: tuple[str, ...] = (
+    "tests/test_phase56_stage6_api_runtime_integration.py",
+    "tests/test_phase56_stage6_security_hardening.py",
+    "tests/test_phase56_stage6_image_security.py",
+    "tests/test_phase56_stage6_idempotency_conflicts.py",
+    "tests/test_phase56_stage6_observability.py",
+)
+# The 12 independently authored compositional structures, mapped to the
+# engine's own independently authored same-fixture parity suites — each of
+# which drives at least two reusable laws through compile, all-root solve,
+# and independent residual verification.
+_COMPOSITIONAL_STRUCTURES: tuple[tuple[str, str], ...] = (
+    ("newton_plus_rope", "tests/test_phase56_mechanics_atwood_same_fixture_parity.py"),
+    ("incline_friction_rope", "tests/test_phase56_mechanics_incline_hanging_same_fixture_parity.py"),
+    ("massive_pulley_rotation", "tests/test_phase56_mechanics_massive_pulley_same_fixture_parity.py"),
+    ("rolling_work_energy", "tests/test_phase56_mechanics_pure_rolling_same_fixture_parity.py"),
+    ("vertical_circle_contact_loss", "tests/test_phase56_mechanics_vertical_circle_same_fixture_parity.py"),
+    ("collision_restitution", "tests/test_phase56_mechanics_collision_1d_same_fixture_parity.py"),
+    ("projectile_event_root", "tests/test_phase56_mechanics_projectile_same_fixture_parity.py"),
+    ("work_kinetic_energy", "tests/test_phase56_mechanics_constant_force_work_same_fixture_parity.py"),
+    ("impulse_momentum", "tests/test_phase56_mechanics_impulse_momentum_same_fixture_parity.py"),
+    ("fixed_axis_point_speed", "tests/test_phase56_mechanics_fixed_axis_rotation_same_fixture_parity.py"),
+    ("rigid_body_point_motion", "tests/test_phase56_mechanics_plane_rigid_body_velocity_same_fixture_parity.py"),
+    ("polar_kinematics_projection", "tests/test_phase56_mechanics_polar_kinematics_same_fixture_parity.py"),
+)
+_SYNTHETIC_38_SUITE = "tests/test_phase56_stage6_synthetic_figures.py"
+_SYNTHETIC_MANIFEST = (
+    _BACKEND_ROOT / "tests" / "fixtures" / "phase56_stage6_synthetic_manifest.json"
+)
+# The engine's metamorphic oracle instrument (identical authoritative results
+# under transformation) and its mutation-control twin (seeded physics changes
+# must be detected/killed).  Stage 7's own per-package invariance and
+# physics-changing controls additionally run inside the focused suite.
+_METAMORPHIC_SUITES: tuple[str, ...] = (
+    "tests/test_phase49_oracles_metamorphic.py",
+)
+_PHYSICS_CHANGING_SUITES: tuple[str, ...] = (
+    "tests/test_phase49_mutation_audit.py",
+)
+
+
+_NODE_OUTCOME_PATTERN = re.compile(
+    r"^(?P<node>[\w/\\.\-]+\.py::[\w\[\]\-.,= ]+?)(?:\[.*\])?\s+"
+    r"(?P<outcome>PASSED|FAILED|ERROR|SKIPPED|XFAIL|XPASS)\b",
+    re.MULTILINE,
+)
+
+
+def _run_bound_attack_nodes(node_ids: tuple[str, ...]) -> dict[str, str]:
+    """Run every registry-bound attack node once and record each verdict.
+
+    A node that does not appear in the output has not run, and stays NOT_RUN —
+    which the registry turns into NOT_MEASURED rather than an implicit pass.
+    """
+
+    outcomes: dict[str, str] = {node: "NOT_RUN" for node in node_ids}
+    if not node_ids:
+        return outcomes
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-v",
+                "-p",
+                "no:cacheprovider",
+                "-o",
+                "addopts=",
+                *node_ids,
+            ],
+            cwd=_BACKEND_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_SUITE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return outcomes
+    # A parametrised node reports once per parameter; the signal is measured
+    # only if every one of them ran, and violated if any of them failed.
+    seen: dict[str, list[str]] = {node: [] for node in node_ids}
+    for match in _NODE_OUTCOME_PATTERN.finditer(completed.stdout):
+        node = match.group("node").strip()
+        if node in seen:
+            seen[node].append(match.group("outcome"))
+    for node, verdicts in seen.items():
+        if not verdicts:
+            continue
+        if any(verdict in ("FAILED", "ERROR") for verdict in verdicts):
+            outcomes[node] = "FAILED"
+        elif all(verdict in ("PASSED", "XFAIL") for verdict in verdicts):
+            outcomes[node] = "PASSED"
+        else:
+            # SKIPPED is not evidence: the attack did not run.
+            outcomes[node] = "NOT_RUN"
+    return outcomes
+
+
+def _run_pytest_suite(path: str) -> dict[str, Any]:
+    """Run one exact suite in a fresh interpreter and record counts only."""
+
+    row: dict[str, Any] = {"suite": path}
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                "-p",
+                "no:cacheprovider",
+                "-o",
+                "addopts=",
+                path,
+            ],
+            cwd=_BACKEND_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_SUITE_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        row.update(passed=0, failed=0, errors=1, disposition="TIMEOUT")
+        return row
+    counts = {"passed": 0, "failed": 0, "errors": 0, "deselected": 0, "skipped": 0}
+    for value, kind in _SUMMARY_PATTERN.findall(completed.stdout):
+        key = "errors" if kind.startswith("error") else kind
+        counts[key] = int(value)
+    row.update(counts)
+    row["disposition"] = (
+        "PASS"
+        if completed.returncode == 0
+        and counts["failed"] == 0
+        and counts["errors"] == 0
+        and counts["passed"] > 0
+        else "FAIL"
+    )
+    return row
+
+
+def _suite_section(paths: tuple[str, ...], *, executed: bool, note: str | None = None) -> dict[str, Any]:
+    if not executed:
+        section = {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+        if note:
+            section["note"] = note
+        return section
+    rows = [_run_pytest_suite(path) for path in paths]
+    section = {
+        "executed": True,
+        "suites": rows,
+        "total_passed": sum(row["passed"] for row in rows),
+        "total_failed": sum(row["failed"] for row in rows),
+        "result": (
+            "PASS"
+            if all(row["disposition"] == "PASS" for row in rows)
+            else "FAIL"
+        ),
+    }
+    if note:
+        section["note"] = note
+    return section
+
+
+def _lane_c_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(
+        _LANE_C_SUITES,
+        executed=executed,
+        note="contract/integration evidence only; actual model quality NOT_RUN / N/A",
+    )
+
+
+def _lane_d_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(_LANE_D_SUITES, executed=executed)
+
+
+def _synthetic_38_section(executed: bool) -> dict[str, Any]:
+    if not executed:
+        return {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+    manifest = json.loads(_SYNTHETIC_MANIFEST.read_text(encoding="utf-8"))
+    case_count = len(manifest.get("cases", ()))
+    section = _suite_section((_SYNTHETIC_38_SUITE,), executed=True)
+    section["synthetic_case_count"] = case_count
+    if case_count != 38:
+        section["result"] = "FAIL"
+    return section
+
+
+def _compositional_12_section(executed: bool) -> dict[str, Any]:
+    if not executed:
+        return {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+    rows = []
+    for structure, path in _COMPOSITIONAL_STRUCTURES:
+        row = _run_pytest_suite(path)
+        row["structure"] = structure
+        rows.append(row)
+    return {
+        "executed": True,
+        "structures": rows,
+        "structure_count": len(rows),
+        "passed_structures": sum(
+            1 for row in rows if row["disposition"] == "PASS"
+        ),
+        "result": (
+            "PASS"
+            if len(rows) == 12
+            and all(row["disposition"] == "PASS" for row in rows)
+            else "FAIL"
+        ),
+    }
+
+
+def _metamorphic_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(
+        _METAMORPHIC_SUITES,
+        executed=executed,
+        note="engine metamorphic oracle instrument; Stage 7 per-package invariance controls run in the focused suite",
+    )
+
+
+def _physics_changing_section(executed: bool) -> dict[str, Any]:
+    return _suite_section(
+        _PHYSICS_CHANGING_SUITES,
+        executed=executed,
+        note="seeded physics mutations must be detected; Stage 7 per-package detection controls run in the focused suite",
+    )
+
+
+def _lane_e_section(executed: bool) -> dict[str, Any]:
+    """Frontend flow: tests, lint, typecheck, production build.
+
+    Dependency installation may use the network exactly as the permanent
+    workflow's own install step does; every evaluation-phase stage of this
+    gate remains socket-guarded.  A missing toolchain is a typed NOT_RUN,
+    never a pass.
+    """
+
+    if not executed:
+        return {"result": "NOT_RUN", "executed": False, "reason": "full_stage7_not_requested"}
+    frontend = REPOSITORY_ROOT / "frontend"
+    steps: list[dict[str, Any]] = []
+    npm_executable = shutil.which("npm")
+    if npm_executable is None:
+        return {
+            "result": "NOT_RUN",
+            "executed": False,
+            "steps": [
+                {"step": "install", "result": "NOT_RUN", "reason": "toolchain_missing"}
+            ],
+            "reason": "install_unavailable",
+        }
+
+    def run_step(name: str, command: list[str], timeout_s: int = 1200) -> bool:
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=frontend,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout_s,
+            )
+        except FileNotFoundError:
+            steps.append({"step": name, "result": "NOT_RUN", "reason": "toolchain_missing"})
+            return False
+        except subprocess.TimeoutExpired:
+            steps.append({"step": name, "result": "FAIL", "reason": "timeout"})
+            return False
+        steps.append(
+            {"step": name, "result": "PASS" if completed.returncode == 0 else "FAIL"}
+        )
+        return completed.returncode == 0
+    if not (frontend / "node_modules").exists():
+        if not run_step("install", [npm_executable, "ci"], timeout_s=1800):
+            return {"result": "NOT_RUN", "executed": False, "steps": steps, "reason": "install_unavailable"}
+    # The lint toolchain is pinned outside package.json on purpose.  An
+    # out-of-tree strict run may receive an exact, already-verified node_modules
+    # tree from the same source HEAD; reuse it only when both package versions
+    # match the permanent workflow exactly.  Otherwise perform the normal
+    # network-capable install and fail closed if that is unavailable.
+    def installed_package_version(package: str) -> str | None:
+        try:
+            payload = json.loads(
+                (frontend / "node_modules" / package / "package.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        except (OSError, ValueError, TypeError):
+            return None
+        version = payload.get("version")
+        return version if isinstance(version, str) else None
+
+    exact_lint_toolchain = (
+        installed_package_version("eslint") == "9.39.5"
+        and installed_package_version("eslint-config-next") == "15.5.23"
+    )
+    if exact_lint_toolchain:
+        steps.append(
+            {
+                "step": "lint_toolchain",
+                "result": "PASS",
+                "reason": "exact_installed_toolchain",
+            }
+        )
+        lint_ready = True
+    else:
+        lint_ready = run_step(
+            "lint_toolchain",
+            [
+                npm_executable, "install", "--no-save", "--no-package-lock",
+                "--ignore-scripts", "--no-audit", "--no-fund",
+                "eslint@9.39.5", "eslint-config-next@15.5.23",
+            ],
+            timeout_s=1800,
+        )
+    ok = lint_ready
+    for name, command in (
+        ("tests", [npm_executable, "test"]),
+        ("lint", [npm_executable, "run", "lint"]),
+        ("typecheck", [npm_executable, "run", "typecheck"]),
+        ("build", [npm_executable, "run", "build"]),
+    ):
+        ok = run_step(name, command) and ok
+    return {
+        "executed": True,
+        "steps": steps,
+        "result": "PASS" if ok else "FAIL",
+    }
+
+
+def _hard_safety_registry_summary(
+    report: dict[str, Any], *, executed: bool
+) -> dict[str, Any]:
+    """Measure all 23 catalog signals from this run's counters and attacks."""
+
+    lane_b = report.get("lane_b", {})
+    scoring = lane_b.get("scoring") or {}
+    answer_scoring = lane_b.get("answer_scoring", {})
+    counters: dict[str, Any] = {
+        "wrong_solves": answer_scoring.get("wrong"),
+        "solved_but_unscored": answer_scoring.get("solved_but_unscored"),
+        "blocked_numeric_answers": scoring.get("blocked_numeric_answers"),
+        "deferred_silent_solves": scoring.get("deferred_silent_solves"),
+        "blocked_silent_solves": scoring.get("blocked_silent_solves"),
+        "private_heldout_accesses": report.get("private_heldout_accesses"),
+    }
+    node_outcomes = (
+        _run_bound_attack_nodes(bound_node_ids())
+        if executed
+        else {node: "NOT_RUN" for node in bound_node_ids()}
+    )
+    return summarize(
+        measure_signals(counters=counters, node_outcomes=node_outcomes)
+    )
+
+
+def _hard_safety_section(
+    report: dict[str, Any],
+    gates: "list[GateOutcome]",
+    *,
+    registry_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The all-zero hard-safety catalog, from measured evidence only.
+
+    `registry_summary` is supplied by the caller so this stays a pure function
+    of evidence already gathered: measuring the per-signal registry runs the
+    bound attack nodes, and a reporting function that silently spawns a test
+    suite could not be unit-tested at all.  Omitting it measures on demand.
+    """
+
+    contract = stage7_evaluation_contract()
+    lane_b = report.get("lane_b", {})
+    executed = bool(lane_b.get("executed"))
+    answer_scoring = lane_b.get("answer_scoring", {})
+    wrong_solves = answer_scoring.get("wrong")
+    # Safety asks about outputs the engine *produced* and nobody could check,
+    # not about supported cases it honestly declined — the latter is the Lane B
+    # yield gate's business, and binding safety to it would make an incomplete
+    # capability read as an unsafe one.
+    unscored_solves = answer_scoring.get("solved_but_unscored")
+    scoring = lane_b.get("scoring") or {}
+    scorer_ran = scoring.get("result") != "FAIL" and bool(scoring)
+    deferred_silent_solves = scoring.get("deferred_silent_solves")
+    # Hard safety must see a fabricated answer in ANY blocked class, not only
+    # the deferred one.  The contract guarantees seven cases whose correct
+    # answer is "there is none" — 2 needs_figure, 2 needs_confirmation, 1
+    # insufficient_information, 2 unsupported_other — and inventing a number
+    # for one of those is a confident wrong solve however the yield gate reads.
+    blocked_silent_solves = scoring.get("blocked_silent_solves")
+    blocked_numeric_answers = scoring.get("blocked_numeric_answers")
+    supported_downgraded = scoring.get("supported_downgraded_to_unsupported")
+    # Safety derives from the isolation/integrity gates; the public-100
+    # solved-distribution gate is the yield target, not a safety signal —
+    # an honestly blocked case is safe, a wrongly solved one is not.
+    structural_pass = all(
+        gate.result in ("PASS", "NOT_RUN")
+        for gate in gates
+        if gate.name != "lane_b_public_100"
+    )
+    # The catalog itself is frozen in the evaluation contract; the artifact
+    # carries counts only, because several signal *names* are themselves
+    # forbidden redaction substrings.
+    if registry_summary is None:
+        registry_summary = _hard_safety_registry_summary(report, executed=executed)
+    passing = (
+        executed
+        and scorer_ran
+        # The catalog is a claim about twenty-three properties.  It passes only
+        # if all twenty-three were examined in this run and none was violated.
+        and registry_summary["measured_signal_count"]
+        == len(contract.hard_safety_signals)
+        and registry_summary["unbound_signal_count"] == 0
+        and registry_summary["nonzero_signal_count"] == 0
+        and wrong_solves == 0
+        # An unscorable solved output is not a safe one: nothing proved it
+        # right, so it cannot contribute to a zero confident-wrong-solve claim.
+        and unscored_solves == 0
+        and deferred_silent_solves == 0
+        and blocked_silent_solves == 0
+        and blocked_numeric_answers == 0
+        and supported_downgraded == 0
+        and structural_pass
+        and report.get("external_model_calls") == 0
+        and report.get("private_heldout_accesses") == 0
+    )
+    # Every catalog signal is now bound to a named instrument that ran in this
+    # run: a counter the scorer produced, or exact attack nodes that executed.
+    # A signal whose instrument did not run reports NOT_MEASURED and fails
+    # strict mode, because an unexamined property is not a zero.
+    return {
+        "executed": executed,
+        "catalog": "stage7_evaluation_contract().hard_safety_signals",
+        "signal_count": len(contract.hard_safety_signals),
+        "measured_signal_count": registry_summary["measured_signal_count"],
+        "per_signal_instrument_registry": registry_summary[
+            "per_signal_instrument_registry"
+        ],
+        "registry_version": registry_summary["registry_version"],
+        "unbound_signal_count": registry_summary["unbound_signal_count"],
+        "nonzero_signal_count": registry_summary["nonzero_signal_count"],
+        "per_signal": registry_summary["signals"],
+        "nonzero_measured_signal_count": (
+            registry_summary["nonzero_signal_count"] if passing else None
+        ),
+        "all_measured_zero": bool(passing),
+        "wrong_solves_measured": wrong_solves,
+        "solved_but_unscored_measured": unscored_solves,
+        "deferred_silent_solves_measured": deferred_silent_solves,
+        "blocked_silent_solves_measured": blocked_silent_solves,
+        "blocked_numeric_answers_measured": blocked_numeric_answers,
+        "supported_downgraded_measured": supported_downgraded,
+        "evidence": {
+            "wrong_solve": "case-level gold scoring of the frozen runtime record",
+            "solved_but_unscored": (
+                "case-level gold scoring; a solved output nobody could compare "
+                "fails the gate"
+            ),
+            "deferred_silent_solve": "case-level expected-class comparison",
+            "blocked_silent_solve": (
+                "case-level expected-class comparison over every blocked class"
+            ),
+            "external_calls": "offline environment + socket guard",
+            "private_access": "keys-only manifest audit",
+            "isolation": "structural gates",
+        },
+        "result": "PASS" if passing else ("FAIL" if executed else "NOT_RUN"),
+    }
+
+
+def build_report(
+    *, run_full_suites: bool = False, head_sha: str | None = None
+) -> tuple[dict[str, Any], bool]:
+    # ``head_sha`` lets the caller hand in the head it already resolved and
+    # validated, so the value the report carries is the same one the caller
+    # checked rather than a second, independently re-read value.
+    resolved_head = _checkout_head_sha() if head_sha is None else head_sha
+    contract = stage7_evaluation_contract()
+    offline_evidence = assert_offline_environment()
+
+    gates: list[GateOutcome] = []
+    corpus_section: dict[str, Any]
+    archive_path = _resolve_archive_path()
+    with block_external_network():
+        gates.extend(_structural_gates())
+        gates.append(_contract_preflight_gate())
+        corpus_section, corpus_gate = _corpus_section(archive_path)
+        gates.append(corpus_gate)
+        lane_b_section, lane_b_gate = _lane_b_section(
+            archive_path if corpus_gate.passed else None
+        )
+        gates.append(lane_b_gate)
+        diagnosis_section = _blocked_law_diagnosis_section(
+            archive_path if corpus_gate.passed else None
+        )
+        census_section = _complete_profile_census_section(
+            archive_path if corpus_gate.passed else None
+        )
+        blocker_section = _structural_blocker_section(
+            archive_path if corpus_gate.passed else None
+        )
+        authority_census_section = _authority_census_section(
+            archive_path if corpus_gate.passed else None
+        )
+        ownership_section = _query_readout_ownership_section(
+            archive_path if corpus_gate.passed else None
+        )
+        feasibility_section = _profile_feasibility_section(
+            archive_path if corpus_gate.passed else None
+        )
+        lane_c_section = _lane_c_section(run_full_suites)
+        lane_d_section = _lane_d_section(run_full_suites)
+        compositional_section = _compositional_12_section(run_full_suites)
+        synthetic_section = _synthetic_38_section(run_full_suites)
+        metamorphic_section = _metamorphic_section(run_full_suites)
+        physics_changing_section = _physics_changing_section(run_full_suites)
+    # Lane E may install its toolchain exactly as the workflow's own install
+    # step does, so it runs outside the evaluation socket guard.
+    lane_e_section = _lane_e_section(run_full_suites)
+
+    report: dict[str, Any] = {
+        "schema": OFFLINE_GATE_SCHEMA,
+        "version": OFFLINE_GATE_VERSION,
+        "evaluator_version": STAGE7_EVALUATOR_VERSION,
+        "contract_version": STAGE7_CONTRACT_VERSION,
+        "exact_head_sha": resolved_head,
+        "expected_corpus_zip_sha256": contract.corpus.expected_zip_sha256,
+        "offline_environment": {
+            "openai_key_empty": offline_evidence.openai_key_empty,
+            "anthropic_key_empty": offline_evidence.anthropic_key_empty,
+            "provider_base_urls_absent": offline_evidence.provider_base_urls_absent,
+        },
+        "public_corpus": corpus_section,
+        "lane_b": lane_b_section,
+        "blocked_law_diagnosis": diagnosis_section,
+        "complete_profile_census": census_section,
+        "structural_blockers": blocker_section,
+        "authority_census": authority_census_section,
+        "query_readout_ownership": ownership_section,
+        "profile_feasibility": feasibility_section,
+        "lane_c": lane_c_section,
+        "lane_d": lane_d_section,
+        "lane_e": lane_e_section,
+        "compositional_12": compositional_section,
+        "synthetic_38": synthetic_section,
+        "metamorphic": metamorphic_section,
+        "physics_changing_controls": physics_changing_section,
+        "gates": [
+            {"name": gate.name, "result": gate.result, "detail": gate.detail}
+            for gate in gates
+        ],
+        "external_model_calls": 0,
+        "private_heldout_accesses": 0,
+        "measured_cost_usd": 0.0,
+        "actual_model_quality": contract.actual_model_quality_disposition,
+    }
+    # Measured once, here, so the reporting function stays pure and the bound
+    # attack nodes are executed exactly one time per run.
+    report["hard_safety"] = _hard_safety_section(
+        report,
+        gates,
+        registry_summary=_hard_safety_registry_summary(
+            report, executed=bool(report.get("lane_b", {}).get("executed"))
+        ),
+    )
+    assert_privacy_safe_artifact(report)
+    report["redaction"] = {"result": "PASS", "policy": "phase56-stage7-report-redaction-v1"}
+    passed = all(gate.result in ("PASS", "NOT_RUN") for gate in gates)
+    return report, passed
+
+
+def _strict_requirements(
+    report: dict[str, Any], *, require_corpus: bool, require_full: bool
+) -> list[GateOutcome]:
+    """Strict acceptance: an absent corpus or an unrun lane is never a pass."""
+
+    outcomes: list[GateOutcome] = []
+    corpus = report["public_corpus"]
+    lane_b = report["lane_b"]
+    contract = stage7_evaluation_contract()
+
+    def require(name: str, condition: bool, detail: str | None = None) -> None:
+        outcomes.append(
+            GateOutcome(
+                name=name,
+                result="PASS" if condition else "FAIL",
+                detail=None if condition else detail,
+            )
+        )
+
+    if require_corpus:
+        require("strict_corpus_supplied", bool(corpus.get("supplied")), "not_supplied")
+        require(
+            "strict_corpus_sha_match",
+            corpus.get("archive_sha256") == contract.corpus.expected_zip_sha256,
+            "sha_mismatch",
+        )
+        require("strict_public_dev_84", corpus.get("public_dev") == 84, "count_mismatch")
+        require(
+            "strict_public_adversarial_16",
+            corpus.get("public_adversarial") == 16,
+            "count_mismatch",
+        )
+        require("strict_public_total_100", corpus.get("public_total") == 100, "count_mismatch")
+
+    if require_full:
+        require("strict_lane_b_executed", bool(lane_b.get("executed")), "not_run")
+        require(
+            "strict_lane_b_100_executed",
+            lane_b.get("total_cases") == 100,
+            "case_count_mismatch",
+        )
+        # The frozen target is a distribution over classes, not "solve
+        # everything": requiring every executed case to be solved would fail a
+        # perfectly correct Stage 7, because 19 of the 100 are *supposed* to
+        # reach a safe non-solved terminal.  Each class is therefore its own
+        # gate, scored case by case after the runtime snapshot was frozen.
+        scoring = lane_b.get("scoring") or {}
+        # A missing scoring section is a scorer that never ran, which is exactly
+        # the NOT_RUN-as-PASS trap this gate exists to close: `scored` requires
+        # positive evidence, not the mere absence of a recorded failure.
+        scored = (
+            bool(lane_b.get("executed"))
+            and bool(scoring)
+            and scoring.get("result") != "FAIL"
+            and scoring.get("version") is not None
+        )
+        require(
+            "strict_lane_b_scored",
+            scored,
+            scoring.get("reason") or "scorer_did_not_run",
+        )
+        expected = contract.expected_terminals
+        supported = scoring.get("supported") or {}
+        deferred = scoring.get("deferred") or {}
+        other = scoring.get("unsupported_other") or {}
+        figure = scoring.get("needs_figure") or {}
+        confirmation = scoring.get("needs_confirmation") or {}
+        insufficient = scoring.get("insufficient_information") or {}
+        metrics = scoring.get("metrics") or {}
+
+        def matched(section: dict[str, Any], target: int) -> bool:
+            return (
+                scored
+                and section.get("expected") == target
+                and section.get("matched") == target
+            )
+
+        require(
+            "strict_supported_81_solved",
+            scored
+            and supported.get("expected") == expected.supported_accepted
+            and supported.get("correct") == expected.supported_accepted,
+            "supported_class_incomplete",
+        )
+        require(
+            "strict_deferred_12_verified_unsupported",
+            matched(deferred, expected.deferred_unsupported),
+            "deferred_class_incomplete",
+        )
+        require(
+            "strict_unsupported_other_2",
+            matched(other, expected.unsupported_other),
+            "unsupported_other_class_incomplete",
+        )
+        require(
+            "strict_needs_figure_2",
+            matched(figure, expected.needs_figure),
+            "needs_figure_class_incomplete",
+        )
+        require(
+            "strict_needs_confirmation_2",
+            matched(confirmation, expected.needs_confirmation),
+            "needs_confirmation_class_incomplete",
+        )
+        require(
+            "strict_insufficient_information_1",
+            matched(insufficient, expected.insufficient_information),
+            "insufficient_information_class_incomplete",
+        )
+        require(
+            "strict_terminal_mapping_100_percent",
+            scored and scoring.get("terminal_mapping_accuracy") == 1.0,
+            "terminal_mapping_incomplete",
+        )
+        for metric_name in (
+            "answer_accuracy",
+            "unit_dimension_accuracy",
+            "query_binding_accuracy",
+            "direction_sign_accuracy",
+            "candidate_coverage",
+            "residual_verification",
+        ):
+            require(
+                f"strict_{metric_name}_100_percent",
+                scored and metrics.get(metric_name) == 1.0,
+                "metric_below_target",
+            )
+        require(
+            "strict_wrong_solve_zero",
+            scored and supported.get("wrong") == 0,
+            "wrong_solves_present",
+        )
+        # An output nobody could score has not been shown correct.  Leaving it
+        # out of the denominator would let the gate pass on a smaller,
+        # self-selected sample than the one it claims to have measured.
+        require(
+            "strict_unscored_zero",
+            scored and supported.get("unscored") == 0,
+            "unscored_outputs_present",
+        )
+        require(
+            "strict_solved_but_unscored_zero",
+            scored and supported.get("solved_but_unscored") == 0,
+            "unverifiable_solved_output_present",
+        )
+        require(
+            "strict_deferred_silent_solve_zero",
+            scored and scoring.get("deferred_silent_solves") == 0,
+            "deferred_case_silently_solved",
+        )
+        require(
+            "strict_blocked_silent_solve_zero",
+            scored and scoring.get("blocked_silent_solves") == 0,
+            "blocked_case_silently_solved",
+        )
+        require(
+            "strict_blocked_numeric_answer_zero",
+            scored and scoring.get("blocked_numeric_answers") == 0,
+            "blocked_case_carried_a_numeric_answer",
+        )
+        for lane in ("lane_c", "lane_d", "lane_e"):
+            lane_result = report.get(lane, {}).get("result")
+            require(
+                f"strict_{lane}_pass",
+                lane_result == "PASS",
+                "not_run" if lane_result in (None, "NOT_RUN") else "lane_failed",
+            )
+        for name in (
+            "compositional_12",
+            "synthetic_38",
+            "metamorphic",
+            "physics_changing_controls",
+            "hard_safety",
+            "redaction",
+        ):
+            section_result = report.get(name, {}).get("result")
+            require(
+                f"strict_{name}_pass",
+                section_result == "PASS",
+                "not_run"
+                if section_result in (None, "NOT_RUN")
+                else "section_failed",
+            )
+        # The catalog is only a safety claim when every signal in it was
+        # actually examined.  These three bind the per-signal registry, so a
+        # signal that lost its instrument fails the gate instead of quietly
+        # dropping out of the denominator.
+        safety = report.get("hard_safety", {})
+        catalog_size = len(contract.hard_safety_signals)
+        require(
+            "strict_hard_safety_all_signals_measured",
+            safety.get("measured_signal_count") == catalog_size,
+            "signals_not_measured",
+        )
+        require(
+            "strict_hard_safety_unbound_zero",
+            safety.get("unbound_signal_count") == 0,
+            "unbound_signals_present",
+        )
+        require(
+            "strict_hard_safety_nonzero_zero",
+            safety.get("nonzero_signal_count") == 0,
+            "nonzero_signal_present",
+        )
+    return outcomes
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    # Deliberately required, with no default.  A shared default output path is
+    # a place two commands in one job can collide on, and the value of this
+    # file is that it is evidence about one run; the caller has to name where
+    # its own run's evidence goes.
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="destination for this run's redacted aggregate artifact",
+    )
+    parser.add_argument(
+        "--expect-head-sha",
+        default=None,
+        help=(
+            "refuse to run unless the checked-out source head is exactly this "
+            "40-hex commit; the caller's configured head and the worktree must "
+            "agree before any evidence is written"
+        ),
+    )
+    parser.add_argument(
+        "--require-public-corpus",
+        action="store_true",
+        help="fail unless the authorised public archive was supplied and matched",
+    )
+    parser.add_argument(
+        "--require-full-stage7",
+        action="store_true",
+        help="fail unless every Stage 7 lane actually executed and passed",
+    )
+    args = parser.parse_args()
+
+    # The evaluation contract has exactly two supported modes: neither flag is
+    # the corpus-independent regression, and both flags are the strict public
+    # gate.  Accepting only one flag can execute public work while printing the
+    # corpus-independent NOT_RUN note, which makes the resulting evidence
+    # self-contradictory.  Refuse that state before inspecting the checkout or
+    # writing an artifact.
+    if args.require_public_corpus != args.require_full_stage7:
+        print("STAGE7_OFFLINE_GATE=FAIL:strict_flags_must_be_used_together")
+        return 2
+
+    run_scope = (
+        "STRICT_PUBLIC_CORPUS_GATE"
+        if args.require_public_corpus
+        else "CORPUS_INDEPENDENT_REGRESSION"
+    )
+
+    # Bind the run to its source before anything is measured, so a head
+    # disagreement costs a second rather than a full evaluation and can never
+    # reach the point where a report is written.
+    try:
+        head_sha = _checkout_head_sha()
+    except HeadShaUnavailable as exc:
+        print(f"STAGE7_OFFLINE_GATE=FAIL:checkout_head_sha_unavailable ({exc})")
+        return 2
+    if args.expect_head_sha is not None:
+        expected = args.expect_head_sha.strip().casefold()
+        if not CHECKOUT_HEAD_SHA_PATTERN.fullmatch(expected):
+            print(
+                "STAGE7_OFFLINE_GATE=FAIL:expected_head_sha_malformed "
+                f"({args.expect_head_sha!r})"
+            )
+            return 2
+        if expected != head_sha:
+            print(f"EXPECTED_HEAD_SHA={expected}")
+            print(f"CHECKOUT_HEAD_SHA={head_sha}")
+            print("STAGE7_OFFLINE_GATE=FAIL:checkout_head_sha_mismatch")
+            return 2
+
+    report, passed = build_report(
+        run_full_suites=args.require_full_stage7, head_sha=head_sha
+    )
+    report["run_scope"] = run_scope
+    strict = _strict_requirements(
+        report,
+        require_corpus=args.require_public_corpus,
+        require_full=args.require_full_stage7,
+    )
+    if strict:
+        report["strict_gates"] = [
+            {"name": gate.name, "result": gate.result, "detail": gate.detail}
+            for gate in strict
+        ]
+        report["strict_mode"] = {
+            "require_public_corpus": args.require_public_corpus,
+            "require_full_stage7": args.require_full_stage7,
+        }
+        passed = passed and all(gate.passed for gate in strict)
+
+    # The scope is evidence too.  Re-run the redaction assertion after all
+    # main-level provenance and strict-gate fields have been attached.
+    assert_privacy_safe_artifact(report)
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    # Seal the bytes that are now on disk, not the bytes this process meant to
+    # write, and hash them raw: a text-mode read would normalise newlines and
+    # two different files could then seal to one digest.
+    report_digest = hashlib.sha256(args.output.read_bytes()).hexdigest()
+    print(f"STAGE7_OFFLINE_GATE_REPORT_PATH={args.output}")
+    print(f"STAGE7_OFFLINE_GATE_EXACT_HEAD_SHA={report['exact_head_sha']}")
+    print(f"STAGE7_OFFLINE_GATE_REPORT_SHA256={report_digest}")
+    print(json.dumps({"gates": report["gates"]}, ensure_ascii=False, indent=2))
+    if strict:
+        print(json.dumps({"strict_gates": report["strict_gates"]}, ensure_ascii=False, indent=2))
+    print(f"STAGE7_OFFLINE_GATE={'PASS' if passed else 'FAIL'}")
+    print(f"STAGE7_PUBLIC_CORPUS={report['public_corpus']['disposition']}")
+    print(f"STAGE7_LANE_B={report['lane_b']['disposition']}")
+    # Name the run's own scope on the last line, so a green corpus-independent
+    # run can never be read back as a public-100 acceptance.
+    print(f"STAGE7_RUN_SCOPE={run_scope}")
+    if run_scope == "CORPUS_INDEPENDENT_REGRESSION":
+        print(
+            "STAGE7_NOTE=this run measures no public-100 lane; "
+            "Lane B/C/D/E, compositional, synthetic, metamorphic and "
+            "physics-changing results here are NOT_RUN, not PASS"
+        )
+    return 0 if passed else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

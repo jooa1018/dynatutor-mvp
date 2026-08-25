@@ -4,7 +4,7 @@ const TOKEN_STORAGE_KEY = 'dynatutor_access_token';
 const LOCAL_RECORDS_KEY = 'dynatutor_local_records';
 const RETRYABLE_ERROR = '백엔드 서버에 연결하지 못했습니다. 백엔드 주소, 토큰, Render cold start, CORS 설정을 확인하세요.';
 
-function getApiBase() {
+export function getApiBase() {
   if (!API_BASE) {
     throw new Error('NEXT_PUBLIC_DYNATUTOR_API_BASE 환경변수가 설정되지 않았습니다. 배포된 FastAPI 백엔드 주소를 설정해 주세요.');
   }
@@ -25,7 +25,7 @@ export function setAccessToken(token: string) {
   else window.localStorage.removeItem(TOKEN_STORAGE_KEY);
 }
 
-function authHeaders(extra: Record<string, string> = {}) {
+export function authHeaders(extra: Record<string, string> = {}) {
   const token = getAccessToken();
   return token ? { ...extra, 'x-dynatutor-token': token } : extra;
 }
@@ -49,7 +49,7 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Promise<Response> {
+export async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Promise<Response> {
   let lastError: any = null;
   for (let i = 0; i < attempts; i += 1) {
     const controller = new AbortController();
@@ -67,26 +67,49 @@ async function fetchWithRetry(url: string, init: RequestInit, attempts = 3): Pro
   throw new Error(`${RETRYABLE_ERROR}${lastError?.name === 'AbortError' ? ' 첫 요청이 시간 초과되었습니다.' : ''}`);
 }
 
-async function postJson(path: string, body: unknown) {
+export async function apiPostJson<T>(path: string, body: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
   const res = await fetchWithRetry(`${getApiBase()}${path}`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    headers: authHeaders({ 'Content-Type': 'application/json', ...extraHeaders }),
     body: JSON.stringify(body),
   });
   if (!res.ok) await throwApiError(res, path);
-  return res.json();
+  return res.json() as Promise<T>;
+}
+
+export async function apiPostForm<T>(path: string, body: FormData, extraHeaders: Record<string, string> = {}): Promise<T> {
+  const res = await fetchWithRetry(`${getApiBase()}${path}`, {
+    method: 'POST',
+    headers: authHeaders(extraHeaders),
+    body,
+  }, 1);
+  if (!res.ok) await throwApiError(res, path);
+  return res.json() as Promise<T>;
+}
+
+export async function apiGetJson<T>(path: string, extraHeaders: Record<string, string> = {}): Promise<T> {
+  const res = await fetchWithRetry(`${getApiBase()}${path}`, { headers: authHeaders(extraHeaders) });
+  if (!res.ok) await throwApiError(res, path);
+  return res.json() as Promise<T>;
+}
+
+async function postJson(path: string, body: unknown) {
+  return apiPostJson<any>(path, body);
 }
 
 async function getJson(path: string) {
-  const res = await fetchWithRetry(`${getApiBase()}${path}`, { headers: authHeaders() });
-  if (!res.ok) await throwApiError(res, path);
-  return res.json();
+  return apiGetJson<any>(path);
 }
 
 async function safeError(res: Response) {
   try {
     const out = await res.json();
-    return out.detail || out.message || '';
+    const detail = out?.detail;
+    if (typeof detail === 'string') return detail;
+    if (detail && typeof detail === 'object' && typeof detail.message === 'string') return detail.message;
+    if (typeof out?.message === 'string') return out.message;
+    if (typeof out?.code === 'string') return out.code;
+    return '';
   } catch {
     return '';
   }

@@ -61,6 +61,19 @@ def test_study_dashboard_and_practice_set(tmp_path):
     assert all(e["category"] == "개인 학습 드릴" for e in practice["examples"])
 
 
+def test_due_records_use_same_local_calendar_as_stats(tmp_path, monkeypatch):
+    notebook.DB_PATH = tmp_path / "local_calendar_records.sqlite"
+    local_today = date(2099, 1, 2)
+    monkeypatch.setattr(notebook, "_today", lambda: local_today)
+    notebook.add_record({
+        "problem_text": "local calendar boundary",
+        "review_due": local_today.isoformat(),
+    })
+
+    assert notebook.record_stats()["due_today"] == 1
+    assert len(notebook.due_records()) == 1
+
+
 def test_notebook_export_import_roundtrip(tmp_path):
     client = _client(tmp_path)
     client.post("/records", json={

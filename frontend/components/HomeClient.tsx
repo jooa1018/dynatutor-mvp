@@ -17,6 +17,7 @@ import SymbolPad from './SymbolPad';
 import UnderstandingCard from './UnderstandingCard';
 import ProblemUnderstandingCard from './understanding/ProblemUnderstandingCard';
 import { buildRevisionApprovalPatch, mergeTextbookCorrectionPatches } from '../lib/textbookCorrections';
+import { MechanicsMultimodalPanel } from './mechanics/MechanicsMultimodalPanel';
 
 type ExampleProblem = {
   id: string;
@@ -314,6 +315,18 @@ export default function HomeClient() {
             <SymbolPad targetId="problem-input" onInsert={(nextText) => {
               replaceProblemText(nextText);
             }} />
+
+            <MechanicsMultimodalPanel
+              problemText={text}
+              disabled={loading}
+              onAuthError={(authError) => {
+                setTokenModal(true);
+                setError(authError.message);
+              }}
+              onVerifiedResult={(result) => {
+                setToast(`그림 근거 revision ${result.revision_number ?? 0}의 독립 검산이 완료됐습니다.`);
+              }}
+            />
 
             <div className="row-gap">
               <label className="field-label" htmlFor="student-input">내 풀이 <i>(선택)</i></label>

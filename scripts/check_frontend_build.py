@@ -10,10 +10,10 @@ import time
 from pathlib import Path
 
 try:
-    from scripts.run_with_timeout import process_group_exists, terminate_process_group
+    from scripts.run_with_timeout import attach_process_group, process_group_exists, terminate_process_group
 except ModuleNotFoundError:
     # When invoked as `python scripts/check_frontend_build.py`, scripts/ is sys.path[0].
-    from run_with_timeout import process_group_exists, terminate_process_group
+    from run_with_timeout import attach_process_group, process_group_exists, terminate_process_group
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend"
@@ -48,7 +48,12 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("NEXT_TELEMETRY_DISABLED", "1")
     env.setdefault("CI", "1")
-    for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+    supported_signals = (
+        getattr(signal, "SIGTERM", None),
+        getattr(signal, "SIGINT", None),
+        getattr(signal, "SIGHUP", None),
+    )
+    for sig in filter(None, supported_signals):
         try:
             signal.signal(sig, _handle_parent_signal)
         except Exception:
@@ -60,7 +65,9 @@ def main() -> int:
         env=env,
         stdin=subprocess.DEVNULL,
         start_new_session=True,
+        creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0),
     )
+    attach_process_group(proc)
     _CHILD = proc
 
     start = time.monotonic()

@@ -3,10 +3,11 @@
 services:
   - type: web
     name: dynatutor-api
-    env: python
+    runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements-lock.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
     plan: free
     envVars:
       - key: PYTHON_VERSION

@@ -32,6 +32,9 @@ bash ./scripts/check_frontend_metadata.sh
 echo "[check_all] backend fast"
 bash ./scripts/check_backend_fast.sh
 
+echo "[check_all] backend slow-only"
+bash ./scripts/check_backend_slow.sh
+
 if [ "$WITH_BENCHMARK" = "1" ]; then
   echo "[check_all] backend benchmark (optional convenience check; official validation also supports running this script separately)"
   bash ./scripts/check_backend_benchmark.sh

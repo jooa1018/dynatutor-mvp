@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "authoritative-state",
+      "when": {
+        "always": true
+      },
+      "action": "inject",
+      "body": "현재 저장소와 git history, 최신 authoritative Phase/Stage 문서, PR #17의 current disposition이 우선한다. 과거 문서의 ACCEPTED 표시는 최신 disposition보다 우선하지 않는다. main을 현재 Phase 56 authoritative worktree로 오인하지 않는다. 문서와 실행 현실이 충돌하면 실행 결과는 observed evidence로 기록하되 역사를 조용히 다시 쓰지 않는다."
+    },
+    {
+      "id": "no-fake-acceptance",
+      "when": {
+        "always": true
+      },
+      "action": "inject",
+      "body": "implementation complete, tests green, CI green은 각각 acceptance complete와 동일하지 않다. 완료나 승인 주장은 현재 release/phase gate를 실제로 통과한 증거가 있을 때만 한다. 증거 없는 완료 선언을 하지 않는다."
+    },
+    {
+      "id": "no-gate-weakening",
+      "when": {
+        "keywords": [
+          "test",
+          "tests",
+          "pytest",
+          "tolerance",
+          "threshold",
+          "skip",
+          "xfail",
+          "acceptance",
+          "gate",
+          "테스트",
+          "허용오차",
+          "완료",
+          "승인"
+        ]
+      },
+      "action": "inject",
+      "body": "acceptance를 얻기 위해 테스트 삭제/skip/xfail, 검증 약화, tolerance 확대, threshold 완화, population 변경, 평가 기준 재해석을 하지 않는다. 실패는 숨기지 말고 원인을 수정하거나 blocker로 기록한다."
+    },
+    {
+      "id": "historical-manifest-integrity",
+      "when": {
+        "keywords": [
+          "manifest",
+          "augmentation",
+          "historical",
+          "supplemental",
+          "corpus",
+          "매니페스트",
+          "코퍼스"
+        ]
+      },
+      "action": "inject",
+      "body": "unavailable한 historical exact augmentation manifest를 재구성, 추정, 대체, 합성하거나 supplemental manifest와 동일시하지 않는다. 새 supplemental campaign은 반드시 별도 identity와 provenance를 가진다."
+    },
+    {
+      "id": "physics-authority",
+      "when": {
+        "keywords": [
+          "solver",
+          "sympy",
+          "scipy",
+          "pychrono",
+          "llm",
+          "solution",
+          "root",
+          "physics",
+          "해",
+          "정답",
+          "솔버",
+          "물리"
+        ]
+      },
+      "action": "inject",
+      "body": "LLM 출력, 첫 번째 symbolic solution, 첫 번째 numerical root, 변수명, 결과 배열 순서는 물리 정답 authority가 아니다. 후보 해는 정의역, 잔차, 차원, 구속조건, 적용 가능한 invariant 및 독립 검증으로 판정한다. 외부 엔진 결과도 자동 정답 대체값으로 쓰지 않는다."
+    },
+    {
+      "id": "gold-isolation",
+      "when": {
+        "keywords": [
+          "gold",
+          "expected",
+          "corpus",
+          "evaluation",
+          "benchmark",
+          "score",
+          "평가",
+          "정답지",
+          "벤치마크"
+        ]
+      },
+      "action": "inject",
+      "body": "gold answer, expected output, hidden evaluation metadata, case id 또는 동등한 평가 누출 정보를 runtime routing, parsing, solver selection, answer selection에 사용하지 않는다."
+    },
+    {
+      "id": "stage-order",
+      "when": {
+        "keywords": [
+          "stage 7",
+          "stage7",
+          "stage 8",
+          "stage8",
+          "phase 56",
+          "phase56",
+          "스테이지",
+          "페이즈"
+        ]
+      },
+      "action": "inject",
+      "body": "현재 authoritative contract가 명시적으로 허용하지 않는 한 Stage 7이 실제로 accepted 되기 전에 Stage 8을 시작하지 않는다."
+    },
+    {
+      "id": "main-protection",
+      "when": {
+        "keywords": [
+          "main",
+          "merge",
+          "push",
+          "release",
+          "deploy",
+          "병합",
+          "배포"
+        ]
+      },
+      "action": "inject",
+      "body": "main에 성급히 직접 push하거나 아직 acceptance가 끝나지 않은 Phase 56 작업을 premature merge하지 않는다. 기존 one-goal-per-PR, rollbackability, non-force history 규칙을 보존한다."
+    }
+  ]
+}

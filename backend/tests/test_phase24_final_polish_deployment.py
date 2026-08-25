@@ -44,6 +44,13 @@ def test_phase24_pwa_assets_and_deployment_files_exist():
     assert not missing
 
 
+def test_render_blueprint_uses_current_runtime_and_public_health_check_fields():
+    blueprint = (PROJECT_ROOT / "render.yaml").read_text(encoding="utf-8")
+    assert "\n    runtime: python\n" in blueprint
+    assert "\n    env: python\n" not in blueprint
+    assert "\n    healthCheckPath: /\n" in blueprint
+
+
 def test_phase24_final_scripts_and_docs_exist():
     required = [
         "scripts/check_frontend_build.sh",

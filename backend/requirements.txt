@@ -10,3 +10,4 @@ scipy>=1.11
 pydy>=0.7.1
 httpx>=0.28
 openai==2.45.0
+Pillow>=11.3.0,<12.0.0

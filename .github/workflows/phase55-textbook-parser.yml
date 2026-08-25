@@ -1,6 +1,9 @@
 name: Phase 55 textbook parser
 
 on:
+  push:
+    branches:
+      - codex/phase56-generic-mechanics-engine
   pull_request:
     paths:
       - "backend/engine/textbook_parser/**"
@@ -19,9 +22,12 @@ on:
 permissions:
   contents: read
 
+env:
+  EXACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 concurrency:
-  group: phase55-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: phase55-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
 
 jobs:
   offline:
@@ -31,7 +37,12 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out exact source head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact source head
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -50,13 +61,19 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out exact source head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact source head
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
       - uses: actions/setup-node@v6
         with:
           node-version: "20"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm run audit
       - name: Type-check correction UI
         run: npm run typecheck
       - name: Run rendered-contract, keyboard, persistence, and approval round-trip tests
@@ -78,9 +95,12 @@ jobs:
       TEXTBOOK_PARSER_REASONING_EFFORT: "low"
       TEXTBOOK_PARSER_STORE: "false"
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out exact source head
+        uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact source head
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
 
       - uses: actions/setup-python@v6
         with:

@@ -124,6 +124,20 @@ def test_phase49_metamorphic_fixture_has_unique_21_and_four_controls():
     }
 
 
+def test_secondary_kinetic_incline_has_cross_platform_sealed_value():
+    observation = evaluate_secondary_analytic(
+        "incline",
+        {
+            "gravity": 9.81,
+            "angle_deg": 45,
+            "friction_mode": "kinetic",
+            "mu_k": 0.45,
+        },
+    )
+
+    assert observation.outputs[0].numeric == 3.8151946378920165
+
+
 @pytest.mark.parametrize(
     "oracle_id",
     [

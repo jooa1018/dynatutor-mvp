@@ -6,9 +6,7 @@ const { spawnSync } = require('child_process');
 
 const root = path.resolve(__dirname, '..');
 const outDir = path.join(root, 'out');
-const binDir = path.join(root, 'node_modules', '.bin');
-const isWin = process.platform === 'win32';
-const tscBin = path.join(binDir, isWin ? 'tsc.cmd' : 'tsc');
+const tscScript = require.resolve('typescript/bin/tsc');
 
 function run(cmd, args) {
   const res = spawnSync(cmd, args, { cwd: root, stdio: 'inherit' });
@@ -26,7 +24,9 @@ function copyDir(src, dest) {
   }
 }
 
-run(tscBin, ['--noEmit', '--pretty', 'false']);
+// Invoke the JavaScript entrypoint through the current Node executable. Direct
+// spawning of a `.cmd` shim is not portable across Windows Node versions.
+run(process.execPath, [tscScript, '--noEmit', '--pretty', 'false']);
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(path.join(outDir, 'assets'), { recursive: true });
 copyDir(path.join(root, 'public'), outDir);
@@ -44,6 +44,11 @@ esbuild.buildSync({
   define: {
     'process.env.NEXT_PUBLIC_DYNATUTOR_API_BASE': JSON.stringify(process.env.NEXT_PUBLIC_DYNATUTOR_API_BASE || ''),
     'process.env.NEXT_PUBLIC_API_BASE': JSON.stringify(process.env.NEXT_PUBLIC_API_BASE || ''),
+    // `next/image` normally receives these replacements from the Next build.
+    // This standalone esbuild path must replace them too; otherwise the static
+    // bundle dereferences Node's `process` global before React can mount.
+    'process.env.NEXT_DEPLOYMENT_ID': JSON.stringify(''),
+    'process.env.__NEXT_IMAGE_OPTS': 'undefined',
   },
   loader: { '.css': 'css' },
   logLevel: 'info',

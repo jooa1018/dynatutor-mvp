@@ -1,0 +1,295 @@
+name: Phase 56 Stage 7 offline evaluation
+
+# Permanent, read-only Stage 7 offline gate.
+#
+# SCOPE OF A GREEN RUN HERE — read this before citing it as evidence.
+#
+# This workflow runs the gate WITHOUT `--require-public-corpus` and WITHOUT
+# `--require-full-stage7`, because the authorised public corpus archive is
+# never committed to this repository and is never stored in a GitHub secret,
+# so a GitHub-hosted runner cannot be given it safely.  A green run here is
+# therefore CORPUS_INDEPENDENT_EXACT_HEAD_CI: compile, structural isolation
+# gates, Stage 7 focused contracts, Stage 6 multimodal, full collection, and
+# the full backend regression.
+#
+# It is NOT the strict public-100 gate.  In this run the public corpus, Lane B,
+# Lane C, Lane D, Lane E, compositional 12, synthetic 38, metamorphic, and
+# hard-safety sections of the artifact are NOT_RUN.  NOT_RUN is not PASS.  A
+# success here must never be reported as a public-100 result, a Lane B
+# distribution result, or Stage 7 acceptance; the strict gate is a separate
+# STRICT_PUBLIC_CORPUS_GATE run whose exact command, code SHA, archive SHA-256,
+# and report digest are recorded alongside it.
+#
+# This workflow must never edit source, push, dispatch a finalizer, modify
+# itself, read a secret, use private or full corpus material, or call an
+# external model endpoint.  External model credentials and provider base URLs
+# are forced empty and the evaluation phase runs behind a fail-fast network
+# guard.  Dependency installation runs before that guard and does use the
+# network, which is why the guard is scoped to the evaluation phase rather
+# than to the whole job.  Only the redacted aggregate artifact is uploaded.
+
+on:
+  push:
+    branches:
+      - codex/phase56-generic-mechanics-engine
+  pull_request:
+    branches:
+      - codex/phase55-gpt-first-textbook-parser
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXACT_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+concurrency:
+  group: phase56-stage7-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  offline-evaluation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact source head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      # Dependency installation happens before the evaluation network guard.
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Record pre-evaluation worktree state
+        run: git status --porcelain > "${RUNNER_TEMP}/worktree-before.txt"
+
+      # The report this job uploads is evidence about one source head in one
+      # run, so it is written to a path that names both and that nothing else
+      # can be holding.  A fixed shared filename under RUNNER_TEMP would be a
+      # place a later command in the same job could land on.
+      - name: Bind this run's report path to the exact head
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+          path="${RUNNER_TEMP}/stage7-offline-${EXACT_HEAD_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          test ! -e "$path"
+          echo "STAGE7_REPORT_PATH=${path}" >> "$GITHUB_ENV"
+
+      - name: Compile backend
+        working-directory: backend
+        run: python -m compileall -q app engine evaluation tools tests
+
+      # Corpus integrity, gold isolation, and the offline network guard run
+      # before any evaluation execution and emit the redacted artifact.
+      #
+      # No corpus is supplied here on purpose (see the scope note at the top),
+      # so this is the corpus-independent run: the public-100 lanes report
+      # NOT_RUN and the step prints its own scope on its last line.
+      - name: Stage 7 offline gate (corpus-independent scope)
+        run: |
+          set -euo pipefail
+          status=0
+          python backend/tools/run_phase56_stage7_offline_gate.py \
+            --output "$STAGE7_REPORT_PATH" \
+            --expect-head-sha "$EXACT_HEAD_SHA" \
+            | tee "${RUNNER_TEMP}/stage7-offline-gate.log" || status=$?
+          # Carry the digest the gate sealed from the bytes it had just
+          # written, so the pre-upload check compares against a value produced
+          # at generation time rather than re-deriving one from the same file.
+          digest="$(sed -n 's/^STAGE7_OFFLINE_GATE_REPORT_SHA256=//p' \
+            "${RUNNER_TEMP}/stage7-offline-gate.log" | tail -n 1)"
+          echo "STAGE7_REPORT_RAW_SHA256=${digest}" >> "$GITHUB_ENV"
+          exit "$status"
+
+      - name: Stage 7 focused contracts
+        working-directory: backend
+        run: python -m pytest -q tests/test_phase56_stage7_*.py
+
+      - name: Stage 6 multimodal regression
+        working-directory: backend
+        run: python -m pytest -q tests/test_phase56_stage6*.py
+
+      - name: Full backend collection
+        working-directory: backend
+        run: python -m pytest --collect-only -q
+
+      - name: Full backend regression
+        working-directory: backend
+        run: |
+          status=0
+          python -m pytest -q > "${RUNNER_TEMP}/stage7-full-backend.log" 2>&1 || status=$?
+          if [[ "$status" -eq 0 ]]; then
+            tail -n 40 "${RUNNER_TEMP}/stage7-full-backend.log"
+          else
+            echo "[stage7] full backend regression failed; compact tail follows" >&2
+            tail -n 300 "${RUNNER_TEMP}/stage7-full-backend.log" >&2
+          fi
+          exit "$status"
+
+      - name: Assert the gate mutated no source
+        run: |
+          git status --porcelain > "${RUNNER_TEMP}/worktree-after.txt"
+          diff "${RUNNER_TEMP}/worktree-before.txt" "${RUNNER_TEMP}/worktree-after.txt"
+
+      # Nothing between this check and the upload writes a report.  The check
+      # re-opens the file, parses it structurally, and requires
+      # configured head == git rev-parse HEAD == report exact_head_sha, plus
+      # the raw bytes still hashing to what the gate sealed.  The upload is
+      # conditioned on it, so a mismatched or tampered report is refused rather
+      # than published.
+      - name: Verify artifact identity before upload
+        id: stage7_artifact_identity
+        if: always()
+        run: |
+          python backend/tools/check_stage7_ci_artifact_identity.py \
+            --report "$STAGE7_REPORT_PATH" \
+            --expect-head-sha "$EXACT_HEAD_SHA" \
+            --expect-raw-sha256 "$STAGE7_REPORT_RAW_SHA256"
+
+      - name: Upload redacted aggregate artifact
+        id: stage7_artifact_upload
+        if: always() && steps.stage7_artifact_identity.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase56-stage7-offline-gate-report
+          path: ${{ env.STAGE7_REPORT_PATH }}
+          if-no-files-found: error
+
+      # Printed so the artifact can be audited from outside the run without
+      # re-downloading the blob, which some networks cannot reach: the
+      # uploader's digest is reported by the Artifacts API for the same
+      # artifact id, and the report's exact bytes are reproduced here in
+      # base64.  Decoding them and hashing gives back
+      # STAGE7_ARTIFACT_REPORT_RAW_SHA256, so an auditor can read the very
+      # JSON that was uploaded rather than trusting this job's own verdict.
+      # It is safe to print: the identity check above already enforced the
+      # redaction contract on this exact file, and the same bytes are
+      # published as a public artifact.
+      - name: Record uploaded artifact identity
+        if: always() && steps.stage7_artifact_upload.outcome == 'success'
+        run: |
+          printf 'STAGE7_ARTIFACT_RUN_HEAD_SHA=%s\n' "$EXACT_HEAD_SHA"
+          printf 'STAGE7_ARTIFACT_CHECKOUT_SHA=%s\n' "$(git rev-parse HEAD)"
+          printf 'STAGE7_ARTIFACT_REPORT_RAW_SHA256=%s\n' "$STAGE7_REPORT_RAW_SHA256"
+          printf 'STAGE7_ARTIFACT_ID=%s\n' '${{ steps.stage7_artifact_upload.outputs.artifact-id }}'
+          printf 'STAGE7_ARTIFACT_UPLOAD_DIGEST=%s\n' '${{ steps.stage7_artifact_upload.outputs.artifact-digest }}'
+          printf 'STAGE7_ARTIFACT_REPORT_BASE64_BEGIN\n'
+          base64 -w 0 "$STAGE7_REPORT_PATH"
+          printf '\nSTAGE7_ARTIFACT_REPORT_BASE64_END\n'
+
+  b7-slow-contracts:
+    name: B7 polar slow contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact checkout
+        run: |
+          actual="$(git rev-parse HEAD)"
+          printf 'EXACT_HEAD_SHA=%s\nACTUAL_CHECKOUT_SHA=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+      - name: Compile B7 contracts
+        working-directory: backend
+        run: python -m compileall -q engine evaluation tests/test_phase56_stage7_b7_polar_kinematics_state.py
+      - name: Run every B7 polar slow contract
+        working-directory: backend
+        run: python -m pytest -q -o addopts= -m "slow and not benchmark and not audit and not frontend" tests/test_phase56_stage7_b7_polar_kinematics_state.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact source head
+        run: |
+          actual="$(git rev-parse HEAD)"
+          printf 'expected=%s\nactual=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Audit frontend dependencies
+        run: npm run audit
+      - name: Frontend tests
+        run: npm test
+        env:
+          CI: "true"
+      - name: Frontend lint
+        run: npm run lint
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Frontend production build
+        run: npm run build
+
+  stage7_ci_gate:
+    name: Stage 7 corpus-independent CI gate
+    if: always()
+    needs: [offline-evaluation, b7-slow-contracts, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require exact-head backend, B7 slow, and frontend success
+        env:
+          OFFLINE: ${{ needs.offline-evaluation.result }}
+          B7_SLOW: ${{ needs.b7-slow-contracts.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+        run: |
+          printf 'offline=%s b7_slow=%s frontend=%s\n' "$OFFLINE" "$B7_SLOW" "$FRONTEND"
+          [[ "$OFFLINE" == success ]]
+          [[ "$B7_SLOW" == success ]]
+          [[ "$FRONTEND" == success ]]

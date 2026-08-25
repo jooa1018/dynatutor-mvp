@@ -1,0 +1,67 @@
+/* Phase 56 Stage 6: source-grounded multimodal mechanics */
+.mechanics-multimodal-panel {
+  margin-top: 18px; padding: 18px; border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg); background: var(--surface);
+}
+.mechanics-panel-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+.mechanics-panel-heading h2, .mechanics-multimodal-panel h3 { margin: 0 0 6px; color: var(--ink); }
+.mechanics-panel-heading p, .mechanics-multimodal-panel section > p { margin: 0 0 12px; color: var(--muted); line-height: 1.55; font-size: 13px; }
+.mechanics-revision { display: grid; gap: 2px; max-width: 260px; text-align: right; font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+.mechanics-revision small { color: var(--muted); }
+.mechanics-image-picker { margin-top: 16px; }
+.mechanics-dropzone {
+  display: grid; justify-items: center; gap: 10px; padding: 20px; text-align: center;
+  border: 2px dashed var(--line-strong); border-radius: var(--r); background: #FAFAFC;
+}
+.mechanics-dropzone.active, .mechanics-dropzone:focus-visible { border-color: var(--accent); outline: 3px solid var(--accent-soft); }
+.mechanics-dropzone p { margin: 0; color: var(--muted); font-size: 13px; }
+.mechanics-image-grid { list-style: none; padding: 0; margin: 12px 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.mechanics-image-card { min-width: 0; border: 1px solid var(--line); border-radius: var(--r); padding: 8px; }
+.mechanics-image-preview { width: 100%; height: 120px; object-fit: contain; background: #fff; border-radius: 6px; }
+.mechanics-image-card p { margin: 6px 0; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mechanics-progress { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 14px 0; padding: 10px 12px; border-radius: var(--r); background: var(--accent-soft); font-size: 13px; }
+.mechanics-conflicts, .mechanics-correction, .mechanics-evidence-viewer, .mechanics-runtime-summary, .mechanics-verified-result { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.mechanics-conflict-card { margin: 10px 0; padding: 12px; border: 1px solid #E1B65A; border-radius: var(--r); }
+.mechanics-conflict-option { display: flex; align-items: flex-start; gap: 9px; margin: 8px 0; padding: 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.mechanics-conflict-option:focus-within { outline: 3px solid var(--accent-soft); border-color: var(--accent); }
+.mechanics-conflict-option span { display: grid; gap: 3px; }
+.mechanics-conflict-option small { color: var(--muted); }
+.mechanics-evidence-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(220px, .7fr); gap: 14px; }
+.mechanics-evidence-images { display: grid; gap: 12px; }
+.mechanics-overlay-frame { position: relative; width: 100%; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: var(--r); }
+.mechanics-overlay-image { object-fit: contain; }
+.mechanics-overlay-region { position: absolute; z-index: 2; padding: 0; border: 2px solid #D97706; background: rgba(245, 158, 11, .16); cursor: pointer; min-width: 10px; min-height: 10px; }
+.mechanics-overlay-region.selected, .mechanics-overlay-region:focus-visible { border: 3px solid #1D4ED8; background: rgba(59, 130, 246, .24); outline: 3px solid #DBEAFE; }
+.mechanics-evidence-list { list-style: none; padding: 0; margin: 0; display: grid; align-content: start; gap: 6px; }
+.mechanics-evidence-list button { width: 100%; display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: center; text-align: left; border: 1px solid var(--line); border-radius: 8px; padding: 8px; background: #fff; }
+.mechanics-evidence-list button.selected { border-color: var(--accent); background: var(--accent-soft); }
+.mechanics-correction-group { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+.mechanics-correction-group legend { font-weight: 650; padding: 0 5px; }
+.mechanics-correction-group label { display: grid; gap: 4px; min-width: 160px; font-size: 12px; color: var(--muted); }
+.mechanics-correction-group input, .mechanics-correction-group select { min-height: 38px; max-width: 100%; border: 1px solid var(--line-strong); border-radius: 8px; background: #fff; padding: 7px 9px; color: var(--ink); }
+.mechanics-correction-row { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.mechanics-correction-row > span { flex: 1 1 220px; }
+.mechanics-correction-queue { padding: 12px; border-radius: var(--r); background: #F7F8FA; }
+.mechanics-correction-queue ol { margin: 8px 0; }
+.mechanics-runtime-summary dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.mechanics-runtime-summary dl > div { padding: 10px; background: #F7F8FA; border-radius: 8px; }
+.mechanics-runtime-summary dt { color: var(--muted); font-size: 11px; }
+.mechanics-runtime-summary dd { margin: 3px 0 0; font-weight: 650; overflow-wrap: anywhere; }
+.mechanics-verified-result { border: 1px solid #A7D7B7; background: #F2FBF5; border-radius: var(--r); padding: 16px; }
+.mechanics-answer-value { font-size: clamp(24px, 5vw, 40px) !important; color: #166534 !important; font-weight: 750; }
+@media (max-width: 720px) {
+  .mechanics-panel-heading { display: block; }
+  .mechanics-revision { max-width: none; text-align: left; margin-top: 10px; }
+  .mechanics-image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mechanics-evidence-layout { grid-template-columns: 1fr; }
+  .mechanics-runtime-summary dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+  .mechanics-multimodal-panel { padding: 13px; margin-left: -4px; margin-right: -4px; }
+  .mechanics-image-grid, .mechanics-runtime-summary dl { grid-template-columns: 1fr; }
+  .mechanics-correction-group { display: grid; }
+  .mechanics-correction-group label { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mechanics-overlay-region { transition: none; }
+}

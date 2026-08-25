@@ -1,0 +1,295 @@
+name: Phase 56 Stage 6 multimodal
+
+on:
+  push:
+    branches:
+      - codex/phase56-generic-mechanics-engine
+  pull_request:
+    branches:
+      - codex/phase55-gpt-first-textbook-parser
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase56-stage6-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+env:
+  EXACT_HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  focused:
+    name: Stage 6 focused contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact checkout
+        working-directory: .
+        run: |
+          actual="$(git rev-parse HEAD)"
+          printf 'EXACT_HEAD_SHA=%s\nACTUAL_CHECKOUT_SHA=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+      - name: Verify locked Pillow dependency
+        run: python -c "import PIL; assert PIL.__version__ == '11.3.0', PIL.__version__"
+      - name: Compile backend
+        run: python -m compileall -q app engine tests
+      - name: Record exact Stage 6 focused inventory
+        run: |
+          python -m pytest -qq --disable-warnings --collect-only -o addopts= \
+            -m "not benchmark and not audit and not frontend and not slow" \
+            tests/test_phase56_stage6*.py \
+            > "${RUNNER_TEMP}/stage6-focused-collection.txt"
+          cat "${RUNNER_TEMP}/stage6-focused-collection.txt"
+          python - <<'PY_FOCUSED'
+          import json, os, pathlib, re
+          pattern = re.compile(r"^(?P<path>.+\.py):\s+(?P<count>[1-9][0-9]*)$")
+          records = []
+          for line in pathlib.Path(os.environ['RUNNER_TEMP'], 'stage6-focused-collection.txt').read_text().splitlines():
+              match = pattern.fullmatch(line.strip())
+              if match:
+                  records.append({'path': match.group('path'), 'count': int(match.group('count'))})
+          assert records
+          assert len({item['path'] for item in records}) == len(records)
+          payload = {
+              'exact_head_sha': os.environ['EXACT_HEAD_SHA'],
+              'files': records,
+              'file_count': len(records),
+              'test_count': sum(item['count'] for item in records),
+          }
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'stage6-focused-manifest.json').write_text(
+              json.dumps(payload, sort_keys=True, indent=2) + '\n'
+          )
+          PY_FOCUSED
+      - name: Run Stage 6 focused contracts exactly once
+        run: >-
+          python -m pytest -q -o addopts=
+          -m "not benchmark and not audit and not frontend and not slow"
+          tests/test_phase56_stage6*.py
+      - name: Upload focused inventory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage6-focused-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/stage6-focused-manifest.json
+          if-no-files-found: error
+
+  backend_regression:
+    name: backend regression shard ${{ matrix.shard_index }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2, 3, 4, 5, 6, 7]
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact checkout
+        working-directory: .
+        run: |
+          actual="$(git rev-parse HEAD)"
+          printf 'EXACT_HEAD_SHA=%s\nACTUAL_CHECKOUT_SHA=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+      - name: Compile backend
+        run: python -m compileall -q app engine tests
+      - name: Run one deterministic backend regression shard
+        env:
+          DYNATUTOR_BACKEND_FAST_SHARD_COUNT: "8"
+          DYNATUTOR_BACKEND_FAST_SHARD_INDEX: ${{ matrix.shard_index }}
+          DYNATUTOR_BACKEND_FAST_EXCLUDE_GLOB: tests/test_phase56_stage6*.py
+          DYNATUTOR_BACKEND_FAST_MANIFEST_OUTPUT: ${{ runner.temp }}/stage6-backend-manifest-${{ matrix.shard_index }}.json
+          DYNATUTOR_BACKEND_FAST_FAILURE_SUMMARY: ${{ runner.temp }}/stage6-backend-failure-${{ matrix.shard_index }}.txt
+        run: bash ../scripts/check_backend_fast.sh
+      - name: Assert Stage 6 files are the only excluded regression files
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from fnmatch import fnmatchcase
+          path = os.path.join(
+              os.environ["RUNNER_TEMP"],
+              "stage6-backend-manifest-${{ matrix.shard_index }}.json",
+          )
+          payload = json.load(open(path, encoding="utf-8"))
+          excluded = payload["excluded_files"]
+          assert excluded, "Stage 6 focused files must be excluded from regression shards"
+          assert all(fnmatchcase(item, "tests/test_phase56_stage6*.py") for item in excluded)
+          assert payload["selected_test_count"] + payload["excluded_test_count"] == payload["collected_test_count"]
+          PY
+      - name: Upload sanitized regression failure summary
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage6-backend-failure-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard_index }}
+          path: ${{ runner.temp }}/stage6-backend-failure-${{ matrix.shard_index }}.txt
+          if-no-files-found: warn
+      - name: Upload deterministic regression manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage6-backend-manifest-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard_index }}
+          path: ${{ runner.temp }}/stage6-backend-manifest-${{ matrix.shard_index }}.json
+          if-no-files-found: error
+
+  partition_audit:
+    name: Stage 6 complete partition audit
+    if: always()
+    needs:
+      - focused
+      - backend_regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact checkout
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download every regression manifest
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage6-backend-manifest-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: manifests
+      - name: Download focused inventory
+        uses: actions/download-artifact@v4
+        with:
+          pattern: stage6-focused-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: focused-manifest
+      - name: Prove complete, disjoint, identical partition
+        env:
+          FOCUSED_RESULT: ${{ needs.focused.result }}
+          REGRESSION_RESULT: ${{ needs.backend_regression.result }}
+        run: |
+          python - <<'PY_AUDIT'
+          import fnmatch, json, os, pathlib
+          assert os.environ['FOCUSED_RESULT'] == 'success'
+          assert os.environ['REGRESSION_RESULT'] == 'success'
+          paths = sorted(pathlib.Path('manifests').rglob('stage6-backend-manifest-*.json'))
+          assert len(paths) == 8, paths
+          manifests = [json.loads(path.read_text()) for path in paths]
+          assert len({item['sha256'] for item in manifests}) == 1
+          baseline = manifests[0]
+          assert baseline['selected_test_count'] + baseline['excluded_test_count'] == baseline['collected_test_count']
+          assert baseline['selected_file_count'] + baseline['excluded_file_count'] == baseline['collected_file_count']
+          files = [path for shard in baseline['shards'] for path in shard['files']]
+          assert len(files) == len(set(files)) == baseline['selected_file_count']
+          assert sum(shard['test_count'] for shard in baseline['shards']) == baseline['selected_test_count']
+          excluded = set(baseline['excluded_files'])
+          focused_paths = list(pathlib.Path('focused-manifest').rglob('stage6-focused-manifest.json'))
+          assert len(focused_paths) == 1, focused_paths
+          focused = json.loads(focused_paths[0].read_text())
+          assert focused['exact_head_sha'] == os.environ['EXACT_HEAD_SHA']
+          actual = {item['path'] for item in focused['files']}
+          assert excluded == actual, (sorted(excluded), sorted(actual))
+          assert focused['test_count'] == baseline['excluded_test_count']
+          assert all(fnmatch.fnmatchcase(path, 'tests/test_phase56_stage6*.py') for path in excluded)
+          print(json.dumps({
+              'exact_head_sha': os.environ['EXACT_HEAD_SHA'],
+              'manifest_sha256': baseline['sha256'],
+              'collected_tests': baseline['collected_test_count'],
+              'focused_tests': baseline['excluded_test_count'],
+              'regression_tests': baseline['selected_test_count'],
+              'shard_test_counts': [item['test_count'] for item in baseline['shards']],
+          }, sort_keys=True))
+          PY_AUDIT
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+      - name: Verify exact checkout
+        working-directory: .
+        run: |
+          actual="$(git rev-parse HEAD)"
+          printf 'EXACT_HEAD_SHA=%s\nACTUAL_CHECKOUT_SHA=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Audit frontend dependencies
+        run: npm run audit
+      - name: Frontend tests
+        run: npm test
+        env:
+          CI: "true"
+      - name: Frontend lint
+        run: npm run lint
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Frontend production build
+        run: npm run build
+
+  stage6_gate:
+    name: Stage 6 gate
+    if: always()
+    needs: [focused, backend_regression, partition_audit, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require focused, complete regression, and frontend success
+        env:
+          FOCUSED: ${{ needs.focused.result }}
+          REGRESSION: ${{ needs.backend_regression.result }}
+          PARTITION: ${{ needs.partition_audit.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+        run: |
+          printf 'head=%s focused=%s regression=%s partition=%s frontend=%s\n' "$EXACT_HEAD_SHA" "$FOCUSED" "$REGRESSION" "$PARTITION" "$FRONTEND"
+          [[ "$FOCUSED" == success ]]
+          [[ "$REGRESSION" == success ]]
+          [[ "$PARTITION" == success ]]
+          [[ "$FRONTEND" == success ]]
