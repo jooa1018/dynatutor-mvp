@@ -1,0 +1,236 @@
+name: Temporary Phase 57 guarded publisher
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-publish-base-63a6e
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PARENT_SHA: 63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17
+      TARGET_BRANCH: codex/phase57-reproducible-public-evaluation
+      PATCH_B64_SHA256: 2ca7bd2fabab3c955b9e6e1c84208c21124518ae7b1585ed040ea85dbdb5a603
+      PATCH_GZ_SHA256: a5d4d0239308ade710299289ded594ff90a88838dd8019ca0e0dbd87a98e279c
+      PATCH_SHA256: 66130822ddfeccc79b49896e23010e97519ab0f1424e4c7586c14e624568da05
+      CHANGED_PATHS_SHA256: a72ad9cad10839cda27273f3ff4db965bf6dac354ba3a0e2c1ddfeccdc018356
+      FINAL_FILES_MANIFEST_SHA256: 0cafbb729450e1d50023fc679b8e650cb1bcd0d5d5197629c5f2b2b8c2c8a6c3
+      OUTGOING_CHECKPOINT_SHA256: 372a28cadec12dea83e9d4c1c3420f17098bf54db68c0d5120d6ae94ed5bba71
+    steps:
+      - name: Check out temporary publisher base
+        uses: actions/checkout@v4
+        with:
+          ref: tmp/astra-phase57-publish-base-63a6e
+          fetch-depth: 0
+
+      - name: Reconstruct and verify reviewed patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            .phase57-tmp/phase57.patch.gz.b64.part00 \
+            .phase57-tmp/phase57.patch.gz.b64.part01 \
+            .phase57-tmp/phase57.patch.gz.b64.part02 \
+            .phase57-tmp/phase57.patch.gz.b64.part03 \
+            .phase57-tmp/phase57.patch.gz.b64.part04 \
+            .phase57-tmp/phase57.patch.gz.b64.part05 \
+            .phase57-tmp/phase57.patch.gz.b64.part06 \
+            .phase57-tmp/phase57.patch.gz.b64.part07 \
+            > "${RUNNER_TEMP}/phase57.patch.gz.b64"
+          test "$(sha256sum "${RUNNER_TEMP}/phase57.patch.gz.b64" | cut -d' ' -f1)" = "$PATCH_B64_SHA256"
+          base64 -d "${RUNNER_TEMP}/phase57.patch.gz.b64" > "${RUNNER_TEMP}/phase57.patch.gz"
+          test "$(sha256sum "${RUNNER_TEMP}/phase57.patch.gz" | cut -d' ' -f1)" = "$PATCH_GZ_SHA256"
+          gzip -dc "${RUNNER_TEMP}/phase57.patch.gz" > "${RUNNER_TEMP}/phase57.patch"
+          test "$(sha256sum "${RUNNER_TEMP}/phase57.patch" | cut -d' ' -f1)" = "$PATCH_SHA256"
+
+      - name: Verify exact parent and target branch precondition
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin codex/phase56-generic-mechanics-engine
+          actual_parent="$(git rev-parse origin/codex/phase56-generic-mechanics-engine)"
+          printf 'EXPECTED_PARENT=%s\nACTUAL_PARENT=%s\n' "$PARENT_SHA" "$actual_parent"
+          test "$actual_parent" = "$PARENT_SHA"
+
+          if git ls-remote --exit-code --heads origin "refs/heads/${TARGET_BRANCH}" > "${RUNNER_TEMP}/target-ref.txt"; then
+            target_sha="$(awk '{print $1}' "${RUNNER_TEMP}/target-ref.txt")"
+            printf 'EXISTING_TARGET_SHA=%s\n' "$target_sha"
+            test "$target_sha" = "$PARENT_SHA"
+          else
+            printf 'EXISTING_TARGET_SHA=ABSENT\n'
+          fi
+
+      - name: Apply patch only to the exact allowed path set
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -B phase57-publish "$PARENT_SHA"
+          git apply --index --check "${RUNNER_TEMP}/phase57.patch"
+          git apply --index "${RUNNER_TEMP}/phase57.patch"
+          git diff --cached --check
+
+          cat > "${RUNNER_TEMP}/expected-paths.txt" <<'EOF'
+          .github/workflows/phase57-reproducible-public-evaluation.yml
+          backend/evaluation/phase56_stage7/corpus_v2/campaign_seal.py
+          backend/evaluation/phase56_stage7/corpus_v2/prepare_builder.py
+          backend/evaluation/phase57_reproducible/__init__.py
+          backend/evaluation/phase57_reproducible/contracts.py
+          backend/evaluation/phase57_reproducible/fixtures.py
+          backend/evaluation/phase57_reproducible/gate.py
+          backend/tests/fixtures/phase56_stage7_public/README.md
+          backend/tests/fixtures/phase56_stage7_public/public_adversarial.jsonl
+          backend/tests/fixtures/phase56_stage7_public/public_dev.jsonl
+          backend/tests/fixtures/phase56_stage7_public/sanitized_manifest.json
+          backend/tests/fixtures/phase56_stage7_public/schema.json
+          backend/tests/test_phase57_reproducible_public_evaluation.py
+          backend/tools/check_phase57_ci_artifact_identity.py
+          backend/tools/run_phase56_stage7_v2_shadow.py
+          backend/tools/run_phase56_stage7_v2_shadow_prepare.py
+          backend/tools/run_phase56_stage7_v2_shadow_score.py
+          backend/tools/run_phase56_stage7_v2_shadow_verify_prepare.py
+          backend/tools/run_phase57_reproducible_public_gate.py
+          docs/PHASE57_REPRODUCIBLE_PUBLIC_EVALUATION.md
+          memory/00-INDEX.md
+          memory/CHECKPOINT.md
+          memory/DECISIONS.md
+          memory/OPEN-QUESTIONS.md
+          memory/PRODUCT-TRUTH.md
+          memory/SESSION-LOG.md
+          memory/checkpoints/2026-08-26T2104+0900-phase56-terminal-blocker.md
+          memory/goal/phase57-reproducible-public-evaluation.md
+          memory/knowledge/phase57-reproducible-public-evaluation.md
+          EOF
+          sed -i 's/^          //' "${RUNNER_TEMP}/expected-paths.txt"
+          test "$(sha256sum "${RUNNER_TEMP}/expected-paths.txt" | cut -d' ' -f1)" = "$CHANGED_PATHS_SHA256"
+          git diff --cached --name-only | sort > "${RUNNER_TEMP}/actual-paths.txt"
+          diff -u "${RUNNER_TEMP}/expected-paths.txt" "${RUNNER_TEMP}/actual-paths.txt"
+
+      - name: Verify exact resulting bytes and historical boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "${RUNNER_TEMP}/final-files.sha256" <<'EOF'
+          a1690e2ba64b8dd717f586ca04ab5f2841ca67335ba853b61644e8ed61fee68b  .github/workflows/phase57-reproducible-public-evaluation.yml
+          122c87ed8c3f5f2128fa7378fd9625fbd89ede2b9b9c443f14983bbbb5194079  backend/evaluation/phase56_stage7/corpus_v2/campaign_seal.py
+          d452dce170cc82eabcb06eb0cc32f09e4313afc6b6bee0b4c86a7250ac74d17f  backend/evaluation/phase56_stage7/corpus_v2/prepare_builder.py
+          d04848d63a07efa3c155253974999d15d77c14e42787e2fa5f2e94b4d93a1202  backend/evaluation/phase57_reproducible/__init__.py
+          053efdec901ad370902685a99b366ad82bbbfc6f7f3cc5ab3f7d1d8b29d6a0d0  backend/evaluation/phase57_reproducible/contracts.py
+          30893dd1a9e726db3067ebb0be343a3427eb918e3d446fab09afec265eb0222f  backend/evaluation/phase57_reproducible/fixtures.py
+          9686a17164aef81e102542777fe0ef1846e047b95a3bcda0bb41b0148c834d0a  backend/evaluation/phase57_reproducible/gate.py
+          5cfc48092a828086f8edd409d882d56140392424f994a00299f34a05ed943f93  backend/tests/fixtures/phase56_stage7_public/README.md
+          d3d424b1218ba58fed89778a25d1f5baf97edee5493f0465f37cd0acf18b39b7  backend/tests/fixtures/phase56_stage7_public/public_adversarial.jsonl
+          f06606670b0206d0900ecb136378c0b81cb30e2f62a1519cea4d83ed5f05c4f8  backend/tests/fixtures/phase56_stage7_public/public_dev.jsonl
+          8fa28f881c1214672c8d5ba5e9d303140aaae072cd5a6073c20af2ba4be16b0d  backend/tests/fixtures/phase56_stage7_public/sanitized_manifest.json
+          cd2e0dbe39d73989c62f868a4e4a0e750692987e27feb36405521b35f60b1673  backend/tests/fixtures/phase56_stage7_public/schema.json
+          1193d181dc0d715b3ec1a26ed602c88a4a7b747431942c621487b31a26bdd0f1  backend/tests/test_phase57_reproducible_public_evaluation.py
+          a2eb82aaeed4af7d0ea299923a74f3c5fa0da926e89da6d27b34fec3675a2acf  backend/tools/check_phase57_ci_artifact_identity.py
+          fcce25fc082297e364d694dd2d1283ad59cf0050f2d9442258f4f136ecacd5f7  backend/tools/run_phase56_stage7_v2_shadow.py
+          8cf03df9ee3730f6ec6044ce71a25aff6ac052d1db4e6a10fbc7b8c3578a3403  backend/tools/run_phase56_stage7_v2_shadow_prepare.py
+          c9411bdba9eefa71592076063803fb6e6fd8939d61ca8c3d2579ebb2b896f0f7  backend/tools/run_phase56_stage7_v2_shadow_score.py
+          2c60dab27b33c4d724300fa9dda505d6c4e25a77369db6f9f71f9b998aa4fd60  backend/tools/run_phase56_stage7_v2_shadow_verify_prepare.py
+          767e990ce16f9d3d791febc52a7bdd5f6ef1da6f10ff932d0a2549aea463a00b  backend/tools/run_phase57_reproducible_public_gate.py
+          3462383ffb0df0a3284462c6c98c1de6a832e37532f7baa76099f84b8f0f9be7  docs/PHASE57_REPRODUCIBLE_PUBLIC_EVALUATION.md
+          932d3ede9572b9bfe76ed8a245c7aba2c17822fc623b753bd439e3e7a7de2f87  memory/00-INDEX.md
+          e8bb8a32033bb013333ed1fd2e3db77fe898e3b90bf267f5d00a433bee70a008  memory/CHECKPOINT.md
+          e0bd748dae9bc31dc110bd0834204bc38b59ca71acfc47823778b4b8a8df6aab  memory/DECISIONS.md
+          cb0df69dc4754f919312aafb5da1da9c778c2375767da6c6627c532c3a41aecc  memory/OPEN-QUESTIONS.md
+          1fdb6e3a9555d4295102896007be4626ab83636cfe6e98a37c48b80863b1f465  memory/PRODUCT-TRUTH.md
+          0b2b431b2ec2c567499d57da78058434b4176c4add8d2ff0aa1213b105bdb434  memory/SESSION-LOG.md
+          372a28cadec12dea83e9d4c1c3420f17098bf54db68c0d5120d6ae94ed5bba71  memory/checkpoints/2026-08-26T2104+0900-phase56-terminal-blocker.md
+          b46f2d7c567e4d3216d4667841ca03ecd95e42d5a5c01f3497a35c94d2634cb6  memory/goal/phase57-reproducible-public-evaluation.md
+          40cd7e66ee6251e79c53b5273c180d205d6813c187933e856bd201f628c9285a  memory/knowledge/phase57-reproducible-public-evaluation.md
+          EOF
+          sed -i 's/^          //' "${RUNNER_TEMP}/final-files.sha256"
+          test "$(sha256sum "${RUNNER_TEMP}/final-files.sha256" | cut -d' ' -f1)" = "$FINAL_FILES_MANIFEST_SHA256"
+          sha256sum -c "${RUNNER_TEMP}/final-files.sha256"
+
+          outgoing_hash="$(git show "${PARENT_SHA}:memory/CHECKPOINT.md" | sha256sum | cut -d' ' -f1)"
+          archived_hash="$(sha256sum memory/checkpoints/2026-08-26T2104+0900-phase56-terminal-blocker.md | cut -d' ' -f1)"
+          test "$outgoing_hash" = "$OUTGOING_CHECKPOINT_SHA256"
+          test "$archived_hash" = "$OUTGOING_CHECKPOINT_SHA256"
+          grep -Fq 'STAGE_7_IN_PROGRESS / NOT_ACCEPTED' memory/CHECKPOINT.md
+          grep -Fq 'STAGE_8_NOT_STARTED' memory/CHECKPOINT.md
+          test ! -e backend/tests/fixtures/phase56_stage7_public/public_all.jsonl
+          test ! -e backend/tests/fixtures/phase56_stage7_public/private_manifest.json
+          test ! -e backend/tests/fixtures/phase56_stage7_public/private_heldout.jsonl
+          test -z "$(find backend/tests/fixtures/phase56_stage7_public -type f -name '*.zip' -print -quit)"
+
+      - name: Set up locked Python 3.11 environment
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Run focused Phase 57 and inherited manifest tests
+        working-directory: backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q -o 'addopts=' \
+            tests/test_phase57_reproducible_public_evaluation.py \
+            tests/test_phase56_stage7_supplemental_manifest.py \
+            tests/test_phase56_stage7_corpus_v2_prepare_attestation_seal.py \
+            | tee "${RUNNER_TEMP}/phase57-focused-tests.log"
+          grep -Eq '122 passed' "${RUNNER_TEMP}/phase57-focused-tests.log"
+          python -m compileall -q \
+            evaluation/phase57_reproducible \
+            evaluation/phase56_stage7/corpus_v2 \
+            tools/run_phase56_stage7_v2_shadow.py \
+            tools/run_phase56_stage7_v2_shadow_prepare.py \
+            tools/run_phase56_stage7_v2_shadow_verify_prepare.py \
+            tools/run_phase56_stage7_v2_shadow_score.py \
+            tools/run_phase57_reproducible_public_gate.py \
+            tools/check_phase57_ci_artifact_identity.py
+
+      - name: Commit and non-forced publish to feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git commit -m 'feat(phase57): establish reproducible public evaluation lineage'
+          result_sha="$(git rev-parse HEAD)"
+          result_tree="$(git rev-parse HEAD^{tree})"
+
+          if git ls-remote --exit-code --heads origin "refs/heads/${TARGET_BRANCH}" > "${RUNNER_TEMP}/target-ref-before-push.txt"; then
+            target_sha="$(awk '{print $1}' "${RUNNER_TEMP}/target-ref-before-push.txt")"
+            test "$target_sha" = "$PARENT_SHA"
+          fi
+          git push origin "HEAD:refs/heads/${TARGET_BRANCH}"
+
+          {
+            printf 'parent_sha=%s\n' "$PARENT_SHA"
+            printf 'result_sha=%s\n' "$result_sha"
+            printf 'result_tree=%s\n' "$result_tree"
+            printf 'target_branch=%s\n' "$TARGET_BRANCH"
+            printf 'patch_sha256=%s\n' "$PATCH_SHA256"
+            printf 'changed_paths=29\n'
+            printf 'focused_tests=122_passed\n'
+            printf 'historical_stage7=STAGE_7_IN_PROGRESS / NOT_ACCEPTED\n'
+            printf 'historical_stage8=STAGE_8_NOT_STARTED\n'
+            printf 'main_changed=false\n'
+            printf 'merged=false\n'
+            printf 'deployed=false\n'
+            printf 'released=false\n'
+          } > "${RUNNER_TEMP}/phase57-publisher-report.txt"
+
+      - name: Upload guarded publisher report
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-guarded-publisher-report
+          path: ${{ runner.temp }}/phase57-publisher-report.txt
+          retention-days: 7
+          if-no-files-found: error
