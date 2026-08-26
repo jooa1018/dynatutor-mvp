@@ -8,6 +8,12 @@ Rule: every entry carries evidence (code path, test, screenshot), a date, and th
 Evidence: <code path / test / screenshot>
 Checked: <YYYY-MM-DD> — re-confirm against the code once this is over 90 days old -->
 
+## Phase 57 reproducible public evaluation control plane — implemented; locally contract-verified — 2026-08-26
+
+Evidence: `backend/evaluation/phase57_reproducible/`; `backend/tools/run_phase57_reproducible_public_gate.py`; `backend/tools/check_phase57_ci_artifact_identity.py`; `.github/workflows/phase57-reproducible-public-evaluation.yml`; `backend/tests/test_phase57_reproducible_public_evaluation.py`; 17/17 focused tests, exact fixture/archive/manifest/seal identities, exactly 100 public contexts and 81 frozen supported contexts, tamper/duplicate/privacy/production-boundary controls, compilation, YAML parse, and `git diff --check`.
+
+Checked: 2026-08-26. This verifies the local control plane and public input reproducibility. The exact-head hosted full M/V/R/G baseline is still pending and no Phase 57 quality, hidden generalization, production, release, or historical Phase 56 acceptance claim is made.
+
 ## Generic typed curve and instantaneous-centre mechanics — verified — 2026-08-23
 
 Evidence: mechanics code head `7794168734321be78b6fa54373bf20a6938d4bd4`; `backend/evaluation/phase56_stage7/curve_design_profile.py`; typed event-scoped instantaneous-centre carrier and compiler scope anchor; 56 slow-inclusive B10/instantaneous-centre tests, 175 adjacent compiler/solver tests, and the frozen supplemental M/V/R/G campaign. The same sealed population rose from 41 to 50 correct (`+9`) with zero wrong, unscored, or regressed outcomes.
@@ -57,6 +63,8 @@ Checked: <YYYY-MM-DD> — this section goes stale in the other direction: a line
 capability shipped makes you claim less than you have earned. Sweep it on the same 90-day clock. -->
 
 - Stage 7 contract acceptance: not achieved as of 2026-08-25. Exact-head CI is green, but the frozen 81/81 supported and 100/100 terminal requirements do not pass; see `knowledge/phase56-terminal-blocker.md`.
+- Phase 57 exact-head hosted baseline: not yet verified as of 2026-08-26; the local control plane passes 17 focused tests, but full Python 3.11/locked-dependency M/V/R/G and aggregate artifact identity remain to be proved in CI.
+- Phase 57 public quality target: not achieved as of 2026-08-26; the fixed target is 81/81 supported correct with every measured defect count zero.
 - Stage 8: not started as of 2026-08-25 because Stage 7 is not accepted.
 - Historical augmentation-campaign remeasurement: not available as of 2026-08-25; the exact manifest is absent and was not reconstructed or substituted.
 - Live OpenAI/Anthropic Korean modeler quality: `NOT_RUN / N/A` in Stage 7 as of 2026-08-25.

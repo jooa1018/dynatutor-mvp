@@ -162,6 +162,16 @@ def _binding_failures(snapshot, attestation, expected_code_head: str | None):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
+    parser.add_argument(
+        "--expected-corpus-sha256",
+        type=str,
+        default=None,
+        help=(
+            "optional exact SHA-256 for a separately named reproducible "
+            "campaign archive. Omitted preserves the frozen Phase 56 public "
+            "archive identity."
+        ),
+    )
     parser.add_argument("--runtime-snapshot", type=Path, required=True)
     parser.add_argument(
         "--publication-root",
@@ -269,7 +279,12 @@ def main() -> int:
         return SCORE_FAILURE_EXIT
 
     # --- The gold opens here, and the pipeline is already closed and hashed --
-    inventory = read_public_corpus_archive(args.corpus_archive)
+    if args.expected_corpus_sha256 is None:
+        inventory = read_public_corpus_archive(args.corpus_archive)
+    else:
+        inventory = read_public_corpus_archive(
+            args.corpus_archive, expected_sha256=args.expected_corpus_sha256
+        )
     public_dev, public_adversarial = load_public_cases(inventory)
     cases = (*public_dev, *public_adversarial)
 

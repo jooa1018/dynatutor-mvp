@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dynatutor.local/schemas/ko-corpus-v1.schema.json",
+  "title": "DynaTutor Korean Dynamics Corpus Case V1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "case_id",
+    "split",
+    "language",
+    "problem_text",
+    "problem_hash",
+    "source_provenance",
+    "gold",
+    "difficulty",
+    "tags"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "dynatutor-ko-corpus-v1.0"
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "split": {
+      "enum": [
+        "public_dev",
+        "public_adversarial",
+        "private_heldout"
+      ]
+    },
+    "language": {
+      "const": "ko"
+    },
+    "problem_text": {
+      "type": "string",
+      "minLength": 10
+    },
+    "problem_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "family": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "difficulty": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "source_provenance": {
+      "type": "object",
+      "required": [
+        "basis",
+        "title",
+        "edition",
+        "chapter",
+        "section",
+        "independently_authored",
+        "original_problem_text_copied",
+        "original_numbers_reused",
+        "original_figures_reused"
+      ],
+      "properties": {
+        "basis": {
+          "const": "abstract_structure_only"
+        },
+        "title": {
+          "type": "string"
+        },
+        "edition": {
+          "const": 12
+        },
+        "chapter": {
+          "type": "integer",
+          "minimum": 11,
+          "maximum": 19
+        },
+        "section": {
+          "type": "string"
+        },
+        "independently_authored": {
+          "const": true
+        },
+        "original_problem_text_copied": {
+          "const": false
+        },
+        "original_numbers_reused": {
+          "const": false
+        },
+        "original_figures_reused": {
+          "const": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "gold": {
+      "type": "object",
+      "required": [
+        "parse_status",
+        "expected_system_type",
+        "phase55_expected_terminal",
+        "future_expected_terminal",
+        "figure_dependency",
+        "entities",
+        "motion_segments",
+        "events",
+        "explicit_facts",
+        "relations",
+        "assumption_proposals",
+        "queries",
+        "answers"
+      ],
+      "properties": {
+        "parse_status": {
+          "enum": [
+            "complete",
+            "ambiguous",
+            "insufficient_information",
+            "needs_figure",
+            "unsupported"
+          ]
+        },
+        "expected_system_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase55_expected_terminal": {
+          "type": "string"
+        },
+        "future_expected_terminal": {
+          "type": "string"
+        },
+        "figure_dependency": {
+          "type": "object"
+        },
+        "entities": {
+          "type": "array"
+        },
+        "motion_segments": {
+          "type": "array"
+        },
+        "events": {
+          "type": "array"
+        },
+        "explicit_facts": {
+          "type": "array"
+        },
+        "relations": {
+          "type": "array"
+        },
+        "assumption_proposals": {
+          "type": "array"
+        },
+        "queries": {
+          "type": "array"
+        },
+        "answers": {
+          "type": "array"
+        },
+        "expected_failure_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
