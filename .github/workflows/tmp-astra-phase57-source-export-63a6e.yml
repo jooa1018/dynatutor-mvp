@@ -1,0 +1,41 @@
+name: Temporary Phase 57 exact-source export 63a6e
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-source-base-63a6e
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact Phase 56 terminal head
+        uses: actions/checkout@v4
+        with:
+          ref: 63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17
+          fetch-depth: 1
+      - name: Export and verify exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          git archive --format=tar.gz --output "${RUNNER_TEMP}/dynatutor-source-${expected}.tar.gz" "$expected"
+          {
+            printf 'exact_head_sha=%s\n' "$expected"
+            sha256sum "${RUNNER_TEMP}/dynatutor-source-${expected}.tar.gz"
+          } > "${RUNNER_TEMP}/dynatutor-source-${expected}.manifest.txt"
+      - name: Upload exact-source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynatutor-source-63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17
+          path: |
+            ${{ runner.temp }}/dynatutor-source-63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17.tar.gz
+            ${{ runner.temp }}/dynatutor-source-63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17.manifest.txt
+          retention-days: 1
+          if-no-files-found: error
