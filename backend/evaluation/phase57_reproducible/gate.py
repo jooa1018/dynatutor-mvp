@@ -178,6 +178,7 @@ def _state_counts(payload: Mapping[str, Any]) -> dict[str, int]:
     raw = payload.get("ledger_state_counts")
     if not isinstance(raw, list):
         raise ValueError(Phase57GateFailure.ledger_state_counts_malformed.value)
+
     output: dict[str, int] = {}
     for item in raw:
         if (
@@ -229,7 +230,9 @@ def evaluate_phase57_shadow_report(
             scorecard_digest
         ):
             raise ValueError("digest")
-        if not _HEX_64.fullmatch(source_shadow_report_raw_sha256):
+        if not isinstance(source_shadow_report_raw_sha256, str) or not (
+            _HEX_64.fullmatch(source_shadow_report_raw_sha256)
+        ):
             raise ValueError("source_shadow_report_raw_sha256")
     except (TypeError, ValueError) as exc:
         reason = str(exc)
@@ -247,17 +250,19 @@ def evaluate_phase57_shadow_report(
         failures.append(Phase57GateFailure.code_head_mismatch.value)
     if payload.get("campaign_seal_name") != PHASE57_CAMPAIGN_SEAL_NAME:
         failures.append(Phase57GateFailure.campaign_seal_mismatch.value)
-    if payload.get("original_v1_archive_sha256") != PHASE57_REPRODUCIBLE_ARCHIVE_SHA256:
+    if payload.get("original_v1_archive_sha256") != (
+        PHASE57_REPRODUCIBLE_ARCHIVE_SHA256
+    ):
         failures.append(Phase57GateFailure.archive_identity_mismatch.value)
-    if payload.get("augmentation_manifest_sha256") != PHASE57_CONTINUATION_MANIFEST_DIGEST:
+    if payload.get("augmentation_manifest_sha256") != (
+        PHASE57_CONTINUATION_MANIFEST_DIGEST
+    ):
         failures.append(Phase57GateFailure.manifest_identity_mismatch.value)
     if expected_context_count != thresholds.expected_context_count:
         failures.append(Phase57GateFailure.expected_context_count_mismatch.value)
-    if context_count != thresholds.expected_context_count:
-        failures.append(Phase57GateFailure.context_count_mismatch.value)
 
-    runtime_completed = state_counts.get("runtime_completed", -1)
-    projection_refused = state_counts.get("projection_refused", -1)
+    runtime_completed = state_counts.get("runtime_completed", 0)
+    projection_refused = state_counts.get("projection_refused", 0)
     expected_states = {
         "migration_refused": 0,
         "projection_refused": thresholds.expected_projection_refused,
@@ -267,6 +272,15 @@ def evaluate_phase57_shadow_report(
     }
     if state_counts != expected_states:
         failures.append(Phase57GateFailure.ledger_state_counts_mismatch.value)
+
+    # ``expected_context_count`` is the fixed corpus population. ``context_count``
+    # is the number of runtime records that were actually produced. Refused
+    # contexts remain accounted for by the ledger and must not be counted as
+    # records. Binding these values prevents either silent drops or denominator
+    # inflation.
+    if context_count != runtime_completed:
+        failures.append(Phase57GateFailure.context_count_mismatch.value)
+
     if all_correct < thresholds.minimum_all_shadow_correct:
         failures.append(Phase57GateFailure.all_correct_below_floor.value)
     if newly_correct < thresholds.minimum_newly_solved_correct:

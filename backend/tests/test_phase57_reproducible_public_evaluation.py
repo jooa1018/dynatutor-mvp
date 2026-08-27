@@ -79,7 +79,7 @@ def _passing_shadow_payload(*, exact_code_head: str = "b" * 40) -> dict[str, obj
         "original_v1_archive_sha256": PHASE57_REPRODUCIBLE_ARCHIVE_SHA256,
         "augmentation_manifest_sha256": PHASE57_CONTINUATION_MANIFEST_DIGEST,
         "expected_context_count": 100,
-        "context_count": 100,
+        "context_count": 97,
         "ledger_state_counts": [
             ["migration_refused", 0],
             ["projection_refused", 3],
@@ -223,12 +223,29 @@ def test_phase57_regression_floor_passes_while_quality_remains_in_progress() -> 
     )
     assert report.regression_acceptance == "PASS"
     assert report.regression_failures == ()
+    assert report.expected_context_count == 100
+    assert report.context_count == 97
+    assert report.runtime_completed == 97
+    assert report.projection_refused == 3
     assert report.quality_status == "IN_PROGRESS"
     assert "supported_correct:50<81" in report.quality_failures
     assert report.historical_phase56_stage7_status == (
         PHASE56_HISTORICAL_STAGE7_STATUS
     )
     assert report.historical_substitution_used is False
+
+
+def test_phase57_context_count_must_match_runtime_completed_ledger() -> None:
+    payload = _passing_shadow_payload()
+    payload["context_count"] = 100
+    report = evaluate_phase57_shadow_report(
+        payload,
+        exact_code_head="b" * 40,
+        source_shadow_report_raw_sha256="c" * 64,
+    )
+    assert report.regression_acceptance == "FAIL"
+    assert "context_count_mismatch" in report.regression_failures
+    assert report.quality_status == "IN_PROGRESS"
 
 
 def test_phase57_quality_accepts_only_at_81_supported_correct() -> None:
