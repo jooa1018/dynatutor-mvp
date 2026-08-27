@@ -186,7 +186,7 @@ def _recompute_regression_floor(report: Phase57GateReportV1) -> None:
     failures: list[str] = []
     if report.expected_context_count != thresholds.expected_context_count:
         failures.append("expected_context_count")
-    if report.context_count != thresholds.expected_context_count:
+    if report.context_count != report.runtime_completed:
         failures.append("context_count")
     if report.runtime_completed != thresholds.expected_runtime_completed:
         failures.append("runtime_completed")
