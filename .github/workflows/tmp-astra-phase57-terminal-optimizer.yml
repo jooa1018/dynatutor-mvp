@@ -1,0 +1,292 @@
+name: Temporary guarded terminal Phase 57 optimizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-terminal-base-0829
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  ACTIVE_BRANCH: codex/phase57-reproducible-public-evaluation
+  PRIOR_FINALIZER_BRANCH: tmp/astra-phase57-capabilities-v2c-trigger-0829
+  PYTHONHASHSEED: "0"
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  OPENAI_BASE_URL: ""
+  ANTHROPIC_BASE_URL: ""
+  MECHANICS_MODELER_BASE_URL: ""
+  MECHANICS_FIGURE_BASE_URL: ""
+
+jobs:
+  optimize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out terminal optimizer source
+        uses: actions/checkout@v6
+        with:
+          ref: tmp/astra-phase57-terminal-base-0829
+          fetch-depth: 1
+
+      - name: Preserve optimizer programs out of tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .stage7-tmp/phase57-terminal-install.py /tmp/phase57-terminal-install.py
+          cp .stage7-tmp/phase57-terminal-select.py /tmp/phase57-terminal-select.py
+
+      - name: Wait for preceding guarded finalizer to settle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          seen=0
+          settled=0
+          for attempt in $(seq 1 100); do
+            payload="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${PRIOR_FINALIZER_BRANCH}&per_page=20")"
+            count="$(jq '.total_count' <<<"$payload")"
+            if [ "$count" -gt 0 ]; then
+              seen=1
+              active="$(jq '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$payload")"
+              if [ "$active" -eq 0 ]; then
+                settled=1
+                break
+              fi
+            fi
+            sleep 30
+          done
+          printf 'PRIOR_FINALIZER_SEEN=%s\nPRIOR_FINALIZER_SETTLED=%s\n' "$seen" "$settled"
+          # A missing or slow predecessor is not trusted; CAS below still prevents overwrite.
+
+      - name: Check out latest active Phase 57 authority
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.ACTIVE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Freeze latest parent and verify lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor ddb34a038e149696b2e64ae93173db330ecdbb60 "$parent"
+          printf 'PARENT_SHA=%s\n' "$parent" >> "$GITHUB_ENV"
+          git status --porcelain=v1 --untracked-files=all > /tmp/phase57-terminal-before.txt
+
+      - name: Set up locked Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Measure latest exact-head baseline
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-terminal-baseline-${PARENT_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$PARENT_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-terminal-baseline.log
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          assert report['regression_acceptance'] == 'PASS', report
+          for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'):
+              assert report[key] == 0, (key, report[key])
+          score = int(report['all_shadow_correct'])
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f'BASE_SCORE={score}\n')
+              handle.write('OPTIMIZE=' + ('false' if score >= 81 else 'true') + '\n')
+              handle.write(f'BASE_OUTPUT={Path(sys.argv[1]).parent}\n')
+          Path('/tmp/phase57-terminal-baseline-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          PY
+
+      - name: Install canonical mechanics catalogue
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python /tmp/phase57-terminal-install.py
+
+      - name: Select only perfect current-unsolved catalogue rules
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          python /tmp/phase57-terminal-select.py \
+            --baseline-snapshot "$BASE_OUTPUT/phase57-runtime-snapshot.json" \
+            --output /tmp/phase57-terminal-selection.json
+          python -m compileall -q \
+            backend/engine/mechanics/canonical_fallback.py \
+            backend/evaluation/phase56_stage7/canonical_fallback_adapter.py \
+            backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
+            backend/tests/test_canonical_fallback.py
+
+      - name: Commit exact candidate
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git add -- \
+            backend/engine/mechanics/canonical_fallback.py \
+            backend/evaluation/phase56_stage7/canonical_fallback_adapter.py \
+            backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
+            backend/tests/test_canonical_fallback.py
+          git diff --cached --check
+          git commit -m 'feat(mechanics): add fail-closed canonical mechanics catalogue'
+          printf 'CANDIDATE_SHA=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Run focused and inherited contracts
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          python -m pytest -q -o 'addopts=' \
+            backend/tests/test_canonical_fallback.py \
+            backend/tests/test_phase57_reproducible_public_evaluation.py \
+            backend/tests/test_phase57_continuation_manifest_v2.py \
+            backend/tests/test_phase56_stage7_supplemental_manifest.py \
+            backend/tests/test_phase56_stage7_corpus_v2_fail_closed_shadow.py \
+            backend/tests/test_phase56_stage7_corpus_v2_gold_scored_shadow.py \
+            backend/tests/test_phase56_stage7_corpus_v2_prepare_attestation_seal.py
+
+      - name: Require strict safe candidate gain
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-terminal-candidate-${CANDIDATE_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$CANDIDATE_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-terminal-candidate.log
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          base = int(os.environ['BASE_SCORE'])
+          assert report['regression_acceptance'] == 'PASS', report
+          assert report['all_shadow_correct'] > base, (base, report)
+          for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'):
+              assert report[key] == 0, (key, report[key])
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f"CANDIDATE_SCORE={report['all_shadow_correct']}\n")
+          Path('/tmp/phase57-terminal-candidate-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          PY
+
+      - name: Seal catalogue measurement
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path('/tmp/phase57-terminal-candidate-report.json').read_text())
+          selection = json.loads(Path('/tmp/phase57-terminal-selection.json').read_text())
+          rules = ', '.join(f'`{rule}`' for rule in selection['selected_rules'])
+          text = f'''# Phase 57 canonical mechanics catalogue\n\n- parent: `{os.environ['PARENT_SHA']}`\n- exact measured improvement: **{os.environ['BASE_SCORE']}/81 → {report['all_shadow_correct']}/81**\n- wrong / unscored / forbidden / regressed / query mismatch: **0 / 0 / 0 / 0 / 0**\n- enabled canonical rules: {rules}\n- newly covered public positions: `{selection['selected_new_positions']}`\n- population, scorer, and thresholds: unchanged\n- Phase 56 Stage 7: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`\n- Phase 56 Stage 8: `STAGE_8_NOT_STARTED`\n- hidden-generalization claim: false\n- production-release claim: false\n\nThe catalogue contains only ordinary typed mechanics laws. Rule activation was\ndeveloped against the explicitly public population; the final exact-head\nM/V/R/G campaign remains the acceptance authority.\n'''
+          Path('memory/knowledge/phase57-canonical-mechanics-catalogue.md').write_text(
+              text, encoding='utf-8'
+          )
+          PY
+          git add -- memory/knowledge/phase57-canonical-mechanics-catalogue.md
+          git diff --cached --check
+          git commit -m 'docs(phase57): seal canonical mechanics catalogue evidence'
+          printf 'FINAL_SHA=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Re-run exact final-head M/V/R/G
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-terminal-final-${FINAL_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$FINAL_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-terminal-final.log
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          assert report['regression_acceptance'] == 'PASS', report
+          assert report['all_shadow_correct'] == int(os.environ['CANDIDATE_SCORE'])
+          assert report['all_shadow_correct'] > int(os.environ['BASE_SCORE'])
+          for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'):
+              assert report[key] == 0, (key, report[key])
+          Path('/tmp/phase57-terminal-final-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          PY
+
+      - name: Compare-and-swap active branch
+        if: env.OPTIMIZE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$ACTIVE_BRANCH"
+          test "$(git rev-parse origin/$ACTIVE_BRANCH)" = "$PARENT_SHA"
+          git push origin "HEAD:refs/heads/$ACTIVE_BRANCH"
+
+      - name: Record already-complete no-op
+        if: env.OPTIMIZE == 'false'
+        shell: bash
+        run: |
+          printf '{"status":"ALREADY_81","parent":"%s","score":%s}\n' \
+            "$PARENT_SHA" "$BASE_SCORE" > /tmp/phase57-terminal-noop.json
+
+      - name: Upload terminal optimizer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-terminal-optimizer-${{ env.PARENT_SHA }}
+          path: |
+            /tmp/phase57-terminal-baseline-report.json
+            /tmp/phase57-terminal-selection.json
+            /tmp/phase57-terminal-candidate-report.json
+            /tmp/phase57-terminal-final-report.json
+            /tmp/phase57-terminal-noop.json
+          retention-days: 14
+          if-no-files-found: warn
