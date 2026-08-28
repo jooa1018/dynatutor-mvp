@@ -1,0 +1,41 @@
+name: Temporary Phase 57 diagnostic wheelhouse
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-source-base-ddb34a-0828b
+
+permissions:
+  contents: read
+
+jobs:
+  wheelhouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python 3.13 compatibility wheel download
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Download exact pure-Python unit dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/wheelhouse"
+          python -m pip download \
+            --dest "${RUNNER_TEMP}/wheelhouse" \
+            'pint==0.25.3' \
+            'flexcache' \
+            'flexparser' \
+            'platformdirs' \
+            'typing_extensions'
+          sha256sum "${RUNNER_TEMP}/wheelhouse"/* > "${RUNNER_TEMP}/wheelhouse.sha256"
+      - name: Upload diagnostic wheelhouse
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-diagnostic-wheelhouse-pint-0.25.3
+          path: |
+            ${{ runner.temp }}/wheelhouse
+            ${{ runner.temp }}/wheelhouse.sha256
+          retention-days: 1
+          if-no-files-found: error
