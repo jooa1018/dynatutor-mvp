@@ -1,0 +1,34 @@
+name: Temporary exact Phase 57 commit object push export
+
+on:
+  push:
+    branches:
+      - tmp/astra-phase57-commitobj-push-0828
+    paths:
+      - .github/workflows/tmp-astra-phase57-commitobj-push.yml
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out temporary branch with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish exact commit payload as base64 text
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=47b4af47dea188644e7ca4ad62eb1297e58b378c
+          git cat-file -e "${expected}^{commit}"
+          git cat-file commit "$expected" | base64 -w 0 > phase57-exact-commit-object.b64
+          printf '\n' >> phase57-exact-commit-object.b64
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git add -- phase57-exact-commit-object.b64
+          git commit -m 'chore(tmp): publish exact Phase 57 commit payload'
+          git push origin HEAD:refs/heads/tmp/astra-phase57-commitobj-push-0828
