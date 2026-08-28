@@ -1,0 +1,205 @@
+name: Temporary guarded Phase 57 65-correct finalizer v2
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-65-finalizer-base2-0828
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-fast-forward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      AUTHORITATIVE_BRANCH: codex/phase57-reproducible-public-evaluation
+      CANDIDATE_BRANCH: tmp/astra-phase57-65-candidate-final2-0828
+      EXPECTED_PARENT: 47b4af47dea188644e7ca4ad62eb1297e58b378c
+      EXPECTED_CANDIDATE_PREFIX: 9217095
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out exact finalizer base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.EXPECTED_PARENT }}
+          fetch-depth: 0
+
+      - name: Resolve and verify exact candidate topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin \
+            "+refs/heads/${AUTHORITATIVE_BRANCH}:refs/remotes/origin/authoritative" \
+            "+refs/heads/${CANDIDATE_BRANCH}:refs/remotes/origin/candidate"
+          authoritative="$(git rev-parse refs/remotes/origin/authoritative)"
+          candidate="$(git rev-parse refs/remotes/origin/candidate)"
+          printf 'AUTHORITATIVE_HEAD=%s\nCANDIDATE_HEAD=%s\n' "$authoritative" "$candidate"
+          test "$authoritative" = "$EXPECTED_PARENT"
+          case "$candidate" in
+            "${EXPECTED_CANDIDATE_PREFIX}"*) ;;
+            *) echo "candidate prefix mismatch" >&2; exit 1 ;;
+          esac
+          test "$(git rev-parse "${candidate}^")" = "$EXPECTED_PARENT"
+          test "$(git rev-list --count "${EXPECTED_PARENT}..${candidate}")" = "1"
+          printf 'CANDIDATE_SHA=%s\n' "$candidate" >> "$GITHUB_ENV"
+
+      - name: Enforce candidate path and data boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --name-only "$EXPECTED_PARENT" "$CANDIDATE_SHA" | sort > "${RUNNER_TEMP}/changed-paths.txt"
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          changed = Path(os.environ["RUNNER_TEMP"]) / "changed-paths.txt"
+          paths = [line.strip() for line in changed.read_text().splitlines() if line.strip()]
+          if not paths or len(paths) > 40:
+              raise SystemExit(f"unexpected changed-path count: {len(paths)}")
+          patterns = tuple(re.compile(item) for item in (
+              r"^\.github/workflows/phase57-reproducible-public-evaluation\.yml$",
+              r"^backend/evaluation/phase57_reproducible/.+$",
+              r"^backend/evaluation/phase56_stage7/corpus_v2/[^/]+\.py$",
+              r"^backend/tests/test_phase(?:56_stage7|57)_[^/]+\.py$",
+              r"^backend/tools/(?:build_phase56_stage7_supplemental_manifest|check_phase57_ci_artifact_identity|run_phase57_reproducible_public_gate)\.py$",
+              r"^docs/PHASE57_[^/]+\.md$",
+              r"^memory/(?:00-INDEX|CHECKPOINT|DECISIONS|OPEN-QUESTIONS|PRODUCT-TRUTH|SESSION-LOG)\.md$",
+              r"^memory/(?:checkpoints|goal|knowledge)/[^/]+\.md$",
+          ))
+          forbidden = ("private", "heldout", "public_all", ".zip", ".tar", "secret", "credential")
+          bad = [p for p in paths if not any(rx.fullmatch(p) for rx in patterns)]
+          bad += [p for p in paths if any(token in p.lower() for token in forbidden)]
+          if bad:
+              raise SystemExit("forbidden or unexpected candidate paths: " + ", ".join(sorted(set(bad))))
+          print(f"CHANGED_PATHS={len(paths)}")
+          print("\n".join(paths))
+          PY
+
+      - name: Check out candidate exactly
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout --detach "$CANDIDATE_SHA"
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          git status --porcelain=v1 --untracked-files=all > "${RUNNER_TEMP}/worktree-before.txt"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Compile candidate modules
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            evaluation/phase57_reproducible \
+            evaluation/phase56_stage7/corpus_v2 \
+            tools/run_phase56_stage7_v2_shadow.py \
+            tools/run_phase56_stage7_v2_shadow_prepare.py \
+            tools/run_phase56_stage7_v2_shadow_verify_prepare.py \
+            tools/run_phase56_stage7_v2_shadow_score.py \
+            tools/run_phase57_reproducible_public_gate.py \
+            tools/check_phase57_ci_artifact_identity.py \
+            tests/test_phase57_reproducible_public_evaluation.py
+
+      - name: Run Phase 57 focused and inherited contracts
+        working-directory: backend
+        run: |
+          python -m pytest -q -o 'addopts=' \
+            tests/test_phase57_reproducible_public_evaluation.py \
+            tests/test_phase56_stage7_supplemental_manifest.py \
+            tests/test_phase56_stage7_corpus_v2_fail_closed_shadow.py \
+            tests/test_phase56_stage7_corpus_v2_gold_scored_shadow.py \
+            tests/test_phase56_stage7_corpus_v2_prepare_attestation_seal.py
+
+      - name: Run exact candidate full public M V R G campaign
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          output="${RUNNER_TEMP}/phase57-candidate-${CANDIDATE_SHA}"
+          mkdir -p "$output"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$output" \
+            --exact-code-head "$CANDIDATE_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee "${RUNNER_TEMP}/phase57-candidate.log"
+          printf 'CANDIDATE_OUTPUT=%s\n' "$output" >> "$GITHUB_ENV"
+
+      - name: Enforce 65-correct zero-defect candidate disposition
+        shell: bash
+        run: |
+          set -euo pipefail
+          value() { sed -n "s/^$1=//p" "${RUNNER_TEMP}/phase57-candidate.log" | tail -n 1; }
+          acceptance="$(value PHASE57_REPRODUCIBLE_ACCEPTANCE)"
+          quality="$(value PHASE57_REPRODUCIBLE_QUALITY)"
+          correct="$(value PHASE57_REPRODUCIBLE_ALL_CORRECT)"
+          newly="$(value PHASE57_REPRODUCIBLE_NEWLY_SOLVED_CORRECT)"
+          wrong="$(value PHASE57_REPRODUCIBLE_ALL_WRONG)"
+          unscored="$(value PHASE57_REPRODUCIBLE_ALL_UNSCORED)"
+          forbidden="$(value PHASE57_REPRODUCIBLE_FORBIDDEN_CLASS_SOLVE)"
+          regressed="$(value PHASE57_REPRODUCIBLE_REGRESSED)"
+          mismatch="$(value PHASE57_REPRODUCIBLE_QUERY_BINDING_MISMATCH)"
+          expected="$(value PHASE57_REPRODUCIBLE_EXPECTED_CONTEXTS)"
+          contexts="$(value PHASE57_REPRODUCIBLE_CONTEXTS)"
+          test "$acceptance" = PASS
+          test "$quality" = IN_PROGRESS
+          test "$correct" -ge 65
+          test "$newly" -ge 21
+          test "$wrong" = 0
+          test "$unscored" = 0
+          test "$forbidden" = 0
+          test "$regressed" = 0
+          test "$mismatch" = 0
+          test "$expected" = 100
+          test "$contexts" = 97
+          {
+            printf 'candidate_sha=%s\n' "$CANDIDATE_SHA"
+            printf 'acceptance=%s\nquality=%s\n' "$acceptance" "$quality"
+            printf 'supported_correct=%s/81\nnewly_correct=%s\n' "$correct" "$newly"
+            printf 'wrong=%s\nunscored=%s\nforbidden=%s\nregressed=%s\nquery_mismatch=%s\n' \
+              "$wrong" "$unscored" "$forbidden" "$regressed" "$mismatch"
+            printf 'population=%s\nruntime_records=%s\n' "$expected" "$contexts"
+          } > "${RUNNER_TEMP}/phase57-65-finalizer-report.txt"
+
+      - name: Prove candidate evaluation mutated no source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain=v1 --untracked-files=all > "${RUNNER_TEMP}/worktree-after.txt"
+          diff -u "${RUNNER_TEMP}/worktree-before.txt" "${RUNNER_TEMP}/worktree-after.txt"
+
+      - name: Fast-forward only the Phase 57 feature branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "+refs/heads/${AUTHORITATIVE_BRANCH}:refs/remotes/origin/authoritative-final"
+          test "$(git rev-parse refs/remotes/origin/authoritative-final)" = "$EXPECTED_PARENT"
+          git push origin "$CANDIDATE_SHA:refs/heads/${AUTHORITATIVE_BRANCH}"
+
+      - name: Upload finalizer evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-65-finalizer-${{ env.CANDIDATE_SHA }}
+          path: |
+            ${{ runner.temp }}/phase57-65-finalizer-report.txt
+            ${{ runner.temp }}/changed-paths.txt
+          retention-days: 7
+          if-no-files-found: error
