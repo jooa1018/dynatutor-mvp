@@ -20,7 +20,7 @@ from evaluation.phase56_stage7.corpus_semantics import (
     scope_adjusted_expected_terminal,
 )
 from evaluation.phase56_stage7.corpus_v2.campaign_seal import (
-    PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V1,
+    PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V2,
     resolve_campaign_seal,
 )
 from evaluation.phase56_stage7.corpus_v2.prepare_builder import build_prepared_campaign
@@ -147,7 +147,7 @@ def test_fixture_population_and_source_only_manifest_identity() -> None:
     )
     assert selection_digest == PHASE57_CONTINUATION_SELECTION_DIGEST
     payload = json.loads(body)
-    assert len(payload["entries"]) == 9
+    assert len(payload["entries"]) == 24
     assert "answer" not in body.casefold()
 
 
@@ -185,7 +185,7 @@ def test_materialized_archive_passes_existing_integrity_and_builder(tmp_path: Pa
 
 def test_campaign_seal_is_distinct_and_exact() -> None:
     seal = resolve_campaign_seal(PHASE57_CAMPAIGN_SEAL_NAME)
-    assert seal == PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V1
+    assert seal == PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V2
     assert seal is not None
     assert seal.original_v1_archive_sha256 == PHASE57_REPRODUCIBLE_ARCHIVE_SHA256
     assert seal.augmentation_manifest_digest == PHASE57_CONTINUATION_MANIFEST_DIGEST

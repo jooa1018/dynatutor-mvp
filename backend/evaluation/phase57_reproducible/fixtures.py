@@ -17,9 +17,9 @@ from evaluation.phase56_stage7.corpus_records import (
     parse_public_jsonl,
     parse_schema_document,
 )
-from evaluation.phase56_stage7.corpus_v2.supplemental_campaign import (
-    build_supplemental_manifest,
-    supplemental_manifest_body,
+from evaluation.phase57_reproducible.continuation_manifest import (
+    build_phase57_continuation_manifest,
+    phase57_continuation_manifest_body,
 )
 from evaluation.phase56_stage7.gold_domain import PublicSplit
 from evaluation.phase57_reproducible.contracts import (
@@ -220,8 +220,10 @@ def build_continuation_manifest(
 ) -> tuple[str, str, str]:
     """Return manifest body, canonical digest, and source-only selection digest."""
 
-    built = build_supplemental_manifest(load_public_fixture_cases(fixture_root))
-    body = supplemental_manifest_body(built.manifest)
+    built = build_phase57_continuation_manifest(
+        load_public_fixture_cases(fixture_root)
+    )
+    body = phase57_continuation_manifest_body(built.manifest)
     if built.manifest.digest != PHASE57_CONTINUATION_MANIFEST_DIGEST:
         raise Phase57FixtureRefused("continuation_manifest_digest_mismatch")
     if _sha256(body.encode("utf-8")) != PHASE57_CONTINUATION_MANIFEST_FILE_SHA256:

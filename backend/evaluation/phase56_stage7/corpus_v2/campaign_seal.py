@@ -54,8 +54,11 @@ STAGE7_PUBLIC_CAMPAIGN_SEAL_NAME = "phase56-stage7-v2-public-campaign-v1"
 STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_NAME = (
     "phase56-stage7-v2-supplemental-yield-campaign-v1"
 )
-PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME = (
+PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME_V1 = (
     "phase57-reproducible-public-continuation-v1"
+)
+PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME = (
+    "phase57-reproducible-public-continuation-v2"
 )
 
 _Token = Annotated[str, StringConstraints(min_length=1, max_length=120)]
@@ -202,7 +205,7 @@ STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1 = CampaignPopulationSealV1(
 # scoring handle and handle-derived population digest — is intentionally new.
 # Passing this seal cannot change the historical Phase 56 Stage 7 status.
 PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V1 = CampaignPopulationSealV1(
-    name=PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME,
+    name=PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME_V1,
     original_v1_archive_sha256=(
         "e523fc39a3f44fd50542e622924c3154f76fa25362aaf5180884954892b3f958"
     ),
@@ -241,6 +244,50 @@ PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V1 = CampaignPopulationSealV1(
     ),
 )
 
+# Phase 57 generation two preserves the exact v1 baseline seal above and binds
+# a new 24-entry source-only continuation manifest.  The public corpus, its
+# 97/3 prepared population, and all handle-derived identities are unchanged;
+# only the reviewed source-carrier generation advances.
+PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V2 = CampaignPopulationSealV1(
+    name=PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME,
+    original_v1_archive_sha256=(
+        "e523fc39a3f44fd50542e622924c3154f76fa25362aaf5180884954892b3f958"
+    ),
+    augmentation_manifest_digest=(
+        "8dbde6de88371d08677ce56b2f58a37898bc3227d759ee4833496109723f8f44"
+    ),
+    augmentation_manifest_file_sha256=(
+        "2dceecd9ed7bc7249ba08acf04ba094ae3ff8628da5220f30d009e87043b73c7"
+    ),
+    expected_context_count=100,
+    context_index_set_digest=(
+        "9dd50adbd73bc58bb391efca85d1436fcc4c19cb0bc2495ec0eeb4c1e42f6952"
+    ),
+    expected_handle_set_digest=(
+        "3aa6e0673dbddafe086bc9e04365141cbc994fce8f6066e989cb33795c04b025"
+    ),
+    prepared_state_map_digest=(
+        "0881fafdf0de4f4a1024741d27cee200630441fcf75c4a801f4916f7a4f206d7"
+    ),
+    refusal_handle_set_digest=(
+        "a7a242bc6dae45f1174fba34e0dba8e7babf25afc76edd1cf78dc4615ceb163e"
+    ),
+    prepared_state_counts=(
+        ("migration_refused", 0),
+        ("projection_refused", 3),
+        ("runtime_completed", 97),
+        ("runtime_failed", 0),
+        ("snapshot_rejected", 0),
+    ),
+    prepared_refusal_counts=(
+        ("migration_refused_conflicting_entry", 0),
+        ("migration_refused_unresolved_entry", 0),
+        ("projection_refused_no_draft", 3),
+        ("runtime_failed_unexpected_exception", 0),
+        ("snapshot_rejected_incomplete_record", 0),
+    ),
+)
+
 CAMPAIGN_SEALS: dict[str, CampaignPopulationSealV1] = {
     STAGE7_PUBLIC_CAMPAIGN_SEAL_V1.name: STAGE7_PUBLIC_CAMPAIGN_SEAL_V1,
     STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_V1.name: (
@@ -248,6 +295,9 @@ CAMPAIGN_SEALS: dict[str, CampaignPopulationSealV1] = {
     ),
     PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V1.name: (
         PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V1
+    ),
+    PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V2.name: (
+        PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V2
     ),
 }
 
@@ -300,7 +350,9 @@ __all__ = [
     "CAMPAIGN_SEALS",
     "CORPUS_V2_CAMPAIGN_SEAL_VERSION",
     "PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME",
+    "PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_NAME_V1",
     "PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V1",
+    "PHASE57_REPRODUCIBLE_CAMPAIGN_SEAL_V2",
     "STAGE7_PUBLIC_CAMPAIGN_SEAL_NAME",
     "STAGE7_PUBLIC_CAMPAIGN_SEAL_V1",
     "STAGE7_SUPPLEMENTAL_CAMPAIGN_SEAL_NAME",

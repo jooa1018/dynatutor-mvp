@@ -101,6 +101,7 @@ jobs:
         run: |
           python -m pytest -q -o 'addopts=' \
             tests/test_phase57_reproducible_public_evaluation.py \
+            tests/test_phase57_continuation_manifest_v2.py \
             tests/test_phase56_stage7_supplemental_manifest.py \
             tests/test_phase56_stage7_corpus_v2_fail_closed_shadow.py \
             tests/test_phase56_stage7_corpus_v2_gold_scored_shadow.py \

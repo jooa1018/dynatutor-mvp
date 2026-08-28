@@ -8,10 +8,10 @@ from evaluation.phase56_stage7.contracts import FrozenStrictModel, Sha256
 
 
 PHASE57_PUBLIC_EVALUATION_VERSION = (
-    "phase57-reproducible-public-evaluation-contract-v1"
+    "phase57-reproducible-public-evaluation-contract-v2"
 )
-PHASE57_CAMPAIGN_ID = "PHASE57_REPRODUCIBLE_PUBLIC_CONTINUATION_V1"
-PHASE57_CAMPAIGN_SEAL_NAME = "phase57-reproducible-public-continuation-v1"
+PHASE57_CAMPAIGN_ID = "PHASE57_REPRODUCIBLE_PUBLIC_CONTINUATION_V2"
+PHASE57_CAMPAIGN_SEAL_NAME = "phase57-reproducible-public-continuation-v2"
 PHASE57_SOURCE_PHASE56_HEAD = "63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17"
 
 PHASE57_SOURCE_PUBLIC_ARCHIVE_SHA256 = (
@@ -24,13 +24,13 @@ PHASE57_REPRODUCIBLE_ARCHIVE_SHA256 = (
     "e523fc39a3f44fd50542e622924c3154f76fa25362aaf5180884954892b3f958"
 )
 PHASE57_CONTINUATION_MANIFEST_DIGEST = (
-    "32aa3ce51e3006e533913b2f822251d22dccba2a379a35008f19e7a7e1aef7cd"
+    "8dbde6de88371d08677ce56b2f58a37898bc3227d759ee4833496109723f8f44"
 )
 PHASE57_CONTINUATION_MANIFEST_FILE_SHA256 = (
-    "946cd6364669c123341d54999a87a468bc22f7260ea2b8500ddee267878bcd3a"
+    "2dceecd9ed7bc7249ba08acf04ba094ae3ff8628da5220f30d009e87043b73c7"
 )
 PHASE57_CONTINUATION_SELECTION_DIGEST = (
-    "dcabc7f3a64ad448093d4d854e501da12d515c2876923bb8a456fccc192c4231"
+    "685625cdca4089505af63b5548c61fbbf5bf65dfee131ab44da1d7fd7ece4106"
 )
 
 PHASE56_HISTORICAL_STAGE7_STATUS = "STAGE_7_IN_PROGRESS / NOT_ACCEPTED"
@@ -72,13 +72,13 @@ class Phase57PublicEvaluationContractV1(FrozenStrictModel):
     """What a Phase 57 PASS does and, critically, does not claim."""
 
     version: Literal[
-        "phase57-reproducible-public-evaluation-contract-v1"
+        "phase57-reproducible-public-evaluation-contract-v2"
     ] = PHASE57_PUBLIC_EVALUATION_VERSION
     campaign_id: Literal[
-        "PHASE57_REPRODUCIBLE_PUBLIC_CONTINUATION_V1"
+        "PHASE57_REPRODUCIBLE_PUBLIC_CONTINUATION_V2"
     ] = PHASE57_CAMPAIGN_ID
     campaign_seal_name: Literal[
-        "phase57-reproducible-public-continuation-v1"
+        "phase57-reproducible-public-continuation-v2"
     ] = PHASE57_CAMPAIGN_SEAL_NAME
     source_phase56_head: Literal[
         "63a6e35614f9aa4dc3dbf8238e70f3b0a748fd17"

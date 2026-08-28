@@ -24,8 +24,8 @@ from evaluation.phase57_reproducible.contracts import (
 )
 
 
-PHASE57_GATE_REPORT_VERSION = "phase57-reproducible-public-gate-report-v1"
-PHASE57_RUNNER_STATUS_VERSION = "phase57-reproducible-public-runner-status-v1"
+PHASE57_GATE_REPORT_VERSION = "phase57-reproducible-public-gate-report-v2"
+PHASE57_RUNNER_STATUS_VERSION = "phase57-reproducible-public-runner-status-v2"
 
 GitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
 _HEX_64 = re.compile(r"^[0-9a-f]{64}$")
@@ -58,16 +58,16 @@ class Phase57GateReportV1(FrozenStrictModel):
     """Privacy-minimal aggregate result for one exact-head Phase 57 run."""
 
     version: Literal[
-        "phase57-reproducible-public-gate-report-v1"
+        "phase57-reproducible-public-gate-report-v2"
     ] = PHASE57_GATE_REPORT_VERSION
     contract_version: Literal[
-        "phase57-reproducible-public-evaluation-contract-v1"
+        "phase57-reproducible-public-evaluation-contract-v2"
     ] = PHASE57_PUBLIC_EVALUATION_VERSION
     campaign_id: Literal[
-        "PHASE57_REPRODUCIBLE_PUBLIC_CONTINUATION_V1"
+        "PHASE57_REPRODUCIBLE_PUBLIC_CONTINUATION_V2"
     ] = PHASE57_CAMPAIGN_ID
     campaign_seal_name: Literal[
-        "phase57-reproducible-public-continuation-v1"
+        "phase57-reproducible-public-continuation-v2"
     ] = PHASE57_CAMPAIGN_SEAL_NAME
     exact_code_head: GitSha
 
@@ -135,10 +135,10 @@ class Phase57RunnerStatusV1(FrozenStrictModel):
     """Small status companion uploaded with the aggregate report."""
 
     version: Literal[
-        "phase57-reproducible-public-runner-status-v1"
+        "phase57-reproducible-public-runner-status-v2"
     ] = PHASE57_RUNNER_STATUS_VERSION
     campaign_seal_name: Literal[
-        "phase57-reproducible-public-continuation-v1"
+        "phase57-reproducible-public-continuation-v2"
     ] = PHASE57_CAMPAIGN_SEAL_NAME
     exact_code_head: GitSha
     historical_phase56_stage7_status: Literal[
