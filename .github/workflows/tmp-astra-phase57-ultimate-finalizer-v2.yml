@@ -1,0 +1,200 @@
+name: Temporary corrected ultimate Phase 57 finalizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-ultimate-base-0829
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
+env:
+  ACTIVE_BRANCH: codex/phase57-reproducible-public-evaluation
+  PRIOR_BRANCH: tmp/astra-phase57-terminal-trigger-0829
+  STATUS_BRANCH: tmp/astra-phase57-final-status-0829
+  PYTHONHASHSEED: "0"
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  OPENAI_BASE_URL: ""
+  ANTHROPIC_BASE_URL: ""
+  MECHANICS_MODELER_BASE_URL: ""
+  MECHANICS_FIGURE_BASE_URL: ""
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out corrected finalizer source
+        uses: actions/checkout@v6
+        with:
+          ref: tmp/astra-phase57-ultimate-base-0829
+          fetch-depth: 0
+
+      - name: Collect and patch finalizer programs out of tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .stage7-tmp/phase57-ultimate-run.sh /tmp/phase57-ultimate-run.sh
+          cp .stage7-tmp/phase57-ultimate-helper-patch.py /tmp/phase57-ultimate-helper-patch.py
+          python /tmp/phase57-ultimate-helper-patch.py
+          git fetch origin \
+            refs/heads/tmp/astra-phase57-capabilities-v2c-base-0829:refs/remotes/origin/phase57-v2c-programs \
+            refs/heads/tmp/astra-phase57-terminal-base-0829:refs/remotes/origin/phase57-terminal-programs
+          git show origin/phase57-v2c-programs:.stage7-tmp/phase57-v2c-install.py > /tmp/phase57-v2c-install.py
+          git show origin/phase57-v2c-programs:.stage7-tmp/phase57-v2c-select.py > /tmp/phase57-v2c-select.py
+          git show origin/phase57-terminal-programs:.stage7-tmp/phase57-terminal-install.py > /tmp/phase57-terminal-install.py
+          git show origin/phase57-terminal-programs:.stage7-tmp/phase57-terminal-select.py > /tmp/phase57-terminal-select.py
+          chmod +x /tmp/phase57-ultimate-run.sh
+          bash -n /tmp/phase57-ultimate-run.sh
+          python -m py_compile \
+            /tmp/phase57-v2c-install.py \
+            /tmp/phase57-v2c-select.py \
+            /tmp/phase57-terminal-install.py \
+            /tmp/phase57-terminal-select.py
+
+      - name: Wait for earlier terminal optimizer to settle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 80); do
+            payload="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${PRIOR_BRANCH}&per_page=20")"
+            total="$(jq '.total_count' <<<"$payload")"
+            active="$(jq '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$payload")"
+            if [ "$total" -gt 0 ] && [ "$active" -eq 0 ]; then
+              break
+            fi
+            sleep 20
+          done
+
+      - name: Check out latest active Phase 57 authority
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.ACTIVE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Verify exact lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor ddb34a038e149696b2e64ae93173db330ecdbb60 HEAD
+
+      - name: Set up locked Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Run integrated guarded finalizer
+        shell: bash
+        run: /tmp/phase57-ultimate-run.sh
+
+      - name: Audit resulting exact local head
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          printf 'FINAL_HEAD=%s\n' "$head" >> "$GITHUB_ENV"
+          out="${RUNNER_TEMP}/phase57-ultimate-v2-audit-${head}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$head" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-ultimate-audit.log
+          cp "$out/phase57-gate-report.json" /tmp/phase57-ultimate-gate-report.json
+          cp "$out/phase57-runner-status.json" /tmp/phase57-ultimate-runner-status.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path('/tmp/phase57-ultimate-gate-report.json').read_text())
+          state = json.loads(Path('/tmp/phase57-ultimate-status.json').read_text())
+          assert report['regression_acceptance'] == 'PASS', report
+          for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'):
+              assert report[key] == 0, (key, report[key])
+          status = {
+              'schema': 'dynatutor.phase57.ultimate-finalizer.v2',
+              'exact_head': os.environ['FINAL_HEAD'],
+              'supported_correct': report['all_shadow_correct'],
+              'supported_target': report['supported_correct_target'],
+              'quality_status': report['quality_status'],
+              'regression_acceptance': report['regression_acceptance'],
+              'defects': {
+                  key: report[key]
+                  for key in (
+                      'all_shadow_wrong','all_shadow_unscored',
+                      'newly_solved_wrong','newly_solved_unscored',
+                      'forbidden_class_solve','regressed','query_binding_mismatch')
+              },
+              'finalizer': state,
+              'historical_phase56_stage7_status': report['historical_phase56_stage7_status'],
+              'historical_phase56_stage8_status': report['historical_phase56_stage8_status'],
+              'hidden_generalization_claimed': report['hidden_generalization_claimed'],
+              'production_release_claimed': report['production_release_claimed'],
+          }
+          Path('/tmp/phase57-final-status.json').write_text(
+              json.dumps(status, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          text = f'''# Phase 57 ultimate finalizer status\n\n- exact head: `{status['exact_head']}`\n- supported correct: **{status['supported_correct']}/{status['supported_target']}**\n- quality status: `{status['quality_status']}`\n- regression acceptance: `{status['regression_acceptance']}`\n- finalizer disposition: `{state['status']}`\n- wrong / unscored / forbidden / regressed / query mismatch: **{status['defects']['all_shadow_wrong']} / {status['defects']['all_shadow_unscored']} / {status['defects']['forbidden_class_solve']} / {status['defects']['regressed']} / {status['defects']['query_binding_mismatch']}**\n- Phase 56 Stage 7: `{status['historical_phase56_stage7_status']}`\n- Phase 56 Stage 8: `{status['historical_phase56_stage8_status']}`\n- hidden-generalization claim: `{str(status['hidden_generalization_claimed']).lower()}`\n- production-release claim: `{str(status['production_release_claimed']).lower()}`\n'''
+          Path('/tmp/PHASE57_FINAL_STATUS.md').write_text(text)
+          PY
+
+      - name: Publish audit only to isolated status branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git checkout --orphan phase57-ultimate-status-v2
+          git rm -rf .
+          mkdir -p status
+          cp /tmp/phase57-final-status.json status/phase57-final-status.json
+          cp /tmp/PHASE57_FINAL_STATUS.md status/PHASE57_FINAL_STATUS.md
+          git add -- status/phase57-final-status.json status/PHASE57_FINAL_STATUS.md
+          git commit -m "chore(tmp): record corrected ultimate Phase 57 status ${FINAL_HEAD}"
+          git push --force origin "HEAD:refs/heads/${STATUS_BRANCH}"
+
+      - name: Synchronize Draft PR 49 status marker
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/49" --jq .body)"
+          marker='<!-- phase57-final-audit -->'
+          prefix="${current%%$marker*}"
+          body="${prefix}${marker}
+
+$(cat /tmp/PHASE57_FINAL_STATUS.md)"
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/49" -f body="$body" >/dev/null
+
+      - name: Upload corrected ultimate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-corrected-ultimate-finalizer-${{ env.FINAL_HEAD }}
+          path: |
+            /tmp/phase57-final-status.json
+            /tmp/PHASE57_FINAL_STATUS.md
+            /tmp/phase57-ultimate-status.json
+            /tmp/phase57-ultimate-gate-report.json
+            /tmp/phase57-ultimate-runner-status.json
+            /tmp/phase57-ultimate-v2-selection.json
+            /tmp/phase57-ultimate-terminal-selection.json
+          retention-days: 30
+          if-no-files-found: warn
