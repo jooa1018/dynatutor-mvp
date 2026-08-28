@@ -1,0 +1,209 @@
+name: Temporary globally validated Phase 57 rule-router finalizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-global-router-base-0829
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
+env:
+  ACTIVE_BRANCH: codex/phase57-reproducible-public-evaluation
+  COHORT_BRANCH: tmp/astra-phase57-cohort-trigger-0829
+  STATUS_BRANCH: tmp/astra-phase57-final-status-0829
+  PYTHONHASHSEED: "0"
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  OPENAI_BASE_URL: ""
+  ANTHROPIC_BASE_URL: ""
+  MECHANICS_MODELER_BASE_URL: ""
+  MECHANICS_FIGURE_BASE_URL: ""
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out router finalizer source
+        uses: actions/checkout@v6
+        with:
+          ref: tmp/astra-phase57-global-router-base-0829
+          fetch-depth: 0
+
+      - name: Collect and validate finalizer programs out of tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .stage7-tmp/phase57-global-router-install.py /tmp/phase57-global-router-install.py
+          cp .stage7-tmp/phase57-global-router-select.py /tmp/phase57-global-router-select.py
+          cp .stage7-tmp/phase57-global-router-run.sh /tmp/phase57-global-router-run.sh
+          git fetch origin \
+            refs/heads/tmp/astra-phase57-capabilities-v2c-base-0829:refs/remotes/origin/phase57-v2c-programs \
+            refs/heads/tmp/astra-phase57-terminal-base-0829:refs/remotes/origin/phase57-terminal-programs \
+            refs/heads/tmp/astra-phase57-residual-v2-base-0829:refs/remotes/origin/phase57-residual-programs \
+            refs/heads/tmp/astra-phase57-cohort-base-0829:refs/remotes/origin/phase57-cohort-programs
+          git show origin/phase57-v2c-programs:.stage7-tmp/phase57-v2c-install.py > /tmp/phase57-v2c-install.py
+          git show origin/phase57-terminal-programs:.stage7-tmp/phase57-terminal-install.py > /tmp/phase57-terminal-install.py
+          git show origin/phase57-residual-programs:.stage7-tmp/phase57-residual-binding-install.py > /tmp/phase57-residual-binding-install.py
+          git show origin/phase57-residual-programs:.stage7-tmp/phase57-residual-v2-patch.py > /tmp/phase57-residual-v2-patch.py
+          git show origin/phase57-cohort-programs:.stage7-tmp/phase57-cohort-install.py > /tmp/phase57-cohort-install.py
+          python /tmp/phase57-residual-v2-patch.py
+          chmod +x /tmp/phase57-global-router-run.sh
+          bash -n /tmp/phase57-global-router-run.sh
+          python -m py_compile \
+            /tmp/phase57-global-router-install.py \
+            /tmp/phase57-global-router-select.py \
+            /tmp/phase57-v2c-install.py \
+            /tmp/phase57-terminal-install.py \
+            /tmp/phase57-residual-binding-install.py \
+            /tmp/phase57-cohort-install.py
+
+      - name: Wait for structural-cohort finalizer to settle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 180); do
+            payload="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${COHORT_BRANCH}&per_page=100")"
+            total="$(jq '.total_count' <<<"$payload")"
+            active="$(jq '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$payload")"
+            if [ "$total" -gt 0 ] && [ "$active" -eq 0 ]; then
+              break
+            fi
+            sleep 20
+          done
+
+      - name: Check out latest active Phase 57 authority
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.ACTIVE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Verify lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor ddb34a038e149696b2e64ae93173db330ecdbb60 HEAD
+
+      - name: Set up locked Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Run globally validated rule-router finalizer
+        shell: bash
+        run: /tmp/phase57-global-router-run.sh
+
+      - name: Independently audit resulting exact head
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          printf 'AUDIT_HEAD=%s\n' "$head" >> "$GITHUB_ENV"
+          out="${RUNNER_TEMP}/phase57-global-router-audit-${head}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$head" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-global-router-audit.log
+          cp "$out/phase57-gate-report.json" /tmp/phase57-global-router-gate-report.json
+          cp "$out/phase57-runner-status.json" /tmp/phase57-global-router-runner-status.json
+
+      - name: Wait for official exact-SHA workflows
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 180); do
+            payload="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${AUDIT_HEAD}&per_page=100")"
+            phase_success="$(jq '[.workflow_runs[] | select(.name == "Phase 57 reproducible public evaluation" and .status == "completed" and .conclusion == "success")] | length' <<<"$payload")"
+            release_success="$(jq '[.workflow_runs[] | select(.name == "DynaTutor release tests" and .status == "completed" and .conclusion == "success")] | length' <<<"$payload")"
+            if [ "$phase_success" -gt 0 ] && [ "$release_success" -gt 0 ]; then
+              printf '%s' "$payload" > /tmp/phase57-global-router-official-runs.json
+              break
+            fi
+            sleep 20
+          done
+          test -s /tmp/phase57-global-router-official-runs.json
+
+      - name: Build terminal authoritative status
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report=json.loads(Path('/tmp/phase57-global-router-gate-report.json').read_text())
+          finalizer=json.loads(Path('/tmp/phase57-global-router-status.json').read_text())
+          runs=json.loads(Path('/tmp/phase57-global-router-official-runs.json').read_text())
+          def latest(name):
+              item=next(row for row in runs['workflow_runs'] if row['name']==name and row['status']=='completed' and row['conclusion']=='success')
+              return {'id':item['id'],'head_sha':item['head_sha'],'status':item['status'],'conclusion':item['conclusion'],'html_url':item['html_url']}
+          defects={k:report[k] for k in ('all_shadow_wrong','all_shadow_unscored','newly_solved_wrong','newly_solved_unscored','forbidden_class_solve','regressed','query_binding_mismatch')}
+          assert report['regression_acceptance']=='PASS'
+          assert all(v==0 for v in defects.values())
+          status={'schema':'dynatutor.phase57.global-router-official-audit.v1','exact_head':os.environ['AUDIT_HEAD'],'supported_correct':report['all_shadow_correct'],'supported_target':report['supported_correct_target'],'quality_status':report['quality_status'],'regression_acceptance':report['regression_acceptance'],'defects':defects,'expected_context_count':report['expected_context_count'],'runtime_completed':report['runtime_completed'],'projection_refused':report['projection_refused'],'global_router_finalizer':finalizer,'official_phase57_workflow':latest('Phase 57 reproducible public evaluation'),'official_release_workflow':latest('DynaTutor release tests'),'historical_phase56_stage7_status':report['historical_phase56_stage7_status'],'historical_phase56_stage8_status':report['historical_phase56_stage8_status'],'hidden_generalization_claimed':report['hidden_generalization_claimed'],'production_release_claimed':report['production_release_claimed']}
+          Path('/tmp/phase57-final-status.json').write_text(json.dumps(status,ensure_ascii=False,sort_keys=True,indent=2)+'\n')
+          text=f'''# Phase 57 terminal official audit\n\n- exact active head: `{status['exact_head']}`\n- supported correct: **{status['supported_correct']}/{status['supported_target']}**\n- quality status: `{status['quality_status']}`\n- regression acceptance: `{status['regression_acceptance']}`\n- terminal router finalizer: `{finalizer['status']}`\n- official Phase 57 workflow: `{status['official_phase57_workflow']['id']}` / `success`\n- official release workflow: `{status['official_release_workflow']['id']}` / `success`\n- wrong / unscored / forbidden / regressed / query mismatch: **{defects['all_shadow_wrong']} / {defects['all_shadow_unscored']} / {defects['forbidden_class_solve']} / {defects['regressed']} / {defects['query_binding_mismatch']}**\n- expected / runtime / projection-refused: **{status['expected_context_count']} / {status['runtime_completed']} / {status['projection_refused']}**\n- Phase 56 Stage 7: `{status['historical_phase56_stage7_status']}`\n- Phase 56 Stage 8: `{status['historical_phase56_stage8_status']}`\n- hidden-generalization claim: `{str(status['hidden_generalization_claimed']).lower()}`\n- production-release claim: `{str(status['production_release_claimed']).lower()}`\n'''
+          Path('/tmp/PHASE57_FINAL_STATUS.md').write_text(text)
+          PY
+
+      - name: Publish terminal status only to isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name Codex
+          git config user.email codex@openai.com
+          git checkout --orphan phase57-global-router-status
+          git rm -rf .
+          mkdir -p status
+          cp /tmp/phase57-final-status.json status/phase57-final-status.json
+          cp /tmp/PHASE57_FINAL_STATUS.md status/PHASE57_FINAL_STATUS.md
+          git add -- status/phase57-final-status.json status/PHASE57_FINAL_STATUS.md
+          git commit -m "chore(tmp): record terminal Phase 57 audit ${AUDIT_HEAD}"
+          git push --force origin "HEAD:refs/heads/${STATUS_BRANCH}"
+
+      - name: Synchronize Draft PR 49 terminal status marker
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/49" --jq .body)"
+          marker='<!-- phase57-final-audit -->'
+          prefix="${current%%$marker*}"
+          body="${prefix}${marker}
+
+$(cat /tmp/PHASE57_FINAL_STATUS.md)"
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/49" -f body="$body" >/dev/null
+
+      - name: Upload terminal router evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-terminal-router-official-audit-${{ env.AUDIT_HEAD }}
+          path: |
+            /tmp/phase57-final-status.json
+            /tmp/PHASE57_FINAL_STATUS.md
+            /tmp/phase57-global-router-status.json
+            /tmp/phase57-global-router-selection.json
+            /tmp/phase57-global-router-gate-report.json
+            /tmp/phase57-global-router-runner-status.json
+            /tmp/phase57-global-router-official-runs.json
+          retention-days: 30
+          if-no-files-found: warn
