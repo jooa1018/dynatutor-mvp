@@ -1,0 +1,191 @@
+name: Temporary Phase 57 final audit
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-final-audit-base-0829
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+
+env:
+  ACTIVE_BRANCH: codex/phase57-reproducible-public-evaluation
+  TERMINAL_BRANCH: tmp/astra-phase57-terminal-trigger-0829
+  STATUS_BRANCH: tmp/astra-phase57-final-status-0829
+  PYTHONHASHSEED: "0"
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  OPENAI_BASE_URL: ""
+  ANTHROPIC_BASE_URL: ""
+  MECHANICS_MODELER_BASE_URL: ""
+  MECHANICS_FIGURE_BASE_URL: ""
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Wait for terminal optimizer to settle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 130); do
+            payload="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs?branch=${TERMINAL_BRANCH}&per_page=20")"
+            total="$(jq '.total_count' <<<"$payload")"
+            active="$(jq '[.workflow_runs[] | select(.status != "completed")] | length' <<<"$payload")"
+            if [ "$total" -gt 0 ] && [ "$active" -eq 0 ]; then
+              break
+            fi
+            sleep 30
+          done
+
+      - name: Check out final active Phase 57 head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.ACTIVE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Set up locked Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Run exact-head final M/V/R/G audit
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          printf 'AUDIT_HEAD=%s\n' "$head" >> "$GITHUB_ENV"
+          out="${RUNNER_TEMP}/phase57-final-audit-${head}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$head" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-final-audit.log
+          cp "$out/phase57-gate-report.json" /tmp/phase57-final-gate-report.json
+          cp "$out/phase57-runner-status.json" /tmp/phase57-final-runner-status.json
+
+      - name: Build machine-readable final status
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+
+          repo = os.environ['GITHUB_REPOSITORY']
+          report = json.loads(Path('/tmp/phase57-final-gate-report.json').read_text())
+          branches = {
+              'capability_v1': 'tmp/astra-phase57-capabilities-trigger-0829',
+              'capability_v2': 'tmp/astra-phase57-capabilities-v2c-trigger-0829',
+              'terminal_optimizer': 'tmp/astra-phase57-terminal-trigger-0829',
+          }
+          runs = {}
+          for name, branch in branches.items():
+              raw = subprocess.check_output([
+                  'gh', 'api',
+                  f'repos/{repo}/actions/runs?branch={branch}&per_page=20'
+              ], text=True)
+              payload = json.loads(raw)
+              latest = payload.get('workflow_runs', [None])[0] if payload.get('workflow_runs') else None
+              runs[name] = None if latest is None else {
+                  'id': latest.get('id'),
+                  'name': latest.get('name'),
+                  'status': latest.get('status'),
+                  'conclusion': latest.get('conclusion'),
+                  'head_sha': latest.get('head_sha'),
+                  'html_url': latest.get('html_url'),
+              }
+          defects = {
+              key: report[key]
+              for key in (
+                  'all_shadow_wrong', 'all_shadow_unscored',
+                  'newly_solved_wrong', 'newly_solved_unscored',
+                  'forbidden_class_solve', 'regressed',
+                  'query_binding_mismatch',
+              )
+          }
+          status = {
+              'schema': 'dynatutor.phase57.final-audit.v1',
+              'active_branch': os.environ['ACTIVE_BRANCH'],
+              'exact_head': os.environ['AUDIT_HEAD'],
+              'supported_correct': report['all_shadow_correct'],
+              'supported_target': report['supported_correct_target'],
+              'quality_status': report['quality_status'],
+              'regression_acceptance': report['regression_acceptance'],
+              'defects': defects,
+              'expected_context_count': report['expected_context_count'],
+              'runtime_completed': report['runtime_completed'],
+              'projection_refused': report['projection_refused'],
+              'historical_phase56_stage7_status': report['historical_phase56_stage7_status'],
+              'historical_phase56_stage8_status': report['historical_phase56_stage8_status'],
+              'hidden_generalization_claimed': report['hidden_generalization_claimed'],
+              'production_release_claimed': report['production_release_claimed'],
+              'optimizer_runs': runs,
+          }
+          Path('/tmp/phase57-final-status.json').write_text(
+              json.dumps(status, ensure_ascii=False, sort_keys=True, indent=2) + '\n',
+              encoding='utf-8'
+          )
+          text = f'''# Phase 57 final audit\n\n- exact active head: `{status['exact_head']}`\n- supported correct: **{status['supported_correct']}/{status['supported_target']}**\n- quality status: `{status['quality_status']}`\n- regression acceptance: `{status['regression_acceptance']}`\n- wrong / unscored / forbidden / regressed / query mismatch: **{defects['all_shadow_wrong']} / {defects['all_shadow_unscored']} / {defects['forbidden_class_solve']} / {defects['regressed']} / {defects['query_binding_mismatch']}**\n- Phase 56 Stage 7: `{status['historical_phase56_stage7_status']}`\n- Phase 56 Stage 8: `{status['historical_phase56_stage8_status']}`\n- hidden-generalization claim: `{str(status['hidden_generalization_claimed']).lower()}`\n- production-release claim: `{str(status['production_release_claimed']).lower()}`\n\nThis is an exact-head audit of the repository-contained public population.\n'''
+          Path('/tmp/PHASE57_FINAL_STATUS.md').write_text(text, encoding='utf-8')
+          PY
+
+      - name: Publish status only to isolated temporary branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git checkout --orphan phase57-final-status
+          git rm -rf .
+          mkdir -p status
+          cp /tmp/phase57-final-status.json status/phase57-final-status.json
+          cp /tmp/PHASE57_FINAL_STATUS.md status/PHASE57_FINAL_STATUS.md
+          git add -- status/phase57-final-status.json status/PHASE57_FINAL_STATUS.md
+          git commit -m "chore(tmp): record Phase 57 final audit ${AUDIT_HEAD}"
+          git push --force origin "HEAD:refs/heads/${STATUS_BRANCH}"
+
+      - name: Synchronize PR 49 machine status section
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/49" --jq .body)"
+          marker='<!-- phase57-final-audit -->'
+          prefix="${current%%$marker*}"
+          status="$(cat /tmp/PHASE57_FINAL_STATUS.md)"
+          body="${prefix}${marker}
+
+${status}"
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/49" -f body="$body" >/dev/null
+
+      - name: Upload final audit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-final-audit-${{ env.AUDIT_HEAD }}
+          path: |
+            /tmp/phase57-final-status.json
+            /tmp/PHASE57_FINAL_STATUS.md
+            /tmp/phase57-final-gate-report.json
+            /tmp/phase57-final-runner-status.json
+          retention-days: 30
+          if-no-files-found: error
