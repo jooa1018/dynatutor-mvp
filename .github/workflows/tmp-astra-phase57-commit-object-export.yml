@@ -1,0 +1,35 @@
+name: Temporary exact Phase 57 commit object export
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-commit-object-base-0828
+
+permissions:
+  contents: write
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out full Git object database
+        uses: actions/checkout@v4
+        with:
+          ref: 47b4af47dea188644e7ca4ad62eb1297e58b378c
+          fetch-depth: 0
+      - name: Export exact commit payload and publish temporary text
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=47b4af47dea188644e7ca4ad62eb1297e58b378c
+          test "$(git rev-parse HEAD)" = "$expected"
+          git cat-file commit "$expected" | base64 -w 0 > /tmp/phase57-exact-commit-object.b64
+          printf '\n' >> /tmp/phase57-exact-commit-object.b64
+          git checkout -B commit-object-output "$expected"
+          cp /tmp/phase57-exact-commit-object.b64 phase57-exact-commit-object.b64
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git add -- phase57-exact-commit-object.b64
+          git commit -m 'chore(tmp): publish exact Phase 57 commit payload'
+          git push --force-with-lease origin HEAD:refs/heads/tmp/astra-phase57-commit-object-output-0828
