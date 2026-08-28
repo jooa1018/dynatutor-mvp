@@ -107,6 +107,16 @@ def _run_prepare(step: str, command: list[str]) -> tuple[int, str | None]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
+    parser.add_argument(
+        "--expected-corpus-sha256",
+        type=str,
+        default=None,
+        help=(
+            "optional exact SHA-256 for a separately named reproducible "
+            "campaign archive. Omitted preserves the frozen Phase 56 public "
+            "archive identity."
+        ),
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument(
         "--publication-root",
@@ -142,6 +152,11 @@ def main() -> int:
     ]
     if args.campaign_seal:
         prepare_command += ["--campaign-seal", args.campaign_seal]
+    if args.expected_corpus_sha256:
+        prepare_command += [
+            "--expected-corpus-sha256",
+            args.expected_corpus_sha256,
+        ]
     status, publication_id = _run_prepare("PHASE_M_PREPARE", prepare_command)
     if status:
         return status
@@ -177,6 +192,11 @@ def main() -> int:
     ]
     if args.campaign_seal:
         verify_command += ["--campaign-seal", args.campaign_seal]
+    if args.expected_corpus_sha256:
+        verify_command += [
+            "--expected-corpus-sha256",
+            args.expected_corpus_sha256,
+        ]
     status = _run("PHASE_V_VERIFY_PREPARE", verify_command)
     if status:
         return status
@@ -215,6 +235,11 @@ def main() -> int:
     ]
     if args.campaign_seal:
         score_command += ["--campaign-seal", args.campaign_seal]
+    if args.expected_corpus_sha256:
+        score_command += [
+            "--expected-corpus-sha256",
+            args.expected_corpus_sha256,
+        ]
     return _run("PHASE_G_SCORE", score_command)
 
 

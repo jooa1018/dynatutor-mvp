@@ -106,6 +106,16 @@ PREPARE_FAILURE_EXIT = 2
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus-archive", type=Path, required=True)
+    parser.add_argument(
+        "--expected-corpus-sha256",
+        type=str,
+        default=None,
+        help=(
+            "optional exact SHA-256 for a separately named reproducible "
+            "campaign archive. Omitted preserves the frozen Phase 56 public "
+            "archive identity."
+        ),
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument(
         "--publication-root",
@@ -141,9 +151,16 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        prepared = build_prepared_campaign(
-            corpus_archive=args.corpus_archive, manifest=args.manifest
-        )
+        if args.expected_corpus_sha256 is None:
+            prepared = build_prepared_campaign(
+                corpus_archive=args.corpus_archive, manifest=args.manifest
+            )
+        else:
+            prepared = build_prepared_campaign(
+                corpus_archive=args.corpus_archive,
+                manifest=args.manifest,
+                expected_corpus_sha256=args.expected_corpus_sha256,
+            )
     except (PrepareBuildRefused, RuntimeInputRefused) as exc:
         print(f"STAGE7_V2_PREPARE_ACCEPTANCE=FAIL:{exc}", file=sys.stderr)
         return PREPARE_FAILURE_EXIT

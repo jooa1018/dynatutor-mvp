@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from evaluation.phase56_stage7.contracts import PUBLIC_CORPUS_ZIP_SHA256
 from evaluation.phase56_stage7.corpus_integrity import read_public_corpus_archive
 from evaluation.phase56_stage7.corpus_preflight import load_public_cases
 from evaluation.phase56_stage7.corpus_v2.canonical import file_sha256
@@ -139,7 +140,10 @@ class PrepareBuildRefused(RuntimeError):
 
 
 def build_prepared_campaign(
-    *, corpus_archive: Path, manifest: Path
+    *,
+    corpus_archive: Path,
+    manifest: Path,
+    expected_corpus_sha256: str = PUBLIC_CORPUS_ZIP_SHA256,
 ) -> PreparedCampaignV1:
     """Read the corpus and the manifest, and derive the whole preparation.
 
@@ -153,7 +157,17 @@ def build_prepared_campaign(
     in.
     """
 
-    inventory = read_public_corpus_archive(corpus_archive)
+    # Preserve the original call shape when the frozen Phase 56 identity is
+    # used.  Several fail-closed controls replace the reader with a minimal
+    # one-argument probe; forcing a new keyword through that path would change
+    # the historical contract rather than extend it.  Only a separately named
+    # campaign supplies the explicit alternate identity.
+    if expected_corpus_sha256 == PUBLIC_CORPUS_ZIP_SHA256:
+        inventory = read_public_corpus_archive(corpus_archive)
+    else:
+        inventory = read_public_corpus_archive(
+            corpus_archive, expected_sha256=expected_corpus_sha256
+        )
     public_dev, public_adversarial = load_public_cases(inventory)
     cases = (*public_dev, *public_adversarial)
 

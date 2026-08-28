@@ -25,6 +25,7 @@ Purpose: this folder is the durable memory for dynatutor-mvp. Conversations forg
 | [`knowledge/phase56-frontend-dependency-security.md`](knowledge/phase56-frontend-dependency-security.md) | Exact baseline/post-change npm audit evidence, locked remediation, CI audit enforcement, and bounded reachability finding |
 | [`knowledge/phase56-deployment-readiness.md`](knowledge/phase56-deployment-readiness.md) | Current Render Blueprint schema validation and production-mode local health/auth/docs/CORS evidence |
 | [`knowledge/phase56-terminal-blocker.md`](knowledge/phase56-terminal-blocker.md) | Exact-head CI closure, exhausted contract-preserving routes, and the single external manifest unblock |
+| [`knowledge/phase57-reproducible-public-evaluation.md`](knowledge/phase57-reproducible-public-evaluation.md) | Distinct Phase 57 fixture identities, dual-gate control plane, local verification, and hosted-evidence limit |
 
 ## Existing authoritative project sources
 
@@ -37,6 +38,8 @@ This memory folder is an index and recovery layer only. It does not replace, dup
 | [`../RELEASE_GATES.md`](../RELEASE_GATES.md) | Authoritative release gates A–H; implementation or green tests alone do not imply release acceptance |
 | [`../docs/PHASE56_STAGE7_PROGRESS_REPORT.md`](../docs/PHASE56_STAGE7_PROGRESS_REPORT.md) | Phase 56 Stage 7 progress and current disposition; its top-level authoritative list and latest closure sections supersede historical per-session `ACCEPTED` entries |
 | [`../docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md`](../docs/PHASE56_STAGE7_CORPUS_V2_CANDIDATE.md) | Public-corpus v2 candidate and supplemental-yield campaign contract, provenance boundaries, census, and measured campaign status |
+| [`../docs/PHASE57_REPRODUCIBLE_PUBLIC_EVALUATION.md`](../docs/PHASE57_REPRODUCIBLE_PUBLIC_EVALUATION.md) | New public evaluation lineage, exact identities, dual dispositions, artifact boundary, and verification runbook |
+| [`goal/phase57-reproducible-public-evaluation.md`](goal/phase57-reproducible-public-evaluation.md) | Active Phase 57 terrain, baseline done-check, 50 -> 81 quality progression, and prohibited shortcuts |
 | [GitHub PR #17](https://github.com/jooa1018/dynatutor-mvp/pull/17) | Latest open-PR current disposition, authoritative Phase 56 branch/base/head identity, and review/merge state |
 | Git refs and history (`HEAD`, upstream, `main`, merge-base) | Current repository-state and ancestry evidence; `main` must not be mistaken for the authoritative Phase 56 worktree |
 | [`../.claude/ballast.rules.json`](../.claude/ballast.rules.json) | Standing project guardrails applied during recovery and work; not a product-status source |

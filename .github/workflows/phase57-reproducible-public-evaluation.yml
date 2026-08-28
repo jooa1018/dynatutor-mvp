@@ -1,0 +1,192 @@
+name: Phase 57 reproducible public evaluation
+
+# A green run means only that the repository-contained public population is
+# reproducible and has not regressed below the separately sealed 50-correct,
+# zero-wrong floor. It does not accept historical Phase 56 Stage 7, start
+# Stage 8, prove hidden generalization, deploy production, or publish a release.
+
+on:
+  push:
+    branches:
+      - codex/phase57-reproducible-public-evaluation
+    paths:
+      - "backend/**"
+      - ".github/workflows/phase57-reproducible-public-evaluation.yml"
+  pull_request:
+    branches:
+      - codex/phase56-generic-mechanics-engine
+    paths:
+      - "backend/**"
+      - ".github/workflows/phase57-reproducible-public-evaluation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase57-public-${{ github.event_name }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: false
+
+env:
+  EXACT_HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+  PYTHONHASHSEED: "0"
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  OPENAI_BASE_URL: ""
+  ANTHROPIC_BASE_URL: ""
+  MECHANICS_MODELER_BASE_URL: ""
+  MECHANICS_FIGURE_BASE_URL: ""
+
+jobs:
+  phase57-public-continuation:
+    name: reproducible public M/V/R/G gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      PYTHONPATH: ${{ github.workspace }}/backend
+    steps:
+      - name: Check out exact source head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.EXACT_HEAD_SHA }}
+          fetch-depth: 1
+
+      - name: Verify exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          printf 'EXACT_HEAD_SHA=%s\nACTUAL_CHECKOUT_SHA=%s\n' "$EXACT_HEAD_SHA" "$actual"
+          test "$actual" = "$EXACT_HEAD_SHA"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Bind unique out-of-tree evidence paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="${RUNNER_TEMP}/phase57-${EXACT_HEAD_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf 'PHASE57_OUTPUT_DIR=%s\n' "$output" >> "$GITHUB_ENV"
+          printf 'PHASE57_GATE_REPORT=%s\n' "$output/phase57-gate-report.json" >> "$GITHUB_ENV"
+          printf 'PHASE57_RUNNER_STATUS=%s\n' "$output/phase57-runner-status.json" >> "$GITHUB_ENV"
+          git status --porcelain=v1 --untracked-files=all > "${RUNNER_TEMP}/phase57-worktree-before.txt"
+
+      - name: Compile Phase 57 and inherited isolated campaign modules
+        working-directory: backend
+        run: |
+          python -m compileall -q \
+            evaluation/phase57_reproducible \
+            evaluation/phase56_stage7/corpus_v2 \
+            tools/run_phase56_stage7_v2_shadow.py \
+            tools/run_phase56_stage7_v2_shadow_prepare.py \
+            tools/run_phase56_stage7_v2_shadow_verify_prepare.py \
+            tools/run_phase56_stage7_v2_shadow_score.py \
+            tools/run_phase57_reproducible_public_gate.py \
+            tools/check_phase57_ci_artifact_identity.py \
+            tests/test_phase57_reproducible_public_evaluation.py
+
+      - name: Verify fixture, seal, fail-closed scorer, and artifact contracts
+        working-directory: backend
+        run: |
+          python -m pytest -q -o 'addopts=' \
+            tests/test_phase57_reproducible_public_evaluation.py \
+            tests/test_phase57_continuation_manifest_v2.py \
+            tests/test_phase56_stage7_supplemental_manifest.py \
+            tests/test_phase56_stage7_corpus_v2_fail_closed_shadow.py \
+            tests/test_phase56_stage7_corpus_v2_gold_scored_shadow.py \
+            tests/test_phase56_stage7_corpus_v2_prepare_attestation_seal.py
+
+      - name: Run full exact-head Phase 57 M/V/R/G campaign
+        id: phase57_run
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=0
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$PHASE57_OUTPUT_DIR" \
+            --exact-code-head "$EXACT_HEAD_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee "${RUNNER_TEMP}/phase57-run.log" || status=${PIPESTATUS[0]}
+
+          report_sha="$(sed -n 's/^PHASE57_REPRODUCIBLE_GATE_REPORT_RAW_SHA256=//p' \
+            "${RUNNER_TEMP}/phase57-run.log" | tail -n 1)"
+          status_sha="$(sed -n 's/^PHASE57_REPRODUCIBLE_RUNNER_STATUS_RAW_SHA256=//p' \
+            "${RUNNER_TEMP}/phase57-run.log" | tail -n 1)"
+          quality="$(sed -n 's/^PHASE57_REPRODUCIBLE_QUALITY=//p' \
+            "${RUNNER_TEMP}/phase57-run.log" | tail -n 1)"
+          all_correct="$(sed -n 's/^PHASE57_REPRODUCIBLE_ALL_CORRECT=//p' \
+            "${RUNNER_TEMP}/phase57-run.log" | tail -n 1)"
+
+          printf 'PHASE57_GATE_REPORT_RAW_SHA256=%s\n' "$report_sha" >> "$GITHUB_ENV"
+          printf 'PHASE57_RUNNER_STATUS_RAW_SHA256=%s\n' "$status_sha" >> "$GITHUB_ENV"
+          printf 'PHASE57_QUALITY_STATUS=%s\n' "$quality" >> "$GITHUB_ENV"
+          printf 'PHASE57_ALL_CORRECT=%s\n' "$all_correct" >> "$GITHUB_ENV"
+          exit "$status"
+
+      - name: Prove evaluation mutated no source
+        id: source_integrity
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain=v1 --untracked-files=all > "${RUNNER_TEMP}/phase57-worktree-after.txt"
+          diff -u \
+            "${RUNNER_TEMP}/phase57-worktree-before.txt" \
+            "${RUNNER_TEMP}/phase57-worktree-after.txt"
+
+      - name: Verify aggregate artifact identity before upload
+        id: phase57_identity
+        if: >-
+          always() &&
+          steps.phase57_run.outcome == 'success' &&
+          steps.source_integrity.outcome == 'success'
+        run: |
+          python backend/tools/check_phase57_ci_artifact_identity.py \
+            --report "$PHASE57_GATE_REPORT" \
+            --runner-status "$PHASE57_RUNNER_STATUS" \
+            --expect-head-sha "$EXACT_HEAD_SHA" \
+            --expect-report-raw-sha256 "$PHASE57_GATE_REPORT_RAW_SHA256" \
+            --expect-runner-status-raw-sha256 "$PHASE57_RUNNER_STATUS_RAW_SHA256"
+
+      - name: Upload privacy-minimal Phase 57 aggregate
+        id: phase57_upload
+        if: always() && steps.phase57_identity.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-reproducible-public-aggregate-${{ env.EXACT_HEAD_SHA }}
+          path: |
+            ${{ env.PHASE57_GATE_REPORT }}
+            ${{ env.PHASE57_RUNNER_STATUS }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Record uploaded aggregate identity and quality disposition
+        if: always() && steps.phase57_upload.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'PHASE57_ARTIFACT_RUN_HEAD_SHA=%s\n' "$EXACT_HEAD_SHA"
+          printf 'PHASE57_ARTIFACT_CHECKOUT_SHA=%s\n' "$(git rev-parse HEAD)"
+          printf 'PHASE57_ARTIFACT_REPORT_RAW_SHA256=%s\n' "$PHASE57_GATE_REPORT_RAW_SHA256"
+          printf 'PHASE57_ARTIFACT_RUNNER_STATUS_RAW_SHA256=%s\n' "$PHASE57_RUNNER_STATUS_RAW_SHA256"
+          printf 'PHASE57_ARTIFACT_ID=%s\n' '${{ steps.phase57_upload.outputs.artifact-id }}'
+          printf 'PHASE57_ARTIFACT_UPLOAD_DIGEST=%s\n' '${{ steps.phase57_upload.outputs.artifact-digest }}'
+          printf 'PHASE57_REGRESSION_ACCEPTANCE=PASS\n'
+          printf 'PHASE57_QUALITY_STATUS=%s\n' "$PHASE57_QUALITY_STATUS"
+          printf 'PHASE57_SUPPORTED_CORRECT=%s/81\n' "$PHASE57_ALL_CORRECT"
+          printf 'PHASE57_HISTORICAL_STAGE7_STATUS=STAGE_7_IN_PROGRESS / NOT_ACCEPTED\n'
+          printf 'PHASE57_HISTORICAL_STAGE8_STATUS=STAGE_8_NOT_STARTED\n'
+          printf 'PHASE57_ARTIFACT_REPORT_BASE64_BEGIN\n'
+          base64 -w 0 "$PHASE57_GATE_REPORT"
+          printf '\nPHASE57_ARTIFACT_REPORT_BASE64_END\n'

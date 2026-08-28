@@ -1,0 +1,27 @@
+{
+  "contains_private_heldout": false,
+  "contains_public_all": false,
+  "members": [
+    {
+      "bytes": 44322,
+      "count": 16,
+      "name": "public_adversarial.jsonl",
+      "sha256": "d3d424b1218ba58fed89778a25d1f5baf97edee5493f0465f37cd0acf18b39b7"
+    },
+    {
+      "bytes": 287936,
+      "count": 84,
+      "name": "public_dev.jsonl",
+      "sha256": "f06606670b0206d0900ecb136378c0b81cb30e2f62a1519cea4d83ed5f05c4f8"
+    },
+    {
+      "bytes": 3996,
+      "count": null,
+      "name": "schema.json",
+      "sha256": "cd2e0dbe39d73989c62f868a4e4a0e750692987e27feb36405521b35f60b1673"
+    }
+  ],
+  "public_case_count": 100,
+  "schema": "dynatutor.phase57.reproducible_public_fixture_set.v1",
+  "source_archive_sha256": "cc8d8b272e305a7de4ea79a880a6c643e7d501e23e326d94ea3a90ac591a1bef"
+}
