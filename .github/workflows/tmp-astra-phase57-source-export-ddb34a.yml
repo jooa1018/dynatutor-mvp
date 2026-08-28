@@ -1,0 +1,41 @@
+name: Temporary exact-source export ddb34a
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-source-base-ddb34a-0828b
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact authoritative source
+        uses: actions/checkout@v4
+        with:
+          ref: ddb34a038e149696b2e64ae93173db330ecdbb60
+          fetch-depth: 1
+      - name: Export exact source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=ddb34a038e149696b2e64ae93173db330ecdbb60
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          git archive --format=tar.gz --output "${RUNNER_TEMP}/dynatutor-source-${expected}.tar.gz" "$expected"
+          {
+            printf 'exact_head_sha=%s\n' "$expected"
+            sha256sum "${RUNNER_TEMP}/dynatutor-source-${expected}.tar.gz"
+          } > "${RUNNER_TEMP}/dynatutor-source-${expected}.manifest.txt"
+      - name: Upload exact-source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynatutor-source-ddb34a038e149696b2e64ae93173db330ecdbb60
+          path: |
+            ${{ runner.temp }}/dynatutor-source-ddb34a038e149696b2e64ae93173db330ecdbb60.tar.gz
+            ${{ runner.temp }}/dynatutor-source-ddb34a038e149696b2e64ae93173db330ecdbb60.manifest.txt
+          retention-days: 1
+          if-no-files-found: error
