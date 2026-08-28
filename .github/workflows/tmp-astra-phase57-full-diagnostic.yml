@@ -1,0 +1,73 @@
+name: Temporary exact Phase 57 full diagnostic
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-source-base-ddb34a-0828b
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      EXACT_HEAD_SHA: ddb34a038e149696b2e64ae93173db330ecdbb60
+      PYTHONPATH: ${{ github.workspace }}/backend
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out exact Phase 57 baseline
+        uses: actions/checkout@v4
+        with:
+          ref: ddb34a038e149696b2e64ae93173db330ecdbb60
+          fetch-depth: 1
+      - name: Verify exact checkout
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "$EXACT_HEAD_SHA"
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+      - name: Install locked dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+      - name: Run unchanged exact-head Phase 57 campaign
+        shell: bash
+        run: |
+          set -euo pipefail
+          output="${RUNNER_TEMP}/phase57-exact-diagnostic"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$output" \
+            --exact-code-head "$EXACT_HEAD_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee "${RUNNER_TEMP}/phase57-exact-diagnostic.log"
+          test -f "$output/phase57-runtime-snapshot.json"
+          test -f "$output/phase57-shadow-report.json"
+          test -f "$output/phase57-scorecard.json"
+          test -f "$output/phase57-gate-report.json"
+      - name: Upload public-corpus diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-exact-ddb34a-full-diagnostic
+          path: |
+            ${{ runner.temp }}/phase57-exact-diagnostic/phase57-runtime-snapshot.json
+            ${{ runner.temp }}/phase57-exact-diagnostic/phase57-runtime-redacted.json
+            ${{ runner.temp }}/phase57-exact-diagnostic/phase57-shadow-report.json
+            ${{ runner.temp }}/phase57-exact-diagnostic/phase57-scorecard.json
+            ${{ runner.temp }}/phase57-exact-diagnostic/phase57-gate-report.json
+            ${{ runner.temp }}/phase57-exact-diagnostic/phase57-runner-status.json
+            ${{ runner.temp }}/phase57-exact-diagnostic/phase57-prepare-verification.json
+            ${{ runner.temp }}/phase57-exact-diagnostic.log
+          retention-days: 1
+          if-no-files-found: error
