@@ -1,0 +1,266 @@
+name: Temporary guarded Phase 57 capability v2 finalizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-capabilities-v2c-base-0829
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 115
+    env:
+      ACTIVE_BRANCH: codex/phase57-reproducible-public-evaluation
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out temporary finalizer source
+        uses: actions/checkout@v6
+        with:
+          ref: tmp/astra-phase57-capabilities-v2c-base-0829
+          fetch-depth: 1
+
+      - name: Preserve finalizer programs out of tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .stage7-tmp/phase57-v2c-install.py /tmp/phase57-v2c-install.py
+          cp .stage7-tmp/phase57-v2c-select.py /tmp/phase57-v2c-select.py
+
+      - name: Check out current Phase 57 authority and freeze parent
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.ACTIVE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Verify lineage and freeze compare-and-swap parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse HEAD)"
+          git merge-base --is-ancestor ddb34a038e149696b2e64ae93173db330ecdbb60 "$parent"
+          printf 'PARENT_SHA=%s\n' "$parent" >> "$GITHUB_ENV"
+          git status --porcelain=v1 --untracked-files=all > /tmp/phase57-before.txt
+
+      - name: Set up locked Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Measure exact current baseline
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-v2c-baseline-${PARENT_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$PARENT_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-v2c-baseline.log
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          assert report['regression_acceptance'] == 'PASS', report
+          for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'):
+              assert report[key] == 0, (key, report[key])
+          score = int(report['all_shadow_correct'])
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f'BASE_SCORE={score}\n')
+              handle.write(
+                  'CONTINUE_CAPABILITY=' + ('false' if score >= 81 else 'true') + '\n'
+              )
+              handle.write(f'BASELINE_OUTPUT={Path(sys.argv[1]).parent}\n')
+          Path('/tmp/phase57-v2c-baseline-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          PY
+
+      - name: Install broader conservative capability candidates
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python /tmp/phase57-v2c-install.py
+
+      - name: Select only perfect rules with current unsolved gain
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          python /tmp/phase57-v2c-select.py \
+            --baseline-snapshot "$BASELINE_OUTPUT/phase57-runtime-snapshot.json" \
+            --output /tmp/phase57-v2c-rule-selection.json
+          python -m compileall -q \
+            backend/engine/mechanics/public_closed_form.py \
+            backend/evaluation/phase56_stage7/public_closed_form_adapter.py \
+            backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
+            backend/tests/test_public_closed_form.py
+
+      - name: Commit candidate as one exact head
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git add -- \
+            backend/engine/mechanics/public_closed_form.py \
+            backend/evaluation/phase56_stage7/public_closed_form_adapter.py \
+            backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
+            backend/tests/test_public_closed_form.py
+          git diff --cached --check
+          git commit -m 'feat(mechanics): expand conservative typed closures'
+          printf 'CANDIDATE_SHA=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Verify focused and inherited contracts
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          python -m pytest -q -o 'addopts=' \
+            backend/tests/test_public_closed_form.py \
+            backend/tests/test_phase57_reproducible_public_evaluation.py \
+            backend/tests/test_phase57_continuation_manifest_v2.py \
+            backend/tests/test_phase56_stage7_supplemental_manifest.py \
+            backend/tests/test_phase56_stage7_corpus_v2_fail_closed_shadow.py \
+            backend/tests/test_phase56_stage7_corpus_v2_gold_scored_shadow.py \
+            backend/tests/test_phase56_stage7_corpus_v2_prepare_attestation_seal.py
+
+      - name: Run candidate exact-head gate and require strict improvement
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-v2c-candidate-${CANDIDATE_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$CANDIDATE_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-v2c-candidate.log
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          base = int(os.environ['BASE_SCORE'])
+          assert report['regression_acceptance'] == 'PASS', report
+          assert report['all_shadow_correct'] > base, (base, report)
+          for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'):
+              assert report[key] == 0, (key, report[key])
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as handle:
+              handle.write(f"CANDIDATE_SCORE={report['all_shadow_correct']}\n")
+          Path('/tmp/phase57-v2c-candidate-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          PY
+
+      - name: Seal measured result in repository memory
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path('/tmp/phase57-v2c-candidate-report.json').read_text())
+          selection = json.loads(Path('/tmp/phase57-v2c-rule-selection.json').read_text())
+          enabled = ', '.join(f'`{item}`' for item in selection['selected_rules'])
+          body = f'''# Phase 57 public closed-form capability expansion\n\n- parent: `{os.environ['PARENT_SHA']}`\n- measured improvement: **{os.environ['BASE_SCORE']}/81 → {report['all_shadow_correct']}/81**\n- wrong / unscored / forbidden / regressed / query mismatch: **0 / 0 / 0 / 0 / 0**\n- enabled source-structural rules: {enabled}\n- newly covered public positions: `{selection['selected_new_positions']}`\n- population and scorer: unchanged Phase 57 public continuation v2\n- Phase 56 Stage 7: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`\n- Phase 56 Stage 8: `STAGE_8_NOT_STARTED`\n- hidden-generalization claim: false\n- production-release claim: false\n\nRules were selected only on the explicitly public development population. The\nexact-head M/V/R/G run remains the acceptance authority and all ambiguity fails\nclosed. This does not establish hidden-set generalization.\n'''
+          Path('memory/knowledge/phase57-public-closed-form-expansion.md').write_text(
+              body, encoding='utf-8'
+          )
+          PY
+          git add -- memory/knowledge/phase57-public-closed-form-expansion.md
+          git diff --cached --check
+          git commit -m 'docs(phase57): seal public closed-form expansion'
+          printf 'FINAL_SHA=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Re-run exact final-head gate
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-v2c-final-${FINAL_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$FINAL_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee /tmp/phase57-v2c-final.log
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          assert report['regression_acceptance'] == 'PASS', report
+          assert report['all_shadow_correct'] == int(os.environ['CANDIDATE_SCORE'])
+          assert report['all_shadow_correct'] > int(os.environ['BASE_SCORE'])
+          for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'):
+              assert report[key] == 0, (key, report[key])
+          Path('/tmp/phase57-v2c-final-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          PY
+
+      - name: Compare-and-swap active Phase 57 branch
+        if: env.CONTINUE_CAPABILITY == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$ACTIVE_BRANCH"
+          test "$(git rev-parse origin/$ACTIVE_BRANCH)" = "$PARENT_SHA"
+          git push origin "HEAD:refs/heads/$ACTIVE_BRANCH"
+
+      - name: Record no-op when quality is already complete
+        if: env.CONTINUE_CAPABILITY == 'false'
+        shell: bash
+        run: |
+          printf '{"status":"ALREADY_81","parent":"%s","score":%s}\n' \
+            "$PARENT_SHA" "$BASE_SCORE" > /tmp/phase57-v2c-noop.json
+
+      - name: Upload guarded finalizer evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-public-closed-form-finalizer-${{ env.PARENT_SHA }}
+          path: |
+            /tmp/phase57-v2c-baseline-report.json
+            /tmp/phase57-v2c-rule-selection.json
+            /tmp/phase57-v2c-candidate-report.json
+            /tmp/phase57-v2c-final-report.json
+            /tmp/phase57-v2c-noop.json
+          retention-days: 14
+          if-no-files-found: warn
