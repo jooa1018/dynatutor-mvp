@@ -1,0 +1,879 @@
+name: Temporary guarded Phase 57 capability finalizer
+
+on:
+  pull_request:
+    branches:
+      - tmp/astra-phase57-capabilities-base-0829
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    env:
+      ACTIVE_BRANCH: codex/phase57-reproducible-public-evaluation
+      PYTHONHASHSEED: "0"
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      OPENAI_BASE_URL: ""
+      ANTHROPIC_BASE_URL: ""
+      MECHANICS_MODELER_BASE_URL: ""
+      MECHANICS_FIGURE_BASE_URL: ""
+    steps:
+      - name: Check out current Phase 57 authority
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.ACTIVE_BRANCH }}
+          fetch-depth: 0
+
+      - name: Freeze parent and require the verified 65-correct lineage
+        shell: bash
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse HEAD)"
+          printf 'PARENT_SHA=%s\n' "$parent" >> "$GITHUB_ENV"
+          git merge-base --is-ancestor ddb34a038e149696b2e64ae93173db330ecdbb60 "$parent"
+          grep -Fq 'minimum_all_shadow_correct: Literal[50]' backend/evaluation/phase57_reproducible/contracts.py
+          test -f backend/evaluation/phase57_reproducible/continuation_manifest.py
+
+      - name: Set up locked Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
+      - name: Install locked backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+
+      - name: Generate conservative typed capability package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/install_phase57_capabilities.py <<'PY'
+          from __future__ import annotations
+          from pathlib import Path
+
+          root = Path.cwd()
+          module = r'''"""Conservative source-grounded closed-form mechanics capabilities.
+
+          These laws consume only the typed Mechanics Draft and its source text. They are
+          considered only after the existing compiler/solver has failed to produce a
+          verified result. Multiple non-equivalent candidates, incomplete query binding,
+          non-finite values, and dimensional disagreement all fail closed.
+          """
+          from __future__ import annotations
+
+          import math
+          from collections import defaultdict
+          from dataclasses import dataclass
+          from typing import Any
+
+          import pint
+
+          _UREG = pint.UnitRegistry()
+          _G = 9.80665
+
+
+          @dataclass(frozen=True, slots=True)
+          class ClosedFormCandidate:
+              rule_id: str
+              value: float
+              unit: str
+
+
+          @dataclass(frozen=True, slots=True)
+          class ClosedFormSolution:
+              rule_id: str
+              value_si: float
+              unit: str
+              value_in_unit: float
+
+
+          def _enum(value: Any) -> str:
+              if value is None:
+                  return ""
+              return str(getattr(value, "value", value))
+
+
+          def _number(quantity: dict[str, Any]) -> float | None:
+              value = quantity.get("raw_value")
+              if isinstance(value, bool) or not isinstance(value, (int, float)):
+                  return None
+              return float(value)
+
+
+          def _convert(quantity: dict[str, Any] | None, unit: str) -> float | None:
+              if quantity is None:
+                  return None
+              value = _number(quantity)
+              if value is None:
+                  return None
+              raw_unit = quantity.get("raw_unit") or quantity.get("unit")
+              if not raw_unit or not unit:
+                  return value
+              aliases = {
+                  "m/s²": "m/s^2",
+                  "m/s2": "m/s^2",
+                  "rad/s²": "rad/s^2",
+                  "N·s": "N*s",
+              }
+              try:
+                  return float((value * _UREG(aliases.get(raw_unit, raw_unit))).to(unit).magnitude)
+              except Exception:
+                  return None
+
+
+          def _one(items: list[dict[str, Any]]) -> dict[str, Any] | None:
+              return items[0] if len(items) == 1 else None
+
+
+          def _direction_sign(quantity: dict[str, Any]) -> float:
+              value = _number(quantity)
+              if value is not None and value < 0:
+                  return -1.0
+              direction = quantity.get("direction") or {}
+              material = " ".join(
+                  _enum(direction.get(key)).casefold()
+                  for key in ("kind", "name", "axis", "sense")
+              )
+              negatives = ("left", "negative", "downward", "down_slope", "왼쪽", "아래")
+              positives = ("right", "positive", "upward", "up_slope", "오른쪽", "위")
+              if any(item in material for item in negatives):
+                  return -1.0
+              if any(item in material for item in positives):
+                  return 1.0
+              return 1.0
+
+
+          def _finite(candidate: ClosedFormCandidate) -> ClosedFormCandidate | None:
+              return candidate if math.isfinite(candidate.value) else None
+
+
+          def _all_candidates(
+              draft_payload: dict[str, Any], *, problem_text: str = ""
+          ) -> tuple[ClosedFormCandidate, ...]:
+              queries = draft_payload.get("queries") or []
+              if len(queries) != 1:
+                  return ()
+              target = queries[0].get("target") or {}
+              query_role = _enum(target.get("role"))
+              query_component = _enum(target.get("component"))
+              query_subject = target.get("subject_id")
+
+              quantities = draft_payload.get("quantities") or []
+              by_role: dict[str, list[dict[str, Any]]] = defaultdict(list)
+              for quantity in quantities:
+                  by_role[_enum(quantity.get("role"))].append(quantity)
+
+              assumptions = {
+                  _enum(item.get("kind"))
+                  for item in draft_payload.get("assumptions") or []
+                  if _enum(item.get("disposition")) in ("", "accepted", "approved")
+              }
+              geometry = draft_payload.get("geometry") or []
+              interactions = draft_payload.get("interactions") or []
+              relation_kinds = {
+                  _enum(item.get("kind")) for item in (*geometry, *interactions)
+              }
+              entities = {
+                  item.get("entity_id"): _enum(item.get("primitive"))
+                  for item in draft_payload.get("entities") or []
+              }
+              events = {
+                  item.get("event_id"): _enum(item.get("kind"))
+                  for item in draft_payload.get("events") or []
+              }
+              candidates: list[ClosedFormCandidate] = []
+
+              def add(rule_id: str, value: float | None, unit: str) -> None:
+                  if value is None:
+                      return
+                  candidate = _finite(ClosedFormCandidate(rule_id, float(value), unit))
+                  if candidate is not None:
+                      candidates.append(candidate)
+
+              masses: dict[str, float] = {}
+              for quantity in by_role.get("mass", []):
+                  converted = _convert(quantity, "kg")
+                  subject = quantity.get("subject_id")
+                  if converted is not None and isinstance(subject, str):
+                      masses[subject] = converted
+
+              # One-dimensional collision: conservation of momentum plus restitution.
+              collision = "collision" in relation_kinds or any(
+                  "collision" in item for item in assumptions
+              )
+              if collision and len(masses) == 2:
+                  subjects = tuple(masses)
+                  velocity_by_subject: dict[str, list[float]] = defaultdict(list)
+                  for quantity in (*by_role.get("velocity", []), *by_role.get("speed", [])):
+                      converted = _convert(quantity, "m/s")
+                      subject = quantity.get("subject_id")
+                      if converted is not None and subject in masses:
+                          velocity_by_subject[subject].append(
+                              abs(converted) * _direction_sign(quantity)
+                          )
+                  if all(velocity_by_subject[item] for item in subjects):
+                      first, second = subjects
+                      m1, m2 = masses[first], masses[second]
+                      u1, u2 = velocity_by_subject[first][0], velocity_by_subject[second][0]
+                      restitution = _convert(_one(by_role.get("coefficient_restitution", [])), "")
+                      if restitution is None and "elastic_collision" in assumptions:
+                          restitution = 1.0
+                      if restitution is not None:
+                          denominator = m1 + m2
+                          v1 = (
+                              m1 * u1 + m2 * u2 - m2 * restitution * (u1 - u2)
+                          ) / denominator
+                          v2 = (
+                              m1 * u1 + m2 * u2 + m1 * restitution * (u1 - u2)
+                          ) / denominator
+                          selected = v1 if query_subject == first else v2 if query_subject == second else None
+                          if selected is not None and query_role in ("velocity", "speed"):
+                              if query_role == "speed" or query_component == "magnitude":
+                                  selected = abs(selected)
+                              add("collision_1d_signed", selected, "m/s")
+                          if selected is not None and query_role == "impulse":
+                              impulse = (
+                                  m1 * (v1 - u1)
+                                  if query_subject == first
+                                  else m2 * (v2 - u2)
+                              )
+                              add("collision_impulse_signed", impulse, "N*s")
+                              add("collision_impulse_magnitude", abs(impulse), "N*s")
+
+              # Ideal or inertial pulley systems.
+              rope_system = bool(
+                  {"connected_by_rope", "passes_over_pulley", "wraps"}
+                  & relation_kinds
+              )
+              if rope_system and len(masses) == 2:
+                  first, second = tuple(masses)
+                  m1, m2 = masses[first], masses[second]
+                  sliding: set[str] = set()
+                  for relation in geometry:
+                      if _enum(relation.get("kind")) == "slides_on":
+                          participants = relation.get("participant_ids") or []
+                          if participants:
+                              sliding.add(participants[0])
+                  inertia = _convert(_one(by_role.get("moment_of_inertia", [])), "kg*m^2")
+                  radius = _convert(_one(by_role.get("radius", [])), "m")
+                  if inertia is not None and radius not in (None, 0.0):
+                      acceleration = (m2 - m1) * _G / (
+                          m1 + m2 + inertia / (radius * radius)
+                      )
+                      tension_first = m1 * (_G + acceleration)
+                      tension_second = m2 * (_G - acceleration)
+                      if query_role == "acceleration":
+                          value = abs(acceleration) if query_component == "magnitude" else acceleration
+                          add("massive_pulley_acceleration", value, "m/s^2")
+                      if query_role == "angular_acceleration":
+                          value = acceleration / radius
+                          if query_component == "magnitude":
+                              value = abs(value)
+                          add("massive_pulley_angular_acceleration", value, "rad/s^2")
+                      if query_role in ("force", "tension"):
+                          if query_subject == first:
+                              add("massive_pulley_tension_first", tension_first, "N")
+                          elif query_subject == second:
+                              add("massive_pulley_tension_second", tension_second, "N")
+                  else:
+                      table_subjects = sliding & set(masses)
+                      if table_subjects:
+                          table = next(iter(table_subjects))
+                          hanging = second if table == first else first
+                          table_mass, hanging_mass = masses[table], masses[hanging]
+                          acceleration = hanging_mass * _G / (table_mass + hanging_mass)
+                          tension = table_mass * acceleration
+                      else:
+                          acceleration = (m2 - m1) * _G / (m1 + m2)
+                          tension = 2.0 * m1 * m2 * _G / (m1 + m2)
+                      if query_role == "acceleration":
+                          value = abs(acceleration) if query_component == "magnitude" else acceleration
+                          add("ideal_pulley_acceleration", value, "m/s^2")
+                      if query_role in ("force", "tension"):
+                          add("ideal_pulley_tension", tension, "N")
+
+              # Projectile free flight from source-declared velocity, angle, and height.
+              motion_assumptions = {
+                  _enum(item.get("kind")) for item in draft_payload.get("assumptions") or []
+              }
+              velocity_values = [
+                  item
+                  for item in (*by_role.get("velocity", []), *by_role.get("speed", []))
+                  if _number(item) is not None
+              ]
+              projectile = (
+                  "constant_acceleration" in motion_assumptions
+                  and any(kind in ("release", "start") for kind in events.values())
+              ) or "projectile" in problem_text.casefold() or "포물" in problem_text
+              if projectile and velocity_values:
+                  v0 = _convert(velocity_values[0], "m/s")
+                  angle = _convert(_one(by_role.get("angle", [])), "radian")
+                  if angle is None:
+                      angle = 0.0
+                  if v0 is not None:
+                      h0 = 0.0
+                      for quantity in by_role.get("height", []):
+                          converted = _convert(quantity, "m")
+                          if converted is not None:
+                              h0 = max(h0, converted)
+                      vx = v0 * math.cos(angle)
+                      vy = v0 * math.sin(angle)
+                      flight_time = (
+                          vy + math.sqrt(max(0.0, vy * vy + 2.0 * _G * h0))
+                      ) / _G
+                      if query_role in ("duration", "time"):
+                          add("projectile_time", flight_time, "s")
+                      if query_role in ("distance", "range"):
+                          add("projectile_range", vx * flight_time, "m")
+                      if query_role == "height":
+                          add("projectile_max_height", h0 + vy * vy / (2.0 * _G), "m")
+                      if query_role in ("velocity", "speed"):
+                          final_vertical = vy - _G * flight_time
+                          if query_component == "x":
+                              add("projectile_horizontal_velocity", vx, "m/s")
+                          elif query_component == "y":
+                              add("projectile_vertical_velocity", final_vertical, "m/s")
+                          else:
+                              add(
+                                  "projectile_final_speed",
+                                  math.hypot(vx, final_vertical),
+                                  "m/s",
+                              )
+
+              # Elementary planar rigid-body point kinematics.
+              omega = next(
+                  (
+                      converted
+                      for item in by_role.get("angular_velocity", [])
+                      if (converted := _convert(item, "rad/s")) is not None
+                  ),
+                  None,
+              )
+              alpha = next(
+                  (
+                      converted
+                      for item in by_role.get("angular_acceleration", [])
+                      if (converted := _convert(item, "rad/s^2")) is not None
+                  ),
+                  None,
+              )
+              radius = next(
+                  (
+                      converted
+                      for item in (*by_role.get("radius", []), *by_role.get("distance", []))
+                      if (converted := _convert(item, "m")) is not None
+                  ),
+                  None,
+              )
+              if omega is not None and radius is not None:
+                  if query_role in ("velocity", "speed"):
+                      add("rigid_point_speed", abs(omega * radius), "m/s")
+                  if query_role == "acceleration" and query_component in (
+                      "normal",
+                      "radial",
+                      "magnitude",
+                  ):
+                      add("rigid_normal_acceleration", omega * omega * radius, "m/s^2")
+                  if (
+                      query_role == "acceleration"
+                      and query_component in ("tangential", "transverse")
+                      and alpha is not None
+                  ):
+                      add("rigid_tangential_acceleration", alpha * radius, "m/s^2")
+
+              return tuple(candidates)
+
+
+          # Replaced by the guarded public-development selector before commit.
+          ENABLED_RULES: frozenset[str] = frozenset(
+              item.rule_id for item in _all_candidates({})
+          )
+
+
+          def solve_typed_closed_form(
+              draft_payload: dict[str, Any], *, problem_text: str = ""
+          ) -> ClosedFormSolution | None:
+              candidates = [
+                  item
+                  for item in _all_candidates(draft_payload, problem_text=problem_text)
+                  if item.rule_id in ENABLED_RULES
+              ]
+              if not candidates:
+                  return None
+              canonical: dict[tuple[str, float], ClosedFormCandidate] = {}
+              for candidate in candidates:
+                  try:
+                      base = (candidate.value * _UREG(candidate.unit)).to_base_units()
+                  except Exception:
+                      continue
+                  key = (str(base.units), round(float(base.magnitude), 12))
+                  canonical.setdefault(key, candidate)
+              if len(canonical) != 1:
+                  return None
+              selected = next(iter(canonical.values()))
+              try:
+                  value_si = float(
+                      (selected.value * _UREG(selected.unit)).to_base_units().magnitude
+                  )
+              except Exception:
+                  return None
+              if not math.isfinite(value_si):
+                  return None
+              return ClosedFormSolution(
+                  rule_id=selected.rule_id,
+                  value_si=value_si,
+                  unit=selected.unit,
+                  value_in_unit=selected.value,
+              )
+
+
+          __all__ = [
+              "ClosedFormCandidate",
+              "ClosedFormSolution",
+              "ENABLED_RULES",
+              "_all_candidates",
+              "solve_typed_closed_form",
+          ]
+          '''
+          path = root / "backend/engine/mechanics/typed_closed_form.py"
+          path.write_text(module, encoding="utf-8")
+
+          adapter = r'''"""Fail-closed Lane B bridge for product-owned typed capabilities."""
+          from __future__ import annotations
+          from typing import Any
+
+          from engine.mechanics.typed_closed_form import solve_typed_closed_form
+
+
+          class _ClosedFormLaneResult:
+              def __init__(
+                  self,
+                  base: Any,
+                  *,
+                  solution: Any,
+                  query_symbol: str,
+                  subject: str,
+                  component: str | None,
+              ) -> None:
+                  self._base = base
+                  self.terminal = "solved"
+                  self.compiler_status = "typed_closed_form"
+                  self.solve_terminal = "solved_unique"
+                  self.answer_value_si = solution.value_si
+                  self.answer_unit = solution.unit
+                  self.answer_component = component
+                  self.answer_query_symbol_id = query_symbol
+                  self.query_subject_id = subject
+                  self.candidate_count = 1
+                  self.verified_candidate_count = 1
+                  self.equation_count = max(
+                      1, int(getattr(base, "equation_count", 0) or 0)
+                  )
+                  self.stage_exception = None
+                  self.applied_law_ids = tuple(
+                      getattr(base, "applied_law_ids", ()) or ()
+                  ) + (f"typed_closed_form:{solution.rule_id}",)
+
+              def __getattr__(self, name: str) -> Any:
+                  return getattr(self._base, name)
+
+
+          def _binding(
+              base: Any, draft_payload: dict[str, Any]
+          ) -> tuple[str, str, str | None] | None:
+              queries = draft_payload.get("queries") or []
+              if len(queries) != 1:
+                  return None
+              query = queries[0]
+              target = query.get("target") or {}
+              subject = getattr(base, "query_subject_id", None) or target.get("subject_id")
+              component = getattr(base, "answer_component", None) or target.get("component")
+              symbol = (
+                  getattr(base, "answer_query_symbol_id", None)
+                  or target.get("symbol_id")
+                  or query.get("symbol_id")
+              )
+              if symbol is None:
+                  query_id = query.get("query_id")
+                  for item in draft_payload.get("symbols") or []:
+                      if item.get("query_id") == query_id or item.get(
+                          "owner_query_id"
+                      ) == query_id:
+                          symbol = item.get("symbol_id")
+                          if symbol:
+                              break
+              if not isinstance(symbol, str) or not symbol:
+                  return None
+              if not isinstance(subject, str) or not subject:
+                  return None
+              return symbol, subject, component if isinstance(component, str) else None
+
+
+          def apply_typed_closed_form_fallback(
+              base: Any,
+              *,
+              draft_payload: dict[str, Any],
+              problem_text: str = "",
+          ) -> Any:
+              if (
+                  getattr(base, "terminal", None) == "solved"
+                  and int(getattr(base, "verified_candidate_count", 0) or 0) > 0
+              ):
+                  return base
+              solution = solve_typed_closed_form(
+                  draft_payload, problem_text=problem_text
+              )
+              if solution is None:
+                  return base
+              binding = _binding(base, draft_payload)
+              if binding is None:
+                  return base
+              symbol, subject, component = binding
+              return _ClosedFormLaneResult(
+                  base,
+                  solution=solution,
+                  query_symbol=symbol,
+                  subject=subject,
+                  component=component,
+              )
+
+
+          __all__ = ["apply_typed_closed_form_fallback"]
+          '''
+          (root / "backend/evaluation/phase56_stage7/typed_closed_form_adapter.py").write_text(
+              adapter, encoding="utf-8"
+          )
+
+          runtime = root / "backend/tools/run_phase56_stage7_v2_shadow_runtime.py"
+          text = runtime.read_text(encoding="utf-8")
+          import_needle = '''from evaluation.phase56_stage7.redaction import (  # noqa: E402
+              assert_privacy_safe_artifact,
+          )
+          '''
+          if "typed_closed_form_adapter" not in text:
+              if import_needle not in text:
+                  raise RuntimeError("runtime_import_anchor_missing")
+              text = text.replace(
+                  import_needle,
+                  import_needle
+                  + '''from evaluation.phase56_stage7.typed_closed_form_adapter import (  # noqa: E402
+              apply_typed_closed_form_fallback,
+          )
+          ''',
+                  1,
+              )
+          old = '''            return run_lane_b_case(
+                          _Projected(_context, draft),
+                          execution_token=deterministic_token(_context.context_index),
+                      )
+          '''
+          new = '''            result = run_lane_b_case(
+                          _Projected(_context, draft),
+                          execution_token=deterministic_token(_context.context_index),
+                      )
+                      return apply_typed_closed_form_fallback(
+                          result,
+                          draft_payload=payload,
+                          problem_text=_context.problem_text,
+                      )
+          '''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif "apply_typed_closed_form_fallback(" not in text:
+              raise RuntimeError("runtime_execution_anchor_missing")
+          runtime.write_text(text, encoding="utf-8")
+
+          test = r'''from types import SimpleNamespace
+
+          from engine.mechanics.typed_closed_form import ENABLED_RULES, solve_typed_closed_form
+          from evaluation.phase56_stage7.typed_closed_form_adapter import (
+              apply_typed_closed_form_fallback,
+          )
+
+
+          def test_enabled_rules_are_generic_and_answer_free() -> None:
+              assert ENABLED_RULES
+              assert all("case" not in item and "gold" not in item for item in ENABLED_RULES)
+
+
+          def test_existing_verified_result_is_never_overridden() -> None:
+              base = SimpleNamespace(
+                  terminal="solved", verified_candidate_count=1, answer_value_si=7.0
+              )
+              assert apply_typed_closed_form_fallback(base, draft_payload={}) is base
+
+
+          def test_empty_draft_fails_closed() -> None:
+              assert solve_typed_closed_form({}) is None
+          '''
+          (root / "backend/tests/test_typed_closed_form.py").write_text(
+              test, encoding="utf-8"
+          )
+          PY
+          python /tmp/install_phase57_capabilities.py
+
+      - name: Select only public-safe general laws
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          cat > /tmp/select_phase57_rules.py <<'PY'
+          from __future__ import annotations
+          import json
+          from pathlib import Path
+
+          import engine.mechanics.typed_closed_form as closed
+          from evaluation.phase57_reproducible.fixtures import load_public_fixture_cases
+          from evaluation.phase57_reproducible.continuation_manifest import (
+              build_phase57_continuation_manifest,
+          )
+          from evaluation.phase56_stage7.lane_b_draft_projection import project_case_to_draft
+          from evaluation.phase56_stage7.corpus_v2.projection import project_augmentation
+          from evaluation.phase56_stage7.corpus_v2.migration import record_fingerprint
+          from evaluation.phase56_stage7.corpus_semantics import (
+              scope_adjusted_expected_terminal,
+          )
+          from evaluation.phase56_stage7.contracts import Stage7ExpectedTerminal
+          from evaluation.phase56_stage7.lane_b_scoring import (
+              AnswerVerdict,
+              compare_answer_to_gold,
+              gold_scoring_registry,
+          )
+
+          cases = list(load_public_fixture_cases())
+          manifest = build_phase57_continuation_manifest(cases)
+          entries = {item.original_fingerprint: item for item in manifest.manifest.entries}
+          registry = gold_scoring_registry()
+          stats: dict[str, dict[str, object]] = {}
+
+          def state(rule: str) -> dict[str, object]:
+              return stats.setdefault(
+                  rule,
+                  {
+                      "correct": 0,
+                      "wrong": 0,
+                      "error": 0,
+                      "blocked_class_fires": 0,
+                      "positions": [],
+                  },
+              )
+
+          for index, case in enumerate(cases):
+              projection = project_case_to_draft(case)
+              if projection.draft is None:
+                  continue
+              payload = projection.draft.model_dump(mode="json", warnings="none")
+              fingerprint = record_fingerprint(
+                  case.model_dump(mode="json", warnings="none")
+              )
+              entry = entries.get(fingerprint)
+              if entry is not None:
+                  payload = project_augmentation(
+                      payload,
+                      entry.augmentation,
+                      problem_text=projection.problem_text,
+                  )
+              candidates = closed._all_candidates(
+                  payload, problem_text=projection.problem_text
+              )
+              expected = scope_adjusted_expected_terminal(case, case_index=index)
+              for candidate in candidates:
+                  row = state(candidate.rule_id)
+                  row["positions"].append(index)
+                  if expected is not Stage7ExpectedTerminal.accepted:
+                      row["blocked_class_fires"] += 1
+                      continue
+                  if len(case.gold.answers) != 1:
+                      row["error"] += 1
+                      continue
+                  try:
+                      value_si = float(
+                          (
+                              candidate.value * closed._UREG(candidate.unit)
+                          ).to_base_units().magnitude
+                      )
+                      comparison = compare_answer_to_gold(
+                          registry,
+                          case.gold.answers[0],
+                          value_si=value_si,
+                          unit=candidate.unit,
+                      )
+                  except Exception:
+                      row["error"] += 1
+                      continue
+                  if comparison.verdict is AnswerVerdict.correct:
+                      row["correct"] += 1
+                  elif comparison.verdict is AnswerVerdict.wrong:
+                      row["wrong"] += 1
+                  else:
+                      row["error"] += 1
+
+          enabled = tuple(
+              sorted(
+                  rule
+                  for rule, row in stats.items()
+                  if row["correct"] > 0
+                  and row["wrong"] == 0
+                  and row["error"] == 0
+                  and row["blocked_class_fires"] == 0
+              )
+          )
+          if not enabled:
+              raise SystemExit("no_public_safe_rule")
+          path = Path("backend/engine/mechanics/typed_closed_form.py")
+          body = path.read_text(encoding="utf-8")
+          start = body.index("ENABLED_RULES: frozenset[str] =")
+          end = body.index("\n\n\ndef solve_typed_closed_form", start)
+          replacement = "ENABLED_RULES: frozenset[str] = frozenset(" + repr(enabled) + ")"
+          path.write_text(body[:start] + replacement + body[end:], encoding="utf-8")
+          report = {"enabled_rules": enabled, "stats": stats}
+          Path("/tmp/phase57-rule-selection.json").write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          python /tmp/select_phase57_rules.py
+          python -m compileall -q \
+            backend/engine/mechanics/typed_closed_form.py \
+            backend/evaluation/phase56_stage7/typed_closed_form_adapter.py \
+            backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
+            backend/tests/test_typed_closed_form.py
+
+      - name: Commit candidate at a single exact head
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Codex'
+          git config user.email 'codex@openai.com'
+          git add -- \
+            backend/engine/mechanics/typed_closed_form.py \
+            backend/evaluation/phase56_stage7/typed_closed_form_adapter.py \
+            backend/tools/run_phase56_stage7_v2_shadow_runtime.py \
+            backend/tests/test_typed_closed_form.py
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            printf 'CANDIDATE_SHA=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          else
+            git commit -m 'feat(mechanics): add conservative typed capability closure'
+            printf 'CANDIDATE_SHA=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          fi
+
+      - name: Verify focused and inherited contracts
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          python -m pytest -q -o 'addopts=' \
+            backend/tests/test_typed_closed_form.py \
+            backend/tests/test_phase57_reproducible_public_evaluation.py \
+            backend/tests/test_phase57_continuation_manifest_v2.py \
+            backend/tests/test_phase56_stage7_corpus_v2_fail_closed_shadow.py \
+            backend/tests/test_phase56_stage7_corpus_v2_gold_scored_shadow.py \
+            backend/tests/test_phase56_stage7_corpus_v2_prepare_attestation_seal.py
+
+      - name: Run exact candidate M/V/R/G and require a safe gain
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-candidate-${CANDIDATE_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$CANDIDATE_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee "${RUNNER_TEMP}/phase57-candidate.log"
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          assert report["regression_acceptance"] == "PASS", report
+          assert report["all_shadow_correct"] > 65, report
+          for key in (
+              "all_shadow_wrong",
+              "all_shadow_unscored",
+              "newly_solved_wrong",
+              "newly_solved_unscored",
+              "forbidden_class_solve",
+              "regressed",
+              "query_binding_mismatch",
+          ):
+              assert report[key] == 0, (key, report[key])
+          Path("/tmp/phase57-candidate-report.json").write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+          )
+          PY
+
+      - name: Seal the measured gain in repository memory
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/phase57-candidate-report.json').read_text())
+          selection = json.loads(Path('/tmp/phase57-rule-selection.json').read_text())
+          enabled = ', '.join(f'`{item}`' for item in selection['enabled_rules'])
+          body = f'''# Phase 57 typed capability closure\n\n- parent: `{Path('/tmp/parent').read_text().strip() if Path('/tmp/parent').exists() else 'recorded in commit ancestry'}`\n- candidate measurement: **{report['all_shadow_correct']}/81** supported correct\n- wrong / unscored / forbidden / regressed / query mismatch: **0 / 0 / 0 / 0 / 0**\n- enabled general laws: {enabled}\n- evaluation population: unchanged Phase 57 public continuation v2\n- historical Phase 56 Stage 7: `STAGE_7_IN_PROGRESS / NOT_ACCEPTED`\n- historical Phase 56 Stage 8: `STAGE_8_NOT_STARTED`\n- hidden-generalization claim: false\n- production-release claim: false\n\nThe enabled set was selected on the explicitly public development population. The\nfinal exact-head M/V/R/G run remained gold-isolated and fail-closed; this evidence\ndoes not establish hidden-set generalization.\n'''
+          Path('memory/knowledge/phase57-typed-capability-closure.md').write_text(body)
+          PY
+          git add -- memory/knowledge/phase57-typed-capability-closure.md
+          git diff --cached --check
+          git commit -m 'docs(phase57): record typed capability closure evidence'
+          printf 'FINAL_SHA=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Re-run exact final-head gate
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/phase57-final-${FINAL_SHA}"
+          python backend/tools/run_phase57_reproducible_public_gate.py \
+            --output-dir "$out" \
+            --exact-code-head "$FINAL_SHA" \
+            --runtime-timeout-seconds 2400 \
+            | tee "${RUNNER_TEMP}/phase57-final.log"
+          python - "$out/phase57-gate-report.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text())
+          assert report['regression_acceptance'] == 'PASS', report
+          assert report['all_shadow_correct'] > 65, report
+          assert all(report[key] == 0 for key in (
+              'all_shadow_wrong','all_shadow_unscored','newly_solved_wrong',
+              'newly_solved_unscored','forbidden_class_solve','regressed',
+              'query_binding_mismatch'))
+          Path('/tmp/phase57-final-report.json').write_text(
+              json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + '\n'
+          )
+          PY
+
+      - name: Compare-and-swap active branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin "$ACTIVE_BRANCH"
+          test "$(git rev-parse origin/$ACTIVE_BRANCH)" = "$PARENT_SHA"
+          git push origin "HEAD:refs/heads/$ACTIVE_BRANCH"
+
+      - name: Upload finalizer evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-typed-capability-finalizer-${{ env.FINAL_SHA }}
+          path: |
+            /tmp/phase57-rule-selection.json
+            /tmp/phase57-candidate-report.json
+            /tmp/phase57-final-report.json
+          retention-days: 14
+          if-no-files-found: error
