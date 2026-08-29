@@ -1,0 +1,1 @@
+Independent terminal-closure rerun 03. Reuse prior optimizer diagnostics but independently verify every unresolved cohort. Prioritize conservative general capabilities for projectile, planar rigid-body kinematics, pulley constraints, and one-dimensional collision. Add structural/perturbed regression tests. Only exact 81/81 and all-zero defects may advance the active branch.
