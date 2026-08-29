@@ -1,0 +1,1 @@
+Independent ultimate Phase 57 closure rerun. Finish the remaining supported mechanics cases with general typed laws and structural regression tests. Preserve frozen corpus/scorer/provenance/gates and Phase 56 history. Only exact 81/81 with every defect counter zero may fast-forward the active branch.
