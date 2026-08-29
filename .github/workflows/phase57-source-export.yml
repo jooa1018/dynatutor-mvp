@@ -1,0 +1,42 @@
+name: Phase 57 source export (temporary)
+
+on:
+  pull_request:
+    branches:
+      - codex/phase57-reproducible-public-evaluation
+    paths:
+      - "**"
+
+permissions:
+  contents: read
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact pull-request head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - name: Assert exact checkout and build source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${{ github.event.pull_request.head.sha }}"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$expected"
+          printf '%s\n' "$actual" > /tmp/EXACT_HEAD
+          tar --exclude=.git -czf "/tmp/dynatutor-source-${actual}.tar.gz" .
+
+      - name: Upload exact-head source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-source-${{ github.event.pull_request.head.sha }}
+          path: |
+            /tmp/EXACT_HEAD
+            /tmp/dynatutor-source-${{ github.event.pull_request.head.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
