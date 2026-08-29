@@ -1,0 +1,1 @@
+Independent ultimate closure rerun 03. Focus on root-cause capability completion: event-coupled projectile timing, planar rigid-body relative velocity/acceleration, multi-body pulley holonomic constraints, and momentum-plus-restitution collision closure. Verify applicability from typed IR and fail closed on ambiguity. Exact 81/81 and zero defects are mandatory.
