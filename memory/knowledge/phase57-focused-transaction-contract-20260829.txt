@@ -1,0 +1,1 @@
+Focused PR #76 trigger. Implement and test the concrete collision and ideal-pulley transaction/compiler-contract repairs specified in the PR instruction. This temporary PR must not be merged or update the active branch directly.
