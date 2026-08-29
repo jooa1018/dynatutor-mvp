@@ -1,0 +1,1 @@
+Independent terminal-closure rerun 01B. Preserve all frozen Phase 57 gates; only exact 81/81 with zero defects may advance the active branch.
