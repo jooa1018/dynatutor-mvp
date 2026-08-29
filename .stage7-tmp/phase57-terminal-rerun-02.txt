@@ -1,0 +1,1 @@
+Independent terminal-closure rerun 02. Diagnose all sixteen unresolved public-supported cases at IR/compiler/solver/query-binding level. Use only general typed mechanics laws and perturbed-value tests. Preserve every frozen gate; only exact 81/81 with zero defects may advance the active branch.
