@@ -21,6 +21,13 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
 
+      - name: Set up the workflow Python runtime
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements-lock.txt
+
       - name: Assert exact checkout and build source archive
         shell: bash
         run: |
@@ -31,6 +38,16 @@ jobs:
           printf '%s\n' "$actual" > /tmp/EXACT_HEAD
           tar --exclude=.git -czf "/tmp/dynatutor-source-${actual}.tar.gz" .
 
+      - name: Download the locked unit-runtime wheel set
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/phase57-runtime-wheels
+          python -m pip download \
+            --only-binary=:all: \
+            --dest /tmp/phase57-runtime-wheels \
+            "pint==0.25.3"
+
       - name: Upload exact-head source archive
         uses: actions/upload-artifact@v4
         with:
@@ -38,5 +55,13 @@ jobs:
           path: |
             /tmp/EXACT_HEAD
             /tmp/dynatutor-source-${{ github.event.pull_request.head.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload locked unit-runtime wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase57-runtime-wheels-${{ github.event.pull_request.head.sha }}
+          path: /tmp/phase57-runtime-wheels/
           if-no-files-found: error
           retention-days: 1
