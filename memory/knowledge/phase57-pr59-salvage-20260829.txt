@@ -1,0 +1,1 @@
+Salvage trigger for PR #59. Re-evaluate each meaningful existing commit, repair reusable typed mechanics code, add perturbed tests, and leave the best strictly improved source/test commit with exact residual evidence. Do not update active branch without exact 81/81 and all-zero defects.
