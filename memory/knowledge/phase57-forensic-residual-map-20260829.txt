@@ -1,0 +1,1 @@
+Forensic trigger for PR #73. Reproduce the 65/81 baseline and commit the complete 16-case residual map, source/function dependency map, exact transaction/compiler/query-binding failures, and commands, without changing evaluation contracts or adding benchmark-specific runtime routing.
