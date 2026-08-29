@@ -1,0 +1,1 @@
+Focused PR #75 trigger. Implement and test the concrete projectile apex/landing boundary-equation and query-binding repairs specified in the PR instruction. This temporary PR must not be merged or update the active branch directly.
