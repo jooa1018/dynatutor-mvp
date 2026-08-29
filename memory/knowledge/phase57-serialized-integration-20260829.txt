@@ -1,0 +1,1 @@
+Serialized integration trigger for PR #77 after closing obsolete PRs #58 and #60–#72. Valid inputs are only PR #59 and PRs #73–#76. Fetch their latest real source/test commits, integrate monotonic improvements, and run unchanged exact-SHA M/V/R/G with all defect, regression, and release checks. No active-branch update without exact 81/81 and all-zero defects.

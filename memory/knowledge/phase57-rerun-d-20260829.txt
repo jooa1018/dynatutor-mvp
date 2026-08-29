@@ -1,0 +1,1 @@
+Phase 57 rerun D. This trigger follows the concrete @codex instruction on PR #77. It authorizes code changes only when the unchanged exact public evaluation reaches 81/81 with every defect counter zero; otherwise produce a residual-failure report. Do not merge this temporary PR.

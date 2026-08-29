@@ -1,0 +1,1 @@
+Final integration refresh trigger for PR #77. Fetch the latest focused, salvage, and forensic heads; integrate only independently verified real source/test improvements; implement any missing equation systems directly; run one unchanged exact-SHA M/V/R/G plus defect/regression/release verification.
