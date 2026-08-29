@@ -1,0 +1,1 @@
+Integration synchronization trigger for PR #77. Fetch latest focused branches #74, #75, and #76, integrate only real source/test improvements, and run the unchanged exact evaluation. No completion claim without exact 81/81 and all defect counters zero.
