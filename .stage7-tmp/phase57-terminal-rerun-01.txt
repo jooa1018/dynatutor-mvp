@@ -1,0 +1,1 @@
+Independent terminal-closure rerun 01. Preserve every frozen Phase 57 gate. Advance the active branch only after exact 81/81 supported correctness and all defect counters are zero.
