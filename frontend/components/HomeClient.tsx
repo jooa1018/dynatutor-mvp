@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   aiExplain, ApiAuthError, feedbackProblem, getLLMStatus, getPracticeSet,
   getRecordStats, getStudyDashboard, listExamples, listRecords, markRecordReview,
@@ -74,11 +74,55 @@ export default function HomeClient() {
   const [wakeMessage, setWakeMessage] = useState('');
   const [textbookRevision, setTextbookRevision] = useState<any>(null);
 
+  // UI request ownership only: the backend remains the verification authority.
+  // Refs fence callbacks synchronously, including two clicks before a render.
+  const solveSequence = useRef(0);
+  const explanationSequence = useRef(0);
+  const solveBusy = useRef(false);
+  const explanationBusy = useRef(false);
+  const draft = useRef({
+    problemText: fallbackExamples[0].problem_text,
+    studentSolution: '',
+  });
+  const [resolvedInput, setResolvedInput] = useState<Readonly<{
+    problemText: string;
+    studentSolution: string;
+    requestId: number;
+  }> | null>(null);
+
+  function invalidateResults() {
+    solveSequence.current += 1;
+    explanationSequence.current += 1;
+    solveBusy.current = false;
+    explanationBusy.current = false;
+    setLoading(false);
+    setAiLoading(false);
+    setData(null);
+    setResolvedInput(null);
+    setFeedback(null);
+    setAiExplanation(null);
+    setWakeMessage('');
+    setError('');
+    setToast('');
+  }
+
   function replaceProblemText(nextText: string) {
+    if (draft.current.problemText !== nextText) {
+      draft.current = { ...draft.current, problemText: nextText };
+      invalidateResults();
+    }
     setText(nextText);
     setTextbookRevision((current: any) => (
       current?.problemText === nextText ? current : null
     ));
+  }
+
+  function replaceStudentSolution(nextStudent: string) {
+    if (draft.current.studentSolution !== nextStudent) {
+      draft.current = { ...draft.current, studentSolution: nextStudent };
+      invalidateResults();
+    }
+    setStudent(nextStudent);
   }
 
   // 401 응답은 어디서 나든 토큰 안내 모달로 이어진다.
@@ -92,16 +136,30 @@ export default function HomeClient() {
   }
 
   useEffect(() => {
+    let active = true;
+    const initialSolveSequence = solveSequence.current;
+    const initialExplanationSequence = explanationSequence.current;
     listExamples().then((out) => {
-      if (out.examples?.length) {
+      if (active && out.examples?.length) {
         setExamples(out.examples);
-        replaceProblemText(out.examples[0].problem_text);
+        // A slow initial fetch must not replace a draft or an active request.
+        if (solveSequence.current === initialSolveSequence
+          && explanationSequence.current === initialExplanationSequence) {
+          replaceProblemText(out.examples[0].problem_text);
+        }
       }
     }).catch(() => {});
     refreshNotebook();
     refreshStudy();
     getLLMStatus().then(setLlmStatus).catch(() => {});
     getPracticeSet('개인 학습 드릴', '전체', 6).then(setPracticeSet).catch(() => {});
+    return () => {
+      active = false;
+      solveSequence.current += 1;
+      explanationSequence.current += 1;
+      solveBusy.current = false;
+      explanationBusy.current = false;
+    };
   }, []);
 
   const categories = useMemo(() => ['전체', ...Array.from(new Set(examples.map((e) => e.category)))], [examples]);
@@ -109,14 +167,34 @@ export default function HomeClient() {
   const backendConnected = Boolean(stats) || Boolean(llmStatus) || Boolean(study);
 
   async function run(problemOverride?: string, clarifyPatch?: any, canonicalPatch?: any) {
-    const problem = problemOverride ?? text;
+    const problem = problemOverride ?? draft.current.problemText;
+    if (!problem.trim()) {
+      setError('문제를 입력하세요.');
+      return;
+    }
+    if (solveBusy.current && problem === draft.current.problemText) return;
+    // Select the requested input now, never when an asynchronous result arrives.
+    replaceProblemText(problem);
+    const requestId = ++solveSequence.current;
+    const input = Object.freeze({ ...draft.current, requestId });
+    const isCurrent = () => solveSequence.current === requestId;
+    solveBusy.current = true;
+    explanationSequence.current += 1;
+    explanationBusy.current = false;
     setView('solve');
     setLoading(true);
+    setAiLoading(false);
+    setData(null);
+    setResolvedInput(null);
+    setFeedback(null);
+    setAiExplanation(null);
     setError('');
     setToast('');
     setWakeMessage('');
     const wakeTimer = window.setTimeout(() => {
-      setWakeMessage('서버를 깨우는 중입니다. 무료 Render 서버라 첫 요청은 조금 걸릴 수 있습니다. 자동으로 다시 시도하고 있어요.');
+      if (isCurrent()) {
+        setWakeMessage('서버를 깨우는 중입니다. 무료 Render 서버라 첫 요청은 조금 걸릴 수 있습니다. 자동으로 다시 시도하고 있어요.');
+      }
     }, 2500);
     if (
       !canonicalPatch?.textbook_parse_correction
@@ -125,54 +203,71 @@ export default function HomeClient() {
       setTextbookRevision(null);
     }
     try {
-      const out = await solveProblem(problem, student, clarifyPatch ?? null, canonicalPatch ?? null);
-      replaceProblemText(problem);
+      const out = await solveProblem(input.problemText, input.studentSolution, clarifyPatch ?? null, canonicalPatch ?? null);
+      if (!isCurrent()) return;
       setData(out);
+      setResolvedInput(input);
       if (canonicalPatch?.textbook_parse_correction) {
         setTextbookRevision({
-          problemText: problem,
+          problemText: input.problemText,
           correction: canonicalPatch.textbook_parse_correction,
           approvalFingerprint: out?.textbook_parse?.approval_fingerprint ?? null,
         });
       }
-      setAiExplanation(null);
-      if (student.trim()) setFeedback(await feedbackProblem(problem, student));
-      else setFeedback(null);
+      if (input.studentSolution.trim()) {
+        const nextFeedback = await feedbackProblem(input.problemText, input.studentSolution);
+        if (isCurrent()) setFeedback(nextFeedback);
+      }
     } catch (e: any) {
-      handleError(e, '오류가 발생했습니다.');
+      if (isCurrent()) handleError(e, '오류가 발생했습니다.');
     } finally {
       window.clearTimeout(wakeTimer);
-      setWakeMessage('');
-      setLoading(false);
+      if (isCurrent()) {
+        solveBusy.current = false;
+        setWakeMessage('');
+        setLoading(false);
+      }
     }
   }
 
 
   async function runAIExplanation(forceTemplate = false) {
-    if (!text.trim()) return;
+    const input = { ...draft.current };
+    if (!input.problemText.trim() || explanationBusy.current) return;
+    const requestId = ++explanationSequence.current;
+    const isCurrent = () => explanationSequence.current === requestId;
+    explanationBusy.current = true;
     setAiLoading(true);
+    setAiExplanation(null);
     setToast('');
     setError('');
     try {
-      const out = await aiExplain(text, student, forceTemplate);
+      const out = await aiExplain(input.problemText, input.studentSolution, forceTemplate);
+      if (!isCurrent()) return;
       setAiExplanation(out);
       if (!out.used_llm) setToast('LLM 대신 안전 템플릿 설명을 표시했습니다.');
     } catch (e: any) {
-      handleError(e, 'AI 설명 생성 중 오류가 발생했습니다.');
+      if (isCurrent()) handleError(e, 'AI 설명 생성 중 오류가 발생했습니다.');
     } finally {
-      setAiLoading(false);
+      if (isCurrent()) {
+        explanationBusy.current = false;
+        setAiLoading(false);
+      }
     }
   }
 
   async function save() {
-    if (!data) return;
+    if (!data || !resolvedInput
+      || resolvedInput.requestId !== solveSequence.current
+      || resolvedInput.problemText !== draft.current.problemText
+      || resolvedInput.studentSolution !== draft.current.studentSolution) return;
     if (!data.ok || !data.verification?.passed) {
       setToast('검증을 통과한 풀이만 오답노트에 저장할 수 있습니다.');
       return;
     }
     const payload = {
-      problem_text: text,
-      student_solution: student || null,
+      problem_text: resolvedInput.problemText,
+      student_solution: resolvedInput.studentSolution || null,
       solver: data.diagnosis?.selected_solver,
       answer_display: data.answers?.length ? data.answers.map((a: any) => a.display).join(' / ') : data.answer?.display ?? data.unsupported_reason,
       problem_type: data.diagnosis?.canonical?.system_type,
@@ -330,7 +425,7 @@ export default function HomeClient() {
 
             <div className="row-gap">
               <label className="field-label" htmlFor="student-input">내 풀이 <i>(선택)</i></label>
-              <textarea id="student-input" className="mini" placeholder="예: mg = ma 라서 a = g 라고 생각했습니다" value={student} onChange={(e) => setStudent(e.target.value)} />
+              <textarea id="student-input" className="mini" placeholder="예: mg = ma 라서 a = g 라고 생각했습니다" value={student} onChange={(e) => replaceStudentSolution(e.target.value)} />
             </div>
 
             <div className="actions">
