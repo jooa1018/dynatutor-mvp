@@ -178,7 +178,7 @@ async def verify(root: Path, output: Path, report: dict) -> None:
 
             before = len(solve_requests)
             async with page.expect_response(lambda res: res.url == f"{API}/solve" and res.request.method == "POST") as pending:
-                await page.evaluate("""() => { const b = document.querySelector('button.btn.primary'); b.click(); b.click(); }""")
+                await page.evaluate("""() => { const b = [...document.querySelectorAll('button')].find(node => node.textContent.trim() === '문제 풀기'); if (!b) throw new Error('solve button missing'); b.click(); b.click(); }""")
             duplicate = await (await pending.value).json()
             check_incline(duplicate, 60)
             await expect(page.locator(".answer-block .ans-val")).to_have_count(1)
@@ -192,7 +192,23 @@ async def verify(root: Path, output: Path, report: dict) -> None:
             await expect(page.locator(".answer-block")).to_have_count(0)
             await expect(page.get_by_role("button", name="문제 풀기", exact=True)).to_be_enabled()
             report["checks"]["injected_503_no_stale_success"] = "PASS"
-            assert http_errors == [{"url": f"{API}/solve", "status": 503}], http_errors
+            # The Generic UI is a separate interpretation/provider entrypoint.
+            # With credentials/config deliberately disabled, exercise its real
+            # fail-closed path without calling that an end-to-end Gen2 success.
+            generic_url = f"{API}/api/mechanics/multimodal/evidence"
+            async with page.expect_response(lambda res: res.url == generic_url and res.request.method == "POST") as pending:
+                await page.get_by_role("button", name="Generic 경로로 분석하고 풀기", exact=True).click()
+            generic_response = await pending.value
+            generic_body = await generic_response.json()
+            assert generic_response.status == 503
+            assert generic_body["detail"]["code"] in {"multimodal_modeler_unavailable", "multimodal_revision_store_unavailable"}
+            await expect(page.locator(".mechanics-multimodal-panel [role='alert']")).to_be_visible()
+            await expect(page.locator(".mechanics-verified-result")).to_have_count(0)
+            await expect(page.get_by_role("button", name="Generic 경로로 분석하고 풀기", exact=True)).to_be_enabled()
+            report["generic_natural_language_pipeline"] = {"status": "BLOCKED_EXTERNAL", "reason": generic_body["detail"]["code"]}
+            write_json(output / "generic-unconfigured.json", generic_body)
+            report["checks"]["generic_unconfigured_environment_fails_closed"] = "PASS"
+            assert http_errors == [{"url": f"{API}/solve", "status": 503}, {"url": generic_url, "status": 503}], http_errors
             report["checks"]["no_unexpected_api_errors_including_cold_start"] = "PASS"
             assert not errors, errors
             report["checks"]["no_uncaught_browser_errors"] = "PASS"
@@ -223,6 +239,7 @@ def main() -> None:
               "built_app_sha256": hashlib.sha256((root / "frontend/out/assets/app.js").read_bytes()).hexdigest()}
     environment = dict(os.environ)
     environment.update({"DYNATUTOR_ENV": "development", "RENDER": "false", "LLM_ENABLED": "false",
+                        "MECHANICS_MULTIMODAL_PROVIDER": "disabled", "MECHANICS_MODELER_ENABLED": "false",
                         "DYNATUTOR_ACCESS_TOKEN": "", "DYNATUTOR_DB": str(output / "isolated-records.sqlite"),
                         "DYNATUTOR_CORS_ORIGINS": UI, "OPENAI_API_KEY": "", "ANTHROPIC_API_KEY": "",
                         "OPENAI_BASE_URL": "", "ANTHROPIC_BASE_URL": "", "MECHANICS_MODELER_BASE_URL": "",

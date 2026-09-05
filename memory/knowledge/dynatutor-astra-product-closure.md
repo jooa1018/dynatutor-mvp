@@ -1,61 +1,77 @@
 # DynaTutor product closure checkpoint
 
-Date: 2026-09-05. Status: **INCOMPLETE**; not a personal-use or release claim.
-Branch: `codex/dynatutor-astra-product-closure`, integration target:
+2026-09-05 — **INCOMPLETE**, not a personal-use, MVRG or release claim.
+Branch: `codex/dynatutor-astra-product-closure`; Draft PR #79 targets
 `codex/phase57-reproducible-public-evaluation`. PR #49 stays Draft/unmerged.
-Parent/checkpoint: `054d3641568b5b3425009b5c46c07cc3633a841e`.
+Original checkpoint `054d3641568b5b3425009b5c46c07cc3633a841e` is preserved.
+The exact final head and downloaded CI artifact identities are recorded in PR #79.
 
-## Observed defect and bounded fix
+## Reproduced defects and fixes
 
-The original `frontend/components/HomeClient.tsx` blob
-`27120b98ec85c6709b3c5379ac6e98f0003194ae` was copied and its Git blob hash
-verified locally before modification. A late solve response restored its old
-problem text; editing a completed problem left its old result/save action visible;
-old finally/error/feedback/AI callbacks could mutate a newer run. Notebook save
-used editable fields rather than a snapshot bound to the displayed result.
+- HomeClient late responses restored obsolete inputs; editable input could be
+  saved with a prior result. Request ownership fences, duplicate suppression,
+  invalidation and immutable result-bound save snapshots now prevent this.
+  Original blob `27120b98ec85c6709b3c5379ac6e98f0003194ae` was hash-verified.
+  Controlled callback regressions: before 2/12 passed; after 12/12 passed.
+- Actual Chromium cold start exposed concurrent SQLite migration failures:
+  two requests observed the same missing column and both attempted ALTER TABLE.
+  `_connect()` now reserves one SQLite write transaction before schema inspection,
+  commits the same additive migration, and rolls back/closes on failure. No data
+  deletion or verification-policy change. Real SQLite tests: before 1/4 passed,
+  after 4/4 passed, including old-data preservation and failed-receipt honesty.
+- Generic multimodal UI had the analogous obsolete revision/callback race.
+  Shared request ownership within that component now covers modeling, confirmation,
+  corrections and execute. Controlled callback regressions: before 0/5 passed,
+  after 5/5 passed. Server revision/receipt authority is unchanged.
 
-The patch adds frontend-only request ownership refs, synchronous duplicate-click
-suppression, input-change invalidation and result-bound save snapshots. It does
-not create a solver authority or change backend statuses, receipts, tolerances,
-public populations, model/provider settings, attempt DAGs or Phase 56 contracts.
+Local callback tests use Node 22.16.0 / TypeScript 5.8.3 and API/hook doubles;
+SQLite tests use Python 3.13.5 and genuine temporary databases. These are not
+full locked-environment or mathematical/MVRG evidence. No independent reviewer
+or subagent was used. Performance was not measured.
 
-## Executed local evidence
+## Actual product and public evidence
 
-`node --test tests/homeClientRunIdentity.test.js`, from `frontend/`:
-original source: 12 tests, 2 passed / 10 failed;
-patched source: 12 tests, 12 passed / 0 failed, none skipped.
-These execute the real transpiled HomeClient handlers with controlled hook/API/
-timer doubles. They are **not** React DOM, browser, mathematical, fresh public,
-provider or MVRG evidence. Local Node was 22.16.0, not the repository's Node 20;
-full lockfile install, typecheck/lint/build and regression checks require CI.
-No independent reviewer or subagent was used; performance was not measured.
+Existing Node 20 locked npm checks passed at intermediate head `70d6378`.
+Actual Chromium + Python 3.11/Pint product execution there passed natural-language
+incline solve, independent numerical comparison, changed angle/mass units,
+full saved-artifact readback through the existing export API, reload/history/
+export/rerun, missing/unsupported inputs and late-response invalidation. The
+browser run then failed because its duplicate-click selector selected the
+separate Generic button; the selector is corrected without weakening assertions.
+The first browser harness also incorrectly expected raw_result in RecordItem;
+full-fidelity readback now uses the existing export contract, not a changed API.
 
-## Current boundary and next execution
+The new exact-head workflow reruns all frontend checks, SQLite and real Chromium
+regressions, plus the existing Phase 57 public runner and artifact identity gate.
+No final-head PASS is predeclared here. Browser evidence explicitly separates
+injected transport failure, real solver responses and disabled-provider behavior.
 
-The isolated closure workflow uses Node 20 and the existing npm commands, plus
-the existing Python 3.11 locked Phase 57 exact-head campaign and identity verifier.
-No acceptance criteria or fixed public population are changed. It uploads only
-public aggregate evaluation JSON. Its separate runtime artifact contains built
-frontend assets and public backend app/engine source, no private/gold case data or
-provider credentials, for actual local browser verification. An uploaded build
-artifact is not a deployed Preview or an E2E pass. CI results must be read for the
-actual final SHA; no result is predeclared here.
+Downloaded and SHA-verified **fresh** V2 public campaign at `ca66ce2`:
+65/81 supported correct; zero wrong/unscored/regressions/query-binding mismatches/
+forbidden solves; 100 total contexts, 97 runtime-completed, 3 projection-refused.
+Regression acceptance PASS; quality IN_PROGRESS (`supported_correct:65<81`).
+The UI/storage fixes do not claim to have improved this mathematical count.
+Remaining 16 individual failure roots have not been established from the public
+aggregate. They are not relabeled ASSEMBLED_UNVERIFIED or excluded.
 
-Observed: raw Git tree/commit reads and some normalized PR/log responses in this
-session disagreed about the same SHA (frontend/backend versus root TypeScript,
-August versus July metadata). Do not promote the supplied historical 50/31 or
-63/18 counts to a fresh result. Use immutable Git objects and downloaded,
-identity-verified exact-head artifacts to settle evaluation identity.
+Some normalized connector responses contradicted immutable Git objects about
+this repository's structure/history. Historical 50/31 and persisted 63/18 claims
+are not final-head fresh results. Use immutable trees, source SHA and verified
+artifact bytes; do not substitute the public M/V/R/G procedure for real-study MVRG.
 
-NOT_RUN here: formal real-study MVRG, actual provider call, full product browser
-flow and nonproduction Preview E2E. Render workspace selection awaits the user's
-confirmation requested in this session; it has not been silently selected. The
-connected Vercel team lists HarmonyMaker, not DynaTutor. Existing Render YAML is
-production-configured; it has not been changed or deployed. No usable Preview URL
-or readiness claim is established.
+## Remaining boundaries / next execution
 
-Next: inspect exact-head closure/release CI; obtain the verified runtime artifact,
-execute the real local product flow and inspect fresh public aggregates; resolve
-Preview permissions/configuration separately. Keep remaining supported failures
-and unmet MVRG requirements visible. Rollback is an additive revert of this
-isolated change; no force-push, reset, merge or production action is authorized.
+Status remains INCOMPLETE pending final exact-head CI, public quality gaps,
+formal real-study MVRG and actual Preview. The real Generic NLP route requires
+an interpretation adapter/revision-store configuration: disabled CI exercises
+its honest 503, not an actual configured-model Gen2 E2E success. Legacy `/solve`
+product-browser results and typed public evaluation are separately reported.
+
+Render workspace selection awaits the user confirmation requested in this
+session. Connected Vercel team lists HarmonyMaker, not DynaTutor. Production
+Render YAML is unchanged; no Preview URL, deployment SHA, paid model call,
+production promotion, main merge or release is established. Do not hide these
+limitations behind a green build. Next: read final-head jobs and downloaded
+browser/public artifacts; use the authorized nonproduction infrastructure once
+workspace access is confirmed, then perform configured Gen2 and MVRG validation.
+Rollback is additive revert, never reset/force-push or data deletion.
