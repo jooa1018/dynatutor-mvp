@@ -26,24 +26,35 @@ def _connect() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
-    con.execute(
-        """
-        CREATE TABLE IF NOT EXISTS records (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            problem_text TEXT NOT NULL,
-            student_solution TEXT,
-            solver TEXT,
-            answer_display TEXT,
-            problem_type TEXT,
-            tags_json TEXT NOT NULL DEFAULT '[]',
-            note TEXT,
-            raw_result_json TEXT,
-            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    # Serialize schema inspection and additive migration across connections and
+    # processes. Without a write reservation two cold-start requests can both
+    # observe a missing column, then race on ALTER TABLE.
+    try:
+        con.execute("BEGIN IMMEDIATE")
+        con.execute(
+            """
+            CREATE TABLE IF NOT EXISTS records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                problem_text TEXT NOT NULL,
+                student_solution TEXT,
+                solver TEXT,
+                answer_display TEXT,
+                problem_type TEXT,
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                note TEXT,
+                raw_result_json TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
         )
-        """
-    )
-    _migrate(con)
-    con.commit()
+        _migrate(con)
+        con.commit()
+    except BaseException:
+        try:
+            con.rollback()
+        finally:
+            con.close()
+        raise
     return con
 
 

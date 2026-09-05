@@ -56,6 +56,9 @@ async def verify(root: Path, output: Path, report: dict) -> None:
         context = await browser.new_context(viewport={"width": 1365, "height": 1000}, accept_downloads=True)
         page = await context.new_page()
         errors: list[str] = []
+        http_errors: list[dict] = []
+        page.on("response", lambda res: http_errors.append({"url": res.url, "status": res.status})
+                if res.url.startswith(API + "/") and res.status >= 400 else None)
         page.on("pageerror", lambda error: errors.append(str(error)))
         page.set_default_timeout(20_000)
         solve_requests: list[dict] = []
@@ -111,8 +114,15 @@ async def verify(root: Path, output: Path, report: dict) -> None:
             saved_response = await pending.value
             saved = await saved_response.json()
             assert saved_response.status == 200 and saved["verified"] is True
-            assert saved["problem_text"] == A and saved["raw_result"] == a
-            write_json(output / "saved-result.json", saved)
+            assert saved["problem_text"] == A
+            assert saved_response.request.post_data_json["raw_result"] == a
+            # RecordItem intentionally omits raw_result. Read back the persisted
+            # artifact through the existing full-fidelity export API instead.
+            export_response = await context.request.get(f"{API}/records/export")
+            assert export_response.status == 200
+            persisted = next(item for item in (await export_response.json())["records"] if item["id"] == saved["id"])
+            assert persisted["problem_text"] == A and persisted["raw_result"] == a
+            write_json(output / "saved-result.json", persisted)
             report["checks"]["saved_input_receipt_result_identity"] = "PASS"
 
             b = await solve(B, "changed-60deg")
@@ -133,7 +143,7 @@ async def verify(root: Path, output: Path, report: dict) -> None:
             await (await download.value).save_as(str(exported_path))
             exported = json.loads(exported_path.read_text(encoding="utf-8"))
             assert exported["server_available"] is True
-            assert any(item["problem_text"] == A for item in exported["records"])
+            assert any(item["id"] == saved["id"] and item["problem_text"] == A and item["raw_result"] == a for item in exported["records"])
             report["checks"]["reload_history_and_actual_export"] = "PASS"
             async with page.expect_response(lambda res: res.url == f"{API}/solve" and res.request.method == "POST") as pending:
                 await page.locator(".rec").filter(has_text=A).get_by_role("button", name="다시 풀기", exact=True).click()
@@ -182,11 +192,14 @@ async def verify(root: Path, output: Path, report: dict) -> None:
             await expect(page.locator(".answer-block")).to_have_count(0)
             await expect(page.get_by_role("button", name="문제 풀기", exact=True)).to_be_enabled()
             report["checks"]["injected_503_no_stale_success"] = "PASS"
+            assert http_errors == [{"url": f"{API}/solve", "status": 503}], http_errors
+            report["checks"]["no_unexpected_api_errors_including_cold_start"] = "PASS"
             assert not errors, errors
             report["checks"]["no_uncaught_browser_errors"] = "PASS"
             report["status"] = "PASS"
         finally:
             report["browser_errors"] = errors
+            report["http_errors"] = http_errors
             report["observed_solve_requests"] = solve_requests
             await page.screenshot(path=str(output / "final-screen.png"), full_page=True)
             await browser.close()
