@@ -1,0 +1,4 @@
+# Isolated CI browser driver; not a product runtime/provider dependency.
+playwright==1.57.0
+pyee==13.0.1
+greenlet==3.5.1

@@ -59,6 +59,30 @@ jobs:
           path: ${{ runner.temp }}/closure-runtime/
           if-no-files-found: error
           retention-days: 1
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements-lock.txt
+            frontend/requirements-browser-lock.txt
+      - name: Install locked real-browser test runtime
+        run: python -m pip install -r ../backend/requirements-lock.txt -r requirements-browser-lock.txt
+      - name: Install pinned Chromium driver browser
+        run: python -m playwright install --with-deps chromium
+      - name: Verify the real built product in Chromium
+        run: python tests/product-browser.py --root .. --output-dir "$RUNNER_TEMP/closure-browser" --head-sha "$EXACT_HEAD_SHA"
+      - name: Upload authored product evidence, never public benchmark cases
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynatutor-closure-browser-${{ env.EXACT_HEAD_SHA }}
+          path: |
+            ${{ runner.temp }}/closure-browser/*.json
+            ${{ runner.temp }}/closure-browser/*.png
+            ${{ runner.temp }}/closure-browser/*.log
+          if-no-files-found: warn
+          retention-days: 7
 
   public-evaluation:
     runs-on: ubuntu-latest
