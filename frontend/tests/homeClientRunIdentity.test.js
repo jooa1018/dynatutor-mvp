@@ -71,9 +71,9 @@ function harness(overrides = {}) {
     ...overrides,
   };
   const jsx = (type, props) => ({ type, props: props || {} });
-  const module = { exports: {} };
+  const compiledModule = { exports: {} };
   const context = vm.createContext({
-    exports: module.exports, module,
+    exports: compiledModule.exports, module: compiledModule,
     window: {
       setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; },
       clearTimeout(id) { timers.delete(id); },
@@ -94,7 +94,7 @@ function harness(overrides = {}) {
   vm.runInContext(compiled.outputText, context, { filename: 'HomeClient.compiled.cjs' });
   function render() {
     cursor = 0;
-    tree = module.exports.default();
+    tree = compiledModule.exports.default();
     if (!mounted) {
       mounted = true;
       for (const effect of effects) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); }

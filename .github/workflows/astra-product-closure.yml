@@ -40,6 +40,9 @@ jobs:
       - run: npm test
       - run: npm run audit
       - run: npm run build
+        env:
+          # This artifact targets an isolated local backend, never production.
+          NEXT_PUBLIC_DYNATUTOR_API_BASE: http://127.0.0.1:8000
       - name: Package source-bound runtime for local browser verification
         working-directory: .
         run: |
