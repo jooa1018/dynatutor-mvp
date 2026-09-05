@@ -55,10 +55,22 @@ export function MechanicsMultimodalPanel({
   const [phase, setPhase] = useState('입력 준비');
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
   const previousProblemText = useRef(problemText);
+  const latestProblemText = useRef(problemText);
+  latestProblemText.current = problemText;
+  const requestSequence = useRef(0);
+  const requestBusy = useRef(false);
+
+  useEffect(() => () => {
+    requestSequence.current += 1;
+    requestBusy.current = false;
+  }, []);
 
   useEffect(() => {
     if (previousProblemText.current === problemText) return;
     previousProblemText.current = problemText;
+    requestSequence.current += 1;
+    requestBusy.current = false;
+    setLoading(false);
     setResult(null);
     setConfirmations([]);
     setSelectedEvidenceId(null);
@@ -90,6 +102,10 @@ export function MechanicsMultimodalPanel({
   }
 
   function updateImages(next: readonly MechanicsImageSelection[]) {
+    requestSequence.current += 1;
+    requestBusy.current = false;
+    setLoading(false);
+    setError(null);
     setImages(next);
     setResult(null);
     setConfirmations([]);
@@ -97,63 +113,77 @@ export function MechanicsMultimodalPanel({
     setPhase('입력 준비');
   }
 
-  async function startModeling() {
-    if (loading || disabled || (!problemText.trim() && !images.length)) return;
+  // Frontend ownership only; a server revision/receipt is still authoritative.
+  async function runOwnedRequest(
+    nextPhase: string,
+    fallback: string,
+    operation: () => Promise<MechanicsMultimodalResponse>,
+  ): Promise<boolean> {
+    if (requestBusy.current || disabled) return false;
+    const requestId = ++requestSequence.current;
+    const inputText = problemText;
+    const isCurrent = () => requestSequence.current === requestId
+      && latestProblemText.current === inputText;
+    requestBusy.current = true;
     setLoading(true);
     setError(null);
-    setPhase('이미지 전처리 → 단일 AI 모델링 → 근거 검증');
+    setPhase(nextPhase);
     try {
-      acceptResponse(await requestMechanicsMultimodalEvidence(problemText, images));
+      const response = await operation();
+      if (!isCurrent()) return false;
+      acceptResponse(response);
+      return true;
     } catch (reason) {
-      setPhase('요청 실패');
-      handleFailure(reason, '글과 그림 근거를 처리하지 못했습니다.');
+      if (isCurrent()) {
+        setPhase('요청 실패');
+        handleFailure(reason, fallback);
+      }
+      return false;
     } finally {
-      setLoading(false);
+      if (isCurrent()) {
+        requestBusy.current = false;
+        setLoading(false);
+      }
     }
   }
 
+  async function startModeling() {
+    if (requestBusy.current || disabled || (!problemText.trim() && !images.length)) return;
+    setResult(null);
+    setConfirmations([]);
+    setSelectedEvidenceId(null);
+    await runOwnedRequest(
+      '이미지 전처리 → 단일 AI 모델링 → 근거 검증',
+      '글과 그림 근거를 처리하지 못했습니다.',
+      () => requestMechanicsMultimodalEvidence(problemText, images),
+    );
+  }
+
   async function confirmConflicts() {
-    if (!result || !allConflictsConfirmed || loading || disabled) return;
-    setLoading(true);
-    setError(null);
-    setPhase('충돌 확인 → 전체 재검증 → deterministic solve');
-    try {
-      acceptResponse(await confirmMechanicsMultimodalRevision(result, confirmations));
-    } catch (reason) {
-      handleFailure(reason, '충돌 확인을 적용하지 못했습니다.');
-    } finally {
-      setLoading(false);
-    }
+    if (!result || !allConflictsConfirmed) return;
+    await runOwnedRequest(
+      '충돌 확인 → 전체 재검증 → deterministic solve',
+      '충돌 확인을 적용하지 못했습니다.',
+      () => confirmMechanicsMultimodalRevision(result, confirmations),
+    );
   }
 
   async function applyCorrections(operations: readonly SourceCorrectionOperation[]): Promise<boolean> {
     if (!result) return false;
-    setLoading(true);
-    setError(null);
-    setPhase('수정 적용 → 정규화 → 컴파일 → 계산 → 독립 검산');
-    try {
-      acceptResponse(await correctMechanicsMultimodalRevision(result, operations));
-      return true;
-    } catch (reason) {
-      handleFailure(reason, '수정 내용을 안전하게 적용하지 못했습니다.');
-      return false;
-    } finally {
-      setLoading(false);
-    }
+    return runOwnedRequest(
+      '수정 적용 → 정규화 → 컴파일 → 계산 → 독립 검산',
+      '수정 내용을 안전하게 적용하지 못했습니다.',
+      () => correctMechanicsMultimodalRevision(result, operations),
+    );
   }
 
   async function executeRevision() {
-    if (!result || loading || disabled) return;
-    setLoading(true);
-    setError(null);
-    setPhase('서버 revision 재검증 → deterministic solve → 독립 검산');
-    try {
-      acceptResponse(await executeMechanicsMultimodalRevision(result));
-    } catch (reason) {
-      handleFailure(reason, '서버 revision을 실행하지 못했습니다.');
-    } finally {
-      setLoading(false);
-    }
+    if (!result) return;
+    await runOwnedRequest(
+      '서버 revision 재검증 → deterministic solve → 독립 검산',
+      '서버 revision을 실행하지 못했습니다.',
+      () => executeMechanicsMultimodalRevision(result),
+    );
   }
 
   const runtime = result?.runtime;
